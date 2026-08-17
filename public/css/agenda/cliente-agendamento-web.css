@@ -1,0 +1,526 @@
+/* ==========================================================
+   CSS LISTA PROFISSIONAL E SERVIÇO
+   ========================================================== */
+
+.u-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:12px;
+}
+
+/* item clicável */
+.u-item{
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px;
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:14px;
+  background:#fff;
+  cursor:pointer;
+  text-align:left;
+}
+
+/* hover discreto */
+.u-item:hover{
+  background: rgba(0,0,0,.02);
+}
+
+/* selecionado */
+.u-item.is-active{
+  border-color: rgba(0,0,0,.25);
+  box-shadow: 0 0 0 3px rgba(255, 138, 0, .18); /* destaque do sistema */
+}
+
+/* lado esquerdo (avatar) */
+.u-avatar{
+  width:54px;
+  height:54px;
+  border-radius:999px;
+  overflow:hidden;
+  flex:0 0 54px;
+  background: rgba(0,0,0,.06);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* imagem dentro do avatar */
+.u-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+/* fallback quando não tem imagem */
+.u-avatar.is-fallback::after{
+  content:"👤";
+  font-size:22px;
+  opacity:.7;
+}
+
+/* info do meio */
+.u-info{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  flex:1;
+  min-width: 0; /* evita quebrar layout */
+}
+
+/* texto menor (ex: "Profissional", "Serviço") */
+.u-title{
+  font-size:.82rem;
+  opacity:.65;
+}
+
+/* texto principal (nome) */
+.u-name{
+  font-weight:800;
+  font-size:1rem;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* elemento final (seta, botão, badge) */
+.u-trailing{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  opacity:.55;
+}
+
+/* estado vazio */
+.u-empty{
+  padding:12px;
+  border:1px dashed rgba(0,0,0,.18);
+  border-radius:14px;
+  opacity:.8;
+}
+
+/* ==========================================================
+   FIM BASE
+   ========================================================== */
+
+
+
+  /* ==========================================================
+  SELEÇÃO UNIVERSAL (COR PRIMÁRIA)
+  ========================================================== */
+
+.u-item.is-active{
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* se o browser não suportar color-mix, mantém isso como fallback */
+@supports not (color-mix(in srgb, #000 50%, transparent)){
+  .u-item.is-active{
+    border-color: rgba(38, 76, 247, .55);
+    box-shadow: 0 0 0 3px rgba(38, 76, 247, .18);
+  }
+}
+
+/* destaque no bloco preço/duração quando seleciona */
+.u-item-servico.is-active .u-meta{
+  background: rgba(38, 76, 247, .08);
+  border-color: rgba(38, 76, 247, .30);
+}
+
+/* botão "Selecionar" quando ativo */
+.u-item-servico.is-active .u-btn{
+  border-color: rgba(38, 76, 247, .55);
+  color: rgba(38, 76, 247, 1);
+}
+
+
+/* ==========================================================
+   BADGE UNIVERSAL (tipo Confirmado/Pendente)
+   ========================================================== */
+
+.u-item.has-badge{
+  position: relative;
+  padding-right: 120px; /* ✅ reserva espaço para o badge não encostar no texto */
+}
+
+.u-badge{
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .2px;
+  white-space: nowrap;
+
+  border: 1px solid transparent;
+}
+
+/* cores (igual seu padrão do modal) */
+.u-badge.confirmado{
+  background: #e8f7ee;
+  color: #167a3f;
+  border-color: #bfe8cf;
+}
+
+.u-badge.pendente{
+  background: #fff7e6;
+  color: #9a6700;
+  border-color: #ffe0a3;
+}
+
+.u-badge.cancelado{
+  background: #fdeaea;
+  color: #b3261e;
+  border-color: #f5b5b0;
+}
+
+/* mobile */
+@media (max-width: 600px){
+  .u-item.has-badge{
+    padding-right: 110px;
+  }
+  .u-badge{
+    right: 12px;
+    padding: 5px 10px;
+    font-size: .76rem;
+  }
+}
+
+/* ==========================================================
+   FIM
+========================================================== */
+
+
+
+
+/* ==========================================================
+   ABA HORÁRIO 
+========================================================== */
+
+/* Card da aba (se seu .card já tem estilo, pode remover este bloco) */
+#tab-horario .card{
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.06);
+  box-shadow: 0 10px 30px rgba(0,0,0,.06);
+}
+
+#tab-horario .card-sub{
+  margin-bottom: 14px;
+  opacity: .75;
+}
+
+/*  Cabeçalho do mês */
+
+.u-mes-topo{
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 12px;
+}
+
+.u-mes-titulo{
+  text-align: center;
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: .2px;
+  color: var(--text, #1f2937);
+}
+
+.u-mes-nav{
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(0,0,0,.03);
+  color: var(--text, #1f2937);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform .12s ease, background .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+
+.u-mes-nav:hover{
+  background: rgba(0,0,0,.06);
+  border-color: rgba(0,0,0,.12);
+  box-shadow: 0 8px 18px rgba(0,0,0,.08);
+  transform: translateY(-1px);
+}
+
+.u-mes-nav:active{
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/*  Dias do mês (linha do tempo) */
+
+.u-dias-wrap{
+  margin-bottom: 12px;
+}
+
+.u-dias{
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* scrollbar discreto */
+.u-dias::-webkit-scrollbar{ height: 8px; }
+.u-dias::-webkit-scrollbar-thumb{
+  background: rgba(0,0,0,.10);
+  border-radius: 999px;
+}
+.u-dias::-webkit-scrollbar-track{
+  background: rgba(0,0,0,.04);
+  border-radius: 999px;
+}
+
+.u-dia{
+  flex: 0 0 auto;
+  min-width: 78px;
+  padding: 10px 10px 9px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 6px 16px rgba(0,0,0,.05);
+  text-align: center;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.u-dia:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0,0,0,.08);
+  border-color: rgba(0,0,0,.12);
+}
+
+.u-dia:active{
+  transform: translateY(0);
+  box-shadow: 0 6px 16px rgba(0,0,0,.05);
+}
+
+.u-dia .u-dia-semana{
+  font-size: 12px;
+  opacity: .65;
+  display: block;
+  line-height: 1.1;
+  text-transform: lowercase;
+}
+
+.u-dia .u-dia-num{
+  font-size: 18px;
+  font-weight: 900;
+  display: block;
+  line-height: 1.1;
+  margin-top: 2px;
+  color: var(--text, #111827);
+}
+
+.u-dia .u-dia-mes{
+  font-size: 12px;
+  opacity: .55;
+  display: block;
+  line-height: 1.1;
+  margin-top: 3px;
+}
+
+.u-dia.is-active{
+  background: rgba(35, 80, 255, .10);
+  border-color: rgba(35, 80, 255, .35);
+  box-shadow: 0 0 0 4px rgba(35, 80, 255, .12), 0 10px 22px rgba(0,0,0,.06);
+}
+
+.u-dia.is-active .u-dia-num{
+  color: var(--primary, #2350ff);
+}
+
+/* dia desabilitado */
+.u-dia.is-disabled{
+  opacity: .45;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* HORÁRIOS — GRID MODERNO */
+
+.u-horarios{
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+}
+
+.u-hora{
+  all: unset;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 44px;
+  border-radius: 12px;
+
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.08);
+
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  color: var(--text, #1f2937);
+
+  transition:
+    background .15s ease,
+    border-color .15s ease,
+    box-shadow .15s ease,
+    transform .1s ease;
+}
+
+.u-hora:hover{
+  background: rgba(0,0,0,.03);
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+  transform: translateY(-1px);
+}
+
+.u-hora.is-active{
+  background: var(--primary, #2350ff);
+  color: #fff;
+  border-color: var(--primary, #2350ff);
+  box-shadow: 0 10px 22px rgba(35,80,255,.35);
+}
+
+.u-hora.is-disabled{
+  opacity: .40;
+  pointer-events: none;
+}
+
+/*  Ações (Voltar / Continuar) */
+
+#tab-horario .u-actions{
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (min-width: 760px){
+  #tab-horario .u-actions .botao-geral{
+    min-width: 180px;
+  }
+}
+
+/* PC grande: 5 colunas */
+@media (min-width: 1024px){
+  .u-horarios{
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+
+/* ==========================================================
+   FIM
+========================================================== */
+
+
+
+
+/* ==========================================================
+   ABA CONFIRMAR – mesmo padrão das demais abas
+========================================================== */
+
+/* Título */
+.u-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text, #222);
+}
+
+/* Resumo do agendamento */
+.u-resumo {
+  background: var(--bg-soft, #f7f7f7);
+  border: 1px solid var(--border, #e2e2e2);
+  border-radius: var(--radius, 8px);
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* Linhas internas do resumo (caso use <div> ou <p>) */
+.u-resumo > * {
+  margin-bottom: 6px;
+}
+
+.u-resumo > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Observação */
+.u-obs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.u-obs-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted, #666);
+}
+
+.u-obs textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  padding: 10px;
+  font-size: 0.9rem;
+  border-radius: var(--radius, 8px);
+  border: 1px solid var(--border, #dcdcdc);
+  background: #fff;
+}
+
+.u-obs textarea:focus {
+  outline: none;
+  border-color: var(--primary, #ff8a00);
+  box-shadow: 0 0 0 2px rgba(255, 138, 0, 0.15);
+}
+
+/* Ações */
+.u-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Empilha no mobile */
+.u-actions-stack {
+  flex-direction: column;
+}
+
+/* Desktop: botões lado a lado */
+@media (min-width: 768px) {
+  .u-actions-stack {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .u-actions-stack .botao-geral {
+    flex: 1;
+  }
+}

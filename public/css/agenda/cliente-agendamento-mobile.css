@@ -1,0 +1,320 @@
+
+
+@media (max-width: 856px) {
+
+  /* ==========================================================
+   ABA SERVIÇO
+========================================================== */
+
+  /* Card do serviço vira grid: avatar | info e badge embaixo */
+  .u-item-servico {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    grid-template-rows: auto auto;
+    gap: 20px 10px;
+    align-items: start;
+
+    /* mais respiro pra não “apertar” o conteúdo */
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  /* Avatar fixo e alinhado */
+  .u-item-servico .u-avatar {
+    grid-column: 1;
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    overflow: hidden;
+    flex: 0 0 auto;
+  }
+
+  /* Texto (nome/desc) ocupa a coluna 2 */
+  .u-item-servico .u-info {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0; /* importante p/ quebrar linha corretamente */
+  }
+
+  .u-item-servico .u-name {
+    display: block;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+  }
+
+  .u-item-servico .u-desc {
+    display: block;
+    margin-top: 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+  }
+
+  /* ✅ Badge deixa de flutuar e vai pra linha de baixo */
+  .u-item-servico .u-badge {
+    grid-column: 1 / -1;  /* ocupa largura toda */
+    grid-row: 2;
+
+    /* garante que NÃO tem absolute vindo do desktop */
+    position: static !important;
+
+    justify-self: end;     /* joga pra direita */
+    align-self: start;
+
+    max-width: 100%;
+    white-space: nowrap;   /* mantém "R$ 95,00 • 1h" numa linha */
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+  }
+
+  /* Se existir CSS desktop que coloca padding-right por causa do badge flutuante,
+     aqui a gente remove pra não criar “buraco” */
+  .u-item-servico.has-badge {
+    padding-right: 12px;
+  }
+  /* ==========================================================
+   ABA SERVIÇO FIM
+========================================================== */
+}
+@media (max-width: 720px){
+
+/* ==========================================================
+    ABAS CSS ClientePerfil.hrml e ClienteAgendamento.html
+========================================================== */
+
+  /* Container */
+  .cadastro-cliente{
+    padding: 12px;
+  }
+
+  /* Topo em coluna */
+  .cadastro-topo{
+    align-items:flex-start;
+    flex-direction:column;
+    gap: 6px;
+  }
+/* Abas sempre em 1 linha */
+  .tabs{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* ✅ 4 botões lado a lado */
+    gap: 10px;
+    width: 100%;
+  }
+
+  .tab-btn{
+    width: 100%;
+    min-width: 0;                 /* ✅ permite encolher sem quebrar */
+    padding: 10px 8px;
+    border-radius: 14px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    white-space: nowrap;          /* ✅ não quebra linha */
+    overflow: hidden;             /* ✅ corta com reticências se precisar */
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .tab-btn i{
+    font-size: 14px;
+  }
+
+  /* Se você usa o número (tab-step) */
+  .tab-step{
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    flex: 0 0 auto;
+  }
+
+
+  /* ✅ Colapsa os grids */
+  .grid{
+    grid-template-columns: 1fr;
+  }
+
+  .modal-grid{
+    grid-template-columns: 1fr;
+  }
+
+
+  /* Card mais compacto */
+  .card{
+    padding: 14px;
+  }
+
+  /* Botão 100% no mobile */
+  .acoes{
+    justify-content: stretch;
+  }
+
+  .acoes .btn,
+  .acoes .botao-geral{
+    width: 100%;
+  }
+
+/* ==========================================================
+   FIM
+   ========================================================== */
+
+
+  /* ==========================================================
+   BOTAO-GERAL — MOBILE
+   ========================================================== */
+
+
+  .botao-geral{
+    font-size: 13px;       /* 🔥 menor no celular */
+    line-height: 1;
+    padding: 10px 12px;    /* menos largura */
+    border-radius: 10px;
+    gap: 8px;
+  }
+
+  .botao-geral i{
+    font-size: 16px;
+    width: 18px;
+  }
+
+ /*Esconder texto e deixar só ícone */
+  
+  .botao-geral .btn-texto{
+    display: none;
+  }
+
+/* ==========================================================
+   FIM
+   ========================================================== */
+}
+@media (max-width: 680px){
+
+/* ==========================================================
+   MOBILE Modal GERAL (CELULAR)
+   ========================================================== */
+  .modal-geral{
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .modal-conteudo{
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    border-radius: 18px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal-topo{ padding: 12px 12px; }
+  .modal-topo h2{ font-size: 16px; }
+
+  .modal-corpo{
+    padding: 12px 12px 10px;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-grid{
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .modal-campo input,
+  .modal-campo select{
+    height: 44px;
+    padding: 12px 12px 10px;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+
+  .modal-campo textarea{
+    min-height: 80px;
+    padding: 14px 12px 10px;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+
+  .modal-campo label{
+    left: 10px;
+    top: 7px;
+    font-size: 12px;
+  }
+
+.modal-acoes{
+  position: sticky;
+  bottom: 0;
+  padding: 10px 12px;
+
+  display: flex;              /* ✅ ativa o gap */
+  flex-direction: column;     /* ✅ um embaixo do outro */
+  gap: 12px;                  /* ✅ espaçamento entre botões */
+
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid rgba(0,0,0,.06);
+}
+
+.modal-acoes button{
+  width: 100%;
+  height: 46px;
+  border-radius: 14px;
+}
+
+   /* ==========================================================
+   FIM
+   ========================================================== */
+}
+@media (max-width: 520px){
+  /* ==========================================================
+   ABA HORÁRIO
+========================================================== */
+
+  /* dias: um pouco mais compacto */
+  .u-dia{
+    min-width: 74px;
+    padding: 10px 9px 9px;
+  }
+
+  /* horários: 3 colunas fixas */
+  .u-horarios{
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .u-hora{
+    height: 46px;
+    font-size: 16px;
+  }
+
+  /* ações: grid 2 colunas */
+  #tab-horario .u-actions{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  /* ==========================================================
+  FIM
+  ========================================================== */
+}
+@media (max-width: 480px){
+  
+/* ==========================================================
+  ABAS CSS ClientePerfil.hrml e ClienteAgendamento.html
+========================================================== */
+
+  .tab-btn .tab-text{ display:none; }
+  .tab-btn{ gap: 0; padding: 10px 0; }
+
+  
+/* ==========================================================
+  FIM
+  ========================================================== */
+}
+

@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="pt-br">
+    <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agenda • Perfil</title>
+
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-mobile.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
+
+    <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
+    <script src="/public/_auth/sessao.js" ></script> 
+    </head>
+
+    <body>
+        
+    <!-- Informações Superiores -->
+    <header class="Cabecalho cabecalho-agenda">
+
+        <!-- Lado esquerdo -->
+        <div class="cabecalho-esquerda">
+        <span class="badge-hoje">Hoje</span>
+        <h1 class="cabecalho-dia">Segunda-feira</h1>
+        <span class="cabecalho-data">10 de Janeiro de 2026</span>
+        </div>
+
+        <!-- Lado direito -->
+        <div class="cabecalho-direita">
+
+
+            <!--MEUS AGENDAMENTOS-->
+            <button class="botao-geral" type="button" data-abrir-modal="modalMeusAgendamentos" id="btnMeusAgendamentos">
+                <i class="fa-solid fa-calendar-days"></i>
+                <span class="btn-texto">Meus agendamentos</span>
+            </button>
+
+
+            <!-- AGENDAR AGORA -->
+            <a href="../views/cliente-agendamento.html" class="botao-geral" title="Agendar agora">
+                <i class="fa-solid fa-calendar-check"></i>
+                Agendar
+            </a>
+
+            <!-- PERFIL DO USUÁRIO -->
+            <button class="botao-geral destaque" type="button"  title="Meu perfil" data-abrir-modal="modalPerfilUsuario">
+                <i class="fa-solid fa-user-circle"></i>
+                <span class="btn-texto">Perfil</span>
+            </button>
+
+        </div>
+
+    </header>
+
+    <main class="cadastro-cliente">
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="perfil" type="button">
+                Informações
+            </button>
+            
+            <button class="tab-btn locked" data-tab="endereco" type="button">
+                Endereço
+            </button>
+        </nav>
+
+
+        <!-- Cadastro de dado obrigatorios -->
+        <section class="tabs-content">
+
+            <!-- ABA: PERFIL -->
+            <div class="tab-pane active" id="tab-perfil" aria-labelledby="tab-perfil-btn">
+                <div class="card">
+                    <p class="card-sub">Preencha os dados obrigatórios para continuar.</p>
+                    <form id="formPerfil" novalidate>
+                        <div class="modal-grid">
+
+                            <div class="modal-campo">
+                                <input id="cli_nome" name="nome" type="text" maxlength="120"  placeholder=" " required>
+                                <label for="cli_nome">Nome completo <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="cli_whats" name="whats" type="tel" maxlength="20"  placeholder=" " required>
+                                <label for="cli_whats">WhatsApp/Celular <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="cli_email" name="email" type="email" maxlength="120"  placeholder=" " required >
+                                <label for="cli_email">E-mail <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="cli_cpf" name="cpf" type="text" maxlength="14" placeholder=" ">
+                                <label for="cli_cpf">CPF (opcional)</label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="cli_nasc" name="nascimento" type="date" required>
+                                <label for="cli_nasc">Data de nascimento (opcional)</label>
+                            </div>
+
+                        </div>
+
+                        <div class="acoes">
+                            <button  class="botao-geral destaque" id="btnSalvarContinuar" type="submit"> 
+                            Salvar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ABA: ENDEREÇO -->
+            <div class="tab-pane" id="tab-endereco" aria-labelledby="tab-endereco-btn">
+                <div class="card">
+                    <p class="card-sub">Informe seu endereço para completar o cadastro.</p>
+                    <form id="formEndereco" novalidate>
+                        <div class="modal-grid">
+
+                            <div class="modal-campo">
+                                <input id="end_cep" name="cep" type="text" maxlength="9" placeholder=" " required>
+                                <label for="end_cep">CEP <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="end_logradouro" name="logradouro" type="text" maxlength="120" placeholder=" " required>
+                                <label for="end_logradouro">Rua / Avenida <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="end_numero" name="numero" type="text" maxlength="20" placeholder=" " required>
+                                <label for="end_numero">Número <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="end_bairro" name="bairro" type="text" maxlength="80" placeholder=" " required>
+                                <label for="end_bairro">Bairro <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="end_cidade" name="cidade" type="text" maxlength="80" placeholder=" " required>
+                                <label for="end_cidade">Cidade <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo">
+                                <input id="end_uf" name="uf" type="text" maxlength="2" placeholder=" " required>
+                                <label for="end_uf">UF <span class="req">*</span></label>
+                            </div>
+
+                            <div class="modal-campo linha">
+                                <input id="end_complemento" name="complemento" type="text" maxlength="120" placeholder=" ">
+                                <label for="end_complemento">Complemento (opcional)</label>
+                            </div>
+
+                        </div>
+
+                        <div class="acoes">
+                            <button  class="botao-geral destaque" id="btnSalvarEndereco" type="submit">
+                                Salvar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </section>
+
+        <section> <!--Todos os Modals-->
+
+            <!-- MODAL: PERFIL DO USUÁRIO -->
+            <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
+
+            <div class="modal-conteudo" role="dialog" aria-modal="true">
+                
+                <div class="modal-topo">
+                <h2>Meu Perfil</h2>
+                <button class="modal-fechar" data-fechar-modal type="button">×</button>
+                </div>
+
+                <div class="modal-corpo">
+
+                    <form>
+                        <!-- FOTO DO PERFIL -->
+                        <div class="perfil-foto-box"> 
+                            <img src="../assets/img/avatar-default.png" alt="Foto do usuário"  class="perfil-foto">
+
+                            <label class="botao-geral pequeno">
+                                <i class="fa-solid fa-camera"></i>
+                                Alterar foto
+                                <input type="file" id="perfil_foto"accept="image/*"  hidden>
+                            </label>
+                        </div>
+
+                        <hr class="divisor">
+
+                        <!-- ALTERAR SENHA -->
+                        <form id="formAlterarSenha" novalidate>
+
+                            <div class="modal-campo">
+                            <input type="password" id="senha_atual" required>
+                            <label for="senha_atual">Senha atual</label>
+                            </div>
+
+                            <div class="modal-campo">
+                            <input type="password" id="nova_senha" required minlength="6">
+                            <label for="nova_senha">Nova senha</label>
+                            </div>
+
+                            <div class="modal-campo">
+                            <input type="password" id="confirmar_senha" required minlength="6">
+                            <label for="confirmar_senha">Confirmar nova senha</label>
+                            </div>
+
+                            <div class="modal-acoes"><br>
+                                <button type="submit" class="botao-geral">
+                                    <i class="fa-solid fa-key"></i>
+                                    Salvar nova senha
+                                </button> 
+
+                                <button class="botao-geral destaque" type="button"  title="Sair do sistema"  id="btnSair">
+                                    <i class="fa-solid fa-right-from-bracket"></i>
+                                    Sair
+                                </button>
+
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+            </div>
+
+            <!-- MODAL: Meus Agendamentos -->
+            <div id="modalMeusAgendamentos" class="modal-geral" aria-hidden="true">
+            <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloMeusAgendamentos">
+
+                <div class="modal-topo">
+                <h2 id="tituloMeusAgendamentos">Meus Agendamentos</h2>
+                <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+                </div>
+
+                <div class="modal-corpo">
+
+                <!-- Estado -->
+                <small class="msg-ajuda" id="ma_estado">ℹ️ Carregando agendamentos...</small>
+
+                <!-- Lista -->
+                <div id="ma_lista" class="ma-lista" aria-live="polite"></div> <br>
+
+                <div class="modal-acoes">
+                    <button class="botao-geral destaque" type="button" data-fechar-modal>
+                    <i class="fa-solid fa-arrow-left"></i>
+                    Voltar
+                    </button>
+                </div>
+
+                </div>
+            </div>
+            </div>
+
+        </section>
+
+
+    </main>
+
+    <script src="../js/cliente-perfil/lista-meus-agendamentos.js" ></script> <!--Lista de Agendamentos do cliente-->
+
+
+    <script> // scrit do cabeçalho para informar o dia atual sempre
+        document.addEventListener('DOMContentLoaded', () => {
+
+        const elDia = document.querySelector('.cabecalho-dia');
+        const elData = document.querySelector('.cabecalho-data');
+
+        const hoje = new Date();
+
+        const diasSemana = [
+            'Domingo',
+            'Segunda-feira',
+            'Terça-feira',
+            'Quarta-feira',
+            'Quinta-feira',
+            'Sexta-feira',
+            'Sábado'
+        ];
+
+        const meses = [
+            'Janeiro',
+            'Fevereiro',
+            'Março',
+            'Abril',
+            'Maio',
+            'Junho',
+            'Julho',
+            'Agosto',
+            'Setembro',
+            'Outubro',
+            'Novembro',
+            'Dezembro'
+        ];
+
+        const diaSemana = diasSemana[hoje.getDay()];
+        const dia = hoje.getDate();
+        const mes = meses[hoje.getMonth()];
+        const ano = hoje.getFullYear();
+
+        elDia.textContent = diaSemana;
+        elData.textContent = `${dia} de ${mes} de ${ano}`;
+
+        });
+    </script>
+
+    <script> //Abrir e fechar todos os modals da pagina
+        /* ============================
+        CONFIGURAÇÃO DE CLASSES
+        ============================ */
+        const MODAL_CLASSES = ['modal-geral', 'modal-cards'];
+
+        /* ============================
+        FUNÇÕES
+        ============================ */
+        function abrirModal(id){
+        const modal = document.getElementById(id);
+        if(!modal){
+            console.warn('Modal não encontrado:', id);
+            return;
+        }
+        modal.classList.add('ativo');
+        }
+
+        function fecharModal(modal){
+        modal.classList.remove('ativo');
+        }
+
+        function getModalPai(element){
+        return element.closest(
+            MODAL_CLASSES.map(c => '.' + c).join(',')
+        );
+        }
+
+        /* ============================
+        EVENTOS DE CLICK
+        ============================ */
+        document.addEventListener('click', (e) => {
+
+        /* ABRIR */
+        const abrir = e.target.closest('[data-abrir-modal]');
+        if(abrir){
+            abrirModal(abrir.getAttribute('data-abrir-modal'));
+            return;
+        }
+
+        /* FECHAR (BOTÃO) */
+        if(e.target.closest('[data-fechar-modal]')){
+            const modal = getModalPai(e.target);
+            if(modal) fecharModal(modal);
+            return;
+        }
+
+        /* FECHAR (CLIQUE FORA) */
+        MODAL_CLASSES.forEach(classe => {
+            if(e.target.classList.contains(classe)){
+            fecharModal(e.target);
+            }
+        });
+
+        });
+
+        /* ============================
+        TECLA ESC
+        ============================ */
+        document.addEventListener('keydown', (e) => {
+        if(e.key === 'Escape'){
+            MODAL_CLASSES.forEach(classe => {
+            document
+                .querySelectorAll(`.${classe}.ativo`)
+                .forEach(m => fecharModal(m));
+            });
+        }
+        });
+    </script>
+
+    <script> /*  Navegação livre entre abas Pode navegar via clique ou JS Reutilizável em qualquer tela  */
+        (() => {
+    "use strict";
+
+    function TabsUniversal(root = document) {
+        const buttons = Array.from(root.querySelectorAll(".tab-btn"));
+        const panes   = Array.from(root.querySelectorAll(".tab-pane"));
+
+        if (!buttons.length || !panes.length) return;
+
+        function getPane(tabName) {
+        return root.querySelector(`#tab-${tabName}`);
+        }
+
+        function activate(tabName) {
+        const btn = buttons.find(b => b.dataset.tab === tabName);
+        const pane = getPane(tabName);
+
+        if (!btn || !pane) return;
+
+        buttons.forEach(b => b.classList.remove("active"));
+        panes.forEach(p => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        pane.classList.add("active");
+
+        // acessibilidade básica
+        buttons.forEach(b => b.setAttribute("aria-selected", "false"));
+        btn.setAttribute("aria-selected", "true");
+        }
+
+        // clique manual
+        buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            activate(btn.dataset.tab);
+        });
+        });
+
+        // API pública
+        return {
+        go: activate
+        };
+    }
+
+    // inicializa global
+    window.Tabs = TabsUniversal();
+
+    })();
+
+    </script>
+
+    </body>
+</html>
+

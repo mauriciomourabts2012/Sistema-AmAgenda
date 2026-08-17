@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Link inválido • AmAgenda</title>
+  <meta name="robots" content="noindex,nofollow">
+
+  <style>
+    *{
+      box-sizing:border-box;
+      margin:0;
+      padding:0;
+      font-family:"Segoe UI", Arial, sans-serif;
+    }
+
+    :root{
+      --bg-body:#eef1f5;
+      --card-bg:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --primary:#2b6edc;
+      --primary-dark:#1f5cc0;
+      --border:#e5e7eb;
+      --danger-bg:#fff4f4;
+      --danger-border:#ffd5d5;
+      --danger-text:#c0392b;
+      --shadow:0 20px 60px rgba(43,110,220,.12);
+      --left-grad-1:#111111;
+      --left-grad-2:#7a7a7a;
+      --radius:18px;
+    }
+
+    body{
+      min-height:100vh;
+      background:var(--bg-body);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+    }
+
+    .card{
+      width:900px;
+      max-width:100%;
+      min-height:430px;
+      background:var(--card-bg);
+      border-radius:var(--radius);
+      overflow:hidden;
+      display:flex;
+      box-shadow:var(--shadow);
+    }
+
+    .left{
+      flex:1;
+      background:linear-gradient(135deg,var(--left-grad-1),var(--left-grad-2));
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:34px;
+      position:relative;
+    }
+
+    .left::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:radial-gradient(circle at center, rgba(255,255,255,.12), transparent 55%);
+      pointer-events:none;
+    }
+
+    .left img{
+    max-width:420px;
+    width:100%;
+    height:auto;
+    display:block;
+    position:relative;
+    z-index:1;
+    filter:drop-shadow(0 12px 24px rgba(0,0,0,.25));
+    }
+
+
+    .right{
+      flex:1;
+      padding:34px 34px 30px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      background:#fbfbfd;
+    }
+
+    .topo{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-bottom:18px;
+      flex-wrap:wrap;
+    }
+
+    .topo h2{
+      font-size:20px;
+      color:#0f172a;
+      font-weight:700;
+    }
+
+    .tag{
+      background:var(--primary);
+      color:#fff;
+      font-size:12px;
+      padding:5px 12px;
+      border-radius:999px;
+      font-weight:700;
+      letter-spacing:.3px;
+    }
+
+    h1{
+      font-size:30px;
+      line-height:1.15;
+      color:var(--text);
+      margin-bottom:14px;
+      font-weight:800;
+    }
+
+    .desc{
+      color:var(--muted);
+      font-size:16px;
+      line-height:1.65;
+      margin-bottom:22px;
+    }
+
+    .alert{
+      background:var(--danger-bg);
+      border:1px solid var(--danger-border);
+      color:var(--danger-text);
+      padding:15px 16px;
+      border-radius:12px;
+      font-size:14px;
+      line-height:1.6;
+      margin-bottom:18px;
+    }
+
+    .motivo{
+      display:none;
+      background:#eef5ff;
+      border:1px solid #cfe0ff;
+      color:#1e4fa8;
+      padding:14px 16px;
+      border-radius:12px;
+      font-size:14px;
+      line-height:1.6;
+      margin-bottom:18px;
+    }
+
+    .motivo.show{
+      display:block;
+    }
+
+    .info-box{
+      border:1px solid var(--border);
+      background:#fff;
+      border-radius:12px;
+      padding:16px;
+    }
+
+    .info-box strong{
+      display:block;
+      color:var(--text);
+      font-size:14px;
+      margin-bottom:8px;
+    }
+
+    .info-box p{
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.6;
+    }
+
+    .footer{
+      margin-top:18px;
+      font-size:12px;
+      color:#8b93a1;
+    }
+
+    @media (max-width: 820px){
+      .card{
+        flex-direction:column;
+        min-height:auto;
+      }
+
+      .left{
+        min-height:240px;
+      }
+
+      .left img{
+        max-width:180px;
+      }
+
+      .right{
+        padding:26px 18px 22px;
+      }
+
+      h1{
+        font-size:25px;
+      }
+
+      .desc{
+        font-size:15px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="left">
+      <img src="../imagens/logo.png" alt="AmAgenda">
+    </div>
+
+    <div class="right">
+      <div class="topo">
+        <h2>Bem-vindo</h2>
+        <span class="tag">AM-AGENDA</span>
+      </div>
+
+      <h1>Link de acesso inválido</h1>
+
+      <p class="desc">
+        Não foi possível validar o link informado para acessar esta empresa ou studio no sistema.
+      </p>
+
+      <div class="alert">
+        Verifique se o endereço recebido está correto e solicite o link oficial ao responsável pela empresa ou studio.
+      </div>
+
+      <div id="motivoBox" class="motivo"></div>
+
+      <div class="info-box">
+        <strong>Importante</strong>
+        <p>
+          Por segurança, o acesso só é permitido com um link válido e vinculado a uma empresa ativa.
+          Se necessário, entre em contato com o responsável pelo studio para receber o endereço correto.
+        </p>
+      </div>
+
+      <div class="footer">
+        AmAgenda • Sistema de Agendamento
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const params = new URLSearchParams(window.location.search);
+      const motivo = (params.get("motivo") || "").trim();
+      const empresa = (params.get("empresa") || "").trim();
+      const slug = (params.get("slug") || "").trim();
+
+      const motivoBox = document.getElementById("motivoBox");
+
+      const mensagens = {
+        LINK_INVALIDO: "O link recebido está incompleto ou possui dados inválidos.",
+        EMPRESA_NAO_ENCONTRADA: "A empresa ou studio informado não foi encontrado no sistema.",
+        EMPRESA_INATIVA: "A empresa ou studio informado está inativo ou bloqueado no momento.",
+        SLUG_INVALIDO: "Os dados do link não conferem com a empresa encontrada.",
+        CONEXAO_INVALIDA: "Não foi possível validar o link no banco de dados.",
+        ERRO_INTERNO: "Ocorreu um erro interno ao validar o acesso."
+      };
+
+      const textoBase = mensagens[motivo] || "";
+
+      if (!textoBase) return;
+
+      const detalhes = [];
+      if (empresa) detalhes.push("empresa=" + empresa);
+      if (slug) detalhes.push("slug=" + slug);
+
+      motivoBox.innerHTML = textoBase + (detalhes.length ? "<br><br><strong>Dados recebidos:</strong> " + detalhes.join(" • ") : "");
+      motivoBox.classList.add("show");
+    })();
+  </script>
+
+</body>
+</html>

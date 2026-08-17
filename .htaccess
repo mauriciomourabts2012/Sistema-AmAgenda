@@ -1,0 +1,18 @@
+RewriteEngine On
+
+# 🔒 Bloqueia acesso HTTP direto ao backend
+RewriteRule ^backend/ - [F,L]
+
+# Se já estiver em /public/, não reescreve
+RewriteRule ^public/ - [L]
+
+# /api/... -> /public/api/...
+RewriteRule ^api/(.*)$ public/api/$1 [L]
+
+# raiz -> /public/
+RewriteRule ^$ public/ [L]
+
+# fallback -> /public/...
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ public/$1 [L]

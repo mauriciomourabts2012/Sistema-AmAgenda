@@ -1,0 +1,320 @@
+/* ==========================================================
+  FILTRO DATA + STATUS (BASE / DESKTOP)
+  Arquivo: /css/ControleVeiculos/FiltroDataLista.css  (BASE)
+  - SEM RESPONSIVO AQUI
+  - Popover absoluto (abre abaixo do botão)
+  - Status dentro do mesmo popover (select.input-filtro)
+========================================================== */
+
+/* ✅ Container do filtro (ancora o popover absoluto) */
+.section-filtro{
+  position: relative;
+  display: inline-block;
+}
+
+/* ===== Filtro extra (select) ===== */
+.filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.select-filtro {
+  width: 100%;
+  max-width: 250px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.select-filtro:focus {
+  border-color: #000;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+  outline: none;
+}
+
+/* ===== Popover principal ===== */
+.popover {
+  position: absolute;
+  z-index: 1000;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+  width: 420px;
+  max-width: calc(100vw - 24px);
+
+  /* ✅ abre abaixo do botão e alinhado à esquerda */
+  top: calc(100% + 10px);
+  left: 0;
+}
+
+/* (mantém seu outro popover menor) */
+.popover-vaga-livre{
+  position: absolute;
+  z-index: 1000;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+  width: 260px;
+  max-width: calc(100vw - 24px);
+
+  top: calc(100% + 10px);
+  left: 0;
+}
+
+/* ===== Botão que abre o filtro ===== */
+.btn-filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 0.5rem;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  color: #000;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-filtro:hover {
+  border-color: #999;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* ✅ Foco acessível no botão */
+.btn-filtro:focus-visible{
+  outline: none;
+  border-color: #000;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.15);
+}
+
+/* ===== Grid das datas (e status) ===== */
+.linha {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.label-filtro {
+  font-size: 0.875rem;
+  color: #000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* ✅ Escopo: date dentro do popover */
+.popover input[type="date"],
+.popover-vaga-livre input[type="date"]{
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+  background-color: #fff;
+  font-size: 14px;
+  color: #000;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  box-sizing: border-box;
+  height: 36px;
+}
+
+.popover input[type="date"]:focus,
+.popover-vaga-livre input[type="date"]:focus{
+  border-color: #000;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+  outline: none;
+}
+
+/* ==========================================================
+   ✅ STATUS no MESMO popover
+   Você usa: <select class="input-filtro" ...>
+========================================================== */
+.popover .input-filtro{
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+  background-color: #fff;
+  font-size: 14px;
+  color: #000;
+  box-sizing: border-box;
+  height: 36px;
+}
+
+.popover .input-filtro:focus{
+  border-color: #000;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+  outline: none;
+}
+
+.popover select.input-filtro{
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  padding-right: 34px; /* espaço da seta */
+  background-image:
+    linear-gradient(45deg, transparent 50%, #111 50%),
+    linear-gradient(135deg, #111 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+/* ===== Botões de ação ===== */
+.acoes {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ok {
+  background: #1163dd; /* Cor padrão conex */
+  color: #fff;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: filter 0.2s ease;
+}
+
+.ok:hover {
+  filter: brightness(0.9);
+}
+
+.limpar,
+.cancelar {
+  background: #f3f4f6;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.limpar:hover,
+.cancelar:hover {
+  background: #e5e7eb;
+}
+
+
+/* ==========================================================
+   CSS DO FILTRO SEM DATA SOMENTE ATIVO / INATIVO  (mantido)
+========================================================== */
+
+/* popover compacto */
+.popover-simple{
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  padding: 12px 14px;
+}
+
+/* form sem margens/paddings extras */
+.form-simple{
+  margin: 0;
+  padding: 0;
+}
+
+/* linha principal: status à esquerda, ações à direita */
+.linha-simple{
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* bloco do status */
+.filtro-simple-box{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+/* label simples */
+.label-filtro-simple{
+  font-size: 0.875rem;
+  color: #000;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.select-filtro-simple{
+  height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+  width: 160px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid #000;
+  background: #fff;
+}
+
+.select-filtro-simple:focus{
+  border-color: #000;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.15);
+  outline: none;
+}
+
+/* ações */
+.acoes-simple{
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+/* altura igual dos botões */
+.acoes-simple .ok,
+.acoes-simple .limpar,
+.acoes-simple .cancelar{
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+}
+
+
+/* ================================================
+   PAGINAÇÃO CSS UNIVERSAL
+================================================ */
+.section-paginacao {
+  display: flex;
+  justify-content: center;
+}
+
+.paginacao-div  {
+  position: relative;
+  margin-right: auto;
+}
+
+.paginacao-div .btn-pag {
+  background-color: #ffffff;
+  color: rgb(0, 0, 0);
+  border: none;
+  padding-left: 0;
+  margin: 5px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}

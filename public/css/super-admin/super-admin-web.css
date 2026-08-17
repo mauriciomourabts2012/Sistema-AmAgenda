@@ -1,0 +1,118 @@
+
+/* =========================
+   TOPO — AÇÕES
+========================= */
+.acoes-semData{
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-left: 6px; /* 👈 empurra levemente pra direita */
+}
+
+
+/* =========================
+   PESQUISAR (PADRÃO EXEMPLO)
+========================= */
+
+/* Barra de pesquisa */
+.pesquisar-super {
+  display: flex;
+  flex-direction: column;      /* ✅ info embaixo */
+  align-items: flex-start;     /* ✅ começa na esquerda */
+  gap: 6px;                    /* ✅ espaço entre input e .pesquisa-info */
+  margin-top: 10px;            /* ✅ joga pra baixo dos botões */
+  margin-left: auto;   /* ✅ JOGA TUDO PARA A DIREITA */
+}
+
+/* wrapper do input */
+.input-wrapper {
+  position: relative;          /* referência para ícones/label */
+  width: 390px;                /* ✅ largura igual "barra" (ajuste como quiser) */
+  display: flex;
+  align-items: center;
+}
+
+/* ícone lupa */
+.pesquisar-super i.fa-search {
+  margin-right: 10px;
+  color: #000000;
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* input */
+.pesquisar-super input {
+  width: 100%;
+  padding: 12px 44px 12px 38px; /* ✅ espaço p/ lupa + botão limpar */
+  border: 1px solid #ccc;
+  border-radius: 14px;
+  box-sizing: border-box;
+  background: #fff;
+  outline: none;
+}
+
+/* label flutuante (mantém seu padrão) */
+.pesquisar-super .input-flutuante label{
+  position: absolute;
+  left: 38px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--muted);
+  pointer-events: none;
+  transition: .18s ease;
+  background: #fff;
+  padding: 0 6px;
+}
+
+.pesquisar-super .input-flutuante input:focus + label,
+.pesquisar-super .input-flutuante input:not(:placeholder-shown) + label{
+  top: 6px;
+  font-size: 11px;
+  color: #006ae4;
+}
+
+/* botão limpar (lado direito dentro do input) */
+.btn-limpar-pesquisar-super{
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 10px;
+  display: none;
+}
+
+.btn-limpar-pesquisar-super i{
+  font-size: 14px;
+  opacity: .6;
+}
+
+/* info abaixo */
+.pesquisar-super-info{
+  font-size: 12px;
+  color: var(--muted);
+  padding-left: 6px;
+}
+
+/* =========================
+   FIM
+========================= */
+
+/* =========================
+   DESTAQUE NA MENSAEM DE LISTA VAZIA DOS PLANOS
+========================= */
+
+.destaque-periodo {
+  color: #dc2626; /* vermelho profissional */
+  font-weight: 600;
+}
+
+/* =========================
+   FIM
+========================= */

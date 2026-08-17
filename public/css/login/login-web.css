@@ -1,0 +1,231 @@
+:root {
+  /* Fundos */
+  --bg-page: #f4f6ff;
+  --card-bg: #ffffff;
+
+  /* Textos */
+  --text: #0f172a;
+  --muted: #6b7280;
+
+  /* Marca AmAgenda */
+  --primary: #000000;
+  --primary-weak: #eef2ff;
+
+  /* Ações / cor padrao conex*/
+  --accent: #1163dd;
+  --accent-2: #1163dd;
+
+  /* Estrutura */
+  --border: #e5e7eb;
+  --shadow: 0 14px 32px rgba(38, 76, 247, 0.18);
+  --radius: 18px;
+}
+
+/* ===== BASE ===== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: 'Poppins', Arial, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 100% -100%, #ffffff 40%, #f0f4f8 100%),
+    linear-gradient(180deg, var(--bg-page), #ffffff 30%, var(--bg-page) 100%);
+}
+
+.login-fundo {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login {
+  width: min(100%, 980px);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.login-container {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 0;
+}
+
+/* ===== COLUNA DA IMAGEM (DESKTOP) ===== */
+.imagem-left {
+  background: linear-gradient(135deg, var(--primary), #ffffff);
+  padding: 40px 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.imagem-left .imagem-desktop {
+  width: 115%;
+  max-width: 900px;
+  height: auto;
+}
+
+/* ===== COLUNA DO FORMULÁRIO ===== */
+.login-dados-right {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: linear-gradient(180deg, #ffffff, var(--primary-weak));
+}
+
+/* título (versão final) */
+.h2-titulo{
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.AM-AGENDA{
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  border-radius: 999px;
+  letter-spacing: .4px;
+  transform: translateY(-1px);
+}
+
+/* ===== CAMPOS ===== */
+.campo { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+label { font-size: 13px; color: var(--muted); }
+
+input[type="email"], input[type="password"] {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  border-radius: 12px;
+  font-size: 15px;
+  outline: none;
+  transition: box-shadow .2s, border-color .2s;
+}
+
+input::placeholder { color: #9aa3af; }
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(1, 35, 146, 0.15);
+}
+
+/* ===== LEMBRAR DE MIM ===== */
+.lembrar-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 2px 2px;
+  color: var(--muted);
+}
+
+.lembrar-container input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.lembrar-container label { cursor: pointer; }
+
+/* ===== BOTÃO ===== */
+.botao-entrar {
+  margin-top: 8px;
+  width: 100%;
+  padding: 14px 18px;
+  background: linear-gradient(90deg, #1163dd, #1163dd);
+  border: none;
+  border-radius: 12px;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: .25px;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 10px 18px rgba(255, 153, 0, .22);
+  transition: transform .05s ease, filter .2s ease, box-shadow .2s ease;
+}
+
+.botao-entrar:hover {
+  filter: brightness(1.02);
+  box-shadow: 0 12px 24px rgba(255, 153, 0, .28);
+}
+
+.botao-entrar:active { transform: translateY(1px); }
+
+/* ===== FEEDBACK ===== */
+.mensagem {
+  min-height: 20px;
+  font-size: 13px;
+  color: #b45309;
+}
+
+/* ===== ACESSIBILIDADE ===== */
+@media (prefers-reduced-motion: no-preference) {
+  .login { transition: box-shadow .3s ease; }
+  .login:hover { box-shadow: 0 16px 34px rgba(2, 6, 23, 0.12); }
+}
+
+
+
+
+
+.voltar-cliente{
+  /* reset de link */
+  text-decoration: none;
+  color: var(--text);
+  background: #fff;
+
+  /* vira botão */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 36px;
+
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+
+  cursor: pointer;
+
+  /* remove estilos nativos */
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* estados do link */
+.voltar-cliente:hover{
+  background: var(--primary-weak);
+}
+
+.voltar-cliente:active{
+  transform: translateY(1px);
+}
+
+.voltar-cliente:visited{
+  color: var(--text);
+}
+
+.voltar-cliente:focus{
+  box-shadow: 0 0 0 3px rgba(38, 76, 247, 0.15);
+}

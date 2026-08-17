@@ -1,0 +1,102 @@
+
+@media (max-width: 820px) { 
+/* ==========================================================
+   SUPER ADMIN — CARDS (EMPRESAS PROPRIETÁRIOS PLANOS BLOQUEIO)
+========================================================== */
+  .card-super__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-super__right {
+    gap: 8px;
+  }
+/* =========================
+   FIM
+========================= */
+}
+
+@media (max-width: 720px){
+
+/* =========================
+   BARRA DE PESQUISA 
+========================= */
+  .input-wrapper{ width: 100%; }
+
+}
+
+@media (max-width: 680px) {
+
+/* ==========================================================
+   SUPER ADMIN — CARDS (EMPRESAS PROPRIETÁRIOS PLANOS BLOQUEIO)
+========================================================== */
+  .card-super {
+    padding: 12px;
+  }
+
+  .card-super__footer {
+    justify-content: stretch;
+  }
+
+  .botao-secundario {
+    width: 100%;
+    justify-content: center;
+  }
+/* =========================
+   FIM
+========================= */
+
+/* ==========================================================
+   RESPONSIVO — PESQUISAR SUPER
+========================================================== */
+ /* Container principal */
+  .pesquisar-super {
+    width: 100%;
+    margin-left: 0;            /* remove alinhamento à direita */
+    align-items: stretch;      /* ocupa largura total */
+  }
+
+  /* Wrapper do input */
+  .input-wrapper {
+    width: 100%;               /* 🔥 largura total no mobile */
+  }
+
+  /* Input */
+  .pesquisar-super input {
+    width: 100%;
+    padding: 12px 42px 12px 38px;
+    font-size: 15px;           /* melhor leitura no celular */
+  }
+
+  /* Ícone lupa */
+  .pesquisar-super i.fa-search {
+    left: 14px;
+  }
+
+  /* Botão limpar */
+  .btn-limpar-pesquisar-super {
+    right: 12px;
+  }
+
+  /* Label flutuante ajuste fino */
+  .pesquisar-super .input-flutuante label {
+    font-size: 13px;
+  }
+
+  .pesquisar-super .input-flutuante input:focus + label,
+  .pesquisar-super .input-flutuante input:not(:placeholder-shown) + label {
+    font-size: 11px;
+  }
+
+  /* Texto informativo */
+  .pesquisar-super-info {
+    width: 100%;
+    font-size: 12px;
+    padding-left: 4px;
+  }
+
+/* =========================
+   FIM
+========================= */
+
+
+}

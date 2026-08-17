@@ -1,0 +1,387 @@
+/* ==========================================================
+   📘 PADRÃO OFICIAL DE MENSAGENS — SISTEMA 
+   ----------------------------------------------------------
+   Este documento define o comportamento padrão das mensagens
+   (alerts/toasts) do sistema.
+
+   🎯 OBJETIVO:
+   Padronizar UX, evitar ações inesperadas e garantir controle
+   do usuário em situações críticas.
+
+   ==========================================================
+
+   🟢 1. SUCESSO (ui-alert--success)
+   ----------------------------------------------------------
+   ✔ NÃO possui botão OK
+   ✔ Fecha automaticamente (timeout)
+   ✔ Executa ações automáticas:
+      - Fechar modal
+      - Atualizar página
+      - Redirecionar
+
+   👉 Uso:
+   alertOk("Salvo com sucesso");
+
+   👉 Fluxo:
+   Exibe → Aguarda → Executa ação automática
+
+   ==========================================================
+
+   🟡 2. ATENÇÃO / WARNING (ui-alert--warning)
+   🔴 3. ERRO / DANGER (ui-alert--danger)
+   🔵 4. CONFIRMAÇÃO (ui-alert--confirm)
+   ----------------------------------------------------------
+   ✔ Sempre possuem botão OK
+   ✔ NÃO executam ação automática
+   ✔ A ação só ocorre após interação do usuário
+
+   👉 Uso:
+   alertWarn("Mensagem...", callback);
+
+   👉 Fluxo:
+   Exibe → Usuário clica OK → Executa callback
+
+   ==========================================================
+
+   🔁 REGRA GLOBAL DO SISTEMA
+   ----------------------------------------------------------
+   ✔ SEM botão OK → fluxo automático
+   ✔ COM botão OK → fluxo controlado pelo usuário
+
+   ==========================================================
+
+   🚀 BENEFÍCIOS
+   ----------------------------------------------------------
+   ✔ Evita reload inesperado
+   ✔ Melhora experiência do usuário
+   ✔ Dá controle em erros e alertas críticos
+   ✔ Mantém consistência visual e comportamental
+
+   ==========================================================
+*/
+
+
+/* ==========================================================
+   ERROS UNIVERSAIS — MODAIS (inputs/select/textarea) ✅
+   - Funciona em qualquer modal (modal-geral / modal-cards / etc.)
+   - Não quebra layout (reserva altura do <small>)
+   - Acessível e elegante
+========================================================== */
+
+/* 1) Mensagem de erro: sempre ocupa espaço (não "pula" layout) */
+.modal-campo .msg-erro {
+  display: block;
+  margin-top: 6px;
+  min-height: 16px;          /* reserva espaço e evita "saltos" */
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+
+  color: #d93025;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+/* quando ativo, aparece suave */
+.modal-campo .msg-erro.ativo {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 2) Estado do campo com erro */
+.modal-campo.erro input,
+.modal-campo.erro select,
+.modal-campo.erro textarea {
+  border-color: #d93025 !important;
+  box-shadow: 0 0 0 3px rgba(217, 48, 37, 0.12);
+}
+
+/* placeholder e texto (opcional) */
+.modal-campo.erro input::placeholder,
+.modal-campo.erro textarea::placeholder {
+  color: rgba(217, 48, 37, 0.55);
+}
+
+/* 3) Labels — funciona com label flutuante e label fixa */
+.modal-campo.erro label,
+.modal-campo.erro .label-fixa {
+  color: #d93025 !important;
+}
+
+/* se seu label flutua ao focar, mantém consistente */
+.modal-campo.erro input:focus + label,
+.modal-campo.erro textarea:focus + label {
+  color: #d93025 !important;
+}
+
+/* 4) Ao focar num campo com erro, mantém destaque (sem "piscar") */
+.modal-campo.erro input:focus,
+.modal-campo.erro select:focus,
+.modal-campo.erro textarea:focus {
+  outline: none;
+  border-color: #d93025 !important;
+  box-shadow: 0 0 0 4px rgba(217, 48, 37, 0.14);
+}
+
+/* 5) Selects — garante que o erro apareça igual ao input */
+.modal-campo.erro select {
+  background-color: rgba(217, 48, 37, 0.03);
+}
+
+/* 6) Mobile: melhora toque e legibilidade */
+@media (max-width: 680px) {
+  .modal-campo .msg-erro {
+    font-size: 12px;
+    min-height: 16px;
+  }
+  .modal-campo.erro input,
+  .modal-campo.erro select,
+  .modal-campo.erro textarea {
+    box-shadow: 0 0 0 3px rgba(217, 48, 37, 0.14);
+  }
+}
+
+
+/* ==========================================================
+ FIM
+========================================================== */
+
+
+/* ==========================================================
+   ALERTS UNIVERSAIS — AmAgenda / Conex 🔵
+   Versão Profissional Clean
+   Cor oficial: #1163dd
+   ========================================================== */
+
+/* ==========================================================
+   TOKENS
+========================================================== */
+:root{
+  --primary: #1163dd;
+  --primary-hover: #0f57c5;
+  --primary-soft: rgba(17, 99, 221, .08);
+  --primary-border: rgba(17, 99, 221, .20);
+  --primary-focus: rgba(17, 99, 221, .30);
+
+  --shadow: 0 8px 22px rgba(17,24,39,.08);
+  --alert-shadow: 0 14px 30px rgba(0,0,0,.14);
+  --alert-radius: 14px;
+}
+
+/* ==========================================================
+   BASE ALERT
+========================================================== */
+.ui-alert{
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 14px;
+  align-items: center;
+
+  background: #ffffff;
+  border-radius: var(--alert-radius);
+  padding: 16px;
+
+  border: 1px solid #e6eaf2;
+  box-shadow: var(--shadow);
+
+  overflow: hidden;
+  animation: toastIn .18s ease-out;
+}
+
+/* Barra lateral */
+.ui-alert::before{
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--primary);
+}
+
+/* ==========================================================
+   CONFIRM (Logout, confirmar ação)
+========================================================== */
+.ui-alert--confirm{
+  background: #ffffff;
+  border: 1px solid rgba(17,99,221,.20);
+}
+
+.ui-alert--confirm::before{
+  background: #1163dd;
+}
+
+.ui-alert--confirm .ui-alert__icon{
+  background: rgba(17,99,221,.10);
+  border: 1px solid rgba(17,99,221,.20);
+  color: #1163dd;
+}
+
+/* ==========================================================
+   SUCCESS
+========================================================== */
+.ui-alert--success{
+  border: 1px solid rgba(22,163,74,.25);
+}
+.ui-alert--success::before{
+  background:#15803d;
+}
+.ui-alert--success .ui-alert__icon{
+  background: rgba(22,163,74,.10);
+  border: 1px solid rgba(22,163,74,.20);
+  color:#15803d;
+}
+
+/* ==========================================================
+   WARNING
+========================================================== */
+.ui-alert--warning{
+  border: 1px solid rgba(202,138,4,.25);
+}
+.ui-alert--warning::before{
+  background:#b45309;
+}
+.ui-alert--warning .ui-alert__icon{
+  background: rgba(202,138,4,.10);
+  border: 1px solid rgba(202,138,4,.20);
+  color:#b45309;
+}
+
+/* ==========================================================
+   DANGER
+========================================================== */
+.ui-alert--danger{
+  border: 1px solid rgba(220,38,38,.25);
+}
+.ui-alert--danger::before{
+  background:#b91c1c;
+}
+.ui-alert--danger .ui-alert__icon{
+  background: rgba(220,38,38,.10);
+  border: 1px solid rgba(220,38,38,.20);
+  color:#b91c1c;
+}
+
+/* ==========================================================
+   ÍCONE
+========================================================== */
+.ui-alert__icon{
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+/* ==========================================================
+   TEXTO
+========================================================== */
+.ui-alert__title{
+  font-size: 15px;
+  font-weight: 900;
+  margin: 0;
+  color: #0f172a;
+}
+
+.ui-alert__msg{
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 4px;
+  color: #334155;
+}
+
+/* ==========================================================
+   BOTÕES
+========================================================== */
+.ui-alert__actions{
+  display: flex;
+  gap: 8px;
+}
+
+/* Botão padrão */
+.ui-alert__btn{
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  transition: .15s ease;
+}
+
+.ui-alert__btn:hover{
+  transform: translateY(-1px);
+  background:#f3f4f6;
+}
+
+/* 🔵 Botão principal azul */
+.ui-alert__btn--primary{
+  background: #1163dd;
+  border-color: #1163dd;
+  color: #fff;
+}
+
+.ui-alert__btn--primary:hover{
+  background: #0f57c5;
+}
+
+/* ==========================================================
+   TOAST STACK
+========================================================== */
+.ui-toast-stack{
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 99999;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  width: min(420px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.ui-toast-stack .ui-alert{
+  pointer-events: auto;
+  box-shadow: var(--alert-shadow);
+}
+
+@keyframes toastIn{
+  from{ opacity: 0; transform: translateY(-8px) scale(.98); }
+  to{ opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ui-alert.is-leaving{
+  animation: toastOut .15s ease-in forwards;
+}
+
+@keyframes toastOut{
+  to{ opacity: 0; transform: translateY(-8px) scale(.98); }
+}
+
+/* ==========================================================
+   MOBILE
+========================================================== */
+@media (max-width: 680px){
+  .ui-toast-stack{
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    width: auto;
+  }
+}
+
+
+

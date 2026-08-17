@@ -1,0 +1,279 @@
+
+/* ==========================================================
+   ABAS CSS ClientePerfil.hrml e ClienteAgendamento.html
+   ========================================================== */
+
+:root{
+  --bg:#f4f5f7;
+  --card:#ffffff;
+  --text:#111;
+  --muted:#6b7280;
+  --border:rgba(0,0,0,.10);
+
+  --primary:#264cf7; /* ✅ sua cor padrão de destaque conex */
+
+  --danger:#dc2626;
+  --ok:#16a34a;
+  --shadow:0 10px 22px rgba(0,0,0,.10);
+  --radius:14px;
+}
+
+
+*{ box-sizing:border-box; }
+
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.cadastro-cliente{
+  min-height: 100vh;
+  display:flex;
+  flex-direction:column;
+  gap: 14px;
+  padding: 16px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.cadastro-topo{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 12px;
+}
+
+.cadastro-titulo{
+  margin:0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.cadastro-sub{
+  margin:0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tabs{
+  display:flex;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+
+.tab-btn{
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.tab-btn.active{
+  background: var(--primary);
+  color: #fff;
+}
+
+.tabs-content{
+  flex: 1;
+}
+
+.tab-pane{ display:none; }
+.tab-pane.active{ display:block; }
+
+.card{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+
+
+.card-sub{
+  margin:0 0 14px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.campo{
+  display:flex;
+  flex-direction:column;
+  gap: 6px;
+}
+
+.campo-full{
+  grid-column: 1 / -1;
+}
+
+label{
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.req{
+  color: var(--danger);
+}
+
+input{
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  outline: none;
+}
+
+input:focus{
+  border-color: rgba(0,0,0,.25);
+}
+
+
+.acoes{
+  margin-top: 14px;
+  display:flex;
+  justify-content:flex-end;
+}
+
+.btn{
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.btn-primario{
+  background: var(--primary);
+  color:#fff;
+}
+
+.status{
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.status.ok{ color: var(--ok); }
+.status.err{ color: var(--danger); }
+
+.placeholder{
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-weight: 800;
+}
+
+@media (max-width: 720px){
+  .modal-grid{
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ==========================================================
+   FIM
+   ========================================================== */
+/* ==========================================================
+   MODAL MEUS AGENDAMENTOS USUARIO (BASE)
+   ========================================================== */
+
+/* Badge de status */
+.badge-status{
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: .2px;
+  white-space: nowrap;
+}
+
+/* CONFIRMADO */
+.badge-status.confirmado{
+  background: #e6f7ec;
+  color: #1e7f43;
+  border: 1px solid #bfe8cf;
+}
+
+/* PENDENTE */
+.badge-status.pendente{
+  background: #fff7e6;
+  color: #9a6700;
+  border: 1px solid #ffe0a3;
+}
+
+/* CANCELADO */
+.badge-status.cancelado{
+  background: #fdeaea;
+  color: #b3261e;
+  border: 1px solid #f5b5b0;
+}
+
+/* CONCLUÍDO */
+.badge-status.concluido{
+  background: #e8f1ff;
+  color: #1d4ed8;
+  border: 1px solid #c7dbff;
+}
+
+.ma-lista{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:10px;
+}
+
+.ma-item{
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:14px;
+  padding:12px;
+  background:#fff;
+}
+
+.ma-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:10px;
+}
+
+.ma-titulo{
+  font-weight:800;
+  font-size:.98rem;
+}
+
+.ma-sub{
+  margin-top:6px;
+  font-size:.95rem;
+  opacity:.9;
+}
+
+.ma-acoes{
+  margin-top:10px;
+}
+
+/* ==========================================================
+   FIM 
+   ========================================================== */

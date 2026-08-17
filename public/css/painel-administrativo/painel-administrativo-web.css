@@ -1,0 +1,550 @@
+
+/* ==========================================================
+   CABEÇALHO DO PAINEL (SIMPLES)
+   ========================================================== */
+
+.cabecalho-painel{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(10px);
+
+  padding: 14px 22px;
+  margin-bottom: 14px;
+
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 16px 16px;
+
+  /* sombra mais leve (a sua estava bem forte) */
+  box-shadow: 0 10px 22px rgba(17,24,39,.08);
+}
+
+/* Esquerda */
+.cabecalho-painel .cabecalho-esquerda{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* evita quebrar layout com textos longos */
+}
+
+.cabecalho-painel .cabecalho-titulo{
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.cabecalho-painel .cabecalho-sub{
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.2;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Direita */
+.cabecalho-painel .cabecalho-direita{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+/* Se quiser que o botão fique mais chamativo sem mudar seu .destaque */
+.cabecalho-painel .botao-geral.destaque{
+  box-shadow: 0 12px 20px rgba(16,61,145,.25);
+}
+/* =========================================
+   FIM
+   ========================================== */
+
+
+
+
+/* ==========================================================
+   ABAS (ÚNICO CSS) — RESUMO / CLIENTES / USUÁRIOS / AGENDAMENTOS
+   ========================================================== */
+
+.conteudo-aba { display:none; }
+.conteudo-aba.ativa { display:block; }
+
+.agenda-topo{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+
+/* ====== LISTA (cards) ====== */
+.agenda-cards{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:12px;
+}
+
+/* Card genérico */
+.a-card{
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 16px;
+  padding: 12px 12px;
+  box-shadow: 0 8px 18px rgba(0,0,0,.04);
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+}
+
+.a-avatar{
+  width:48px;
+  height:48px;
+  border-radius:14px;
+  background:#eef2ff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 48px;
+  font-weight:900;
+  color: var(--primary, #000f50);
+}
+
+.a-info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.a-title{
+  font-size: 0.98rem;
+  font-weight: 900;
+  color: var(--text, #0f172a);
+  line-height:1.1;
+  margin:0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.a-sub{
+  margin:0;
+  font-size: 0.86rem;
+  color: var(--muted, #6b7280);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.a-meta{
+  margin-top:6px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.a-chip{
+  font-size: 0.78rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background:#fff;
+  color: var(--text, #0f172a);
+}
+
+/* Estado vazio / loading */
+.a-empty,
+.a-loading{
+  grid-column: 1 / -1;
+  padding: 18px;
+  border: 1px dashed var(--border, #e5e7eb);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--muted, #6b7280);
+  text-align:center;
+}
+
+/* ====== RESUMO KPIs ====== */
+.resumo-cards{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap:12px;
+  margin-bottom:12px;
+}
+.kpi{
+  background:#fff;
+  border:1px solid var(--border, #e5e7eb);
+  border-radius:16px;
+  padding:14px;
+  box-shadow: 0 8px 18px rgba(0,0,0,.04);
+}
+.kpi .kpi-label{
+  font-size:0.82rem;
+  color: var(--muted, #6b7280);
+  margin:0 0 6px;
+}
+.kpi .kpi-value{
+  font-size:1.35rem;
+  font-weight: 950;
+  color: var(--text, #0f172a);
+  margin:0;
+}
+.kpi .kpi-hint{
+  margin-top:8px;
+  font-size:0.78rem;
+  color: var(--muted, #6b7280);
+}
+
+/* =========================================
+   FIM
+   ========================================== */
+
+
+
+/* ==========================================================
+  CSS - RESUMO DO DIA
+========================================================== */
+
+/* Área geral do resumo */
+#resumo .painel-resumo{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px;
+}
+
+/* ===== KPIs (cards) ===== */
+#resumo .resumo-cards{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+/* Card KPI */
+#resumo .painel-kpi{
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius, 18px);
+  padding: 14px 14px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 98px;
+}
+
+/* topo KPI: título + ícone */
+#resumo .painel-kpi-topo{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#resumo .painel-kpi-titulo{
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  font-size: 0.98rem;
+}
+
+/* ícone KPI */
+#resumo .painel-kpi-ico{
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--primary-weak, #eef2ff);
+  border: 1px solid var(--border, #e5e7eb);
+}
+
+#resumo .painel-kpi-ico i{
+  font-size: 16px;
+   color:#1163dd;/* cor padrão conex */
+}
+
+/* valor KPI */
+#resumo .painel-kpi-valor{
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--text, #0f172a);
+  line-height: 1.05;
+}
+
+/* subtítulo KPI */
+#resumo .painel-kpi-sub{
+  color: var(--muted, #6b7280);
+  font-size: 0.92rem;
+}
+
+/* ===== Área dos blocos (listas rápidas) ===== */
+#resumo .resumo-graficos{
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+/* bloco padrão */
+#resumo .painel-bloco{
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius, 18px);
+  padding: 14px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+}
+
+#resumo .painel-bloco-topo{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#resumo .painel-bloco-topo h3{
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text, #0f172a);
+  font-weight: 800;
+}
+
+/* vazio */
+#resumo .painel-vazio{
+  padding: 10px 0;
+  color: var(--muted, #6b7280);
+  font-size: 0.95rem;
+}
+
+/* ===== Lista "Próximos atendimentos" ===== */
+#resumo .painel-lista{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#resumo .painel-linha{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  background: #fff;
+}
+
+#resumo .painel-linha-esq{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+#resumo .painel-hora{
+  min-width: 56px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--text, #0f172a);
+  background: var(--primary-weak, #eef2ff);
+  border: 1px solid var(--border, #e5e7eb);
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+#resumo .painel-info{
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+#resumo .painel-cliente{
+  font-weight: 800;
+  color: var(--text, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#resumo .painel-sub{
+  color: var(--muted, #6b7280);
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#resumo .painel-linha-dir{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+/* ===== Status (reaproveita seu padrão de badges) ===== */
+#resumo .agenda-status{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  border: 1px solid var(--border, #e5e7eb);
+}
+
+/* se você já tem .st-confirmado / .st-cancelado / .st-pendente no sistema, isso aqui só complementa */
+#resumo .agenda-status.st-confirmado{
+  background: #e9f9ef;
+  color: #127a33;
+  border-color: #c9f1d6;
+}
+#resumo .agenda-status.st-pendente{
+  background: #fff7e6;
+  color: #915300;
+  border-color: #ffe2b0;
+}
+#resumo .agenda-status.st-cancelado{
+  background: #fdecec;
+  color: #a11212;
+  border-color: #f7c6c6;
+}
+
+/* ===== Por profissional ===== */
+#resumo .painel-prof-list{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#resumo .painel-prof{
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  padding: 10px 10px;
+  background: #fff;
+}
+
+#resumo .painel-prof-nome{
+  font-weight: 900;
+  color: var(--text, #0f172a);
+  margin-bottom: 8px;
+}
+
+#resumo .painel-prof-metrics{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* pills */
+#resumo .pill{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: #fff;
+  color: var(--text, #0f172a);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+/* variações */
+#resumo .pill.ok{
+  background: #e9f9ef;
+  color: #127a33;
+  border-color: #c9f1d6;
+}
+#resumo .pill.warn{
+  background: #fff7e6;
+  color: #915300;
+  border-color: #ffe2b0;
+}
+#resumo .pill.danger{
+  background: #fdecec;
+  color: #a11212;
+  border-color: #f7c6c6;
+}
+
+/* ==========================================================
+    FIM
+========================================================== */
+
+
+/* ==========================================================
+   WEB — CAMPO ESPECIALIDADE (label fixo + ajuda)
+========================================================== */
+
+/* garante linha inteira */
+#campo_especialidade,
+#campo_especialidade_editar{
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* força o label a ser FIXO (não flutuante) só neste campo */
+#campo_especialidade > label,
+#campo_especialidade_editar > label{
+  position: static !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+
+  display: block;
+  margin: 0;
+  padding: 0;
+
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0,0,0,.70);
+}
+
+/* input normal (sem espaço de label flutuante) */
+#campo_especialidade > input,
+#campo_especialidade_editar > input{
+  width: 100%;
+  height: 44px;
+  padding: 0.7rem 0.85rem;
+
+  border-radius: 14px;
+  border: 1px solid #e6edf7;
+  background: #f8fbff;
+
+  outline: none;
+}
+
+/* foco padrão do sistema */
+#campo_especialidade > input:focus,
+#campo_especialidade_editar > input:focus{
+  border-color: #264cf7;
+  box-shadow: 0 0 0 3px rgba(38, 76, 247, 0.15);
+  background: #fff;
+}
+
+/* texto de ajuda */
+#campo_especialidade small:not(.msg-erro),
+#campo_especialidade_editar small:not(.msg-erro){
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.25;
+  color: rgba(0,0,0,.60);
+}
+
+/* msg-erro */
+#campo_especialidade .msg-erro,
+#campo_especialidade_editar .msg-erro{
+  margin-top: 2px;
+}
+
+/* ==========================================================
+   FIM
+========================================================== */

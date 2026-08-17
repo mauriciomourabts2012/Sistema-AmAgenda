@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AmAgenda • Painel SuperAdim</title>
+    
+    <!--CSS WEB-->
+    <link rel="stylesheet" href="../../css/agenda/agenda-web.css"/>
+    <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
+    <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css"/>
+    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
+    <link rel="stylesheet" href="../../css/mensagem-erro-universal.css"/>
+    <link rel="stylesheet" href="../../css/perfil.css">
+
+    <!--CSS MOBILE-->
+    <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css"/>
+    <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css"/>
+    <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
+    <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
+
+  <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
+  <script src="/public/_auth/sessao.js" ></script> 
+  </head>
+
+  <body>
+      
+      <!-- Cabeçalho Painel -->
+      <header class="cabecalho-painel">
+
+          <!-- Lado esquerdo -->
+          <div class="cabecalho-esquerda">
+              <h1 class="cabecalho-titulo">Painel</h1>
+              <span class="cabecalho-sub">
+              AmAgenda • <span id="painelDataHoje">10 de Janeiro de 2026</span>
+              </span>
+          </div>
+
+          <!-- Lado direito -->
+          <div class="cabecalho-direita">
+                          
+              <!-- PERFIL DO USUÁRIO -->
+              <button class="botao-geral destaque" type="button"  title="Meu perfil" data-abrir-modal="modalPerfilUsuario">
+                  <i class="fa-solid fa-user-circle"></i>
+                  <span class="btn-texto">Perfil</span>
+              </button>
+          </div>
+
+      </header>
+
+    <main>
+
+    <section class="layout-controle" > <!--Navegação em abas-->
+
+      <nav class="menu-principal-abas" aria-label="Menu SuperAdmin">
+
+          <button type="button" data-aba="empresas" class="ativa">
+              <span class="dia-sigla">Empresas</span>
+          </button>
+
+          <button type="button" data-aba="usuarios">
+              <span class="dia-sigla">Usuários</span>
+          </button>
+
+          <button type="button" data-aba="usuarios-super">
+            <span class="dia-sigla">Usuario Super</span>
+          </button>
+
+          <button type="button" data-aba="planos">
+              <span class="dia-sigla">Planos</span>
+          </button>
+      </nav>
+
+
+      <!--Cada div e uma aba-->
+
+      <!-- ABA: EMPRESAS -->
+      <div id="empresas" class="conteudo-aba ativa">
+        <div class="conteudo-agenda">
+          <!-- TOPO DA ABA -->
+          <div class="agenda-topo">
+
+            <!--BOTOES-->
+            <div>
+                <!--Retrair-->
+                <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
+                    ☰
+                </button>
+            <!--Adicionar Empresa-->
+            <button class="botao-geral" type="button" id="btnNovaEmpresa"  data-abrir-modal="modalCadastrarEmpresa">
+              <i class="fas fa-plus"></i>
+              <span class="btn-texto">Nova Empresa</span>
+            </button>
+
+            </div>
+
+            <!-- Barra de pesquisa -->
+            <div class="pesquisar-super">
+                <div class="input-wrapper input-flutuante">
+                    <i class="fas fa-search"></i>
+
+                    <input type="search" id="pesquisar-empresas" name="pesquisar"  placeholder=" " autocomplete="off"  inputmode="search" />
+                    <label for="pesquisar-empresas">Pesquisar empresa</label>
+
+                    <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- FILTRO: EMPRESAS -->
+            <div class="section-filtro pesquisar-super" id="filtroAbaEmpresas">
+              <button id="btnPeriodo_empresas"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_empresas">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_empresas">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <!-- Popover -->
+              <div id="popoverPeriodo_empresas" class="popover" hidden>
+                <form id="formPeriodo_empresas" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_empresas" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_empresas" required>
+                    </label>
+                  </div>
+
+                  <div class="linha">
+                    <label class="label-filtro" for="status_empresas">
+                      Status
+                      <select class="input-filtro" id="status_empresas" name="status" aria-label="Filtro por status">
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                        <option value="bloqueado">Bloqueado</option>
+                      </select>
+                    </label>
+
+                    <span></span>
+                  </div>
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_empresas" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_empresas" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </div>
+          </div> 
+
+            <!-- LISTA (cards/tabela renderizada via JS) -->
+          <div id="listaEmpresas" class="agenda-cards"></div>
+
+          <!-- Paginação — EMPRESAS -->
+          <div class="section-paginacao">
+            <div id="paginacao_empresas" class="paginacao-div"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA: USUÁRIOS -->
+      <div id="usuarios" class="conteudo-aba">
+        <div class="conteudo-agenda">
+          <!-- TOPO DA ABA -->
+          <div class="agenda-topo">
+
+            <!--BOTOES-->
+            <div>
+              <!--Retrair-->
+              <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
+                ☰
+              </button>
+
+              <!--Adicionar Usuário-->
+              <button class="botao-geral" type="button" id="btnNovoUsuario" data-abrir-modal="modalCadastrarUsuario" >
+                <i class="fas fa-plus"></i>
+                <span class="btn-texto">Novo Usuário</span>
+              </button>
+            </div>
+
+            <!-- Barra de pesquisa -->
+            <div class="pesquisar-super">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search"
+                      id="pesquisar-usuarios"
+                      name="pesquisar"
+                      placeholder=" "
+                      autocomplete="off"
+                      inputmode="search" />
+
+                <label for="pesquisar-usuarios">Pesquisar usuário</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+            <!-- FILTRO: USUÁRIOS -->
+            <div class="section-filtro pesquisar-super" id="filtroAbaUsuarios">
+              <button id="btnPeriodo_usuarios"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_usuarios">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_usuarios">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <!-- Popover -->
+              <div id="popoverPeriodo_usuarios" class="popover" hidden>
+                <form id="formPeriodo_usuarios" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_usuarios" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_usuarios" required>
+                    </label>
+                  </div>
+
+                  <div class="linha">
+                    <label class="label-filtro" for="status_usuarios">
+                      Status
+                      <select class="input-filtro" id="status_usuarios" name="status" aria-label="Filtro por status">
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                        <option value="bloqueado">Bloqueado</option>
+                      </select>
+                    </label>
+
+                    <label class="label-filtro" for="perfil_usuarios">
+                      Perfil
+                      <select class="input-filtro" id="perfil_usuarios" name="perfil" aria-label="Filtro por perfil">
+                        <option value="">Todos</option>
+                        <option value="proprietario">Proprietário</option>
+                      </select>
+                    </label>
+                    
+                  </div>
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_usuarios" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_usuarios" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- LISTA (cards/tabela renderizada via JS) -->
+          <div id="listaUsuarios" class="agenda-cards"></div>
+
+          <!-- Paginação — USUÁRIOS -->
+          <div class="section-paginacao">
+            <div id="paginacao_usuarios" class="paginacao-div"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ABA: SUPER ADMIN -->
+      <div id="usuarios-super" class="conteudo-aba">
+        <div class="conteudo-agenda" data-toggle-scope="tabela_usuario_super">
+          <!-- TOPO DA ABA -->
+          <div class="agenda-topo">
+
+            <!--BOTOES-->
+            <div>
+              <!--Retrair-->
+              <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
+                ☰
+              </button>
+
+              <!--Adicionar Usuário Super Admin-->
+              <button class="botao-geral" type="button" id="btnNovoUsuarioSuper" data-abrir-modal="modalCadastrarUsuarioSuper">
+                <i class="fas fa-plus"></i>
+                <span class="btn-texto">Novo Super Admin</span>
+              </button>
+            </div>
+
+            <!-- Barra de pesquisa -->
+            <div class="pesquisar-super">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search"
+                      id="pesquisar-usuarios-super"
+                      name="pesquisar"
+                      placeholder=" "
+                      autocomplete="off"
+                      inputmode="search" />
+
+                <label for="pesquisar-usuarios-super">Pesquisar super admin</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- FILTRO: SUPER ADMIN -->
+            <div class="section-filtro pesquisar-super" id="filtroAbaUsuariosSuper">
+              <button id="btnPeriodo_usuarios_super"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_usuarios_super">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_usuarios_super">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <!-- Popover -->
+              <div id="popoverPeriodo_usuarios_super" class="popover" hidden>
+                <form id="formPeriodo_usuarios_super" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_usuarios_super" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_usuarios_super" required>
+                    </label>
+                  </div>
+
+                  <div class="linha">
+                    <label class="label-filtro" for="status_usuarios_super">
+                      Status
+                      <select class="input-filtro" id="status_usuarios_super" name="status" aria-label="Filtro por status">
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                        <option value="bloqueado">Bloqueado</option>
+                      </select>
+                    </label>
+
+                    <span></span>
+                  </div>
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_usuarios_super" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_usuarios_super" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- LISTA (cards/tabela renderizada via JS) -->
+          <div id="listaUsuariosSuper" class="agenda-cards"></div>
+
+          <!-- Paginação — SUPER ADMIN -->
+          <div class="section-paginacao">
+            <div id="paginacao_usuarios_super" class="paginacao-div"></div>
+          </div>
+
+        </div>
+      </div>
+      
+      <!-- ABA: PLANOS -->
+      <div id="planos" class="conteudo-aba">
+        <div class="conteudo-agenda">
+          <!-- TOPO DA ABA -->
+          <div class="agenda-topo">
+
+            <!--BOTOES-->
+            <div>
+              <!--Retrair-->
+              <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
+                ☰
+              </button>
+
+              <!--Adicionar Plano-->
+              <button class="botao-geral" type="button" id="btnNovoPlano" data-abrir-modal="modalCadastrarPlano" >
+                <i class="fas fa-plus"></i>
+                <span class="btn-texto">Novo Plano</span>
+              </button>
+            </div>
+
+            <!-- Barra de pesquisa -->
+            <div class="pesquisar-super">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-planos" name="pesquisar"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-planos">Pesquisar plano</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+
+              <!-- FILTRO: PLANOS -->
+            <div class="section-filtro pesquisar-super" id="filtroAbaPlanos">
+              <button id="btnPeriodo_planos"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_planos">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_planos">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <!-- Popover -->
+              <div id="popoverPeriodo_planos" class="popover" hidden>
+                <form id="formPeriodo_planos" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_planos" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_planos" required>
+                    </label>
+                  </div>
+
+                  <div class="linha">
+                    <label class="label-filtro" for="status_planos">
+                      Status
+                      <select class="input-filtro" id="status_planos" name="status" aria-label="Filtro por status">
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                        <option value="bloqueado">Bloqueado</option>
+                      </select>
+                    </label>
+
+                    <label class="label-filtro" for="destaque_planos">
+                      Destaque
+                      <select class="input-filtro" id="destaque_planos" name="destaque" aria-label="Filtro por destaque">
+                        <option value="">Todos</option>
+                        <option value="1">Somente destaque</option>
+                        <option value="0">Sem destaque</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_planos" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_planos" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- LISTA (cards/tabela renderizada via JS) -->
+          <div id="listaPlanos" class="agenda-cards"></div>
+
+          <!-- Paginação — PLANOS -->
+          <div class="section-paginacao">
+            <div id="paginacao_planos" class="paginacao-div"></div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <section> <!--Todos o modals da pagina-->
+
+      <!-- MODAL: PERFIL DO USUÁRIO -->
+      <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloPerfilUsuario">
+
+          <div class="modal-topo">
+            <h2 id="tituloPerfilUsuario">Meu Perfil</h2>
+            <button class="modal-fechar" data-fechar-modal type="button">×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <!-- FOTO DO PERFIL -->
+            <div class="perfil-foto-box">
+              <img src="/public/imagens/avatar-default.png" alt="Foto do usuário" class="perfil-foto" data-avatar-usuario>
+
+              <div class="perfil-nome-usuario" id="perfilNomeUsuario">Carregando...</div>
+
+              <label class="botao-geral pequeno" for="perfil_foto">
+                <i class="fa-solid fa-camera"></i>
+                Alterar foto
+              </label>
+
+              <input
+                type="file"
+                id="perfil_foto"
+                name="perfil_foto"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+              >
+            </div>
+
+            <hr class="divisor">
+
+            <!-- ALTERAR SENHA -->
+            <form id="formAlterarSenha" novalidate>
+
+              <div class="modal-campo">
+                <input type="password" id="senha_atual" name="senha_atual" required>
+                <label for="senha_atual">Senha atual</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                <label for="nova_senha">Nova senha</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                <label for="confirmar_senha">Confirmar nova senha</label>
+              </div> <br>
+
+              <button type="submit" class="botao-geral">
+                <i class="fa-solid fa-key"></i>
+                Salvar nova senha
+              </button>
+
+              <button class="botao-geral destaque" type="button" title="Sair do sistema" id="btnSair">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Sair
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Cadastrar Empresa -->
+      <div id="modalCadastrarEmpresa" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloCadastrarEmpresa">
+
+          <div class="modal-topo">
+            <h2 id="tituloCadastrarEmpresa">Cadastrar Empresa</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formEmpCadastrar" novalidate>
+
+              <div class="modal-grid">
+
+                <div class="modal-campo">
+                  <input id="emp_nome" name="nome" type="text" placeholder=" " required maxlength="140">
+                  <label for="emp_nome">Nome da empresa</label>
+                  <small class="msg-erro" data-erro-for="emp_nome"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <input id="emp_cnpj" name="cnpj" type="text" placeholder=" "  maxlength="18">
+                  <label for="emp_cnpj">CNPJ</label>
+                  <small class="msg-erro" data-erro-for="emp_cnpj"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <input id="emp_email" name="email" type="email" placeholder=" " maxlength="160">
+                  <label for="emp_email">E-mail (contato)</label>
+                  <small class="msg-erro" data-erro-for="emp_email"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <input id="emp_tel" name="telefone" type="tel" placeholder=" " required maxlength="20">
+                  <label for="emp_tel">Telefone (WhatsApp)</label>
+                  <small class="msg-erro" data-erro-for="emp_tel"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <label for="emp_plano" class="label-fixa"></label>
+                  <select id="emp_plano" name="plano_id" required>
+                    <option value="">Plano</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="emp_plano"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <label for="emp_status" class="label-fixa"></label>
+                  <select id="emp_status" name="status" required>
+                    <option value="ativo" selected>Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="emp_status"></small>
+                </div>
+
+                <div class="modal-campo" style="grid-column:1/-1;">
+                  <input id="emp_endereco" name="endereco" type="text" placeholder=" " maxlength="200">
+                  <label for="emp_endereco">Endereço (opcional)</label>
+                  <small class="msg-erro" data-erro-for="emp_endereco"></small>
+                </div>
+
+                <div class="modal-campo" style="grid-column:1/-1;">
+                  <input id="emp_obs" name="observacao" type="text" placeholder=" " maxlength="220">
+                  <label for="emp_obs">Observação (opcional)</label>
+                  <small class="msg-erro" data-erro-for="emp_obs"></small>
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnEmpSalvar" class="botao-geral destaque" type="submit">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Editar Empresa -->
+      <div id="modalEditarEmpresa" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarEmpresa">
+
+          <div class="modal-topo">
+            <h2 id="tituloEditarEmpresa">Editar Empresa</h2>
+            <button class="modal-fechar" data-fechar-modal type="button">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formEmpEditar" novalidate>
+
+              <input type="hidden" id="emp_edit_id" name="id_empresa">
+
+              <div class="modal-grid">
+
+                <div class="modal-campo">
+                  <input id="emp_edit_nome" name="nome" type="text" placeholder=" " required maxlength="140">
+                  <label for="emp_edit_nome">Nome da empresa</label>
+                  <small class="msg-erro" data-erro-for="emp_edit_nome"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <input id="emp_edit_cnpj" name="cnpj" type="text" placeholder=" " maxlength="18">
+                  <label for="emp_edit_cnpj">CNPJ (opcional)</label>
+                  <small class="msg-erro" data-erro-for="emp_edit_cnpj"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <input id="emp_edit_email" name="email" type="email" placeholder=" " required maxlength="160">
+                  <label for="emp_edit_email">E-mail (contato)</label>
+                  <small class="msg-erro" data-erro-for="emp_edit_email"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <input id="emp_edit_tel" name="telefone" type="tel" placeholder=" " required maxlength="20">
+                  <label for="emp_edit_tel">Telefone (WhatsApp)</label>
+                  <small class="msg-erro" data-erro-for="emp_edit_tel"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <label for="emp_edit_plano" class="label-fixa"></label>
+                  <select id="emp_edit_plano" name="plano_id" required>
+                    <option value="">Plano</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="emp_edit_plano"></small>
+                </div>
+
+                <div class="modal-campo">
+                  <label for="emp_edit_status" class="label-fixa"></label>
+                  <select id="emp_edit_status" name="status" required>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="emp_edit_status"></small>
+                </div>
+
+                <div class="modal-campo" style="grid-column:1/-1;">
+                  <input id="emp_edit_endereco" name="endereco" type="text" placeholder=" " maxlength="200">
+                  <label for="emp_edit_endereco">Endereço (opcional)</label>
+                  <small class="msg-erro" data-erro-for="emp_edit_endereco"></small>
+                </div>
+
+                <div class="modal-campo" style="grid-column:1/-1;">
+                  <input id="emp_edit_obs" name="obs" type="text" placeholder=" " maxlength="220">
+                  <label for="emp_edit_obs">Observação (opcional)</label>
+                  <small class="msg-erro" data-erro-for="emp_edit_obs"></small>
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnEmpAtualizar" class="botao-geral destaque" type="submit">
+                <i class="fa-solid fa-pen-to-square"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Cadastrar Usuário -->
+      <div id="modalCadastrarUsuario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloCadastrarUsuario">
+
+          <div class="modal-topo">
+            <h2 id="tituloCadastrarUsuario">Cadastrar Usuário</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formCadastrarUsuario" novalidate>
+
+              <div class="modal-grid">
+
+                <!-- Nome -->
+                <div class="modal-campo">
+                  <input id="u_nome" name="nome" type="text" placeholder=" " required maxlength="140">
+                  <label for="u_nome">Nome completo</label>
+                  <small class="msg-erro" data-erro-for="u_nome"></small>
+                </div>
+
+                <!-- E-mail (login) -->
+                <div class="modal-campo">
+                  <input id="u_email" name="email" type="email" placeholder=" " required maxlength="160" autocomplete="username">
+                  <label for="u_email">E-mail (login)</label>
+                  <small class="msg-erro" data-erro-for="u_email"></small>
+                </div>
+
+
+                <!-- Senha -->
+                <div class="modal-campo">
+                  <input id="u_senha" name="senha" type="password" placeholder=" " required minlength="6" autocomplete="new-password">
+                  <label for="u_senha">Senha</label>
+                  <small class="msg-erro" data-erro-for="u_senha"></small>
+                </div>
+
+                <!-- Confirmar Senha -->
+                <div class="modal-campo">
+                  <input id="u_senha2" name="senha2" type="password" placeholder=" " required minlength="6" autocomplete="new-password">
+                  <label for="u_senha2">Confirmar senha</label>
+                  <small class="msg-erro" data-erro-for="u_senha2"></small>
+                </div>
+
+              <!-- Perfil -->
+              <div class="modal-campo">
+                <label for="u_perfil_super_admin" class="label-fixa"></label>
+
+                <select id="u_perfil_super_admin" name="perfil" required>
+                  <option value="">Perfil</option>
+                </select>
+
+                <small class="msg-erro" data-erro-for="u_perfil_super_admin"></small>
+              </div>
+
+              <!-- Empresa -->
+              <div class="modal-campo">
+                <label for="u_empresa_super_admin" class="label-fixa"></label>
+
+                <select id="u_empresa_super_admin" name="empresa_id" required>
+                  <option value="">Empresa</option>
+                </select>
+
+                <small class="msg-erro" data-erro-for="u_empresa_super_admin"></small>
+              </div>
+
+                <!-- Telefone -->
+                <div class="modal-campo">
+                  <input id="u_tel" name="telefone" type="tel" placeholder=" " maxlength="20" inputmode="tel">
+                  <label for="u_tel">Telefone</label>
+                  <small class="msg-erro" data-erro-for="u_tel"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <label for="u_status" class="label-fixa"></label>
+                  <select id="u_status" name="status" required disabled>
+                    <option value="ativo" selected>Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="u_status"></small>
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarUsuario" class="botao-geral destaque" type="submit">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- MODAL: Editar Usuário -->
+      <div id="modalEditarUsuario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarUsuario">
+
+          <div class="modal-topo">
+            <h2 id="tituloEditarUsuario">Editar Usuário</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formEditarUsuario" novalidate>
+
+              <!-- ID -->
+              <input type="hidden" id="edit_u_id" name="id_usuario">
+
+              <div class="modal-grid">
+
+                <!-- Nome -->
+                <div class="modal-campo">
+                  <input id="edit_u_nome" name="nome" type="text" placeholder=" " required maxlength="140">
+                  <label for="edit_u_nome">Nome completo</label>
+                  <small class="msg-erro" data-erro-for="edit_u_nome"></small>
+                </div>
+
+                <!-- E-mail -->
+                <div class="modal-campo">
+                  <input id="edit_u_email" name="email" type="email" placeholder=" " required maxlength="160" autocomplete="username">
+                  <label for="edit_u_email">E-mail (login)</label>
+                  <small class="msg-erro" data-erro-for="edit_u_email"></small>
+                </div>
+
+                <!-- Nova senha -->
+                <div class="modal-campo">
+                  <input id="edit_u_senha" name="senha" type="password" placeholder=" " minlength="6" autocomplete="new-password">
+                  <label for="edit_u_senha">Nova senha</label>
+                  <small class="msg-erro" data-erro-for="edit_u_senha"></small>
+                </div>
+
+                <!-- Confirmar nova senha -->
+                <div class="modal-campo">
+                  <input id="edit_u_senha2" name="senha2" type="password" placeholder=" " minlength="6" autocomplete="new-password">
+                  <label for="edit_u_senha2">Confirmar nova senha</label>
+                  <small class="msg-erro" data-erro-for="edit_u_senha2"></small>
+                </div>
+
+                <!-- Perfil -->
+                <div class="modal-campo">
+                  <select id="edit_u_perfil_super_admin" name="perfil" required disabled>
+                    <option value="">Perfil</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="edit_u_perfil_super_admin"></small>
+                </div>
+
+                <!-- Empresa -->
+                <div class="modal-campo">
+                  <select id="edit_u_empresa_super_admin" name="empresa_id" required disabled>
+                    <option value="">Empresa</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="edit_u_empresa_super_admin"></small>
+                </div>
+
+                <!-- Telefone -->
+                <div class="modal-campo">
+                  <input id="edit_u_tel" name="telefone" type="tel" placeholder=" " maxlength="20" inputmode="tel">
+                  <label for="edit_u_tel">Telefone</label>
+                  <small class="msg-erro" data-erro-for="edit_u_tel"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <select id="edit_u_status" name="status" required>
+                    <option value="">Status</option>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="edit_u_status"></small>
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnAtualizarUsuario" class="botao-geral destaque" type="submit">
+                <i class="fa-solid fa-pen-to-square"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- MODAL: Visualizar Plano -->
+      <div id="modalVisualizarPlano" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo modal-md" role="dialog" aria-modal="true" aria-labelledby="tituloVisualizarPlano">
+
+          <div class="modal-topo">
+            <h2 id="tituloVisualizarPlano">Visualizar Plano</h2>
+            <button class="modal-fechar" type="button" data-fechar-modal aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <!-- HEAD -->
+            <div class="vc-head">
+              <div class="vc-avatar" aria-hidden="true" id="vp_avatar">P</div>
+
+              <div class="vc-head-info">
+                <div class="vc-nome" id="vp_nome">—</div>
+
+                <div class="vc-sub">
+                  <span class="vc-chip" id="vp_chip_status">—</span>
+                  <span class="vc-chip" id="vp_chip_cobranca">—</span>
+                  <span class="vc-chip" id="vp_chip_destaque">—</span>
+                  <span class="vc-chip" id="vp_chip_ref">Ref: —</span>
+                </div>
+              </div>
+
+              <!-- <div class="vc-head-acoes">
+                <button class="vc-btn" type="button" id="vp_btn_copiar_ref" title="Copiar referência">
+                  Copiar ref
+                </button>
+
+                <button class="vc-btn" type="button" id="vp_btn_copiar_nome" title="Copiar nome do plano">
+                  Copiar nome
+                </button>
+              </div> -->
+            </div>
+
+            <!-- GRID -->
+            <div class="vc-grid">
+
+              <div class="vc-card">
+                <div class="vc-titulo">Preço</div>
+                <div class="vc-linha"><strong>Valor:</strong> <span id="vp_preco">—</span></div>
+                <div class="vc-linha"><strong>Cobrança:</strong> <span id="vp_cobranca">—</span></div>
+              </div>
+
+              <div class="vc-card">
+                <div class="vc-titulo">Limites</div>
+                <div class="vc-linha"><strong>Usuários:</strong> <span id="vp_limite_usuarios">—</span></div>
+                <div class="vc-linha"><strong>Profissionais:</strong> <span id="vp_limite_profissionais">—</span></div>
+                <div class="vc-linha"><strong>Serviços:</strong> <span id="vp_limite_servicos">—</span></div>
+                <div class="vc-linha"><strong>Agendamentos/mês:</strong> <span id="vp_limite_agendamentos">—</span></div>
+              </div>
+
+              <div class="vc-card">
+                <div class="vc-titulo">Detalhes</div>
+                <div class="vc-linha"><strong>Status:</strong> <span id="vp_status">—</span></div>
+                <div class="vc-linha"><strong>Destaque:</strong> <span id="vp_destaque">—</span></div>
+                <div class="vc-linha"><strong>Ref:</strong> <span id="vp_ref">—</span></div>
+              </div>
+
+              <div class="vc-card" style="grid-column: 1 / -1;">
+                <div class="vc-titulo">Descrição</div>
+                <div class="vc-texto" id="vp_descricao">—</div>
+              </div>
+
+              <div class="vc-card" style="grid-column: 1 / -1;">
+                <div class="vc-titulo">Observação interna</div>
+                <div class="vc-texto" id="vp_obs">—</div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Cadastrar Plano -->
+      <div id="modalCadastrarPlano" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloCadastrarPlano">
+
+          <div class="modal-topo">
+            <h2 id="tituloCadastrarPlano">Cadastrar Plano</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formCadastrarPlano" novalidate>
+
+              <div class="modal-grid">
+
+                <!-- Nome do Plano -->
+                <div class="modal-campo">
+                  <input id="p_nome" name="nome" type="text" placeholder=" " required maxlength="80">
+                  <label for="p_nome">Nome do plano</label>
+                  <small class="msg-erro" data-erro-for="p_nome"></small>
+                </div>
+
+                <!-- Código/Referência (opcional, mas útil) -->
+                <div class="modal-campo">
+                  <input id="p_ref" name="ref" type="text" placeholder=" " maxlength="40">
+                  <label for="p_ref">Código (ref)</label>
+                  <small class="msg-erro" data-erro-for="p_ref"></small>
+                </div>
+
+                <!-- Preço Mensal -->
+                <div class="modal-campo">
+                  <input id="p_preco" name="preco" type="text" placeholder=" " required inputmode="decimal" maxlength="20">
+                  <label for="p_preco">Preço mensal (R$)</label>
+                  <small class="msg-erro" data-erro-for="p_preco"></small>
+                </div>
+
+                <!-- Período/Cobrança -->
+                <div class="modal-campo">
+                  <label for="p_cobranca" class="label-fixa"></label>
+                  <select id="p_cobranca" name="cobranca" required>
+                    <option value="">Cobrança</option>
+                    <option value="mensal" selected>Mensal</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="semestral">Semestral</option>
+                    <option value="anual">Anual</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="p_cobranca"></small>
+                </div>
+
+                <!-- Limite de Usuários -->
+                <div class="modal-campo">
+                  <input id="p_limite_usuarios" name="limite_usuarios" type="number" placeholder=" " min="1" step="1" required>
+                  <label for="p_limite_usuarios">Limite de usuários</label>
+                  <small class="msg-erro" data-erro-for="p_limite_usuarios"></small>
+                </div>
+
+                <!-- Limite de Profissionais -->
+                <div class="modal-campo">
+                  <input id="p_limite_profissionais" name="limite_profissionais" type="number" placeholder=" " min="0" step="1">
+                  <label for="p_limite_profissionais">Limite de profissionais</label>
+                  <small class="msg-erro" data-erro-for="p_limite_profissionais"></small>
+                </div>
+
+                <!-- Limite de Serviços -->
+                <div class="modal-campo">
+                  <input id="p_limite_servicos" name="limite_servicos" type="number" placeholder=" " min="0" step="1">
+                  <label for="p_limite_servicos">Limite de serviços</label>
+                  <small class="msg-erro" data-erro-for="p_limite_servicos"></small>
+                </div>
+
+                <!-- Limite de Agendamentos (por mês) -->
+                <div class="modal-campo">
+                  <input id="p_limite_agendamentos" name="limite_agendamentos" type="number" placeholder=" " min="0" step="1">
+                  <label for="p_limite_agendamentos">Agendamentos/mês (limite)</label>
+                  <small class="msg-erro" data-erro-for="p_limite_agendamentos"></small>
+                </div>
+
+                <!-- Destaque -->
+                <div class="modal-campo">
+                  <label for="p_destaque" class="label-fixa"></label>
+                  <select id="p_destaque" name="destaque" required>
+                    <option value="0" selected>Sem destaque</option>
+                    <option value="1">Plano em destaque</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="p_destaque"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <label for="p_status" class="label-fixa"></label>
+                  <select id="p_status" name="status" required>
+                    <option value="ativo" selected>Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="p_status"></small>
+                </div>
+
+                <!-- Descrição -->
+                <div class="modal-campo" style="grid-column: 1 / -1;">
+                  <textarea id="p_descricao" name="descricao" placeholder=" " rows="3" maxlength="300"></textarea>
+                  <label for="p_descricao">Descrição (opcional)</label>
+                  <small class="msg-erro" data-erro-for="p_descricao"></small>
+                </div>
+
+                <!-- Observação (opcional) -->
+                <div class="modal-campo" style="grid-column: 1 / -1;">
+                  <textarea id="p_obs" name="obs" placeholder=" " rows="2" maxlength="300"></textarea>
+                  <label for="p_obs">Observação interna (opcional)</label>
+                  <small class="msg-erro" data-erro-for="p_obs"></small>
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarPlano" class="botao-geral destaque" type="submit">
+                <i class="fa-solid fa-floppy-disk"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- MODAL: Editar Plano -->
+      <div id="modalEditarPlano" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarPlano">
+
+          <div class="modal-topo">
+            <h2 id="tituloEditarPlano">Editar Plano</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formEditarPlano" novalidate>
+
+              <!-- ID do plano (usado pelo JS/backend) -->
+              <input type="hidden" id="e_plano_id" name="id_plano" value="">
+
+              <div class="modal-grid">
+
+                <!-- Nome do Plano -->
+                <div class="modal-campo">
+                  <input id="e_nome" name="nome" type="text" placeholder=" " required maxlength="80">
+                  <label for="e_nome">Nome do plano</label>
+                  <small class="msg-erro" data-erro-for="e_nome"></small>
+                </div>
+
+                <!-- Código/Referência -->
+                <div class="modal-campo">
+                  <input id="e_ref" name="ref" type="text" placeholder=" " maxlength="40">
+                  <label for="e_ref">Código (ref)</label>
+                  <small class="msg-erro" data-erro-for="e_ref"></small>
+                </div>
+
+                <!-- Preço Mensal -->
+                <div class="modal-campo">
+                  <input id="e_preco" name="preco" type="text" placeholder=" " required inputmode="decimal" maxlength="20">
+                  <label for="e_preco">Preço mensal (R$)</label>
+                  <small class="msg-erro" data-erro-for="e_preco"></small>
+                </div>
+
+                <!-- Período/Cobrança -->
+                <div class="modal-campo">
+                  <label for="e_cobranca" class="label-fixa"></label>
+                  <select id="e_cobranca" name="cobranca" required>
+                    <option value="">Cobrança</option>
+                    <option value="mensal">Mensal</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="semestral">Semestral</option>
+                    <option value="anual">Anual</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="e_cobranca"></small>
+                </div>
+
+                <!-- Limite de Usuários -->
+                <div class="modal-campo">
+                  <input id="e_limite_usuarios" name="limite_usuarios" type="number" placeholder=" " min="1" step="1" required>
+                  <label for="e_limite_usuarios">Limite de usuários</label>
+                  <small class="msg-erro" data-erro-for="e_limite_usuarios"></small>
+                </div>
+
+                <!-- Limite de Profissionais -->
+                <div class="modal-campo">
+                  <input id="e_limite_profissionais" name="limite_profissionais" type="number" placeholder=" " min="0" step="1">
+                  <label for="e_limite_profissionais">Limite de profissionais</label>
+                  <small class="msg-erro" data-erro-for="e_limite_profissionais"></small>
+                </div>
+
+                <!-- Limite de Serviços -->
+                <div class="modal-campo">
+                  <input id="e_limite_servicos" name="limite_servicos" type="number" placeholder=" " min="0" step="1">
+                  <label for="e_limite_servicos">Limite de serviços</label>
+                  <small class="msg-erro" data-erro-for="e_limite_servicos"></small>
+                </div>
+
+                <!-- Limite de Agendamentos (por mês) -->
+                <div class="modal-campo">
+                  <input id="e_limite_agendamentos" name="limite_agendamentos" type="number" placeholder=" " min="0" step="1">
+                  <label for="e_limite_agendamentos">Agendamentos/mês (limite)</label>
+                  <small class="msg-erro" data-erro-for="e_limite_agendamentos"></small>
+                </div>
+
+                <!-- Destaque -->
+                <div class="modal-campo">
+                  <label for="e_destaque" class="label-fixa"></label>
+                  <select id="e_destaque" name="destaque" required>
+                    <option value="0">Sem destaque</option>
+                    <option value="1">Plano em destaque</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="e_destaque"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <label for="e_status" class="label-fixa"></label>
+                  <select id="e_status" name="status" required>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="e_status"></small>
+                </div>
+
+                <!-- Descrição -->
+                <div class="modal-campo" style="grid-column: 1 / -1;">
+                  <textarea id="e_descricao" name="descricao" placeholder=" " rows="3" maxlength="300"></textarea>
+                  <label for="e_descricao">Descrição (opcional)</label>
+                  <small class="msg-erro" data-erro-for="e_descricao"></small>
+                </div>
+
+                <!-- Observação -->
+                <div class="modal-campo" style="grid-column: 1 / -1;">
+                  <textarea id="e_obs" name="obs" placeholder=" " rows="2" maxlength="300"></textarea>
+                  <label for="e_obs">Observação interna (opcional)</label>
+                  <small class="msg-erro" data-erro-for="e_obs"></small>
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarPlanoEdit" class="botao-geral destaque" type="submit">
+                <i class="fa-solid fa-pen-to-square"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- MODAL: CADASTRAR SUPER ADMIN -->
+      <div id="modalCadastrarUsuarioSuper" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloCadastrarUsuarioSuper"aria-describedby="descricaoCadastrarUsuarioSuper">
+          <div class="modal-topo">
+            <div>
+              <h2 id="tituloCadastrarUsuarioSuper">Cadastrar Super Admin</h2>
+            </div>
+
+            <button
+              class="modal-fechar"
+              data-fechar-modal
+              type="button"
+              aria-label="Fechar modal de cadastro de Super Admin">
+              ×
+            </button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formCadastrarUsuarioSuper" novalidate autocomplete="off">
+
+              <!-- Campo fixo -->
+              <input type="hidden" name="tipo_usuario" value="super_admin">
+
+              <div class="modal-grid">
+
+                <!-- Nome -->
+                <div class="modal-campo">
+                  <input
+                    id="us_nome"
+                    name="nome"
+                    type="text"
+                    placeholder=" "
+                    required
+                    maxlength="140"
+                    autocomplete="name">
+                  <label for="us_nome">Nome completo</label>
+                  <small class="msg-erro" data-erro-for="us_nome"></small>
+                </div>
+
+                <!-- E-mail -->
+                <div class="modal-campo">
+                  <input
+                    id="us_email"
+                    name="email"
+                    type="email"
+                    placeholder=" "
+                    required
+                    maxlength="160"
+                    autocomplete="username"
+                    inputmode="email">
+                  <label for="us_email">E-mail de acesso</label>
+                  <small class="msg-erro" data-erro-for="us_email"></small>
+                </div>
+
+                <!-- Telefone -->
+                <div class="modal-campo">
+                  <input
+                    id="us_telefone"
+                    name="telefone"
+                    type="tel"
+                    placeholder=" "
+                    required
+                    maxlength="20"
+                    inputmode="tel"
+                    autocomplete="tel">
+                  <label for="us_telefone">Telefone / WhatsApp</label>
+                  <small class="msg-erro" data-erro-for="us_telefone"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <label for="us_status" class="label-fixa"></label>
+                  <select id="us_status" name="status" required>
+                    <option value="ativo" selected>Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="us_status"></small>
+                </div>
+
+                <!-- Senha -->
+                <div class="modal-campo">
+                  <input
+                    id="us_senha"
+                    name="senha"
+                    type="password"
+                    placeholder=" "
+                    required
+                    minlength="6"
+                    maxlength="120"
+                    autocomplete="new-password">
+                  <label for="us_senha">Senha</label>
+                  <small class="msg-erro" data-erro-for="us_senha"></small>
+                </div>
+
+                <!-- Confirmar Senha -->
+                <div class="modal-campo">
+                  <input
+                    id="us_senha2"
+                    name="senha2"
+                    type="password"
+                    placeholder=" "
+                    required
+                    minlength="6"
+                    maxlength="120"
+                    autocomplete="new-password">
+                  <label for="us_senha2">Confirmar senha</label>
+                  <small class="msg-erro" data-erro-for="us_senha2"></small>
+                </div>
+
+              </div>
+
+              <div class="modal-acoes">
+                <button
+                  id="btnSalvarUsuarioSuper"
+                  class="botao-geral destaque"
+                  type="submit">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: EDITAR SUPER ADMIN-->
+      <div id="modalEditarUsuarioSuper" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog"  aria-modal="true" aria-labelledby="tituloEditarUsuarioSuper" aria-describedby="descricaoEditarUsuarioS uper">
+
+          <div class="modal-topo">
+            <div>
+              <h2 id="tituloEditarUsuarioSuper">Editar Super Admin</h2>
+            </div>
+
+            <button
+              class="modal-fechar"
+              data-fechar-modal
+              type="button"
+              aria-label="Fechar modal de edição de Super Admin">
+              ×
+            </button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formEditarUsuarioSuper" novalidate autocomplete="off">
+
+              <!-- IDs / controle -->
+              <input type="hidden" id="eus_id_usuario" name="id_usuario">
+              <input type="hidden" name="tipo_usuario" value="super_admin">
+
+              <div class="modal-grid">
+
+                <!-- Nome -->
+                <div class="modal-campo">
+                  <input
+                    id="eus_nome"
+                    name="nome"
+                    type="text"
+                    placeholder=" "
+                    required
+                    maxlength="140"
+                    autocomplete="name">
+                  <label for="eus_nome">Nome completo</label>
+                  <small class="msg-erro" data-erro-for="eus_nome"></small>
+                </div>
+
+                <!-- E-mail -->
+                <div class="modal-campo">
+                  <input
+                    id="eus_email"
+                    name="email"
+                    type="email"
+                    placeholder=" "
+                    required
+                    maxlength="160"
+                    autocomplete="username"
+                    inputmode="email">
+                  <label for="eus_email">E-mail de acesso</label>
+                  <small class="msg-erro" data-erro-for="eus_email"></small>
+                </div>
+
+                <!-- Telefone -->
+                <div class="modal-campo">
+                  <input
+                    id="eus_telefone"
+                    name="telefone"
+                    type="tel"
+                    placeholder=" "
+                    maxlength="20"
+                    inputmode="tel"
+                    autocomplete="tel">
+                  <label for="eus_telefone">Telefone / WhatsApp</label>
+                  <small class="msg-erro" data-erro-for="eus_telefone"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <label for="eus_status" class="label-fixa"></label>
+                  <select id="eus_status" name="status" required>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <small class="msg-erro" data-erro-for="eus_status"></small>
+                </div>
+
+                <!-- Nova Senha -->
+                <div class="modal-campo">
+                  <input
+                    id="eus_senha"
+                    name="senha"
+                    type="password"
+                    placeholder=" "
+                    minlength="6"
+                    maxlength="120"
+                    autocomplete="new-password">
+                  <label for="eus_senha">Nova senha</label>
+                  <small class="msg-erro" data-erro-for="eus_senha"></small>
+                </div>
+
+                <!-- Confirmar Nova Senha -->
+                <div class="modal-campo">
+                  <input
+                    id="eus_senha2"
+                    name="senha2"
+                    type="password"
+                    placeholder=" "
+                    minlength="6"
+                    maxlength="120"
+                    autocomplete="new-password">
+                  <label for="eus_senha2">Confirmar nova senha</label>
+                  <small class="msg-erro" data-erro-for="eus_senha2"></small>
+                </div>
+
+              </div>
+
+              <div class="modal-acoes">
+                <button
+                  id="btnSalvarEdicaoUsuarioSuper"
+                  class="botao-geral destaque"
+                  type="submit">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    </main>
+
+    <!--lista Core-->
+    <script src="../../js/core/lista-core.js" ></script>
+
+
+    <!--Modal Perfil-->
+    <script src="/public/_auth/deslogar.js" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+    <script src="../../js/perfil-usuario/alterar_perfil_foto.js" ></script> <!--Alterar Foto de perfil do modal perfil-->
+    <script src="../../js/perfil-usuario/buscar_foto_perfil.js" ></script> <!--Buscar Foto de perfil do usuario logado-->
+    <script src="../../js/perfil-usuario/alterar_senha_perfil.js" ></script> <!--Alterar senha perfil-->
+
+
+    <!--ABA EMPRESAS-->
+    <script src="../../js/super-admin/empresa/lista-empresa.js" ></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
+    <script src="../../js/super-admin/empresa/cadastrar_empresa.js" ></script> <!--Cadastrar novas empresas-->
+    <script src="../../js/super-admin/empresa/editar_empresa.js" ></script> <!--Editar dados de cadastro da empresa -->
+
+    
+    <!--ABA USUARIOS-->
+    <script src="../../js/super-admin/usuario/lista-usuario.js"></script> <!--Lista de Usuarios e preeche o modal Editar com dados necessarios para edição.-->
+    <script src="../../js/super-admin/usuario/cadastrar-usuario.js" ></script> <!--Cadastrar Usuarios-->
+    <script src="../../js/super-admin/usuario/editar_usuario.js" ></script> <!--Editar usuario comum-->
+
+    <!--ABA USUARIOS SUPER-->
+    <script src="../../js/super-admin/usuario-super/lista-usuario-super.js" ></script> <!--Listas de usuarios super-->
+    <script src="../../js/super-admin/usuario-super/cadastrar-usuario-super.js" ></script><!--cadastrar usuarios super administrador-->
+    <script src="../../js/super-admin/usuario-super/editar_usuario_super.js" ></script>
+
+    <!--ABA PLANOS-->
+    <script src="../../js/super-admin/plano/lista-plano.js" ></script>
+    <script src="../../js/super-admin/plano/cadastrar-plano.js" ></script> <!--Cadastrar Planos-->
+    <script src="../../js/super-admin/plano/editar_plano.js" ></script> <!--Editar dados do modal-->
+
+
+    <!--Universal-->
+    <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+    <script src="../../js/altear_status_universal.js" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+
+
+    <script> //Scrpt da data atual no cabeçalho corretamente
+    document.addEventListener('DOMContentLoaded', () => {
+
+      const elData = document.getElementById('painelDataHoje');
+      if (!elData) return;
+
+      const hoje = new Date();
+
+      const diasSemana = [
+        'Domingo',
+        'Segunda-feira',
+        'Terça-feira',
+        'Quarta-feira',
+        'Quinta-feira',
+        'Sexta-feira',
+        'Sábado'
+      ];
+
+      const meses = [
+        'Janeiro',
+        'Fevereiro',
+        'Março',
+        'Abril',
+        'Maio',
+        'Junho',
+        'Julho',
+        'Agosto',
+        'Setembro',
+        'Outubro',
+        'Novembro',
+        'Dezembro'
+      ];
+
+      const diaSemana = diasSemana[hoje.getDay()];
+      const dia = hoje.getDate();
+      const mes = meses[hoje.getMonth()];
+      const ano = hoje.getFullYear();
+
+      elData.textContent = `${diaSemana}, ${dia} de ${mes} de ${ano}`;
+
+    });
+    </script>
+
+    <script> // Script para retrair o meno lateral 
+        document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.js-toggle-menu').forEach(btn => {
+            btn.addEventListener('click', () => {
+            document.body.classList.toggle('menu-fechado');
+
+            // (opcional) salvar preferência
+            localStorage.setItem(
+                'menuFechado',
+                document.body.classList.contains('menu-fechado') ? '1' : '0'
+            );
+            });
+        });
+
+        // (opcional) restaurar preferência ao abrir a página
+        if (localStorage.getItem('menuFechado') === '1') {
+            document.body.classList.add('menu-fechado');
+        }
+        });
+    </script>
+
+    <script> //Script abre e fechar todos os modals (MODAL EDITAR NÃO AEBRE E NEM FECHAR POR AQUI DIRETO NOS JS DE LISTAS)
+      const MODAL_CLASSES = ['modal-geral', 'modal-cards'];
+
+      function abrirModal(id){
+        const modal = document.getElementById(id);
+        if(!modal){
+          console.warn('Modal não encontrado:', id);
+          return;
+        }
+
+        modal.classList.add('ativo');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      function fecharModal(modal){
+        if(!modal) return;
+        modal.classList.remove('ativo');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+
+      function getModalPai(element){
+        return element.closest(
+          MODAL_CLASSES.map(c => '.' + c).join(',')
+        );
+      }
+
+      document.addEventListener('click', (e) => {
+        const abrir = e.target.closest('[data-abrir-modal]');
+        if(abrir){
+          abrirModal(abrir.getAttribute('data-abrir-modal'));
+          return;
+        }
+
+        const btnFechar = e.target.closest('[data-fechar-modal]');
+        if(btnFechar){
+          const modal = getModalPai(btnFechar);
+          if(modal) fecharModal(modal);
+          return;
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if(e.key === 'Escape'){
+          MODAL_CLASSES.forEach(classe => {
+            document
+              .querySelectorAll(`.${classe}.ativo`)
+              .forEach(m => fecharModal(m));
+          });
+        }
+      });
+    </script>
+
+    <script>//Script Responsavel para a Naveção em ABAS
+    document.addEventListener("DOMContentLoaded", () => {
+      const botoes = document.querySelectorAll(".menu-principal-abas button[data-aba]");
+      const abas = document.querySelectorAll(".conteudo-aba");
+
+      if (!botoes.length || !abas.length) return;
+
+      const STORAGE_KEY = "aba_super_admin_ativa";
+      const ABA_PADRAO = "empresas";
+
+      function abrirAba(idAba, salvar = true) {
+        botoes.forEach(btn => btn.classList.remove("ativa"));
+        abas.forEach(aba => aba.classList.remove("ativa"));
+
+        const botao = document.querySelector(`.menu-principal-abas button[data-aba="${idAba}"]`);
+        const conteudo = document.getElementById(idAba);
+
+        if (!botao || !conteudo) return;
+
+        botao.classList.add("ativa");
+        conteudo.classList.add("ativa");
+
+        if (salvar) {
+          localStorage.setItem(STORAGE_KEY, idAba);
+        }
+      }
+
+      // =========================
+      // Clique nas abas
+      // =========================
+      botoes.forEach(btn => {
+        btn.addEventListener("click", () => {
+          const aba = btn.dataset.aba;
+          abrirAba(aba);
+        });
+      });
+
+      // =========================
+      // INIT
+      // =========================
+      const abaSalva = localStorage.getItem(STORAGE_KEY);
+
+      if (abaSalva && document.getElementById(abaSalva)) {
+        abrirAba(abaSalva, false);
+      } else {
+        abrirAba(ABA_PADRAO, false);
+      }
+    });
+    </script>
+
+  </body>
+
+</html>

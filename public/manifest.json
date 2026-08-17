@@ -1,0 +1,306 @@
+{
+  "id": "/?source=pwa",
+  "name": "ConexSystem",
+  "short_name": "ConexSystem",
+  "description": "Painel de gestão do ConexInternet",
+  "lang": "pt-BR",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#003355",
+  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+
+  "icons": [
+    {
+      "src": "Imagens/windows11/SmallTile.scale-100.png",
+      "sizes": "71x71",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/SmallTile.scale-125.png",
+      "sizes": "89x89",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/SmallTile.scale-150.png",
+      "sizes": "107x107",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/SmallTile.scale-200.png",
+      "sizes": "142x142",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/SmallTile.scale-400.png",
+      "sizes": "284x284",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Square150x150Logo.scale-100.png",
+      "sizes": "150x150",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Square150x150Logo.scale-125.png",
+      "sizes": "188x188",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Square150x150Logo.scale-150.png",
+      "sizes": "225x225",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Square150x150Logo.scale-200.png",
+      "sizes": "300x300",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Square150x150Logo.scale-400.png",
+      "sizes": "600x600",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Wide310x150Logo.scale-100.png",
+      "sizes": "310x150",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Wide310x150Logo.scale-125.png",
+      "sizes": "388x188",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Wide310x150Logo.scale-150.png",
+      "sizes": "465x225",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Wide310x150Logo.scale-200.png",
+      "sizes": "620x300",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/Wide310x150Logo.scale-400.png",
+      "sizes": "1240x600",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/LargeTile.scale-100.png",
+      "sizes": "310x310",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/LargeTile.scale-125.png",
+      "sizes": "388x388",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/LargeTile.scale-150.png",
+      "sizes": "465x465",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/LargeTile.scale-200.png",
+      "sizes": "620x620",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/windows11/LargeTile.scale-400.png",
+      "sizes": "1240x1240",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/android/android-launchericon-512-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/android/android-launchericon-192-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/android/android-launchericon-144-144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/android/android-launchericon-96-96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/android/android-launchericon-72-72.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/android/android-launchericon-48-48.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/20.png",
+      "sizes": "20x20",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/29.png",
+      "sizes": "29x29",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/40.png",
+      "sizes": "40x40",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/50.png",
+      "sizes": "50x50",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/57.png",
+      "sizes": "57x57",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/58.png",
+      "sizes": "58x58",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/60.png",
+      "sizes": "60x60",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/64.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/72.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/76.png",
+      "sizes": "76x76",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/80.png",
+      "sizes": "80x80",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/87.png",
+      "sizes": "87x87",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/100.png",
+      "sizes": "100x100",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/114.png",
+      "sizes": "114x114",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/120.png",
+      "sizes": "120x120",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/152.png",
+      "sizes": "152x152",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/167.png",
+      "sizes": "167x167",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "Imagens/ios/1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ],
+
+  "screenshots": [
+    {
+      "src": "Imagens/capa.png",
+      "sizes": "1536x1024",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Visão geral do ConexInternet em desktop"
+    },
+    {
+      "src": "Imagens/capa2.png",
+      "sizes": "1024x1536",
+      "type": "image/png",
+      "label": "Visão geral do ConexInternet em dispositivos móveis"
+    }
+  ],
+
+  "shortcuts": [
+    {
+      "name": "Agenda Urbana",
+      "url": "/pages/Agenda-pages/AgendaUrbana.html",
+      "icons": [
+        {
+          "src": "/Imagens/icon-v2.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2438 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AmAgenda • Studio</title>
+  
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css"/>
+    <link rel="stylesheet" href="../css/filtro-paginacao-web.css"/>
+    <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
+    <link rel="stylesheet" href="../css/mensagem-erro-universal.css">
+
+    <!--Verifica se usuario esta logado se não redireciona para tela de login-->
+    <script src="/public/_auth/sessao.js" ></script>  
+
+  </head>
+
+  <body>
+      
+    <!-- Informações Superiores -->
+    <header class="cabecalho-agenda">
+
+      <!-- Lado esquerdo -->
+      <div class="cabecalho-esquerda">
+        <span class="badge-hoje">Hoje</span>
+        <h1 class="cabecalho-dia">Segunda-feira</h1>
+        <span class="cabecalho-data">10 de Janeiro de 2026</span>
+      </div>
+
+      <!-- Lado direito -->
+      <div class="cabecalho-direita">
+
+        <!-- NOVO CLIENTE -->
+        <button class="botao-geral"type="button" title="Cadastrar novo cliente" aria-label="Cadastrar novo cliente" data-abrir-modal="modalNovoCliente">
+          <i class="fa-solid fa-user-plus"></i>
+          <span class="btn-texto">Novo Cliente</span>
+        </button>
+
+
+        <!-- NOVO AGENDAMENTO -->
+        <button class="botao-geral" data-abrir-modal="modalNovoAgendamento" type="button" title="Adicionar um agendamento">
+          <i class="fa-solid fa-plus"></i>
+          <span class="btn-texto">Novo Agendamento</span>
+        </button>
+
+        <!-- CALENDÁRIO -->
+        <button class="botao-geral btn-calendario" data-abrir-modal="modalCalendario" type="button" title="Calendário">
+          <i class="fa-regular fa-calendar-days"></i>
+          <span class="btn-texto">Calendário</span>
+        </button>
+
+        <!-- PAINEL ADMINISTRADOR -->
+        <a href="../views/painel-administrativo/painel-administrativo.html" class="botao-geral"  title="Painel do Administrador">
+          <i class="fa-solid fa-user-gear"></i>
+          <span class="btn-texto">Painel Admin</span>
+        </a>
+
+        <!-- CONFIGURAÇÕES DA AGENDA -->
+        <button class="botao-geral" type="button" title="Configurações da agenda" aria-label="Abrir configurações da agenda"  data-abrir-modal="modalConfiguracoesAgenda">
+          <i class="fa-solid fa-gear"></i>
+          <span class="btn-texto">Configurações Agenda</span>
+        </button>
+
+        <!-- PERFIL DO USUÁRIO -->
+        <button class="botao-geral destaque" type="button"  title="Meu perfil" data-abrir-modal="modalPerfilUsuario">
+          <i class="fa-solid fa-user-circle"></i>
+          <span class="btn-texto">Perfil</span>
+        </button>
+
+
+      </div>
+    </header>
+
+    <main>
+
+    <section class="layout-controle" > <!--Navegação em abas-->
+
+      <nav class="menu-principal-abas" aria-label="Agenda semanal">
+
+          <button type="button" data-aba="segunda">
+              <span class="dia-sigla">SEG</span>
+              <span class="dia-data"></span>
+          </button>
+
+          <button type="button" data-aba="terca">
+              <span class="dia-sigla">TER</span>
+              <span class="dia-data"></span>
+          </button>
+
+          <button type="button" data-aba="quarta">
+              <span class="dia-sigla">QUA</span>
+              <span class="dia-data"></span>
+          </button>
+
+          <button type="button" data-aba="quinta">
+              <span class="dia-sigla">QUI</span>
+              <span class="dia-data"></span>
+          </button>
+
+          <button type="button" data-aba="sexta">
+              <span class="dia-sigla">SEX</span>
+              <span class="dia-data"></span>
+          </button>
+
+          <button type="button" data-aba="sabado">
+              <span class="dia-sigla">SÁB</span>
+              <span class="dia-data"></span>
+          </button>
+
+          <button type="button" data-aba="domingo">
+              <span class="dia-sigla">DOM</span>
+              <span class="dia-data"></span>
+          </button>
+
+      </nav>
+
+      <!--Cada div e uma aba-->
+
+      <!-- Aba Segunda -->
+      <div id="segunda" class="conteudo-aba ativa">
+        <div class="conteudo-agenda">
+
+          <!-- TOPO DA ABA -->
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu"  type="button" title="Retrair dias da Semana">☰</button>
+
+            <!-- Barra de pesquisa -->
+            <div class="pesquisar">  
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search"  id="pesquisar-agenda" name="pesquisar"  placeholder=" " autocomplete="off"  inputmode="search" />
+              <label for="pesquisar-agenda">Pesquisar agendamento</label>
+
+                <button type="button"
+                        class="btn-limpar-pesquisa"
+                        title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+
+          <!-- Filtro Aba SEGUNDA -->
+          <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaSegunda">
+
+            <button id="btnPeriodo_segunda"
+                    class="btn-filtro"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    aria-controls="popoverPeriodo_segunda">
+
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+              </svg>
+
+              <!-- texto padrão -->
+              <span id="labelPeriodo_segunda">Filtro</span>
+              <span class="caret" aria-hidden="true">▾</span>
+            </button>
+
+            <!-- Popover -->
+            <div id="popoverPeriodo_segunda" class="popover" hidden>
+              <form id="formPeriodo_segunda" autocomplete="off">
+
+                <div class="linha">
+                  <label class="label-filtro">
+                    Início
+                    <input class="input-filtro"
+                          type="date"
+                          id="inicio_segunda"
+                          required>
+                  </label>
+
+                  <label class="label-filtro">
+                    Fim
+                    <input class="input-filtro"
+                          type="date"
+                          id="fim_segunda"
+                          required>
+                  </label>
+                </div>
+
+                <!-- ✅ Filtro por Status (no mesmo popover) -->
+                <div class="linha">
+                  <label class="label-filtro" for="status_segunda">
+                    Status
+                    <select class="input-filtro" id="status_segunda" name="status" aria-label="Filtro por status">
+                      <option value="">Todos</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="confirmado">Confirmado</option>
+                      <option value="concluido">Concluído</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </label>
+
+                  <!-- opcional: “vazio” só pra manter 2 colunas alinhadas -->
+                  <span></span>
+                </div>
+
+
+
+                <div class="acoes">
+                  <button type="submit" class="ok">Aplicar</button>
+                  <button type="button" id="limparFiltro_segunda" class="limpar">Limpar</button>
+                  <button type="button" id="fecharPopover_segunda" class="cancelar">Cancelar</button>
+                </div>
+
+              </form>
+            </div>
+          </section>
+
+          <!-- LISTA DE CARDS -->
+          <div id="cardsAgendaSegunda" class="agenda-cards"></div>
+
+          <!--Paginaçãoo-->
+          <section class="section-paginacao">
+            <div id="paginacao_segunda" class="paginacao-div"></div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- Aba Terça -->
+      <div id="terca" class="conteudo-aba">
+        <div class="conteudo-agenda">
+
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
+
+            <!--Barra de Pesquisa-->
+            <div class="pesquisar">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-terca" name="pesquisar-terca"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-terca">Pesquisar agendamento</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+
+            <!-- Filtro Aba TERÇA -->
+            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaTerca">
+
+              <button id="btnPeriodo_terca"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_terca">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_terca">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <div id="popoverPeriodo_terca" class="popover" hidden>
+                <form id="formPeriodo_terca" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_terca" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_terca" required>
+                    </label>
+                  </div>
+
+                  <!-- ✅ Filtro por Status (no mesmo popover) -->
+                  <div class="linha">
+                    <label class="label-filtro" for="status_terca">
+                      Status
+                      <select class="input-filtro" id="status_terca" name="status" aria-label="Filtro por status">
+                        <option value="">Todos</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="confirmado">Confirmado</option>
+                        <option value="concluido">Concluído</option>
+                        <option value="cancelado">Cancelado</option>
+                      </select>
+                    </label>
+                    <span></span>
+                  </div>
+
+
+
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_terca" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_terca" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </section>
+
+          <div id="cardsAgendaTerca" class="agenda-cards"></div>
+
+          <!--Paginação-->
+          <section class="section-paginacao">
+            <div id="paginacao_terca" class="paginacao-div"></div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- Aba Quarta -->
+      <div id="quarta" class="conteudo-aba">
+        <div class="conteudo-agenda">
+
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
+
+            <!--Barra de pesquisa-->
+            <div class="pesquisar">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-quarta" name="pesquisar-quarta"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-quarta">Pesquisar agendamento</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+
+          <!-- Filtro Aba QUARTA -->
+          <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaQuarta">
+
+            <button id="btnPeriodo_quarta"
+                    class="btn-filtro"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    aria-controls="popoverPeriodo_quarta">
+
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+              </svg>
+
+              <span id="labelPeriodo_quarta">Filtro</span>
+              <span class="caret" aria-hidden="true">▾</span>
+            </button>
+
+            <div id="popoverPeriodo_quarta" class="popover" hidden>
+              <form id="formPeriodo_quarta" autocomplete="off">
+
+                <div class="linha">
+                  <label class="label-filtro">
+                    Início
+                    <input class="input-filtro" type="date" id="inicio_quarta" required>
+                  </label>
+
+                  <label class="label-filtro">
+                    Fim
+                    <input class="input-filtro" type="date" id="fim_quarta" required>
+                  </label>
+                </div>
+
+                <!-- ✅ Filtro por Status (no mesmo popover) -->
+                <div class="linha">
+                  <label class="label-filtro" for="status_quarta">
+                    Status
+                    <select class="input-filtro" id="status_quarta" name="status" aria-label="Filtro por status">
+                      <option value="">Todos</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="confirmado">Confirmado</option>
+                      <option value="concluido">Concluído</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </label>
+                  <span></span>
+                </div>
+
+
+                <div class="acoes">
+                  <button type="submit" class="ok">Aplicar</button>
+                  <button type="button" id="limparFiltro_quarta" class="limpar">Limpar</button>
+                  <button type="button" id="fecharPopover_quarta" class="cancelar">Cancelar</button>
+                </div>
+
+              </form>
+            </div>
+          </section>
+
+          <div id="cardsAgendaQuarta" class="agenda-cards"></div>
+
+          <!--Paginação-->
+          <section class="section-paginacao">
+            <div id="paginacao_quarta" class="paginacao-div"></div>
+          </section>
+
+
+        </div>
+      </div>
+
+      <!-- Aba Quinta -->
+      <div id="quinta" class="conteudo-aba">
+        <div class="conteudo-agenda">
+
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
+
+            <!--Barra de pesquisa-->
+            <div class="pesquisar">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-quinta" name="pesquisar-quinta"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-quinta">Pesquisar agendamento</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+
+            <!-- Filtro Aba QUINTA -->
+            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaQuinta">
+
+              <button id="btnPeriodo_quinta"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_quinta">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_quinta">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <div id="popoverPeriodo_quinta" class="popover" hidden>
+                <form id="formPeriodo_quinta" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_quinta" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_quinta" required>
+                    </label>
+                  </div>
+
+
+                  <!-- ✅ Filtro por Status (no mesmo popover) -->
+                  <div class="linha">
+                    <label class="label-filtro" for="status_quinta">
+                      Status
+                      <select class="input-filtro" id="status_quinta" name="status" aria-label="Filtro por status">
+                        <option value="">Todos</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="confirmado">Confirmado</option>
+                        <option value="concluido">Concluído</option>
+                        <option value="cancelado">Cancelado</option>
+                      </select>
+                    </label>
+                    <span></span>
+                  </div>
+
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_quinta" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_quinta" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </section>
+
+          <div id="cardsAgendaQuinta" class="agenda-cards"></div>
+
+          <!--Paginação-->
+          <section class="section-paginacao">
+            <div id="paginacao_quinta" class="paginacao-div"></div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- Aba Sexta -->
+      <div id="sexta" class="conteudo-aba">
+        <div class="conteudo-agenda">
+
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
+
+            <!--Barra de pesquisa-->
+            <div class="pesquisar">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-sexta" name="pesquisar-sexta"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-sexta">Pesquisar agendamento</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+
+            <!-- Filtro Aba SEXTA -->
+            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaSexta">
+
+              <button id="btnPeriodo_sexta"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_sexta">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_sexta">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <div id="popoverPeriodo_sexta" class="popover" hidden>
+                <form id="formPeriodo_sexta" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_sexta" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_sexta" required>
+                    </label>
+                  </div>
+
+                  <!-- ✅ Filtro por Status (no mesmo popover) -->
+                  <div class="linha">
+                    <label class="label-filtro" for="status_sexta">
+                      Status
+                      <select class="input-filtro" id="status_sexta" name="status" aria-label="Filtro por status">
+                        <option value="">Todos</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="confirmado">Confirmado</option>
+                        <option value="concluido">Concluído</option>
+                        <option value="cancelado">Cancelado</option>
+                      </select>
+                    </label>
+                    <span></span>
+                  </div>
+
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_sexta" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_sexta" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </section>
+
+          <div id="cardsAgendaSexta" class="agenda-cards"></div>
+
+          <!--Paginação-->
+          <section class="section-paginacao">
+            <div id="paginacao_sexta" class="paginacao-div"></div>
+          </section>
+
+
+        </div>
+      </div>
+
+      <!-- Aba Sábado -->
+      <div id="sabado" class="conteudo-aba">
+        <div class="conteudo-agenda">
+
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
+
+            <!--Barra de pesquisa-->
+            <div class="pesquisar">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-sabado" name="pesquisar-sabado"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-sabado">Pesquisar agendamento</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+          
+            <!-- Filtro Aba SÁBADO -->
+            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaSabado">
+
+              <button id="btnPeriodo_sabado"
+                      class="btn-filtro"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="popoverPeriodo_sabado">
+
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+                </svg>
+
+                <span id="labelPeriodo_sabado">Filtro</span>
+                <span class="caret" aria-hidden="true">▾</span>
+              </button>
+
+              <div id="popoverPeriodo_sabado" class="popover" hidden>
+                <form id="formPeriodo_sabado" autocomplete="off">
+
+                  <div class="linha">
+                    <label class="label-filtro">
+                      Início
+                      <input class="input-filtro" type="date" id="inicio_sabado" required>
+                    </label>
+
+                    <label class="label-filtro">
+                      Fim
+                      <input class="input-filtro" type="date" id="fim_sabado" required>
+                    </label>
+                  </div>
+
+                  <!-- ✅ Filtro por Status (no mesmo popover) -->
+                  <div class="linha">
+                    <label class="label-filtro" for="status_sabado">
+                      Status
+                      <select class="input-filtro" id="status_sabado" name="status" aria-label="Filtro por status">
+                        <option value="">Todos</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="confirmado">Confirmado</option>
+                        <option value="concluido">Concluído</option>
+                        <option value="cancelado">Cancelado</option>
+                      </select>
+                    </label>
+                    <span></span>
+                  </div>
+
+
+                  <div class="acoes">
+                    <button type="submit" class="ok">Aplicar</button>
+                    <button type="button" id="limparFiltro_sabado" class="limpar">Limpar</button>
+                    <button type="button" id="fecharPopover_sabado" class="cancelar">Cancelar</button>
+                  </div>
+
+                </form>
+              </div>
+            </section>
+
+          <div id="cardsAgendaSabado" class="agenda-cards"></div>
+
+          <!--Paginação-->
+          <section class="section-paginacao">
+            <div id="paginacao_sabado" class="paginacao-div"></div>
+          </section>
+
+
+        </div>
+      </div>
+
+      <!-- Aba Domingo -->
+      <div id="domingo" class="conteudo-aba">
+        <div class="conteudo-agenda">
+
+          <div class="agenda-topo">
+            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
+
+            <!--Barra de pesquisa-->
+            <div class="pesquisar">
+              <div class="input-wrapper input-flutuante">
+                <i class="fas fa-search"></i>
+
+                <input type="search" id="pesquisar-domingo" name="pesquisar-domingo"
+                      placeholder=" " autocomplete="off" inputmode="search" />
+                <label for="pesquisar-domingo">Pesquisar agendamento</label>
+
+                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="pesquisa-info"></div>
+            </div>
+          </div>
+
+            <!-- Filtro Aba DOMINGO -->
+          <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaDomingo">
+
+            <button id="btnPeriodo_domingo"
+                    class="btn-filtro"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    aria-controls="popoverPeriodo_domingo">
+
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+              </svg>
+
+              <span id="labelPeriodo_domingo">Filtro</span>
+              <span class="caret" aria-hidden="true">▾</span>
+            </button>
+
+            <div id="popoverPeriodo_domingo" class="popover" hidden>
+              <form id="formPeriodo_domingo" autocomplete="off">
+
+                <div class="linha">
+                  <label class="label-filtro">
+                    Início
+                    <input class="input-filtro" type="date" id="inicio_domingo" required>
+                  </label>
+
+                  <label class="label-filtro">
+                    Fim
+                    <input class="input-filtro" type="date" id="fim_domingo" required>
+                  </label>
+                </div>
+
+                <!-- ✅ Filtro por Status (no mesmo popover) -->
+                <div class="linha">
+                  <label class="label-filtro" for="status_domingo">
+                    Status
+                    <select class="input-filtro" id="status_domingo" name="status" aria-label="Filtro por status">
+                      <option value="">Todos</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="confirmado">Confirmado</option>
+                      <option value="concluido">Concluído</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </label>
+                  <span></span>
+                </div>
+
+
+                <div class="acoes">
+                  <button type="submit" class="ok">Aplicar</button>
+                  <button type="button" id="limparFiltro_domingo" class="limpar">Limpar</button>
+                  <button type="button" id="fecharPopover_domingo" class="cancelar">Cancelar</button>
+                </div>
+
+              </form>
+            </div>
+          </section>
+
+          <div id="cardsAgendaDomingo" class="agenda-cards"></div>
+
+            <!--Paginação-->
+          <section class="section-paginacao">
+            <div id="paginacao_domingo" class="paginacao-div"></div>
+          </section>
+
+        </div>
+      </div>
+
+    </section>
+
+    <section> <!--Todos o modals da pagina-->
+
+      <!-- MODAL: PERFIL DO USUÁRIO -->
+      <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloPerfilUsuario">
+
+          <div class="modal-topo">
+            <h2 id="tituloPerfilUsuario">Meu Perfil</h2>
+            <button class="modal-fechar" data-fechar-modal type="button">×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <!-- FOTO DO PERFIL -->
+            <div class="perfil-foto-box">
+              <img src="/public/imagens/avatar-default.png" alt="Foto do usuário" class="perfil-foto" data-avatar-usuario>
+
+              <div class="perfil-nome-usuario" id="perfilNomeUsuario">Carregando...</div>
+
+              <label class="botao-geral pequeno" for="perfil_foto">
+                <i class="fa-solid fa-camera"></i>
+                Alterar foto
+              </label>
+
+              <input
+                type="file"
+                id="perfil_foto"
+                name="perfil_foto"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+              >
+            </div>
+
+            <hr class="divisor">
+
+            <!-- ALTERAR SENHA -->
+            <form id="formAlterarSenha" novalidate>
+
+              <div class="modal-campo">
+                <input type="password" id="senha_atual" name="senha_atual" required>
+                <label for="senha_atual">Senha atual</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                <label for="nova_senha">Nova senha</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                <label for="confirmar_senha">Confirmar nova senha</label>
+              </div> <br>
+
+              <button type="submit" class="botao-geral">
+                <i class="fa-solid fa-key"></i>
+                Salvar nova senha
+              </button>
+
+              <button class="botao-geral destaque" type="button" title="Sair do sistema" id="btnSair">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Sair
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Configurações da Agenda -->
+      <div id="modalConfiguracoesAgenda" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloConfigAgenda">
+
+          <div class="modal-topo">
+            <h2 id="tituloConfigAgenda">Configurações Agenda Profissional</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <!-- Abas -->
+            <div class="tabs-config">
+              <button type="button" class="botao-geral tab-btn" data-tab="cfg-geral">Geral</button>
+              <button type="button" class="botao-geral tab-btn" data-tab="cfg-horarios">Horários</button>
+              <button type="button" class="botao-geral tab-btn"data-tab="cfg-servicos">Serviços</button>
+              <button type="button" class="botao-geral tab-btn" data-tab="cfg-whatsapp">WhatsApp</button>
+            </div> <br>
+
+            <form id="formConfigAgenda" novalidate>
+
+              <!-- =======================
+                  ABA: GERAL
+              ======================= -->
+              <div id="cfg-geral" class="tab-painel ativa">
+                <div class="modal-grid">
+                  
+                  <div class="modal-campo">
+                    <select id="cfg_semana_inicio" name="semana_inicio" disabled>
+                      <option value="segunda">Segunda-feira</option>
+                      <option value="terca">Terça-feira</option>
+                      <option value="quarta">Quarta-feira</option>
+                      <option value="quinta">Quinta-feira</option>
+                      <option value="sexta">Sexta-feira</option>
+                      <option value="sabado">Sábado</option>
+                      <option value="domingo">Domingo</option>
+                    </select>
+                    <label for="cfg_semana_inicio">Início da semana</label>
+                    <small class="msg-erro" data-erro-for="cfg_semana_inicio"></small>
+                </div>
+
+                  <div class="modal-campo">
+                    <select id="cfg_intervalo_padrao" name="intervalo_padrao" required>
+                      <option value="05">05 min</option>
+                      <option value="10">10 min</option>
+                      <option value="15">15 min</option>
+                      <option value="20">20 min</option>
+                      <option value="30">30 min</option>
+                      <option value="45">45 min</option>
+                      <option value="60">60 min</option>
+                    </select>
+                    <label for="cfg_intervalo_padrao">Intervalo padrão</label>
+                    <small class="msg-erro" data-erro-for="cfg_intervalo_padrao"></small>
+
+                    <small style="display:block; margin-top:6px; font-size:12px; opacity:.75;">
+                      Defina o intervalo de tempo entre um agendamento e outro.
+                    </small>
+                  </div>
+
+                  <div class="modal-campo modal-campo-full">
+                    <textarea
+                      id="cfg_obs_geral"
+                      name="observacao_padrao"
+                      rows="3"
+                      placeholder=" "
+                    ></textarea>
+                    <label for="cfg_obs_geral">Observação (opcional)</label>
+                    <small class="msg-erro" data-erro-for="cfg_obs_geral"></small>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- =======================
+                  ABA: HORÁRIOS
+              ======================= -->
+              <div id="cfg-horarios" class="tab-painel">
+
+                <div class="modal-campo modal-campo-full">
+                  <small class="msg-ajuda">
+                    Configure os dias e horários em que a agenda ficará disponível.
+                  </small>
+                </div>
+
+                <div class="modal-campo modal-campo-full">
+                  <table class="tabela-servicos">
+                    <thead>
+                      <tr>
+                        <th>Dia</th>
+                        <th>Ativo</th>
+                        <th>Início</th>
+                        <th>Fim</th>
+                        <th>Almoço início</th>
+                        <th>Almoço fim</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Segunda</td>
+                        <td><input type="checkbox" name="horarios[segunda][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[segunda][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[segunda][hora_fim]"></td>
+                        <td><input type="time" name="horarios[segunda][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[segunda][almoco_fim]"></td>
+                      </tr>
+
+                      <tr>
+                        <td>Terça</td>
+                        <td><input type="checkbox" name="horarios[terca][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[terca][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[terca][hora_fim]"></td>
+                        <td><input type="time" name="horarios[terca][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[terca][almoco_fim]"></td>
+                      </tr>
+
+                      <tr>
+                        <td>Quarta</td>
+                        <td><input type="checkbox" name="horarios[quarta][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[quarta][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[quarta][hora_fim]"></td>
+                        <td><input type="time" name="horarios[quarta][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[quarta][almoco_fim]"></td>
+                      </tr>
+
+                      <tr>
+                        <td>Quinta</td>
+                        <td><input type="checkbox" name="horarios[quinta][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[quinta][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[quinta][hora_fim]"></td>
+                        <td><input type="time" name="horarios[quinta][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[quinta][almoco_fim]"></td>
+                      </tr>
+
+                      <tr>
+                        <td>Sexta</td>
+                        <td><input type="checkbox" name="horarios[sexta][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[sexta][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[sexta][hora_fim]"></td>
+                        <td><input type="time" name="horarios[sexta][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[sexta][almoco_fim]"></td>
+                      </tr>
+
+                      <tr>
+                        <td>Sábado</td>
+                        <td><input type="checkbox" name="horarios[sabado][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[sabado][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[sabado][hora_fim]"></td>
+                        <td><input type="time" name="horarios[sabado][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[sabado][almoco_fim]"></td>
+                      </tr>
+
+                      <tr>
+                        <td>Domingo</td>
+                        <td><input type="checkbox" name="horarios[domingo][ativo]" value="1"></td>
+                        <td><input type="time" name="horarios[domingo][hora_inicio]"></td>
+                        <td><input type="time" name="horarios[domingo][hora_fim]"></td>
+                        <td><input type="time" name="horarios[domingo][almoco_inicio]"></td>
+                        <td><input type="time" name="horarios[domingo][almoco_fim]"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+              <!-- =======================
+                  ABA: SERVIÇOS
+              ======================= -->
+              <div id="cfg-servicos" class="tab-painel">
+                <div class="modal-grid">
+
+                  <div class="modal-campo modal">
+                    <div class="linha-servico">
+                      <input id="cfg_servico_nome" name="servico_nome" type="text" placeholder="" maxlength="120">
+                      <label for="cfg_servico_nome">Nome do serviço</label>
+                    </div>
+                  </div>
+                  
+                  <!-- NOVO CAMPO DESCRIÇÃO -->
+                  <div class="modal-campo modal">
+                    <div class="linha-servico">
+                      <textarea id="cfg_servico_descricao" name="servico_descricao"rows="1" maxlength="255" placeholder=""></textarea>
+                      <label for="cfg_servico_descricao">Descrição</label>
+                    </div>
+                  </div>
+
+                  <div class="modal-campo">
+                    <select id="cfg_servico_duracao" name="servico_duracao">
+                      <option value="">Duração</option>
+                      <option value="15">15 min</option>
+                      <option value="30">30 min</option>
+                      <option value="45">45 min</option>
+                      <option value="60">1h</option>
+                      <option value="90">1h30</option>
+                      <option value="120">2h</option>
+                      <option value="180">3h</option>
+                      <option value="240">4h</option>
+                    </select>
+                    <label for="cfg_servico_duracao">Duração padrão</label>
+                  </div>
+
+                  <!-- VALOR -->
+                  <div class="modal-campo">
+                    <div class="linha-servico">
+                      <input id="cfg_servico_valor" name="servico_valor"
+                            type="text" inputmode="decimal" placeholder="" maxlength="20">
+                      <label for="cfg_servico_valor">Valor (R$)</label>
+                    </div>
+                  </div>
+
+                  <div class="modal-campo">
+                    <button id="cfg_btn_add_servico" class="botao-geral" type="button">➕ Adicionar</button>
+                  </div>
+
+                  <div class=" modal-campo-full">
+                    <table class="tabela-servicos" id="tabelaServicosConfig">
+                      <thead>
+                        <tr>
+                          <th>Serviço</th>
+                          <th>Duração</th>
+                          <th style="width: 90px;">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr class="linha-vazia">
+                          <td colspan="3">Nenhum serviço cadastrado.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- Paginação — SERVIÇOS -->
+                    <section class="section-paginacao">
+                      <div id="paginacao_servicos" class="paginacao-div"></div>
+                    </section>
+
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- =======================
+                  ABA: WHATSAPP
+                  ======================= -->
+              <div id="cfg-whatsapp" class="tab-painel">
+                <div class="modal-grid">
+
+                  <div class="modal-campo">
+                    <label for="cfg_ddd_padrao"></label>
+                    <input id="cfg_ddd_padrao" name="ddd_padrao" type="text" inputmode="numeric" maxlength="2" placeholder="DDD" value="">
+                    <small class="msg-ajuda"> Minas Gerais = 38</small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="cfg_ddi_padrao" name="ddi_padrao" type="text" inputmode="numeric" maxlength="2" placeholder="" value="">
+                    <label for="cfg_ddi_padrao">DDI padrão</label>
+                    <small class="msg-ajuda">Brasil = 55</small>
+                  </div>
+
+                  <div class="modal-campo modal-campo-full">
+                    <textarea id="cfg_msg_whats" name="msg_whats" rows="4" placeholder=""></textarea>
+                    <label for="cfg_msg_whats">Mensagem padrão</label>
+                    <small class="msg-ajuda">Variáveis: {cliente} {servico} {status} {data} {hora}</small>
+                  </div>
+
+                </div>
+              </div>
+              <br>
+
+              <!-- Ações do modal -->
+              <div class="modal-acoes">
+                <button id="btnResetarConfigAgenda"  class="botao-geral" type="button">Restaurar padrão</button>
+                <button id="btnSalvarConfigAgenda" class="botao-geral destaque" type="submit">Salvar</button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Calendário Mensal -->
+      <div id="modalCalendario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo modal-calendario">
+          <div class="modal-topo">
+            <h2>Calendário</h2>
+            <button class="modal-fechar" data-fechar-modal type="button">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <div class="cal-nav">
+              <button class="cal-btn" id="calPrev" type="button" aria-label="Mês anterior">⬅️</button>
+              <div class="cal-mes" id="calTituloMes">Janeiro 2026</div>
+              <button class="cal-btn" id="calNext" type="button" aria-label="Próximo mês">➡️</button>
+            </div>
+
+            <div class="cal-semana">
+              <span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span>
+            </div>
+
+            <div class="cal-grid" id="calGrid"></div>
+
+            <div class="cal-legenda">
+              <span class="lg"><i class="dot hoje"></i> Hoje</span>
+              <span class="lg"><i class="dot fds"></i> Fim de semana</span>
+              <span class="lg"><i class="dot fora"></i> Fora do mês</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Visualizar Agendamento -->
+      <div id="modalVisualizarAgendamento" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo modal-md">
+
+          <div class="modal-topo">
+            <h2>Visualizar Agendamento</h2>
+            <button class="modal-fechar" type="button" data-fechar-modal>×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <div class="vc-head">
+              <div class="vc-avatar" aria-hidden="true" id="vc_avatar">C</div>
+
+              <div class="vc-head-info">
+                <div class="vc-nome" id="vc_nome">—</div>
+                <div class="vc-sub">
+                  <span class="vc-tel" id="vc_telefone">Telefone: —</span>
+                  <span class="vc-chip" id="vc_chip_pagamento">—</span>
+                  <span class="vc-chip" id="vc_chip_status">—</span>
+                </div>
+              </div>
+
+              <div class="vc-head-acoes">
+                <button class="vc-btn vc-btn-whats" type="button" id="vc_btn_whats" title="WhatsApp">
+                  <i class="fa-brands fa-whatsapp"></i>
+                </button>
+                <button class="vc-btn" type="button" id="vc_btn_copiar_tel">Copiar tel</button>
+              </div>
+            </div>
+
+            <div class="vc-grid">
+              <div class="vc-card">
+                <div class="vc-titulo">Agendamento</div>
+                <div class="vc-linha"><strong>Hora:</strong> <span id="vc_hora">—</span></div>
+                <div class="vc-linha"><strong>Serviço:</strong> <span id="vc_servico">—</span></div>
+                <div class="vc-linha"><strong>Duração:</strong> <span id="vc_duracao">—</span></div>
+              </div>
+
+              <div class="vc-card">
+                <div class="vc-titulo">Observação</div>
+                <div class="vc-texto" id="vc_obs">—</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Novo Agendamento -->
+      <div id="modalNovoAgendamento" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoAgendamento">
+
+          <div class="modal-topo">
+            <h2 id="tituloNovoAgendamento">Novo Agendamento</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formNovoAgendamento" novalidate>
+
+              <div class="modal-grid">
+
+                <!-- Cliente (BUSCA) -->
+                <div class="modal-campo campo-cliente-busca">
+                  <div class="campo-cliente-wrap">
+                    <input
+                      type="text"
+                      id="ag_cliente_busca"
+                      name="ag_cliente_busca"
+                      autocomplete="off"
+                      placeholder=" "
+                      maxlength="120"
+                    >
+                    <label for="ag_cliente_busca">Buscar Cliente</label>
+
+                    <div id="ag_cliente_resultados" class="cliente-resultados" hidden></div>
+                  </div>
+
+                  <input type="hidden" id="ag_cliente_id" name="cliente_id" required>
+                  <small class="msg-erro" data-erro-for="ag_cliente_id"></small>
+                </div>
+
+                <!-- Telefone (auto, mas editável) -->
+                <div class="modal-campo">
+                  <input
+                    id="ag_cliente_tel"
+                    name="cliente_tel"
+                    type="tel"
+                    placeholder=" "
+                    maxlength="20"
+                    required
+                    disabled
+                  >
+                  <label for="ag_cliente_tel">Telefone (WhatsApp)</label>
+                  <small class="msg-erro" data-erro-for="ag_cliente_tel"></small>
+                </div>
+
+                <!-- Profissional -->
+                <div class="modal-campo" data-restrito="profissional">
+                  <select id="ag_profissional" name="id_profissional" required>
+                    <option value="">Selecione o profissional</option>
+                  </select>
+                  <label for="ag_profissional">Profissional</label>
+                  <small class="msg-erro" data-erro-for="ag_profissional"></small>
+                </div>
+
+                <!-- Serviço -->
+                <div class="modal-campo">
+                  <select id="ag_servico" name="id_servico" required>
+                    <option value="">Selecione o Profissional para escolher serviço</option>
+                  </select>
+                  <label for="ag_servico">Serviço</label>
+                  <small class="msg-erro" data-erro-for="ag_servico"></small>
+                </div>
+
+                <!-- Data -->
+                <div class="modal-campo">
+                  <input id="ag_data" name="data" type="date" placeholder=" " required>
+                  <label for="ag_data">Data</label>
+                  <small class="msg-erro" data-erro-for="ag_data"></small>
+                </div>
+
+                <!-- Hora -->
+                <div class="modal-campo">
+                  <input id="ag_hora" name="hora" type="time" placeholder=" " required>
+                  <label for="ag_hora">Horário</label>
+                  <small class="msg-erro" data-erro-for="ag_hora"></small>
+                </div>
+
+                <!-- Duração -->
+                <div class="modal-campo">
+                  <select id="ag_duracao" name="duracao" required>
+                    <option value="">Duração</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">1h</option>
+                    <option value="90">1h30</option>
+                    <option value="120">2h</option>
+                    <option value="150">2h30</option>
+                    <option value="180">3h</option>
+                    <option value="210">3h30</option>
+                  </select>
+                  <label for="ag_duracao">Duração</label>
+                  <small class="msg-erro" data-erro-for="ag_duracao"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <select id="ag_status" name="status" required>
+                    <option value="pendente">Pendente</option>
+                    <option value="confirmado">Confirmado</option>
+                  </select>
+                  <label for="ag_status">Status</label>
+                  <small class="msg-erro" data-erro-for="ag_status"></small>
+                </div>
+
+                <!-- Botão WhatsApp -->
+                <div class="modal-campo modal-campo-full">
+                  <button
+                    id="ag_btn_whats"
+                    class="botao-geral"
+                    type="button"
+                    title="Abrir conversa no WhatsApp"
+                  >
+                    <span aria-hidden="true">📲</span> Abrir WhatsApp do cliente
+                  </button>
+                  <br>
+                  <small class="msg-ajuda">Usa o telefone informado acima.</small>
+                </div>
+
+                <!-- Observação -->
+                <div class="modal-campo modal-campo-full">
+                  <textarea
+                    id="ag_obs"
+                    name="observacao"
+                    rows="1"
+                    placeholder=" "
+                    maxlength="500"
+                  ></textarea>
+                  <label for="ag_obs">Observação (opcional)</label>
+                  <small class="msg-erro" data-erro-for="ag_obs"></small>
+                </div>
+
+                <!-- Repetir semanalmente -->
+                <div class="modal-campo modal-campo-full campo-checkbox">
+
+                  <div class="campo-checkbox-box">
+                    <input
+                      id="ag_repetir_semanal"
+                      name="repetir_semanal"
+                      type="checkbox"
+                      value="1"
+                    >
+                    <label for="ag_repetir_semanal">Repetir semanalmente</label>
+                  </div>
+
+                  <small class="msg-ajuda">
+                    Ao marcar, este agendamento será repetido semanalmente no mesmo dia.
+                  </small>
+
+                  <small class="msg-ajuda" id="ag_repetir_preview" style="display:none;"></small>
+
+                </div>
+
+              </div>
+
+              <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarAgendamento" class="botao-geral destaque" type="submit">
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Editar Agendamento (AJUSTADO — com lista de clientes) -->
+      <div id="modalEditarAgendamento" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarAgendamento">
+
+          <div class="modal-topo">
+            <h2 id="tituloEditarAgendamento">Editar Agendamento</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formEditarAgendamento" novalidate>
+
+              <!-- ✅ ID do agendamento (necessário p/ editar) -->
+              <input type="hidden" id="ed_ag_id" name="id_agendamento" value="">
+
+              <div class="modal-grid">
+
+                <!-- Cliente (LISTA) -->
+                <div class="modal-campo">
+                  <select id="ed_ag_cliente_id" name="cliente_id" required>
+                    <option value="">Selecione o cliente</option>
+                    <!-- carregado via JS -->
+                  </select>
+                  <label for="ed_ag_cliente_id">Cliente</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_cliente_id"></small>
+                </div>
+
+                <!-- Telefone (auto, mas editável) -->
+                <div class="modal-campo">
+                  <input id="ed_ag_cliente_tel" name="cliente_tel" type="tel" placeholder="" maxlength="20" required>
+                  <label for="ed_ag_cliente_tel">Telefone (WhatsApp)</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_cliente_tel"></small>
+                </div>
+
+                <!-- Profissional (se for proprietário/recepção) -->
+                <div class="modal-campo" data-restrito="profissional">
+                  <select id="ed_ag_profissional" name="id_profissional">
+                    <option value="">Selecione o profissional</option>
+                    <!-- carregado via JS -->
+                  </select>
+                  <label for="ed_ag_profissional">Profissional</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_profissional"></small>
+                </div>
+
+                <!-- Serviço -->
+                <div class="modal-campo">
+                  <select id="ed_ag_servico" name="servico" required>
+                    <option value="">Selecione o serviço</option>
+                    <option value="manicure">Manicure</option>
+                    <option value="pedicure">Pedicure</option>
+                    <option value="alongamento_gel">Alongamento em Gel</option>
+                    <option value="cabelo_escova">Escova</option>
+                  </select>
+                  <label for="ed_ag_servico">Serviço</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_servico"></small>
+                </div>
+
+                <!-- Data -->
+                <div class="modal-campo">
+                  <input id="ed_ag_data" name="data" type="date" placeholder="" required>
+                  <label for="ed_ag_data">Data</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_data"></small>
+                </div>
+
+                <!-- Hora -->
+                <div class="modal-campo">
+                  <input id="ed_ag_hora" name="hora" type="time" placeholder="" required>
+                  <label for="ed_ag_hora">Horário</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_hora"></small>
+                </div>
+
+                <!-- Duração -->
+                <div class="modal-campo">
+                  <select id="ed_ag_duracao" name="duracao" required>
+                    <option value="">Duração</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">1h</option>
+                    <option value="90">1h30</option>
+                    <option value="120">2h</option>
+                  </select>
+                  <label for="ed_ag_duracao">Duração</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_duracao"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <select id="ed_ag_status" name="status" required>
+                    <option value="pendente">Pendente</option>
+                    <option value="confirmado">Confirmado</option>
+                    <option value="concluido">Concluído</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                  <label for="ed_ag_status">Status</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_status"></small>
+                </div>
+
+                <!-- Observação -->
+                <div class="modal-campo modal-campo-full">
+                  <textarea id="ed_ag_obs" name="observacao" rows="3" placeholder="" maxlength="500"></textarea>
+                  <label for="ed_ag_obs">Observação (opcional)</label>
+                  <small class="msg-erro" data-erro-for="ed_ag_obs"></small>
+                </div>
+
+
+                <!-- Botão WhatsApp (opcional) -->
+                <div class="modal-campo modal-campo-full">
+                  <button id="ed_ag_btn_whats" class="botao-geral" type="button" title="Abrir conversa no WhatsApp">
+                    <span aria-hidden="true">📲</span> Abrir WhatsApp do cliente
+                  </button> <br>
+                  <small class="msg-ajuda">Usa o telefone informado acima.</small>
+                </div>
+
+                <!-- Repetir semanalmente -->
+                <div class="modal-campo modal-campo-full campo-checkbox">
+
+                  <div class="campo-checkbox-box">
+                    <input id="ed_ag_repetir_semanal"
+                          name="repetir_semanal"
+                          type="checkbox"
+                          value="1">
+                    <label for="ed_ag_repetir_semanal">Repetir semanalmente</label>
+                  </div>
+
+                  <small class="msg-ajuda">
+                    Ao marcar, este agendamento será repetido semanalmente no mesmo dia.
+                  </small>
+
+                  <small class="msg-ajuda" id="ed_ag_repetir_preview" style="display:none;"></small>
+
+                </div>
+
+              </div> <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarEdicaoAgendamento" class="botao-geral destaque" type="submit">
+                  Salvar alterações
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Novo Cliente -->
+      <div id="modalNovoCliente" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoCliente">
+
+          <div class="modal-topo">
+            <h2 id="tituloNovoCliente">Novo Cliente</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formNovoCliente" novalidate>
+
+              <div class="modal-grid">
+
+                <!-- Nome -->
+                <div class="modal-campo">
+                  <input id="cli_nome" name="nome" type="text" placeholder="" required maxlength="120" autocomplete="name">
+                  <label for="cli_nome">Nome</label>
+                  <small class="msg-erro" data-erro-for="cli_nome"></small>
+                </div>
+
+                <!-- Telefone (WhatsApp) -->
+                <div class="modal-campo">
+                  <input id="cli_telefone" name="telefone" type="tel" placeholder="" required maxlength="20" autocomplete="tel">
+                  <label for="cli_telefone">Telefone (WhatsApp)</label>
+                  <small class="msg-erro" data-erro-for="cli_telefone"></small>
+                </div>
+
+                <!-- E-mail (opcional) -->
+                <div class="modal-campo">
+                  <input id="cli_email" name="email" type="email" placeholder="" maxlength="120" autocomplete="email">
+                  <label for="cli_email">E-mail (opcional)</label>
+                  <small class="msg-erro" data-erro-for="cli_email"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <select id="cli_status" name="status" required disabled>
+                    <option value="ativo">Ativo</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <label for="cli_status">Status</label>
+                  <small class="msg-erro" data-erro-for="cli_status"></small>
+                </div>
+
+                <!-- Observações (opcional) -->
+                <div class="modal-campo modal-campo-full">
+                  <textarea id="cli_obs" name="observacao" rows="3" placeholder="" maxlength="500"></textarea>
+                  <label for="cli_obs">Observação (opcional)</label>
+                  <small class="msg-erro" data-erro-for="cli_obs"></small>
+                </div>
+
+              </div> <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarCliente" class="botao-geral destaque" type="submit">
+                <i class="fa-solid fa-floppy-disk"></i>
+                Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Novo Serviço no Agendamento -->
+      <div id="modalNovoServicoAgendamento" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoServicoAgendamento">
+
+          <div class="modal-topo">
+            <h2 id="tituloNovoServicoAgendamento">Novo Serviço</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <form id="formNovoServicoAgendamento" novalidate>
+
+              <input
+                id="serv_ag_id_profissional"
+                name="id_profissional"
+                type="hidden"
+              >
+
+              <div class="modal-grid">
+
+                <!-- Profissional selecionado -->
+                <div class="modal-campo modal-campo-full">
+                  <input
+                    id="serv_ag_profissional_nome"
+                    type="text"
+                    placeholder=""
+                    readonly
+                  >
+                  <label for="serv_ag_profissional_nome">Profissional</label>
+                  <small class="msg-erro" data-erro-for="serv_ag_id_profissional"></small>
+                </div>
+
+                <!-- Nome do serviço -->
+                <div class="modal-campo">
+                  <input
+                    id="serv_ag_nome"
+                    name="nome"
+                    type="text"
+                    placeholder=""
+                    required
+                    maxlength="120"
+                    autocomplete="off"
+                  >
+                  <label for="serv_ag_nome">Nome do serviço</label>
+                  <small class="msg-erro" data-erro-for="serv_ag_nome"></small>
+                </div>
+
+                <!-- Duração -->
+                <div class="modal-campo">
+                  <select id="serv_ag_duracao" name="duracao_min" required>
+                    <option value="">Selecione</option>
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">1 hora</option>
+                    <option value="75">1h15</option>
+                    <option value="90">1h30</option>
+                    <option value="105">1h45</option>
+                    <option value="120">2 horas</option>
+                    <option value="150">2h30</option>
+                    <option value="180">3 horas</option>
+                    <option value="240">4 horas</option>
+                  </select>
+                  <label for="serv_ag_duracao">Duração</label>
+                  <small class="msg-erro" data-erro-for="serv_ag_duracao"></small>
+                </div>
+
+                <!-- Valor -->
+                <div class="modal-campo">
+                  <input
+                    id="serv_ag_valor"
+                    name="valor"
+                    type="text"
+                    placeholder=""
+                    required
+                    maxlength="15"
+                    inputmode="decimal"
+                    autocomplete="off"
+                  >
+                  <label for="serv_ag_valor">Valor</label>
+                  <small class="msg-erro" data-erro-for="serv_ag_valor"></small>
+                </div>
+
+                <!-- Status -->
+                <div class="modal-campo">
+                  <select id="serv_ag_status" name="status" required disabled>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                  <label for="serv_ag_status">Status</label>
+                  <small class="msg-erro" data-erro-for="serv_ag_status"></small>
+                </div>
+
+                <!-- Descrição -->
+                <div class="modal-campo modal-campo-full">
+                  <textarea
+                    id="serv_ag_descricao"
+                    name="descricao"
+                    rows="3"
+                    placeholder=""
+                    maxlength="220"
+                  ></textarea>
+                  <label for="serv_ag_descricao">Descrição (opcional)</label>
+                  <small class="msg-erro" data-erro-for="serv_ag_descricao"></small>
+                </div>
+
+              </div> <br>
+
+              <div class="modal-acoes">
+                <button id="btnSalvarServicoAgendamento" class="botao-geral destaque" type="submit">
+                  <i class="fa-solid fa-floppy-disk"></i>
+                  Salvar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    </main>
+
+
+    <script src="../js/core/lista-core.js" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
+
+    <script src="../js/agenda/lista-agenda.js" ></script> <!--Lista Agendamentos-->
+
+    <!--Modal Perfil-->
+    <script src="/public/_auth/deslogar.js" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+    <script src="../../js/perfil-usuario/alterar_perfil_foto.js" ></script> <!--Alterar Foto de perfil do modal perfil-->
+    <script src="../../js/perfil-usuario/buscar_foto_perfil.js" ></script> <!--Buscar Foto de perfil do usuario logado-->
+    <script src="../../js/perfil-usuario/alterar_senha_perfil.js" ></script> <!--Alterar senha perfil-->
+
+    <!--Modal Configuração Geral-->
+    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js" ></script> <!--Script para resetar as configurações padrão da empresa-->
+    <script src="../js/agenda/servico-profissional/cadastrar-servico.js" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
+    <script src="../js/agenda/servico-profissional/lista-servico.js" ></script> <!--Lista Serviço do Modal Configurações-->
+    <script src="../js/agenda/servico-profissional/excluir-servico.js" ></script> <!--Excluir servico no modal configurações-->
+   
+    
+    <!--Modal Novo Agendamento-->
+    <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js" ></script> <!--Lista de clientes no modal novo agendamento-->
+    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js" ></script>
+
+    <!--Modal Novo CLiente-->
+    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js" ></script> <!--Cadastrar Clientes-->
+    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
+
+
+    <!--Universal-->
+    <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+    <script src="../../js/altear_status_universal.js" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+
+    <script> // Script para retrair o meno lateral 
+        document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.js-toggle-menu').forEach(btn => {
+            btn.addEventListener('click', () => {
+            document.body.classList.toggle('menu-fechado');
+
+            // (opcional) salvar preferência
+            localStorage.setItem(
+                'menuFechado',
+                document.body.classList.contains('menu-fechado') ? '1' : '0'
+            );
+            });
+        });
+
+        // (opcional) restaurar preferência ao abrir a página
+        if (localStorage.getItem('menuFechado') === '1') {
+            document.body.classList.add('menu-fechado');
+        }
+        });
+    </script>
+
+    <script> //Abrir e ferchar todos os modal
+    (() => {
+      "use strict";
+
+      const MODAL_CLASSES = ["modal-geral", "modal-cards"];
+      const MODAIS_COM_ABERTURA_PROPRIA = ["modalConfiguracoesAgenda"];
+
+      function abrirModal(id) {
+        const modal = document.getElementById(id);
+        if (!modal) {
+          console.warn("Modal não encontrado:", id);
+          return;
+        }
+
+        modal.classList.add("ativo");
+        modal.setAttribute("aria-hidden", "false");
+      }
+
+      function fecharModal(modal) {
+        if (!modal) return;
+
+        modal.classList.remove("ativo");
+        modal.setAttribute("aria-hidden", "true");
+      }
+
+      function getModalPai(element) {
+        if (!element) return null;
+
+        return element.closest(
+          MODAL_CLASSES.map((c) => "." + c).join(",")
+        );
+      }
+
+      function getModaisAtivos() {
+        return MODAL_CLASSES.flatMap((classe) =>
+          Array.from(document.querySelectorAll(`.${classe}.ativo`))
+        );
+      }
+
+      function getModalAtivoTopo() {
+        const ativos = getModaisAtivos();
+        if (!ativos.length) return null;
+        return ativos[ativos.length - 1];
+      }
+
+      function isCampoTexto(el) {
+        if (!el) return false;
+
+        const tag = (el.tagName || "").toLowerCase();
+        return tag === "textarea" || el.isContentEditable === true;
+      }
+
+      function clicarBotaoPrincipalDoModal(modal) {
+        if (!modal) return false;
+
+        const seletores = [
+          "[data-confirmar]",
+          "[data-salvar]",
+          "[data-confirm]",
+          "[data-submit]",
+          ".btn-salvar",
+          ".btn-confirmar",
+          'button[type="submit"]',
+          'input[type="submit"]'
+        ];
+
+        for (const seletor of seletores) {
+          const botao = modal.querySelector(seletor);
+
+          if (
+            botao &&
+            !botao.disabled &&
+            botao.offsetParent !== null
+          ) {
+            botao.click();
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      document.addEventListener("click", (e) => {
+        const abrir = e.target.closest("[data-abrir-modal]");
+
+        if (abrir) {
+          const modalId = abrir.getAttribute("data-abrir-modal");
+
+          if (MODAIS_COM_ABERTURA_PROPRIA.includes(modalId)) {
+            return;
+          }
+
+          abrirModal(modalId);
+          return;
+        }
+
+        if (e.target.closest("[data-fechar-modal]")) {
+          const modal = getModalPai(e.target);
+          if (modal) fecharModal(modal);
+          return;
+        }
+      });
+
+      document.addEventListener("keydown", (e) => {
+        const modalAtivo = getModalAtivoTopo();
+        if (!modalAtivo) return;
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          fecharModal(modalAtivo);
+          return;
+        }
+
+        if (e.key === "Enter") {
+          const alvo = e.target;
+
+          if (isCampoTexto(alvo)) return;
+          if (alvo && alvo.matches("button, [type='submit']")) return;
+
+          const clicou = clicarBotaoPrincipalDoModal(modalAtivo);
+
+          if (clicou) {
+            e.preventDefault();
+          }
+        }
+      });
+    })();
+    </script>
+
+    <script> // scrit do cabeçalho para informar o dia atual sempre
+      document.addEventListener('DOMContentLoaded', () => {
+
+        const elDia = document.querySelector('.cabecalho-dia');
+        const elData = document.querySelector('.cabecalho-data');
+
+        const hoje = new Date();
+
+        const diasSemana = [
+          'Domingo',
+          'Segunda-feira',
+          'Terça-feira',
+          'Quarta-feira',
+          'Quinta-feira',
+          'Sexta-feira',
+          'Sábado'
+        ];
+
+        const meses = [
+          'Janeiro',
+          'Fevereiro',
+          'Março',
+          'Abril',
+          'Maio',
+          'Junho',
+          'Julho',
+          'Agosto',
+          'Setembro',
+          'Outubro',
+          'Novembro',
+          'Dezembro'
+        ];
+
+        const diaSemana = diasSemana[hoje.getDay()];
+        const dia = hoje.getDate();
+        const mes = meses[hoje.getMonth()];
+        const ano = hoje.getFullYear();
+
+        elDia.textContent = diaSemana;
+        elData.textContent = `${dia} de ${mes} de ${ano}`;
+
+      });
+    </script>
+
+    <script> //script navegação em abas + Ajusta o dias da semana com as datas corretas + integrção com mini calendario
+    document.addEventListener('DOMContentLoaded', () => {
+      const botoes = document.querySelectorAll('.menu-principal-abas button[data-aba]');
+      const abas = document.querySelectorAll('.conteudo-aba');
+      if (!botoes.length) return;
+
+      // =========================
+      // CONFIG
+      // =========================
+      const feriadosFixos = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','12-25'];
+
+      const mapaAbaParaDia = {
+        segunda: 1,
+        terca: 2,
+        quarta: 3,
+        quinta: 4,
+        sexta: 5,
+        sabado: 6,
+        domingo: 0
+      };
+
+      // =========================
+      // HELPERS
+      // =========================
+      function formatarData(d){
+        return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+      }
+
+      function isFeriado(d){
+        const key = String(d.getMonth() + 1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        return feriadosFixos.includes(key);
+      }
+
+      // Retorna a segunda-feira da semana da data (segunda como início)
+      function getMonday(date){
+        const d = new Date(date);
+        d.setHours(0,0,0,0);
+        const day = d.getDay(); // 0 dom ... 6 sab
+        const diff = (day === 0) ? -6 : (1 - day); // domingo volta 6
+        d.setDate(d.getDate() + diff);
+        return d;
+      }
+
+      function addDays(date, days){
+        const d = new Date(date);
+        d.setDate(d.getDate() + days);
+        return d;
+      }
+
+      function abrirAbaPorId(idAba) {
+        botoes.forEach(b => b.classList.remove('ativa'));
+        abas.forEach(a => a.classList.remove('ativa'));
+
+        const botaoAtivo = document.querySelector(`.menu-principal-abas button[data-aba="${idAba}"]`);
+        const abaAtiva = document.getElementById(idAba);
+        if (!botaoAtivo || !abaAtiva) return;
+
+        botaoAtivo.classList.add('ativa');
+        abaAtiva.classList.add('ativa');
+      }
+
+      // =========================
+      // ESTADO DA SEMANA (A CHAVE)
+      // =========================
+      let baseMonday = getMonday(new Date()); // semana atual
+
+      // Atualiza texto de data nos botões + classes (hoje/feriado)
+      function renderWeekNav(){
+        const hoje = new Date();
+        hoje.setHours(0,0,0,0);
+
+        botoes.forEach(btn => {
+          const aba = btn.dataset.aba;
+          const targetDow = mapaAbaParaDia[aba];
+          if (targetDow === undefined) return;
+
+          // data do botão baseada na baseMonday
+          // segunda=1 -> offset 0, terça=2 -> offset 1 ... domingo=0 -> offset 6
+          const offset = (targetDow === 0) ? 6 : (targetDow - 1);
+          const data = addDays(baseMonday, offset);
+
+          // seta data no span .dia-data (se existir)
+          const elData = btn.querySelector('.dia-data');
+          if (elData) elData.textContent = formatarData(data);
+
+          // classes visuais
+          btn.classList.remove('hoje', 'feriado');
+          if (data.toDateString() === hoje.toDateString()) btn.classList.add('hoje');
+          if (isFeriado(data)) btn.classList.add('feriado');
+        });
+      }
+
+      // API pública (mini-calendário vai usar isso)
+      window.AgendaSemana = {
+        // pular para a semana do dia clicado
+        irParaData(dateOrISO, abrirAbaDoDia = true){
+
+          function parseISODateLocal(iso){
+            // iso esperado: "YYYY-MM-DD"
+            const [y, m, d] = String(iso).split('-').map(Number);
+            return new Date(y, (m || 1) - 1, d || 1); // LOCAL, não UTC
+          }
+
+          let d;
+
+          if (dateOrISO instanceof Date) {
+            d = new Date(dateOrISO);
+          } else if (typeof dateOrISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateOrISO)) {
+            d = parseISODateLocal(dateOrISO);
+          } else {
+            d = new Date(dateOrISO);
+          }
+
+          if (isNaN(d.getTime())) return;
+          d.setHours(0,0,0,0);
+
+          baseMonday = getMonday(d);
+          renderWeekNav();
+
+          if (abrirAbaDoDia){
+            const mapaDias = ["domingo","segunda","terca","quarta","quinta","sexta","sabado"];
+            abrirAbaPorId(mapaDias[d.getDay()] || "segunda");
+          } else {
+            abrirAbaPorId("segunda");
+          }
+        },
+
+
+        // navegação semanal (se você tiver botões semana anterior/próxima)
+        semanaAnterior(){
+          baseMonday = addDays(baseMonday, -7);
+          renderWeekNav();
+          abrirAbaPorId("segunda");
+        },
+        proximaSemana(){
+          baseMonday = addDays(baseMonday, +7);
+          renderWeekNav();
+          abrirAbaPorId("segunda");
+        },
+
+        // opcional: pegar a segunda atual (debug/uso futuro)
+        getBaseMonday(){
+          return new Date(baseMonday);
+        }
+      };
+
+      // =========================
+      // EVENTOS
+      // =========================
+      // clique manual em abas (mantém seu comportamento)
+      botoes.forEach(btn => {
+        btn.addEventListener('click', () => abrirAbaPorId(btn.dataset.aba));
+      });
+
+      // INIT
+      renderWeekNav();
+
+      // abrir no dia atual
+      const mapaDias = ["domingo","segunda","terca","quarta","quinta","sexta","sabado"];
+      abrirAbaPorId(mapaDias[new Date().getDay()] || "segunda");
+    });
+    </script>
+
+    <script> //script do calendario para informar os dias do mês
+    document.addEventListener('DOMContentLoaded', () => {
+      const modal = document.getElementById('modalCalendario');
+      const btnPrev = document.getElementById('calPrev');
+      const btnNext = document.getElementById('calNext');
+      const tituloMes = document.getElementById('calTituloMes');
+      const grid = document.getElementById('calGrid');
+
+      if (!modal || !btnPrev || !btnNext || !tituloMes || !grid) return;
+
+      const hoje = new Date();
+      hoje.setHours(0,0,0,0);
+
+      let viewYear = hoje.getFullYear();
+      let viewMonth = hoje.getMonth();
+
+      const mesesPT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+      function pad2(n){ return String(n).padStart(2,'0'); }
+      function toISODateLocal(d){
+        return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+      }
+      function dowMon0(d){
+        const js = d.getDay();       // 0 dom .. 6 sab
+        return (js + 6) % 7;         // 0 seg .. 6 dom
+      }
+
+      function fecharModal(){
+        modal.classList.remove('aberto'); // se seu script global usa isso, ok.
+        modal.setAttribute('aria-hidden','true');
+      }
+
+      function renderMes(){
+        tituloMes.textContent = `${mesesPT[viewMonth]} ${viewYear}`;
+        grid.innerHTML = '';
+
+        const first = new Date(viewYear, viewMonth, 1);
+        first.setHours(0,0,0,0);
+
+        const startOffset = dowMon0(first); // volta até segunda
+        const start = new Date(first);
+        start.setDate(first.getDate() - startOffset);
+
+        for (let i = 0; i < 42; i++){
+          const d = new Date(start);
+          d.setDate(start.getDate() + i);
+          d.setHours(0,0,0,0);
+
+          const isOutside = d.getMonth() !== viewMonth;
+          const isToday = d.toDateString() === hoje.toDateString();
+          const idxMon = dowMon0(d);
+          const isWeekend = (idxMon === 5 || idxMon === 6); // sáb/dom
+
+          const cell = document.createElement('button');
+          cell.type = 'button';
+          cell.className = 'cal-dia';
+          cell.textContent = d.getDate();
+
+          if (isOutside) cell.classList.add('fora');
+          if (isWeekend) cell.classList.add('fds');
+          if (isToday) cell.classList.add('hoje');
+
+          cell.dataset.date = toISODateLocal(d);
+
+          cell.addEventListener('click', () => {
+            const iso = cell.dataset.date;
+
+            if (window.AgendaSemana && typeof window.AgendaSemana.irParaData === 'function') {
+              window.AgendaSemana.irParaData(iso, true);
+            }
+
+            // fecha usando o padrão do sistema (se for data-fechar-modal, o clique já fecha;
+            // aqui é só garantia)
+            fecharModal();
+          });
+
+          grid.appendChild(cell);
+        }
+      }
+
+      // ✅ Quando abrir o modal pelo seu botão data-abrir-modal, renderiza
+      document.querySelectorAll('[data-abrir-modal="modalCalendario"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          // espera o modal abrir e aí renderiza (evita “grid vazio”)
+          setTimeout(() => {
+            viewYear = hoje.getFullYear();
+            viewMonth = hoje.getMonth();
+            renderMes();
+          }, 0);
+        });
+      });
+
+      btnPrev.addEventListener('click', () => {
+        viewMonth--;
+        if (viewMonth < 0){ viewMonth = 11; viewYear--; }
+        renderMes();
+      });
+
+      btnNext.addEventListener('click', () => {
+        viewMonth++;
+        if (viewMonth > 11){ viewMonth = 0; viewYear++; }
+        renderMes();
+      });
+    });
+    </script>
+
+  <script>
+  /* ==========================================================
+    Script navegação e ABAS do MENU CONFIGURAÇÕES DA AGENDA
+  ========================================================== */
+  (() => {
+    "use strict";
+
+    const MODAL_ID = "modalConfiguracoesAgenda";
+    const abasAlteradas = {};
+
+    function abaIgnoraBloqueio(tabId) {
+      return tabId === "cfg-servicos";
+    }
+
+    function setAba(modal, tabId) {
+      modal.querySelectorAll(".tabs-config .botao-geral[data-tab]")
+        .forEach(b => b.classList.remove("ativa"));
+
+      modal.querySelectorAll(".tab-painel")
+        .forEach(p => p.classList.remove("ativa"));
+
+      const btn = modal.querySelector(`.tabs-config .botao-geral[data-tab="${CSS.escape(tabId)}"]`);
+      if (btn) btn.classList.add("ativa");
+
+      const painel = modal.querySelector(`#${CSS.escape(tabId)}`);
+      if (painel) painel.classList.add("ativa");
+    }
+
+    function getAbaAtiva(modal) {
+      const btnAtivo = modal.querySelector(".tabs-config .botao-geral.ativa[data-tab]");
+      return btnAtivo ? btnAtivo.getAttribute("data-tab") : null;
+    }
+
+    function marcarAbaComoAlterada(tabId) {
+      if (!tabId || abaIgnoraBloqueio(tabId)) return;
+      abasAlteradas[tabId] = true;
+    }
+
+    function marcarAbaComoSalva(tabId) {
+      if (!tabId) return;
+      abasAlteradas[tabId] = false;
+    }
+
+    function abaTemAlteracao(tabId) {
+      if (abaIgnoraBloqueio(tabId)) return false;
+      return !!abasAlteradas[tabId];
+    }
+
+    function limparAlteracoes() {
+      Object.keys(abasAlteradas).forEach(tabId => {
+        abasAlteradas[tabId] = false;
+      });
+    }
+
+    function getToastStack() {
+      let stack = document.querySelector(".ui-toast-stack");
+
+      if (!stack) {
+        stack = document.createElement("div");
+        stack.className = "ui-toast-stack";
+        document.body.appendChild(stack);
+      }
+
+      return stack;
+    }
+
+    function mostrarAlerta(msg) {
+      const stack = getToastStack();
+
+      const alerta = document.createElement("div");
+      alerta.className = "ui-alert ui-alert--warning";
+      alerta.setAttribute("role", "alert");
+      alerta.setAttribute("aria-live", "assertive");
+
+      alerta.innerHTML = `
+        <div class="ui-alert__icon" aria-hidden="true">!</div>
+
+        <div>
+          <p class="ui-alert__title">Atenção</p>
+          <div class="ui-alert__msg">${msg}</div>
+        </div>
+
+        <div class="ui-alert__actions">
+          <button type="button" class="ui-alert__btn ui-alert__btn--primary">OK</button>
+        </div>
+      `;
+
+      const btnOk = alerta.querySelector(".ui-alert__btn");
+
+      function fecharAlerta() {
+        if (!alerta.isConnected) return;
+        alerta.classList.add("is-leaving");
+        setTimeout(() => {
+          if (alerta.isConnected) alerta.remove();
+        }, 150);
+      }
+
+      btnOk.addEventListener("click", fecharAlerta);
+
+      stack.appendChild(alerta);
+
+      setTimeout(() => {
+        fecharAlerta();
+      }, 3500);
+    }
+
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(`#${MODAL_ID} .tabs-config .botao-geral[data-tab]`);
+      if (!btn) return;
+
+      const modal = document.getElementById(MODAL_ID);
+      if (!modal) return;
+
+      const novaTabId = btn.getAttribute("data-tab");
+      if (!novaTabId) return;
+
+      const abaAtual = getAbaAtiva(modal);
+
+      if (
+        abaAtual &&
+        abaAtual !== novaTabId &&
+        !abaIgnoraBloqueio(abaAtual) &&
+        abaTemAlteracao(abaAtual)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (typeof e.stopImmediatePropagation === "function") {
+          e.stopImmediatePropagation();
+        }
+
+        mostrarAlerta("Para acessar outra aba, salve os dados alterados antes.");
+        return false;
+      }
+
+      e.preventDefault();
+      setAba(modal, novaTabId);
+      return false;
+    }, true);
+
+    document.addEventListener("input", (e) => {
+      const modal = document.getElementById(MODAL_ID);
+      if (!modal || !modal.contains(e.target)) return;
+
+      const abaAtual = getAbaAtiva(modal);
+      if (!abaAtual) return;
+      if (abaIgnoraBloqueio(abaAtual)) return;
+
+      const painelAtivo = modal.querySelector(`#${CSS.escape(abaAtual)}.tab-painel.ativa`);
+      if (!painelAtivo) return;
+
+      if (painelAtivo.contains(e.target)) {
+        marcarAbaComoAlterada(abaAtual);
+      }
+    });
+
+    document.addEventListener("change", (e) => {
+      const modal = document.getElementById(MODAL_ID);
+      if (!modal || !modal.contains(e.target)) return;
+
+      const abaAtual = getAbaAtiva(modal);
+      if (!abaAtual) return;
+      if (abaIgnoraBloqueio(abaAtual)) return;
+
+      const painelAtivo = modal.querySelector(`#${CSS.escape(abaAtual)}.tab-painel.ativa`);
+      if (!painelAtivo) return;
+
+      if (painelAtivo.contains(e.target)) {
+        marcarAbaComoAlterada(abaAtual);
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const modal = document.getElementById(MODAL_ID);
+      if (!modal) return;
+
+      const algumAtivo = modal.querySelector(".tabs-config .botao-geral.ativa");
+      if (!algumAtivo) setAba(modal, "cfg-geral");
+
+      limparAlteracoes();
+    });
+
+    window.ConfigAgendaTabs = {
+      marcarAbaComoSalva,
+      marcarAbaComoAlterada,
+      abaTemAlteracao,
+      limparAlteracoes,
+      abaIgnoraBloqueio,
+      getAbaAtiva: () => {
+        const modal = document.getElementById(MODAL_ID);
+        return modal ? getAbaAtiva(modal) : null;
+      }
+    };
+  })();
+  </script>
+
+  </body>
+</html>

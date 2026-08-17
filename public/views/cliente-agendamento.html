@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="pt-br">
+    <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agenda • Agendamento</title>
+    
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-agendamento-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-agendamento-mobile.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
+    
+    <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
+    <script src="/public/_auth/sessao.js" ></script> 
+    </head>
+
+    <body>
+        
+        <!-- Informações Superiores -->
+        <header class="Cabecalho cabecalho-agenda">
+
+            <!-- Lado esquerdo -->
+            <div class="cabecalho-esquerda">
+                <span class="badge-hoje">Hoje</span>
+                <h1 class="cabecalho-dia">Segunda-feira</h1>
+                <span class="cabecalho-data">10 de Janeiro de 2026</span>
+            </div>
+
+            <!-- Lado direito -->
+            <div class="cabecalho-direita">
+                <!-- PÁGINA INICIAL -->
+                <a href="../views/cliente-perfil.html" class="botao-geral destaque" title="Página inicial">
+                    <i class="fa-solid fa-house"></i>
+                    <span class="btn-texto">Início</span>
+                </a>
+            </div>
+    </header>
+
+    <main class="cadastro-cliente">
+
+        <nav class="tabs">
+
+            <button class="tab-btn active" data-tab="profissional" type="button">
+                <span class="tab-step"></span>
+                <i class="fa-solid fa-user-tie"></i>
+                <span class="tab-text">Profissional</span>
+            </button>
+
+            <button class="tab-btn" data-tab="servico" type="button">
+                <span class="tab-step"></span>
+                <i class="fa-solid fa-scissors"></i>
+                <span class="tab-text">Serviço</span>
+            </button>
+
+            <button class="tab-btn" data-tab="horario" type="button">
+                <span class="tab-step"></span>
+                <i class="fa-solid fa-clock"></i>
+                <span class="tab-text">Horário</span>
+            </button>
+
+            <button class="tab-btn" data-tab="confirmar" type="button">
+                <span class="tab-step"></span>
+                <i class="fa-solid fa-circle-check"></i>
+                <span class="tab-text">Confirmar</span>
+            </button>
+        </nav>
+
+
+
+        <!-- CONTEÚDO DAS ABAS -->
+        <section class="tabs-content">
+
+            <!-- ABA 1: PROFISSIONAL -->
+            <div class="tab-pane active" id="tab-profissional">
+                <div class="card">
+                    <p class="card-sub">
+                    <i class="fa-solid fa-user-tie icon-tab"></i>
+                    Selecione o profissional desejado.
+                    </p>
+
+                    <!-- onde o JS vai renderizar -->
+                    <div id="listaProfissionais" class="u-list" aria-live="polite"></div>
+
+                    <!-- guarda o escolhido -->
+                    <input type="hidden" id="ag_profissional_id" value="">
+                    <input type="hidden" id="ag_profissional_nome" value="">
+
+                    <div class="acoes">
+
+                    <button class="botao-geral destaque" type="button" id="btnContinuarProfissional">
+                        <i class="fa-solid fa-arrow-right"></i>
+                        Continuar
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA 2: SERVIÇO -->
+            <div class="tab-pane" id="tab-servico">
+                <div class="card">
+                    <p class="card-sub">
+                    <i class="fa-solid fa-scissors icon-tab"></i>
+                    Selecione um ou mais serviços.
+                    </p>
+
+                    <!-- onde o JS vai renderizar -->
+                    <div id="listaServicos" class="u-list" aria-live="polite"></div>
+
+                    <!-- guarda os serviços escolhidos -->
+                    <input type="hidden" id="ag_servicos_json" value="[]">
+                    <input type="hidden" id="ag_servicos_total" value="0">
+
+                    <div class="acoes">
+                    <button class="botao-geral" type="button" id="btnVoltarServico">
+                        <i class="fa-solid fa-arrow-left"></i>
+                        Voltar
+                    </button>
+
+                    <button class="botao-geral destaque" type="button" id="btnContinuarServico" >
+                        <i class="fa-solid fa-arrow-right"></i>
+                        Continuar
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA: HORÁRIO -->
+            <div class="tab-pane" id="tab-horario" aria-labelledby="tab-horario-btn">
+                <div class="card">
+                    <p class="card-sub">Selecione uma data e um horário disponível.</p>
+
+                    <!-- Cabeçalho do Mês (linha do tempo) -->
+                    <div class="u-mes-topo">
+                    <button type="button" class="u-mes-nav" id="btnMesPrev" aria-label="Mês anterior">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+
+                    <div class="u-mes-titulo">
+                        <span id="labelMesAtual">—</span>
+                    </div>
+
+                    <button type="button" class="u-mes-nav" id="btnMesNext" aria-label="Próximo mês">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                    </div>
+
+                    <!-- Dias do mês (horizontal) -->
+                    <div class="u-dias-wrap" role="group" aria-label="Selecione uma data">
+                    <div class="u-dias" id="listaDias"></div>
+                    </div>
+
+                    <!-- Horários -->
+                <div class="u-horarios" id="listaHorarios"></div>
+
+                    <!-- hidden -->
+                    <input type="hidden" id="ag_data_iso" name="ag_data_iso" value="">
+                    <input type="hidden" id="ag_hora" name="ag_hora" value="">
+
+                    <div class="u-actions">
+                    <button class="botao-geral" type="button" id="btnVoltarHorario">
+                        <i class="fa-solid fa-arrow-left"></i> Voltar
+                    </button>
+
+                    <button class="botao-geral destaque" type="button" id="btnContinuarHorario" >
+                        <i class="fa-solid fa-arrow-right"></i> Continuar
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <!--ABA: CONFIRMAR -->
+            <div class="tab-pane" id="tab-confirmar" aria-labelledby="tab-confirmar-btn">
+                <div class="card">
+                    <h3 class="u-title">Revise seu agendamento:</h3>
+
+                    <!-- Resumo -->
+                    <div class="u-resumo" id="boxResumoAgendamento"></div>
+
+                    <!-- Observação -->
+                    <div class="u-obs">
+                    <label class="u-obs-label" for="ag_obs">Observação:</label>
+                    <textarea id="ag_obs" name="ag_obs" rows="4"
+                        placeholder="Se necessário adicione algum detalhe aqui"></textarea>
+                    </div>
+
+                    <div class="u-actions u-actions-stack">
+                    <button class="botao-geral" type="button" id="btnVoltarConfirmar">
+                        <i class="fa-solid fa-arrow-left"></i> Voltar
+                    </button>
+
+                    <button class="botao-geral destaque" type="button" id="btnAgendarFinal">
+                        <i class="fa-solid fa-calendar-check"></i> Agendar
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+
+        <section> <!--Todos os Modals-->
+
+        </section>
+
+
+    </main>
+
+    <script src="../js/cliente-agendamento/lista-profissionais.js" ></script> <!--Lista de Profissionais para o cliente selecionar o da sua necessidade-->
+    <script src="../js/cliente-agendamento/Llista-servicos.js" ></script> <!--Lista de serviços para o cliente escolher-->
+    <script src="../js/cliente-agendamento/selecionar-horario.js" ></script> <!--Selecionar Horarios dos clientes-->
+    <script src="../js/cliente-agendamento/confirmar-agendamento.js" ></script> <!--Confirmar o agendamento selecionado pelo cliente-->
+
+        <script> // scrit do cabeçalho para informar o dia atual sempre
+            document.addEventListener('DOMContentLoaded', () => {
+
+            const elDia = document.querySelector('.cabecalho-dia');
+            const elData = document.querySelector('.cabecalho-data');
+
+            const hoje = new Date();
+
+            const diasSemana = [
+                'Domingo',
+                'Segunda-feira',
+                'Terça-feira',
+                'Quarta-feira',
+                'Quinta-feira',
+                'Sexta-feira',
+                'Sábado'
+            ];
+
+            const meses = [
+                'Janeiro',
+                'Fevereiro',
+                'Março',
+                'Abril',
+                'Maio',
+                'Junho',
+                'Julho',
+                'Agosto',
+                'Setembro',
+                'Outubro',
+                'Novembro',
+                'Dezembro'
+            ];
+
+            const diaSemana = diasSemana[hoje.getDay()];
+            const dia = hoje.getDate();
+            const mes = meses[hoje.getMonth()];
+            const ano = hoje.getFullYear();
+
+            elDia.textContent = diaSemana;
+            elData.textContent = `${dia} de ${mes} de ${ano}`;
+
+            });
+        </script>
+
+        <script> //Abrir e fechar todos os modals da pagina
+            /* ============================
+            CONFIGURAÇÃO DE CLASSES
+            ============================ */
+            const MODAL_CLASSES = ['modal-geral', 'modal-cards'];
+
+            /* ============================
+            FUNÇÕES
+            ============================ */
+            function abrirModal(id){
+            const modal = document.getElementById(id);
+            if(!modal){
+                console.warn('Modal não encontrado:', id);
+                return;
+            }
+            modal.classList.add('ativo');
+            }
+
+            function fecharModal(modal){
+            modal.classList.remove('ativo');
+            }
+
+            function getModalPai(element){
+            return element.closest(
+                MODAL_CLASSES.map(c => '.' + c).join(',')
+            );
+            }
+
+            /* ============================
+            EVENTOS DE CLICK
+            ============================ */
+            document.addEventListener('click', (e) => {
+
+            /* ABRIR */
+            const abrir = e.target.closest('[data-abrir-modal]');
+            if(abrir){
+                abrirModal(abrir.getAttribute('data-abrir-modal'));
+                return;
+            }
+
+            /* FECHAR (BOTÃO) */
+            if(e.target.closest('[data-fechar-modal]')){
+                const modal = getModalPai(e.target);
+                if(modal) fecharModal(modal);
+                return;
+            }
+
+            /* FECHAR (CLIQUE FORA) */
+            MODAL_CLASSES.forEach(classe => {
+                if(e.target.classList.contains(classe)){
+                fecharModal(e.target);
+                }
+            });
+
+            });
+
+            /* ============================
+            TECLA ESC
+            ============================ */
+            document.addEventListener('keydown', (e) => {
+            if(e.key === 'Escape'){
+                MODAL_CLASSES.forEach(classe => {
+                document
+                    .querySelectorAll(`.${classe}.ativo`)
+                    .forEach(m => fecharModal(m));
+                });
+            }
+            });
+        </script>
+
+        <script> //script para navegação em Abas
+        (() => {
+        "use strict";
+
+        function TabsUniversal(root = document) {
+            const buttons = Array.from(root.querySelectorAll(".tab-btn"));
+            const panes   = Array.from(root.querySelectorAll(".tab-pane"));
+            if (!panes.length) return null;
+
+            function activate(tabName) {
+            const pane = root.querySelector(`#tab-${tabName}`);
+            if (!pane) return;
+
+            panes.forEach(p => p.classList.remove("active"));
+            pane.classList.add("active");
+
+            // se existir barra de tabs, marca ativo nela também
+            if (buttons.length) {
+                buttons.forEach(b => {
+                b.classList.remove("active");
+                b.setAttribute("aria-selected", "false");
+                });
+
+                const btn = buttons.find(b => b.dataset.tab === tabName);
+                if (btn) {
+                btn.classList.add("active");
+                btn.setAttribute("aria-selected", "true");
+                }
+            }
+            }
+
+            return { go: activate };
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            window.Tabs = TabsUniversal(document);
+
+            // garante que inicia na primeira aba visível (se já tiver active, mantém)
+            if (window.Tabs && typeof window.Tabs.go === "function") {
+            const activePane = document.querySelector(".tab-pane.active");
+            if (!activePane) window.Tabs.go("profissional");
+            }
+        });
+        })();
+        </script>
+
+    </body>
+</html>
+
