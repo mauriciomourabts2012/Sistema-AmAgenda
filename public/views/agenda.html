@@ -5,71 +5,86 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AmAgenda • Studio</title>
   
-    <link rel="stylesheet" href="../css/agenda/agenda-web.css"/>
-    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20260818_2"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=20260818_1"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=20260817_3"/>
+    <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
     <link rel="stylesheet" href="../css/filtro-paginacao-web.css"/>
     <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
     <link rel="stylesheet" href="../css/mensagem-erro-universal.css">
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
-    <script src="/public/_auth/sessao.js" ></script>  
+    <script src="/public/_auth/sessao.js?v=20260818_1"></script>
 
   </head>
 
-  <body>
-      
+  <body data-menu-contexto="agenda">
+    <!-- ======================================================
+         COMPONENTE: MENU LATERAL
+         Estrutura HTML: esta seção até "FIM: MENU LATERAL".
+         Estilos: public/css/menu-lateral/menu-lateral-web.css
+                  public/css/menu-lateral/menu-lateral-mobile.css
+         Comportamento: public/js/menu-lateral/menu-lateral.js
+         Desktop: recolhida e expandida temporariamente no hover.
+         Mobile/tablet: drawer controlado pelo botão do cabeçalho.
+         ====================================================== -->
+    <aside id="sidebarAgenda" class="sidebar-agenda" aria-label="Navegação principal">
+      <!-- Marca da empresa e botão de fechamento no mobile. -->
+      <div class="sidebar-marca" data-identidade-abrir>
+        <span class="sidebar-marca-icone" aria-hidden="true">
+          <img src="../imagens/logo-menu.png" alt="Logo AmAgenda" class="sidebar-marca-logo" data-identidade-logo/>
+        </span>
+        <span class="sidebar-texto sidebar-marca-texto" data-identidade-nome>AmAgenda</span>
+        <button id="fecharSidebarAgenda" class="sidebar-fechar" type="button" aria-label="Fechar menu">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <!-- Itens inseridos dinamicamente por menu-lateral.js conforme o contexto da página. -->
+      <nav class="sidebar-navegacao" aria-label="Ações da agenda" data-menu-navegacao></nav>
+
+      <!-- Estrutura visual reservada para a futura central de ajuda. -->
+      <button class="sidebar-item sidebar-ajuda" type="button" title="Ajuda" aria-label="Ajuda">
+        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+        <span class="sidebar-texto">Ajuda</span>
+        <i class="fa-solid fa-chevron-right sidebar-ajuda-seta" aria-hidden="true"></i>
+      </button>
+    </aside>
+
+    <!-- Fundo clicável exibido atrás do menu lateral no mobile/tablet. -->
+    <button id="overlaySidebarAgenda" class="sidebar-overlay" type="button" aria-label="Fechar menu" tabindex="-1"></button>
+    <!-- ==================== FIM: MENU LATERAL ==================== -->
+
+    <div class="agenda-app-shell">
     <!-- Informações Superiores -->
     <header class="cabecalho-agenda">
 
       <!-- Lado esquerdo -->
       <div class="cabecalho-esquerda">
-        <span class="badge-hoje">Hoje</span>
-        <h1 class="cabecalho-dia">Segunda-feira</h1>
-        <span class="cabecalho-data">10 de Janeiro de 2026</span>
+        <button id="abrirSidebarAgenda" class="sidebar-abrir" type="button" aria-label="Abrir menu" aria-controls="sidebarAgenda" aria-expanded="false">
+          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <div class="cabecalho-data-grupo">
+          <span class="badge-hoje">Hoje</span>
+          <h1 class="cabecalho-dia">Segunda-feira</h1>
+          <span class="cabecalho-data">10 de Janeiro de 2026</span>
+        </div>
       </div>
 
       <!-- Lado direito -->
       <div class="cabecalho-direita">
-
-        <!-- NOVO CLIENTE -->
-        <button class="botao-geral"type="button" title="Cadastrar novo cliente" aria-label="Cadastrar novo cliente" data-abrir-modal="modalNovoCliente">
-          <i class="fa-solid fa-user-plus"></i>
-          <span class="btn-texto">Novo Cliente</span>
+        <!-- Estrutura visual; notificações ainda não possuem backend. -->
+        <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
+          <i class="fa-regular fa-bell" aria-hidden="true"></i>
         </button>
 
-
-        <!-- NOVO AGENDAMENTO -->
-        <button class="botao-geral" data-abrir-modal="modalNovoAgendamento" type="button" title="Adicionar um agendamento">
-          <i class="fa-solid fa-plus"></i>
-          <span class="btn-texto">Novo Agendamento</span>
+        <!-- A foto conserva exatamente a ação do antigo botão Perfil. -->
+        <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
+          <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
+          <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
         </button>
-
-        <!-- CALENDÁRIO -->
-        <button class="botao-geral btn-calendario" data-abrir-modal="modalCalendario" type="button" title="Calendário">
-          <i class="fa-regular fa-calendar-days"></i>
-          <span class="btn-texto">Calendário</span>
-        </button>
-
-        <!-- PAINEL ADMINISTRADOR -->
-        <a href="../views/painel-administrativo/painel-administrativo.html" class="botao-geral"  title="Painel do Administrador">
-          <i class="fa-solid fa-user-gear"></i>
-          <span class="btn-texto">Painel Admin</span>
-        </a>
-
-        <!-- CONFIGURAÇÕES DA AGENDA -->
-        <button class="botao-geral" type="button" title="Configurações da agenda" aria-label="Abrir configurações da agenda"  data-abrir-modal="modalConfiguracoesAgenda">
-          <i class="fa-solid fa-gear"></i>
-          <span class="btn-texto">Configurações Agenda</span>
-        </button>
-
-        <!-- PERFIL DO USUÁRIO -->
-        <button class="botao-geral destaque" type="button"  title="Meu perfil" data-abrir-modal="modalPerfilUsuario">
-          <i class="fa-solid fa-user-circle"></i>
-          <span class="btn-texto">Perfil</span>
-        </button>
-
-
       </div>
     </header>
 
@@ -116,109 +131,64 @@
 
       </nav>
 
+      <!-- Barra única para pesquisar e filtrar todas as abas da semana. -->
+      <div class="agenda-painel-global">
+        <div class="agenda-ferramentas-global">
+          <button class="botao-geral agenda-abrir-calendario" data-abrir-modal="modalCalendario" type="button" title="Abrir calendário" aria-label="Abrir calendário">
+            <i class="fa-regular fa-calendar-days" aria-hidden="true"></i>
+          </button>
+
+          <div class="pesquisar agenda-pesquisa-global">
+            <div class="input-wrapper input-flutuante">
+              <i class="fas fa-search"></i>
+              <input type="search" id="pesquisar-agenda-global" placeholder=" " autocomplete="off" inputmode="search">
+              <label for="pesquisar-agenda-global">Pesquisar em toda a agenda</label>
+              <button type="button" class="btn-limpar-pesquisa" title="Limpar pesquisa"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="pesquisa-info"></div>
+          </div>
+
+          <section class="section-filtro section-filtro-agenda agenda-filtro-global" id="filtroAgendaGlobal">
+            <button id="btnPeriodo_global" class="btn-filtro" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="popoverPeriodo_global">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon></svg>
+              <span id="labelPeriodo_global">Filtro</span><span class="caret" aria-hidden="true">▾</span>
+            </button>
+            <div id="popoverPeriodo_global" class="popover" hidden>
+              <form id="formPeriodo_global" autocomplete="off">
+                <div class="linha">
+                  <label class="label-filtro" for="status_global">Status
+                    <select class="input-filtro" id="status_global" name="status">
+                      <option value="">Todos</option><option value="pendente">Pendente</option><option value="confirmado">Confirmado</option><option value="concluido">Concluído</option><option value="cancelado">Cancelado</option><option value="faltou">Faltou</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="acoes">
+                  <button type="submit" class="ok">Aplicar</button>
+                  <button type="button" id="limparFiltro_global" class="limpar">Limpar</button>
+                  <button type="button" id="fecharPopover_global" class="cancelar">Cancelar</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+
+        <!-- Resultados da busca geral; a agenda semanal permanece intacta. -->
+        <section id="agendaPesquisaResultados" class="agenda-pesquisa-resultados" aria-label="Resultados da pesquisa de agendamentos" hidden>
+          <div class="agenda-pesquisa-resultados-cabecalho">
+            <strong>Agendamentos encontrados</strong>
+            <button type="button" id="agendaPesquisaFechar" aria-label="Fechar resultados">×</button>
+          </div>
+          <div id="agendaPesquisaLista" class="agenda-pesquisa-resultados-lista" role="listbox"></div>
+          <div id="agendaPesquisaPaginacao" class="agenda-pesquisa-resultados-paginacao"></div>
+        </section>
+
       <!--Cada div e uma aba-->
 
       <!-- Aba Segunda -->
       <div id="segunda" class="conteudo-aba ativa">
         <div class="conteudo-agenda">
 
-          <!-- TOPO DA ABA -->
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu"  type="button" title="Retrair dias da Semana">☰</button>
-
-            <!-- Barra de pesquisa -->
-            <div class="pesquisar">  
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search"  id="pesquisar-agenda" name="pesquisar"  placeholder=" " autocomplete="off"  inputmode="search" />
-              <label for="pesquisar-agenda">Pesquisar agendamento</label>
-
-                <button type="button"
-                        class="btn-limpar-pesquisa"
-                        title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-
-          <!-- Filtro Aba SEGUNDA -->
-          <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaSegunda">
-
-            <button id="btnPeriodo_segunda"
-                    class="btn-filtro"
-                    type="button"
-                    aria-haspopup="dialog"
-                    aria-expanded="false"
-                    aria-controls="popoverPeriodo_segunda">
-
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true">
-                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-              </svg>
-
-              <!-- texto padrão -->
-              <span id="labelPeriodo_segunda">Filtro</span>
-              <span class="caret" aria-hidden="true">▾</span>
-            </button>
-
-            <!-- Popover -->
-            <div id="popoverPeriodo_segunda" class="popover" hidden>
-              <form id="formPeriodo_segunda" autocomplete="off">
-
-                <div class="linha">
-                  <label class="label-filtro">
-                    Início
-                    <input class="input-filtro"
-                          type="date"
-                          id="inicio_segunda"
-                          required>
-                  </label>
-
-                  <label class="label-filtro">
-                    Fim
-                    <input class="input-filtro"
-                          type="date"
-                          id="fim_segunda"
-                          required>
-                  </label>
-                </div>
-
-                <!-- ✅ Filtro por Status (no mesmo popover) -->
-                <div class="linha">
-                  <label class="label-filtro" for="status_segunda">
-                    Status
-                    <select class="input-filtro" id="status_segunda" name="status" aria-label="Filtro por status">
-                      <option value="">Todos</option>
-                      <option value="pendente">Pendente</option>
-                      <option value="confirmado">Confirmado</option>
-                      <option value="concluido">Concluído</option>
-                      <option value="cancelado">Cancelado</option>
-                    </select>
-                  </label>
-
-                  <!-- opcional: “vazio” só pra manter 2 colunas alinhadas -->
-                  <span></span>
-                </div>
-
-
-
-                <div class="acoes">
-                  <button type="submit" class="ok">Aplicar</button>
-                  <button type="button" id="limparFiltro_segunda" class="limpar">Limpar</button>
-                  <button type="button" id="fecharPopover_segunda" class="cancelar">Cancelar</button>
-                </div>
-
-              </form>
-            </div>
-          </section>
-
-          <!-- LISTA DE CARDS -->
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaSegunda" class="agenda-cards"></div>
 
           <!--Paginaçãoo-->
@@ -233,90 +203,7 @@
       <div id="terca" class="conteudo-aba">
         <div class="conteudo-agenda">
 
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
-
-            <!--Barra de Pesquisa-->
-            <div class="pesquisar">
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search" id="pesquisar-terca" name="pesquisar-terca"
-                      placeholder=" " autocomplete="off" inputmode="search" />
-                <label for="pesquisar-terca">Pesquisar agendamento</label>
-
-                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-
-            <!-- Filtro Aba TERÇA -->
-            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaTerca">
-
-              <button id="btnPeriodo_terca"
-                      class="btn-filtro"
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-expanded="false"
-                      aria-controls="popoverPeriodo_terca">
-
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                    aria-hidden="true">
-                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-                </svg>
-
-                <span id="labelPeriodo_terca">Filtro</span>
-                <span class="caret" aria-hidden="true">▾</span>
-              </button>
-
-              <div id="popoverPeriodo_terca" class="popover" hidden>
-                <form id="formPeriodo_terca" autocomplete="off">
-
-                  <div class="linha">
-                    <label class="label-filtro">
-                      Início
-                      <input class="input-filtro" type="date" id="inicio_terca" required>
-                    </label>
-
-                    <label class="label-filtro">
-                      Fim
-                      <input class="input-filtro" type="date" id="fim_terca" required>
-                    </label>
-                  </div>
-
-                  <!-- ✅ Filtro por Status (no mesmo popover) -->
-                  <div class="linha">
-                    <label class="label-filtro" for="status_terca">
-                      Status
-                      <select class="input-filtro" id="status_terca" name="status" aria-label="Filtro por status">
-                        <option value="">Todos</option>
-                        <option value="pendente">Pendente</option>
-                        <option value="confirmado">Confirmado</option>
-                        <option value="concluido">Concluído</option>
-                        <option value="cancelado">Cancelado</option>
-                      </select>
-                    </label>
-                    <span></span>
-                  </div>
-
-
-
-
-                  <div class="acoes">
-                    <button type="submit" class="ok">Aplicar</button>
-                    <button type="button" id="limparFiltro_terca" class="limpar">Limpar</button>
-                    <button type="button" id="fecharPopover_terca" class="cancelar">Cancelar</button>
-                  </div>
-
-                </form>
-              </div>
-            </section>
-
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaTerca" class="agenda-cards"></div>
 
           <!--Paginação-->
@@ -331,88 +218,7 @@
       <div id="quarta" class="conteudo-aba">
         <div class="conteudo-agenda">
 
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
-
-            <!--Barra de pesquisa-->
-            <div class="pesquisar">
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search" id="pesquisar-quarta" name="pesquisar-quarta"
-                      placeholder=" " autocomplete="off" inputmode="search" />
-                <label for="pesquisar-quarta">Pesquisar agendamento</label>
-
-                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-
-          <!-- Filtro Aba QUARTA -->
-          <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaQuarta">
-
-            <button id="btnPeriodo_quarta"
-                    class="btn-filtro"
-                    type="button"
-                    aria-haspopup="dialog"
-                    aria-expanded="false"
-                    aria-controls="popoverPeriodo_quarta">
-
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true">
-                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-              </svg>
-
-              <span id="labelPeriodo_quarta">Filtro</span>
-              <span class="caret" aria-hidden="true">▾</span>
-            </button>
-
-            <div id="popoverPeriodo_quarta" class="popover" hidden>
-              <form id="formPeriodo_quarta" autocomplete="off">
-
-                <div class="linha">
-                  <label class="label-filtro">
-                    Início
-                    <input class="input-filtro" type="date" id="inicio_quarta" required>
-                  </label>
-
-                  <label class="label-filtro">
-                    Fim
-                    <input class="input-filtro" type="date" id="fim_quarta" required>
-                  </label>
-                </div>
-
-                <!-- ✅ Filtro por Status (no mesmo popover) -->
-                <div class="linha">
-                  <label class="label-filtro" for="status_quarta">
-                    Status
-                    <select class="input-filtro" id="status_quarta" name="status" aria-label="Filtro por status">
-                      <option value="">Todos</option>
-                      <option value="pendente">Pendente</option>
-                      <option value="confirmado">Confirmado</option>
-                      <option value="concluido">Concluído</option>
-                      <option value="cancelado">Cancelado</option>
-                    </select>
-                  </label>
-                  <span></span>
-                </div>
-
-
-                <div class="acoes">
-                  <button type="submit" class="ok">Aplicar</button>
-                  <button type="button" id="limparFiltro_quarta" class="limpar">Limpar</button>
-                  <button type="button" id="fecharPopover_quarta" class="cancelar">Cancelar</button>
-                </div>
-
-              </form>
-            </div>
-          </section>
-
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaQuarta" class="agenda-cards"></div>
 
           <!--Paginação-->
@@ -428,89 +234,7 @@
       <div id="quinta" class="conteudo-aba">
         <div class="conteudo-agenda">
 
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
-
-            <!--Barra de pesquisa-->
-            <div class="pesquisar">
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search" id="pesquisar-quinta" name="pesquisar-quinta"
-                      placeholder=" " autocomplete="off" inputmode="search" />
-                <label for="pesquisar-quinta">Pesquisar agendamento</label>
-
-                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-
-            <!-- Filtro Aba QUINTA -->
-            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaQuinta">
-
-              <button id="btnPeriodo_quinta"
-                      class="btn-filtro"
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-expanded="false"
-                      aria-controls="popoverPeriodo_quinta">
-
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                    aria-hidden="true">
-                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-                </svg>
-
-                <span id="labelPeriodo_quinta">Filtro</span>
-                <span class="caret" aria-hidden="true">▾</span>
-              </button>
-
-              <div id="popoverPeriodo_quinta" class="popover" hidden>
-                <form id="formPeriodo_quinta" autocomplete="off">
-
-                  <div class="linha">
-                    <label class="label-filtro">
-                      Início
-                      <input class="input-filtro" type="date" id="inicio_quinta" required>
-                    </label>
-
-                    <label class="label-filtro">
-                      Fim
-                      <input class="input-filtro" type="date" id="fim_quinta" required>
-                    </label>
-                  </div>
-
-
-                  <!-- ✅ Filtro por Status (no mesmo popover) -->
-                  <div class="linha">
-                    <label class="label-filtro" for="status_quinta">
-                      Status
-                      <select class="input-filtro" id="status_quinta" name="status" aria-label="Filtro por status">
-                        <option value="">Todos</option>
-                        <option value="pendente">Pendente</option>
-                        <option value="confirmado">Confirmado</option>
-                        <option value="concluido">Concluído</option>
-                        <option value="cancelado">Cancelado</option>
-                      </select>
-                    </label>
-                    <span></span>
-                  </div>
-
-
-                  <div class="acoes">
-                    <button type="submit" class="ok">Aplicar</button>
-                    <button type="button" id="limparFiltro_quinta" class="limpar">Limpar</button>
-                    <button type="button" id="fecharPopover_quinta" class="cancelar">Cancelar</button>
-                  </div>
-
-                </form>
-              </div>
-            </section>
-
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaQuinta" class="agenda-cards"></div>
 
           <!--Paginação-->
@@ -525,88 +249,7 @@
       <div id="sexta" class="conteudo-aba">
         <div class="conteudo-agenda">
 
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
-
-            <!--Barra de pesquisa-->
-            <div class="pesquisar">
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search" id="pesquisar-sexta" name="pesquisar-sexta"
-                      placeholder=" " autocomplete="off" inputmode="search" />
-                <label for="pesquisar-sexta">Pesquisar agendamento</label>
-
-                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-
-            <!-- Filtro Aba SEXTA -->
-            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaSexta">
-
-              <button id="btnPeriodo_sexta"
-                      class="btn-filtro"
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-expanded="false"
-                      aria-controls="popoverPeriodo_sexta">
-
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                    aria-hidden="true">
-                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-                </svg>
-
-                <span id="labelPeriodo_sexta">Filtro</span>
-                <span class="caret" aria-hidden="true">▾</span>
-              </button>
-
-              <div id="popoverPeriodo_sexta" class="popover" hidden>
-                <form id="formPeriodo_sexta" autocomplete="off">
-
-                  <div class="linha">
-                    <label class="label-filtro">
-                      Início
-                      <input class="input-filtro" type="date" id="inicio_sexta" required>
-                    </label>
-
-                    <label class="label-filtro">
-                      Fim
-                      <input class="input-filtro" type="date" id="fim_sexta" required>
-                    </label>
-                  </div>
-
-                  <!-- ✅ Filtro por Status (no mesmo popover) -->
-                  <div class="linha">
-                    <label class="label-filtro" for="status_sexta">
-                      Status
-                      <select class="input-filtro" id="status_sexta" name="status" aria-label="Filtro por status">
-                        <option value="">Todos</option>
-                        <option value="pendente">Pendente</option>
-                        <option value="confirmado">Confirmado</option>
-                        <option value="concluido">Concluído</option>
-                        <option value="cancelado">Cancelado</option>
-                      </select>
-                    </label>
-                    <span></span>
-                  </div>
-
-
-                  <div class="acoes">
-                    <button type="submit" class="ok">Aplicar</button>
-                    <button type="button" id="limparFiltro_sexta" class="limpar">Limpar</button>
-                    <button type="button" id="fecharPopover_sexta" class="cancelar">Cancelar</button>
-                  </div>
-
-                </form>
-              </div>
-            </section>
-
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaSexta" class="agenda-cards"></div>
 
           <!--Paginação-->
@@ -622,88 +265,7 @@
       <div id="sabado" class="conteudo-aba">
         <div class="conteudo-agenda">
 
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
-
-            <!--Barra de pesquisa-->
-            <div class="pesquisar">
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search" id="pesquisar-sabado" name="pesquisar-sabado"
-                      placeholder=" " autocomplete="off" inputmode="search" />
-                <label for="pesquisar-sabado">Pesquisar agendamento</label>
-
-                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-          
-            <!-- Filtro Aba SÁBADO -->
-            <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaSabado">
-
-              <button id="btnPeriodo_sabado"
-                      class="btn-filtro"
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-expanded="false"
-                      aria-controls="popoverPeriodo_sabado">
-
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                    aria-hidden="true">
-                  <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-                </svg>
-
-                <span id="labelPeriodo_sabado">Filtro</span>
-                <span class="caret" aria-hidden="true">▾</span>
-              </button>
-
-              <div id="popoverPeriodo_sabado" class="popover" hidden>
-                <form id="formPeriodo_sabado" autocomplete="off">
-
-                  <div class="linha">
-                    <label class="label-filtro">
-                      Início
-                      <input class="input-filtro" type="date" id="inicio_sabado" required>
-                    </label>
-
-                    <label class="label-filtro">
-                      Fim
-                      <input class="input-filtro" type="date" id="fim_sabado" required>
-                    </label>
-                  </div>
-
-                  <!-- ✅ Filtro por Status (no mesmo popover) -->
-                  <div class="linha">
-                    <label class="label-filtro" for="status_sabado">
-                      Status
-                      <select class="input-filtro" id="status_sabado" name="status" aria-label="Filtro por status">
-                        <option value="">Todos</option>
-                        <option value="pendente">Pendente</option>
-                        <option value="confirmado">Confirmado</option>
-                        <option value="concluido">Concluído</option>
-                        <option value="cancelado">Cancelado</option>
-                      </select>
-                    </label>
-                    <span></span>
-                  </div>
-
-
-                  <div class="acoes">
-                    <button type="submit" class="ok">Aplicar</button>
-                    <button type="button" id="limparFiltro_sabado" class="limpar">Limpar</button>
-                    <button type="button" id="fecharPopover_sabado" class="cancelar">Cancelar</button>
-                  </div>
-
-                </form>
-              </div>
-            </section>
-
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaSabado" class="agenda-cards"></div>
 
           <!--Paginação-->
@@ -719,88 +281,7 @@
       <div id="domingo" class="conteudo-aba">
         <div class="conteudo-agenda">
 
-          <div class="agenda-topo">
-            <button class="botao-geral js-toggle-menu" type="button" title="Retrair dias da Semana">☰</button>
-
-            <!--Barra de pesquisa-->
-            <div class="pesquisar">
-              <div class="input-wrapper input-flutuante">
-                <i class="fas fa-search"></i>
-
-                <input type="search" id="pesquisar-domingo" name="pesquisar-domingo"
-                      placeholder=" " autocomplete="off" inputmode="search" />
-                <label for="pesquisar-domingo">Pesquisar agendamento</label>
-
-                <button type="button" class="btn-limpar-pesquisa" title="Limpar">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="pesquisa-info"></div>
-            </div>
-          </div>
-
-            <!-- Filtro Aba DOMINGO -->
-          <section class="section-filtro section-filtro-agenda" id="filtroAbaAgendaDomingo">
-
-            <button id="btnPeriodo_domingo"
-                    class="btn-filtro"
-                    type="button"
-                    aria-haspopup="dialog"
-                    aria-expanded="false"
-                    aria-controls="popoverPeriodo_domingo">
-
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  aria-hidden="true">
-                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
-              </svg>
-
-              <span id="labelPeriodo_domingo">Filtro</span>
-              <span class="caret" aria-hidden="true">▾</span>
-            </button>
-
-            <div id="popoverPeriodo_domingo" class="popover" hidden>
-              <form id="formPeriodo_domingo" autocomplete="off">
-
-                <div class="linha">
-                  <label class="label-filtro">
-                    Início
-                    <input class="input-filtro" type="date" id="inicio_domingo" required>
-                  </label>
-
-                  <label class="label-filtro">
-                    Fim
-                    <input class="input-filtro" type="date" id="fim_domingo" required>
-                  </label>
-                </div>
-
-                <!-- ✅ Filtro por Status (no mesmo popover) -->
-                <div class="linha">
-                  <label class="label-filtro" for="status_domingo">
-                    Status
-                    <select class="input-filtro" id="status_domingo" name="status" aria-label="Filtro por status">
-                      <option value="">Todos</option>
-                      <option value="pendente">Pendente</option>
-                      <option value="confirmado">Confirmado</option>
-                      <option value="concluido">Concluído</option>
-                      <option value="cancelado">Cancelado</option>
-                    </select>
-                  </label>
-                  <span></span>
-                </div>
-
-
-                <div class="acoes">
-                  <button type="submit" class="ok">Aplicar</button>
-                  <button type="button" id="limparFiltro_domingo" class="limpar">Limpar</button>
-                  <button type="button" id="fecharPopover_domingo" class="cancelar">Cancelar</button>
-                </div>
-
-              </form>
-            </div>
-          </section>
-
+          <!-- Lista e paginação exclusivas da data representada pela aba. -->
           <div id="cardsAgendaDomingo" class="agenda-cards"></div>
 
             <!--Paginação-->
@@ -810,6 +291,8 @@
 
         </div>
       </div>
+
+      </div><!-- /.agenda-painel-global -->
 
     </section>
 
@@ -1199,14 +682,13 @@
 
           <div class="modal-corpo">
 
-            <div class="vc-head">
+            <div class="vc-head vc-head-agendamento">
               <div class="vc-avatar" aria-hidden="true" id="vc_avatar">C</div>
 
               <div class="vc-head-info">
                 <div class="vc-nome" id="vc_nome">—</div>
                 <div class="vc-sub">
                   <span class="vc-tel" id="vc_telefone">Telefone: —</span>
-                  <span class="vc-chip" id="vc_chip_pagamento">—</span>
                   <span class="vc-chip" id="vc_chip_status">—</span>
                 </div>
               </div>
@@ -1215,21 +697,34 @@
                 <button class="vc-btn vc-btn-whats" type="button" id="vc_btn_whats" title="WhatsApp">
                   <i class="fa-brands fa-whatsapp"></i>
                 </button>
-                <button class="vc-btn" type="button" id="vc_btn_copiar_tel">Copiar tel</button>
+                <button class="vc-btn" type="button" id="vc_btn_copiar_tel">Copiar telefone</button>
               </div>
             </div>
 
             <div class="vc-grid">
               <div class="vc-card">
-                <div class="vc-titulo">Agendamento</div>
-                <div class="vc-linha"><strong>Hora:</strong> <span id="vc_hora">—</span></div>
-                <div class="vc-linha"><strong>Serviço:</strong> <span id="vc_servico">—</span></div>
-                <div class="vc-linha"><strong>Duração:</strong> <span id="vc_duracao">—</span></div>
+                <div class="vc-titulo"><i class="fa-regular fa-calendar-check"></i> Agendamento</div>
+                <div class="vc-dados-grid">
+                  <div class="vc-dado"><small>Data</small><strong id="vc_data">—</strong></div>
+                  <div class="vc-dado"><small>Horário</small><strong id="vc_hora">—</strong></div>
+                  <div class="vc-dado vc-dado-largo"><small>Serviço</small><strong id="vc_servico">—</strong></div>
+                  <div class="vc-dado"><small>Duração</small><strong id="vc_duracao">—</strong></div>
+                  <div class="vc-dado"><small>Valor</small><strong id="vc_valor">—</strong></div>
+                </div>
               </div>
 
               <div class="vc-card">
-                <div class="vc-titulo">Observação</div>
-                <div class="vc-texto" id="vc_obs">—</div>
+                <div class="vc-titulo"><i class="fa-regular fa-user"></i> Atendimento</div>
+                <div class="vc-dados-grid">
+                  <div class="vc-dado vc-dado-largo"><small>Profissional</small><strong id="vc_profissional">—</strong></div>
+                  <div class="vc-dado vc-dado-largo"><small>Especialidade</small><strong id="vc_especialidade">—</strong></div>
+                  <div class="vc-dado vc-dado-largo"><small>Recorrência</small><strong id="vc_recorrencia">Não</strong></div>
+                </div>
+              </div>
+
+              <div class="vc-card vc-card-full">
+                <div class="vc-titulo"><i class="fa-regular fa-note-sticky"></i> Observação</div>
+                <div class="vc-texto" id="vc_obs">Nenhuma observação informada.</div>
               </div>
             </div>
 
@@ -1304,23 +799,56 @@
                   <small class="msg-erro" data-erro-for="ag_servico"></small>
                 </div>
 
-                <!-- Data -->
-                <div class="modal-campo">
-                  <input id="ag_data" name="data" type="date" placeholder=" " required>
-                  <label for="ag_data">Data</label>
-                  <small class="msg-erro" data-erro-for="ag_data"></small>
-                </div>
+                <!-- Agenda visual: calendário e horários disponíveis -->
+                <section class="ag-disponibilidade" aria-labelledby="ag_disponibilidade_titulo" hidden>
+                  <!-- Campos preservados para o futuro salvamento do formulário -->
+                  <input id="ag_data" name="data" type="hidden" value="">
+                  <select id="ag_hora" name="hora" class="ag-campo-interno" disabled aria-hidden="true" tabindex="-1">
+                    <option value="">Nenhum horário selecionado</option>
+                  </select>
 
-                <!-- Hora -->
-                <div class="modal-campo">
-                  <input id="ag_hora" name="hora" type="time" placeholder=" " required>
-                  <label for="ag_hora">Horário</label>
+                  <header class="ag-disponibilidade-cabecalho">
+                    <div>
+                      <strong id="ag_disponibilidade_titulo">Escolha a data e o horário</strong>
+                      <small id="ag_disponibilidade_instrucao">Selecione primeiro um profissional e um serviço.</small>
+                    </div>
+                    <div class="ag-disponibilidade-legendas" aria-hidden="true">
+                      <span><i class="disponivel"></i> Disponível</span>
+                      <span><i class="selecionado"></i> Selecionado</span>
+                    </div>
+                  </header>
+
+                  <div class="ag-disponibilidade-conteudo">
+                    <div class="ag-calendario" aria-label="Calendário de dias disponíveis">
+                      <div class="ag-calendario-topo">
+                        <button id="ag_calendario_anterior" type="button" class="ag-calendario-navegar" aria-label="Mês anterior">&#8249;</button>
+                        <strong id="ag_calendario_mes">Mês e ano</strong>
+                        <button id="ag_calendario_proximo" type="button" class="ag-calendario-navegar" aria-label="Próximo mês">&#8250;</button>
+                      </div>
+                      <div class="ag-calendario-semana" aria-hidden="true">
+                        <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span>
+                      </div>
+                      <div id="ag_calendario_dias" class="ag-calendario-dias" aria-live="polite"></div>
+                    </div>
+
+                    <div class="ag-horarios-painel">
+                      <div class="ag-horarios-titulo">
+                        <span>Horários disponíveis</span>
+                        <strong id="ag_data_selecionada">Nenhuma data selecionada</strong>
+                      </div>
+                      <div id="ag_horarios_disponiveis" class="ag-horarios-disponiveis" aria-live="polite">
+                        <span class="ag-disponibilidade-vazio">Escolha no calendário um dos dias destacados.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <small class="msg-erro" data-erro-for="ag_data"></small>
                   <small class="msg-erro" data-erro-for="ag_hora"></small>
-                </div>
+                </section>
 
                 <!-- Duração -->
                 <div class="modal-campo">
-                  <select id="ag_duracao" name="duracao" required>
+                  <select id="ag_duracao" name="duracao" disabled>
                     <option value="">Duração</option>
                     <option value="30">30 min</option>
                     <option value="45">45 min</option>
@@ -1339,24 +867,10 @@
                 <div class="modal-campo">
                   <select id="ag_status" name="status" required>
                     <option value="pendente">Pendente</option>
-                    <option value="confirmado">Confirmado</option>
+                    <option value="confirmado" selected>Confirmado</option>
                   </select>
                   <label for="ag_status">Status</label>
                   <small class="msg-erro" data-erro-for="ag_status"></small>
-                </div>
-
-                <!-- Botão WhatsApp -->
-                <div class="modal-campo modal-campo-full">
-                  <button
-                    id="ag_btn_whats"
-                    class="botao-geral"
-                    type="button"
-                    title="Abrir conversa no WhatsApp"
-                  >
-                    <span aria-hidden="true">📲</span> Abrir WhatsApp do cliente
-                  </button>
-                  <br>
-                  <small class="msg-ajuda">Usa o telefone informado acima.</small>
                 </div>
 
                 <!-- Observação -->
@@ -1366,7 +880,7 @@
                     name="observacao"
                     rows="1"
                     placeholder=" "
-                    maxlength="500"
+                    maxlength="220"
                   ></textarea>
                   <label for="ag_obs">Observação (opcional)</label>
                   <small class="msg-erro" data-erro-for="ag_obs"></small>
@@ -1386,16 +900,24 @@
                   </div>
 
                   <small class="msg-ajuda">
-                    Ao marcar, este agendamento será repetido semanalmente no mesmo dia.
+                    Ao marcar, este agendamento será repetido semanalmente no mesmo dia, por no máximo 1 ano.
                   </small>
 
                   <small class="msg-ajuda" id="ag_repetir_preview" style="display:none;"></small>
+
+                  <div id="ag_recorrencia_config" class="ag-recorrencia-fim" hidden>
+                    <label for="ag_recorrencia_data_fim">Repetir até</label>
+                    <input id="ag_recorrencia_data_fim" name="recorrencia_data_fim" type="date">
+                    <small class="msg-erro" data-erro-for="ag_recorrencia_data_fim"></small>
+                  </div>
 
                 </div>
 
               </div>
 
               <br>
+
+              <div id="ag_form_feedback" class="ag-form-feedback" role="alert" aria-live="assertive" hidden></div>
 
               <div class="modal-acoes">
                 <button id="btnSalvarAgendamento" class="botao-geral destaque" type="submit">
@@ -1425,26 +947,27 @@
 
               <div class="modal-grid">
 
-                <!-- Cliente (LISTA) -->
-                <div class="modal-campo">
-                  <select id="ed_ag_cliente_id" name="cliente_id" required>
-                    <option value="">Selecione o cliente</option>
-                    <!-- carregado via JS -->
-                  </select>
-                  <label for="ed_ag_cliente_id">Cliente</label>
+                <!-- Cliente (mesma busca utilizada no Novo Agendamento) -->
+                <div class="modal-campo campo-cliente-busca">
+                  <div class="campo-cliente-wrap">
+                    <input type="text" id="ed_ag_cliente_busca" autocomplete="off" placeholder=" " maxlength="120">
+                    <label for="ed_ag_cliente_busca">Buscar Cliente</label>
+                    <div id="ed_ag_cliente_resultados" class="cliente-resultados" hidden></div>
+                  </div>
+                  <input type="hidden" id="ed_ag_cliente_id" name="id_cliente" required>
                   <small class="msg-erro" data-erro-for="ed_ag_cliente_id"></small>
                 </div>
 
                 <!-- Telefone (auto, mas editável) -->
                 <div class="modal-campo">
-                  <input id="ed_ag_cliente_tel" name="cliente_tel" type="tel" placeholder="" maxlength="20" required>
+                  <input id="ed_ag_cliente_tel" name="cliente_tel" type="tel" placeholder="" maxlength="20" disabled>
                   <label for="ed_ag_cliente_tel">Telefone (WhatsApp)</label>
                   <small class="msg-erro" data-erro-for="ed_ag_cliente_tel"></small>
                 </div>
 
                 <!-- Profissional (se for proprietário/recepção) -->
                 <div class="modal-campo" data-restrito="profissional">
-                  <select id="ed_ag_profissional" name="id_profissional">
+                  <select id="ed_ag_profissional" name="id_profissional" required>
                     <option value="">Selecione o profissional</option>
                     <!-- carregado via JS -->
                   </select>
@@ -1454,34 +977,46 @@
 
                 <!-- Serviço -->
                 <div class="modal-campo">
-                  <select id="ed_ag_servico" name="servico" required>
+                  <select id="ed_ag_servico" name="id_servico" required>
                     <option value="">Selecione o serviço</option>
-                    <option value="manicure">Manicure</option>
-                    <option value="pedicure">Pedicure</option>
-                    <option value="alongamento_gel">Alongamento em Gel</option>
-                    <option value="cabelo_escova">Escova</option>
                   </select>
                   <label for="ed_ag_servico">Serviço</label>
                   <small class="msg-erro" data-erro-for="ed_ag_servico"></small>
                 </div>
 
-                <!-- Data -->
-                <div class="modal-campo">
-                  <input id="ed_ag_data" name="data" type="date" placeholder="" required>
-                  <label for="ed_ag_data">Data</label>
-                  <small class="msg-erro" data-erro-for="ed_ag_data"></small>
-                </div>
-
-                <!-- Hora -->
-                <div class="modal-campo">
-                  <input id="ed_ag_hora" name="hora" type="time" placeholder="" required>
-                  <label for="ed_ag_hora">Horário</label>
-                  <small class="msg-erro" data-erro-for="ed_ag_hora"></small>
-                </div>
+                <!-- A agenda visual aparece somente depois da seleção do serviço. -->
+                <section id="ed_ag_disponibilidade" class="ag-disponibilidade" aria-labelledby="ed_ag_disponibilidade_titulo" hidden>
+                  <input id="ed_ag_data" name="data_agendamento" type="hidden" value="">
+                  <select id="ed_ag_hora" name="hora_inicio" class="ag-campo-interno" disabled aria-hidden="true" tabindex="-1">
+                    <option value="">Nenhum horário selecionado</option>
+                  </select>
+                  <header class="ag-disponibilidade-cabecalho">
+                    <div>
+                      <strong id="ed_ag_disponibilidade_titulo">Escolha a nova data e o horário</strong>
+                      <small id="ed_ag_disponibilidade_instrucao">Selecione um profissional e um serviço.</small>
+                    </div>
+                    <div class="ag-disponibilidade-legendas" aria-hidden="true"><span><i class="disponivel"></i> Disponível</span><span><i class="selecionado"></i> Selecionado</span></div>
+                  </header>
+                  <div class="ag-disponibilidade-conteudo">
+                    <div class="ag-calendario" aria-label="Calendário de dias disponíveis">
+                      <div class="ag-calendario-topo">
+                        <button id="ed_ag_calendario_anterior" type="button" class="ag-calendario-navegar" aria-label="Mês anterior">&#8249;</button>
+                        <strong id="ed_ag_calendario_mes">Mês e ano</strong>
+                        <button id="ed_ag_calendario_proximo" type="button" class="ag-calendario-navegar" aria-label="Próximo mês">&#8250;</button>
+                      </div>
+                      <div class="ag-calendario-semana" aria-hidden="true"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div>
+                      <div id="ed_ag_calendario_dias" class="ag-calendario-dias" aria-live="polite"></div>
+                    </div>
+                    <div class="ag-horarios-painel">
+                      <div class="ag-horarios-titulo"><span>Horários disponíveis</span><strong id="ed_ag_data_selecionada">Nenhuma data selecionada</strong></div>
+                      <div id="ed_ag_horarios_disponiveis" class="ag-horarios-disponiveis" aria-live="polite"><span class="ag-disponibilidade-vazio">Escolha no calendário um dos dias destacados.</span></div>
+                    </div>
+                  </div>
+                </section>
 
                 <!-- Duração -->
                 <div class="modal-campo">
-                  <select id="ed_ag_duracao" name="duracao" required>
+                  <select id="ed_ag_duracao" name="duracao" disabled>
                     <option value="">Duração</option>
                     <option value="30">30 min</option>
                     <option value="45">45 min</option>
@@ -1500,6 +1035,7 @@
                     <option value="confirmado">Confirmado</option>
                     <option value="concluido">Concluído</option>
                     <option value="cancelado">Cancelado</option>
+                    <option value="faltou">Faltou</option>
                   </select>
                   <label for="ed_ag_status">Status</label>
                   <small class="msg-erro" data-erro-for="ed_ag_status"></small>
@@ -1507,18 +1043,9 @@
 
                 <!-- Observação -->
                 <div class="modal-campo modal-campo-full">
-                  <textarea id="ed_ag_obs" name="observacao" rows="3" placeholder="" maxlength="500"></textarea>
+                  <textarea id="ed_ag_obs" name="observacao" rows="3" placeholder="" maxlength="220"></textarea>
                   <label for="ed_ag_obs">Observação (opcional)</label>
                   <small class="msg-erro" data-erro-for="ed_ag_obs"></small>
-                </div>
-
-
-                <!-- Botão WhatsApp (opcional) -->
-                <div class="modal-campo modal-campo-full">
-                  <button id="ed_ag_btn_whats" class="botao-geral" type="button" title="Abrir conversa no WhatsApp">
-                    <span aria-hidden="true">📲</span> Abrir WhatsApp do cliente
-                  </button> <br>
-                  <small class="msg-ajuda">Usa o telefone informado acima.</small>
                 </div>
 
                 <!-- Repetir semanalmente -->
@@ -1538,13 +1065,18 @@
 
                   <small class="msg-ajuda" id="ed_ag_repetir_preview" style="display:none;"></small>
 
+                  <div id="ed_ag_recorrencia_config" class="ag-recorrencia-fim" hidden>
+                    <label for="ed_ag_recorrencia_data_fim">Repetir até</label>
+                    <input id="ed_ag_recorrencia_data_fim" name="recorrencia_data_fim" type="date">
+                  </div>
+
                 </div>
 
               </div> <br>
 
               <div class="modal-acoes">
                 <button id="btnSalvarEdicaoAgendamento" class="botao-geral destaque" type="submit">
-                  Salvar alterações
+                  Salvar 
                 </button>
               </div>
 
@@ -1741,11 +1273,17 @@
     </section>
 
     </main>
+    
+    </div><!-- /.agenda-app-shell -->
 
 
     <script src="../js/core/lista-core.js" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
+    <script src="../js/menu-lateral/menu-lateral.js?v=20260818_1"></script> <!--Componente universal do menu lateral responsivo-->
+    <script src="../js/identidade-visual/identidade-visual.js?v=20260818_6"></script>
 
     <script src="../js/agenda/lista-agenda.js" ></script> <!--Lista Agendamentos-->
+    <script src="../js/agenda/pesquisar-agendamento.js" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
+    <script src="../js/agenda/excluir-agendamento.js" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
 
     <!--Modal Perfil-->
     <script src="/public/_auth/deslogar.js" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
@@ -1760,11 +1298,14 @@
     <script src="../js/agenda/servico-profissional/cadastrar-servico.js" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
     <script src="../js/agenda/servico-profissional/lista-servico.js" ></script> <!--Lista Serviço do Modal Configurações-->
     <script src="../js/agenda/servico-profissional/excluir-servico.js" ></script> <!--Excluir servico no modal configurações-->
-   
+  
     
     <!--Modal Novo Agendamento-->
     <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js" ></script> <!--Lista de clientes no modal novo agendamento-->
+    <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js" ></script> <!--Busca de clientes no modal editar agendamento-->
     <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js" ></script>
+    <script src="../js/agenda/cadastrar-agendamento.js?v=20260818_1"></script> <!--Valida e salva o Novo Agendamento-->
+    <script src="../js/agenda/editar-agendamento.js" ></script> <!--Carrega e atualiza o agendamento-->
 
     <!--Modal Novo CLiente-->
     <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js" ></script> <!--Cadastrar Clientes-->
@@ -1774,27 +1315,6 @@
     <!--Universal-->
     <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
     <script src="../../js/altear_status_universal.js" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
-
-    <script> // Script para retrair o meno lateral 
-        document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.js-toggle-menu').forEach(btn => {
-            btn.addEventListener('click', () => {
-            document.body.classList.toggle('menu-fechado');
-
-            // (opcional) salvar preferência
-            localStorage.setItem(
-                'menuFechado',
-                document.body.classList.contains('menu-fechado') ? '1' : '0'
-            );
-            });
-        });
-
-        // (opcional) restaurar preferência ao abrir a página
-        if (localStorage.getItem('menuFechado') === '1') {
-            document.body.classList.add('menu-fechado');
-        }
-        });
-    </script>
 
     <script> //Abrir e ferchar todos os modal
     (() => {
@@ -1997,6 +1517,10 @@
         return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
       }
 
+      function dataIsoLocal(d){
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      }
+
       function isFeriado(d){
         const key = String(d.getMonth() + 1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
         return feriadosFixos.includes(key);
@@ -2053,12 +1577,18 @@
           // seta data no span .dia-data (se existir)
           const elData = btn.querySelector('.dia-data');
           if (elData) elData.textContent = formatarData(data);
+          // Data completa usada por lista-agenda.js; não agrupar apenas por weekday.
+          btn.dataset.dataAgenda = dataIsoLocal(data);
 
           // classes visuais
           btn.classList.remove('hoje', 'feriado');
           if (data.toDateString() === hoje.toDateString()) btn.classList.add('hoje');
           if (isFeriado(data)) btn.classList.add('feriado');
         });
+
+        document.dispatchEvent(new CustomEvent('agenda:semana:alterada', {
+          detail: { inicio_semana: dataIsoLocal(baseMonday) }
+        }));
       }
 
       // API pública (mini-calendário vai usar isso)
@@ -2238,10 +1768,9 @@
     });
     </script>
 
-  <script>
-  /* ==========================================================
-    Script navegação e ABAS do MENU CONFIGURAÇÕES DA AGENDA
+  <script>  /* Script navegação e ABAS do MENU CONFIGURAÇÕES DA AGENDA
   ========================================================== */
+
   (() => {
     "use strict";
 

@@ -57,7 +57,9 @@
     EMPTY_MSG: "Nenhuma empresa encontrada.",
     MOBILE_MAX: 680,
 
-    LOGIN_EMPRESA_BASE_URL: "https://localhost",
+    // O link deve usar o mesmo host e protocolo em que o AmAgenda está aberto.
+    // Assim, o contexto da empresa passa por /login.php dentro deste projeto.
+    LOGIN_EMPRESA_BASE_URL: window.location.origin,
 
     MODAL_EDITAR_ID: "modalEditarEmpresa",
     FORM_EDITAR_ID: "formEmpEditar",

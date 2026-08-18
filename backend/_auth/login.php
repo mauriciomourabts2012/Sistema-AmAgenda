@@ -266,8 +266,9 @@ if ($tipoUsuario === 'super_admin') {
          * Se o super admin entrou com empresa na sessão,
          * redireciona para o painel administrativo.
          */
-        $_SESSION['perfil_id']   = 1;
-        $_SESSION['perfil_nome'] = 'proprietario';
+        // Mantém a identidade real do usuário: modo suporte não o transforma em proprietário.
+        $_SESSION['perfil_id']   = 0;
+        $_SESSION['perfil_nome'] = 'super_admin';
         $redirect = '/views/painel-administrativo/painel-administrativo.html';
     } else {
         unset($_SESSION['empresa_id']);
@@ -338,12 +339,16 @@ $sqlEmpresaUsuario = "
     SELECT
         eu.id_empresa,
         eu.id_perfil,
+        p.nome AS perfil_nome,
+        p.status AS perfil_status,
         eu.status AS status_vinculo,
         e.nome AS empresa_nome,
         e.status AS empresa_status
     FROM empresa_usuario eu
     INNER JOIN empresa e
         ON e.id_empresa = eu.id_empresa
+    INNER JOIN perfil p
+        ON p.id_perfil = eu.id_perfil
     WHERE eu.id_usuario = ?
       AND eu.id_empresa = ?
     LIMIT 1
@@ -389,6 +394,8 @@ if (!$empresaRow) {
 
 $empresaId     = (int)($empresaRow['id_empresa'] ?? 0);
 $perfilId      = (int)($empresaRow['id_perfil'] ?? 0);
+$perfilNomeDb  = trim((string)($empresaRow['perfil_nome'] ?? ''));
+$perfilStatus  = mb_strtolower(trim((string)($empresaRow['perfil_status'] ?? '')), 'UTF-8');
 $statusVinculo = mb_strtolower(trim((string)($empresaRow['status_vinculo'] ?? '')), 'UTF-8');
 $statusEmpresa = mb_strtolower(trim((string)($empresaRow['empresa_status'] ?? '')), 'UTF-8');
 $empresaNomeBd = trim((string)($empresaRow['empresa_nome'] ?? ''));
@@ -426,6 +433,15 @@ if ($perfilId <= 0) {
         'step' => 'perfil',
         'code' => 'USER_WITHOUT_PERFIL',
         'user_msg' => 'Usuário sem perfil vinculado à empresa.'
+    ], 403);
+}
+
+if ($perfilStatus !== 'ativo') {
+    out([
+        'ok' => false,
+        'step' => 'perfil',
+        'code' => 'USER_PROFILE_INACTIVE',
+        'user_msg' => 'O perfil vinculado ao usuário não está ativo.'
     ], 403);
 }
 
@@ -527,19 +543,21 @@ $_SESSION['perfil_id']     = $perfilId;
  */
 $perfilNome = '';
 $redirect = '';
+$perfilNomeNormalizado = normalizaEmpresaNome($perfilNomeDb);
 
-switch ($perfilId) {
-    case 1:
+switch ($perfilNomeNormalizado) {
+    case 'proprietario':
         $perfilNome = 'proprietario';
         $redirect = '/views/painel-administrativo/painel-administrativo.html';
         break;
 
-    case 2:
+    case 'profissional':
         $perfilNome = 'profissional';
         $redirect = '/views/agenda.html';
         break;
 
-    case 3:
+    case 'recepcao':
+    case 'recepcionista':
         $perfilNome = 'recepcionista';
         $redirect = '/views/agenda.html';
         break;

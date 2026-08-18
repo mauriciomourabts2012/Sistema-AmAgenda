@@ -6,72 +6,88 @@
     <title>AmAgenda • Painel SuperAdim</title>
     
     <!--CSS WEB-->
-    <link rel="stylesheet" href="../../css/agenda/agenda-web.css"/>
+    <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_1"/>
     <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
     <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css"/>
     <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
+    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
     <link rel="stylesheet" href="../../css/mensagem-erro-universal.css"/>
     <link rel="stylesheet" href="../../css/perfil.css">
 
     <!--CSS MOBILE-->
-    <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css"/>
+    <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260817_2"/>
     <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css"/>
     <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
+    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260817_3"/>
     <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
 
   <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
-  <script src="/public/_auth/sessao.js" ></script> 
+  <script src="/public/_auth/sessao.js?v=20260818_1"></script>
   </head>
 
-  <body>
-      
-      <!-- Cabeçalho Painel -->
-      <header class="cabecalho-painel">
+  <body data-menu-contexto="super-admin">
+    <!-- ======================================================
+         COMPONENTE: MENU LATERAL
+         Estrutura HTML: esta seção até "FIM: MENU LATERAL".
+         Estilos: public/css/menu-lateral/menu-lateral-web.css
+                  public/css/menu-lateral/menu-lateral-mobile.css
+         Comportamento: public/js/menu-lateral/menu-lateral.js
+         Os itens são definidos pelo contexto "super-admin".
+         ====================================================== -->
+    <aside id="sidebarAgenda" class="sidebar-agenda" aria-label="Navegação do Super Admin">
+      <!-- Marca da plataforma e botão de fechamento no mobile. -->
+      <div class="sidebar-marca">
+        <span class="sidebar-marca-icone" aria-hidden="true">
+          <img src="/public/imagens/logo-menu.png" alt="Logo AmAgenda" class="sidebar-marca-logo">
+        </span>
+        <span class="sidebar-texto sidebar-marca-texto">AmAgenda</span>
+        <button id="fecharSidebarAgenda" class="sidebar-fechar" type="button" aria-label="Fechar menu">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </div>
 
-          <!-- Lado esquerdo -->
-          <div class="cabecalho-esquerda">
-              <h1 class="cabecalho-titulo">Painel</h1>
-              <span class="cabecalho-sub">
-              AmAgenda • <span id="painelDataHoje">10 de Janeiro de 2026</span>
-              </span>
+      <!-- Itens inseridos dinamicamente por menu-lateral.js conforme o contexto da página. -->
+      <nav class="sidebar-navegacao" aria-label="Navegação global da plataforma" data-menu-navegacao></nav>
+
+      <button class="sidebar-item sidebar-ajuda" type="button" title="Ajuda" aria-label="Ajuda">
+        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+        <span class="sidebar-texto">Ajuda</span>
+        <i class="fa-solid fa-chevron-right sidebar-ajuda-seta" aria-hidden="true"></i>
+      </button>
+    </aside>
+
+    <!-- Fundo clicável exibido atrás do menu lateral no mobile/tablet. -->
+    <button id="overlaySidebarAgenda" class="sidebar-overlay" type="button" aria-label="Fechar menu" tabindex="-1"></button>
+    <!-- ==================== FIM: MENU LATERAL ==================== -->
+
+    <div class="agenda-app-shell super-admin-app-shell">
+      <header class="cabecalho-agenda super-admin-cabecalho-global">
+        <div class="cabecalho-esquerda">
+          <button id="abrirSidebarAgenda" class="sidebar-abrir" type="button" aria-label="Abrir menu" aria-controls="sidebarAgenda" aria-expanded="false">
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+          </button>
+          <div class="cabecalho-data-grupo">
+            <h1 id="cabecalhoModuloTitulo" class="cabecalho-dia">Empresas</h1>
+            <span id="cabecalhoModuloSubtitulo" class="cabecalho-data">Gerencie as empresas da plataforma</span>
           </div>
+        </div>
 
-          <!-- Lado direito -->
-          <div class="cabecalho-direita">
-                          
-              <!-- PERFIL DO USUÁRIO -->
-              <button class="botao-geral destaque" type="button"  title="Meu perfil" data-abrir-modal="modalPerfilUsuario">
-                  <i class="fa-solid fa-user-circle"></i>
-                  <span class="btn-texto">Perfil</span>
-              </button>
-          </div>
-
+        <div class="cabecalho-direita">
+          <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
+            <i class="fa-regular fa-bell" aria-hidden="true"></i>
+          </button>
+          <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
+            <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
+            <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
+          </button>
+        </div>
       </header>
 
     <main>
 
-    <section class="layout-controle" > <!--Navegação em abas-->
-
-      <nav class="menu-principal-abas" aria-label="Menu SuperAdmin">
-
-          <button type="button" data-aba="empresas" class="ativa">
-              <span class="dia-sigla">Empresas</span>
-          </button>
-
-          <button type="button" data-aba="usuarios">
-              <span class="dia-sigla">Usuários</span>
-          </button>
-
-          <button type="button" data-aba="usuarios-super">
-            <span class="dia-sigla">Usuario Super</span>
-          </button>
-
-          <button type="button" data-aba="planos">
-              <span class="dia-sigla">Planos</span>
-          </button>
-      </nav>
+    <section class="layout-controle super-admin-conteudo-global">
 
 
       <!--Cada div e uma aba-->
@@ -84,10 +100,6 @@
 
             <!--BOTOES-->
             <div>
-                <!--Retrair-->
-                <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
-                    ☰
-                </button>
             <!--Adicionar Empresa-->
             <button class="botao-geral" type="button" id="btnNovaEmpresa"  data-abrir-modal="modalCadastrarEmpresa">
               <i class="fas fa-plus"></i>
@@ -188,11 +200,6 @@
 
             <!--BOTOES-->
             <div>
-              <!--Retrair-->
-              <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
-                ☰
-              </button>
-
               <!--Adicionar Usuário-->
               <button class="botao-geral" type="button" id="btnNovoUsuario" data-abrir-modal="modalCadastrarUsuario" >
                 <i class="fas fa-plus"></i>
@@ -305,11 +312,6 @@
 
             <!--BOTOES-->
             <div>
-              <!--Retrair-->
-              <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
-                ☰
-              </button>
-
               <!--Adicionar Usuário Super Admin-->
               <button class="botao-geral" type="button" id="btnNovoUsuarioSuper" data-abrir-modal="modalCadastrarUsuarioSuper">
                 <i class="fas fa-plus"></i>
@@ -416,11 +418,6 @@
 
             <!--BOTOES-->
             <div>
-              <!--Retrair-->
-              <button class="botao-geral js-toggle-menu" type="button" title="Retrair menu">
-                ☰
-              </button>
-
               <!--Adicionar Plano-->
               <button class="botao-geral" type="button" id="btnNovoPlano" data-abrir-modal="modalCadastrarPlano" >
                 <i class="fas fa-plus"></i>
@@ -1548,9 +1545,11 @@
     </section>
 
     </main>
+    </div><!-- /.agenda-app-shell -->
 
     <!--lista Core-->
     <script src="../../js/core/lista-core.js" ></script>
+    <script src="../../js/menu-lateral/menu-lateral.js?v=20260817_3"></script>
 
 
     <!--Modal Perfil-->
@@ -1561,7 +1560,7 @@
 
 
     <!--ABA EMPRESAS-->
-    <script src="../../js/super-admin/empresa/lista-empresa.js" ></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
+    <script src="../../js/super-admin/empresa/lista-empresa.js?v=20260818_1"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
     <script src="../../js/super-admin/empresa/cadastrar_empresa.js" ></script> <!--Cadastrar novas empresas-->
     <script src="../../js/super-admin/empresa/editar_empresa.js" ></script> <!--Editar dados de cadastro da empresa -->
 
@@ -1586,70 +1585,6 @@
     <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
     <script src="../../js/altear_status_universal.js" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
 
-
-    <script> //Scrpt da data atual no cabeçalho corretamente
-    document.addEventListener('DOMContentLoaded', () => {
-
-      const elData = document.getElementById('painelDataHoje');
-      if (!elData) return;
-
-      const hoje = new Date();
-
-      const diasSemana = [
-        'Domingo',
-        'Segunda-feira',
-        'Terça-feira',
-        'Quarta-feira',
-        'Quinta-feira',
-        'Sexta-feira',
-        'Sábado'
-      ];
-
-      const meses = [
-        'Janeiro',
-        'Fevereiro',
-        'Março',
-        'Abril',
-        'Maio',
-        'Junho',
-        'Julho',
-        'Agosto',
-        'Setembro',
-        'Outubro',
-        'Novembro',
-        'Dezembro'
-      ];
-
-      const diaSemana = diasSemana[hoje.getDay()];
-      const dia = hoje.getDate();
-      const mes = meses[hoje.getMonth()];
-      const ano = hoje.getFullYear();
-
-      elData.textContent = `${diaSemana}, ${dia} de ${mes} de ${ano}`;
-
-    });
-    </script>
-
-    <script> // Script para retrair o meno lateral 
-        document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.js-toggle-menu').forEach(btn => {
-            btn.addEventListener('click', () => {
-            document.body.classList.toggle('menu-fechado');
-
-            // (opcional) salvar preferência
-            localStorage.setItem(
-                'menuFechado',
-                document.body.classList.contains('menu-fechado') ? '1' : '0'
-            );
-            });
-        });
-
-        // (opcional) restaurar preferência ao abrir a página
-        if (localStorage.getItem('menuFechado') === '1') {
-            document.body.classList.add('menu-fechado');
-        }
-        });
-    </script>
 
     <script> //Script abre e fechar todos os modals (MODAL EDITAR NÃO AEBRE E NEM FECHAR POR AQUI DIRETO NOS JS DE LISTAS)
       const MODAL_CLASSES = ['modal-geral', 'modal-cards'];
@@ -1701,56 +1636,6 @@
           });
         }
       });
-    </script>
-
-    <script>//Script Responsavel para a Naveção em ABAS
-    document.addEventListener("DOMContentLoaded", () => {
-      const botoes = document.querySelectorAll(".menu-principal-abas button[data-aba]");
-      const abas = document.querySelectorAll(".conteudo-aba");
-
-      if (!botoes.length || !abas.length) return;
-
-      const STORAGE_KEY = "aba_super_admin_ativa";
-      const ABA_PADRAO = "empresas";
-
-      function abrirAba(idAba, salvar = true) {
-        botoes.forEach(btn => btn.classList.remove("ativa"));
-        abas.forEach(aba => aba.classList.remove("ativa"));
-
-        const botao = document.querySelector(`.menu-principal-abas button[data-aba="${idAba}"]`);
-        const conteudo = document.getElementById(idAba);
-
-        if (!botao || !conteudo) return;
-
-        botao.classList.add("ativa");
-        conteudo.classList.add("ativa");
-
-        if (salvar) {
-          localStorage.setItem(STORAGE_KEY, idAba);
-        }
-      }
-
-      // =========================
-      // Clique nas abas
-      // =========================
-      botoes.forEach(btn => {
-        btn.addEventListener("click", () => {
-          const aba = btn.dataset.aba;
-          abrirAba(aba);
-        });
-      });
-
-      // =========================
-      // INIT
-      // =========================
-      const abaSalva = localStorage.getItem(STORAGE_KEY);
-
-      if (abaSalva && document.getElementById(abaSalva)) {
-        abrirAba(abaSalva, false);
-      } else {
-        abrirAba(ABA_PADRAO, false);
-      }
-    });
     </script>
 
   </body>

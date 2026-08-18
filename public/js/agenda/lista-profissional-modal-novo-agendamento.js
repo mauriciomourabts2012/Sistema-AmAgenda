@@ -5,6 +5,16 @@
   const selectProfissional = document.getElementById("ag_profissional");
   const selectServico = document.getElementById("ag_servico");
   const selectDuracao = document.getElementById("ag_duracao");
+  const inputData = document.getElementById("ag_data");
+  const selectHora = document.getElementById("ag_hora");
+  const boxHorariosDisponiveis = document.getElementById("ag_horarios_disponiveis");
+  const calendarioDias = document.getElementById("ag_calendario_dias");
+  const calendarioMes = document.getElementById("ag_calendario_mes");
+  const calendarioAnterior = document.getElementById("ag_calendario_anterior");
+  const calendarioProximo = document.getElementById("ag_calendario_proximo");
+  const dataSelecionadaTexto = document.getElementById("ag_data_selecionada");
+  const disponibilidadeInstrucao = document.getElementById("ag_disponibilidade_instrucao");
+  const disponibilidadeSecao = document.querySelector("#modalNovoAgendamento .ag-disponibilidade");
   const modal = document.getElementById("modalNovoAgendamento");
   const form = document.getElementById("formNovoAgendamento");
   const modalNovoServico = document.getElementById("modalNovoServicoAgendamento");
@@ -17,6 +27,10 @@
 
   let profissionaisCarregados = false;
   let abortServicos = null;
+  let abortHorarios = null;
+  let abortDias = null;
+  let diasAtendimentoAtuais = [];
+  let mesCalendarioAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
   function normalizar(txt) {
     return String(txt ?? "").trim();
@@ -130,6 +144,147 @@
 
   function preencherSelect(select, html) {
     select.innerHTML = html;
+  }
+
+  function hojeIsoLocal() {
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+    const dia = String(hoje.getDate()).padStart(2, "0");
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  function limparHorarios(texto = "Selecione profissional, serviço e data") {
+    if (!selectHora) return;
+    preencherSelect(selectHora, optionPadrao(texto));
+    selectHora.value = "";
+    selectHora.disabled = true;
+    selectHora.removeAttribute("data-hora-fim");
+    if (boxHorariosDisponiveis) {
+      boxHorariosDisponiveis.innerHTML = `<span class="ag-disponibilidade-vazio">${escapeHtml(texto)}</span>`;
+    }
+  }
+
+  function setHorarioCarregando() {
+    if (!selectHora) return;
+    preencherSelect(selectHora, optionPadrao("Carregando horários..."));
+    selectHora.disabled = true;
+    if (boxHorariosDisponiveis) {
+      boxHorariosDisponiveis.innerHTML = '<span class="ag-disponibilidade-carregando">Carregando horários disponíveis...</span>';
+    }
+  }
+
+  function setHorarioMensagem(texto) {
+    if (!selectHora) return;
+    preencherSelect(selectHora, optionPadrao(texto));
+    selectHora.disabled = true;
+    if (boxHorariosDisponiveis) {
+      boxHorariosDisponiveis.innerHTML = `<span class="ag-disponibilidade-aviso">${escapeHtml(texto)}</span>`;
+    }
+  }
+
+  function limparDias(texto = "Selecione um profissional e um serviço.") {
+    diasAtendimentoAtuais = [];
+    if (disponibilidadeInstrucao) disponibilidadeInstrucao.textContent = texto;
+    renderizarCalendario();
+  }
+
+  function renderizarDias(dias = []) {
+    diasAtendimentoAtuais = Array.isArray(dias)
+      ? dias.map((dia) => normalizar(dia).toLowerCase()).filter(Boolean)
+      : [];
+
+    if (!diasAtendimentoAtuais.length) {
+      limparDias("Este profissional não possui dias de atendimento configurados.");
+      return;
+    }
+
+    if (disponibilidadeInstrucao) {
+      disponibilidadeInstrucao.textContent = "Os dias destacados estão disponíveis para agendamento.";
+    }
+    renderizarCalendario();
+  }
+
+  function dataIsoLocal(data) {
+    const ano = data.getFullYear();
+    const mes = String(data.getMonth() + 1).padStart(2, "0");
+    const dia = String(data.getDate()).padStart(2, "0");
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  function renderizarCalendario() {
+    if (!calendarioDias || !calendarioMes) return;
+
+    const nomesMeses = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+    const nomesDias = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"];
+    const ano = mesCalendarioAtual.getFullYear();
+    const mes = mesCalendarioAtual.getMonth();
+    const primeiroDia = new Date(ano, mes, 1);
+    const ultimoDiaNumero = new Date(ano, mes + 1, 0).getDate();
+    const deslocamentoSegunda = (primeiroDia.getDay() + 6) % 7;
+    const hojeIso = hojeIsoLocal();
+    const selecionadaIso = normalizar(inputData?.value);
+    const celulas = [];
+
+    calendarioMes.textContent = `${nomesMeses[mes]} ${ano}`;
+
+    for (let i = 0; i < deslocamentoSegunda; i += 1) {
+      celulas.push('<span class="ag-calendario-vazio" aria-hidden="true"></span>');
+    }
+
+    for (let numero = 1; numero <= ultimoDiaNumero; numero += 1) {
+      const data = new Date(ano, mes, numero);
+      const iso = dataIsoLocal(data);
+      const atende = diasAtendimentoAtuais.includes(nomesDias[data.getDay()]);
+      const dataPassada = iso < hojeIso;
+      const habilitado = atende && !dataPassada;
+      const selecionado = iso === selecionadaIso;
+      const classes = ["ag-calendario-dia"];
+      if (habilitado) classes.push("disponivel");
+      if (selecionado) classes.push("selecionado");
+
+      celulas.push(`
+        <button type="button"
+                class="${classes.join(" ")}"
+                data-data="${iso}"
+                ${habilitado ? "" : "disabled"}
+                aria-label="${numero} de ${nomesMeses[mes]} de ${ano}${habilitado ? ", disponível" : ", indisponível"}"
+                aria-pressed="${selecionado ? "true" : "false"}">${numero}</button>
+      `);
+    }
+
+    calendarioDias.innerHTML = celulas.join("");
+
+    const mesAtual = new Date();
+    mesAtual.setDate(1);
+    mesAtual.setHours(0, 0, 0, 0);
+    if (calendarioAnterior) calendarioAnterior.disabled = mesCalendarioAtual <= mesAtual;
+  }
+
+  function renderizarBotoesHorarios(horarios = []) {
+    if (!boxHorariosDisponiveis) return;
+
+    boxHorariosDisponiveis.innerHTML = horarios.map((horario) => {
+      const inicio = normalizar(horario?.hora_inicio);
+      const fim = normalizar(horario?.hora_fim);
+      return `<button type="button" class="ag-horario-opcao" data-hora-inicio="${escapeHtml(inicio)}" data-hora-fim="${escapeHtml(fim)}" aria-pressed="false">${escapeHtml(inicio)}</button>`;
+    }).join("");
+  }
+
+  function limparDataEHorarios({ limparData = false } = {}) {
+    if (abortHorarios) {
+      abortHorarios.abort();
+      abortHorarios = null;
+    }
+    if (limparData && inputData) {
+      inputData.value = "";
+      if (dataSelecionadaTexto) dataSelecionadaTexto.textContent = "Nenhuma data selecionada";
+      renderizarCalendario();
+    }
+    limparHorarios();
   }
 
   function normalizarComparacao(txt) {
@@ -480,11 +635,134 @@
     }
   }
 
+  async function carregarDiasAtendimento() {
+    const idProfissional = normalizar(selectProfissional.value);
+    const idServico = normalizar(selectServico.value);
+
+    if (!idProfissional || !idServico || idServico === ACAO_NOVO_SERVICO) {
+      limparDias();
+      return;
+    }
+
+    if (abortDias) abortDias.abort();
+    abortDias = new AbortController();
+    if (disponibilidadeInstrucao) disponibilidadeInstrucao.textContent = "Carregando dias de atendimento...";
+
+    try {
+      const params = new URLSearchParams({
+        path: "agenda/horarios-disponiveis",
+        id_profissional: idProfissional,
+        id_servico: idServico,
+        data: hojeIsoLocal()
+      });
+      const resp = await fetch(`/public/api/api_central.php?${params.toString()}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: abortDias.signal
+      });
+      const json = await resp.json().catch(() => null);
+
+      if (!resp.ok || !json || json?.ok === false) {
+        limparDias(json?.user_msg || json?.mensagem || "Não foi possível carregar os dias de atendimento.");
+        return;
+      }
+      renderizarDias(json?.data?.dias_atendimento || []);
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      console.error("[dias-atendimento-modal-agendamento]", err);
+      limparDias("Não foi possível carregar os dias de atendimento.");
+    }
+  }
+
+  async function carregarHorariosDisponiveis() {
+    if (!inputData || !selectHora) return;
+
+    const idProfissional = normalizar(selectProfissional.value);
+    const idServico = normalizar(selectServico.value);
+    const data = normalizar(inputData.value);
+
+    if (!idProfissional || !idServico || !data || idServico === ACAO_NOVO_SERVICO) {
+      limparHorarios();
+      return;
+    }
+
+    if (data < hojeIsoLocal()) {
+      inputData.value = "";
+      setHorarioMensagem("Não é permitido agendar em uma data passada");
+      return;
+    }
+
+    if (abortHorarios) abortHorarios.abort();
+    abortHorarios = new AbortController();
+    setHorarioCarregando();
+
+    try {
+      const params = new URLSearchParams();
+      params.set("path", "agenda/horarios-disponiveis");
+      params.set("id_profissional", idProfissional);
+      params.set("id_servico", idServico);
+      params.set("data", data);
+
+      const resp = await fetch(`/public/api/api_central.php?${params.toString()}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: abortHorarios.signal
+      });
+
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json || json?.ok === false) {
+        setHorarioMensagem(json?.user_msg || json?.mensagem || "Erro ao carregar horários");
+        return;
+      }
+
+      const dados = json?.data || {};
+      const horarios = Array.isArray(dados?.horarios) ? dados.horarios : [];
+      renderizarDias(dados?.dias_atendimento || []);
+
+      if (!dados?.atende_no_dia) {
+        setHorarioMensagem("O profissional não atende nesta data");
+        inputData.value = "";
+        if (dataSelecionadaTexto) dataSelecionadaTexto.textContent = "Nenhuma data selecionada";
+        renderizarCalendario();
+        return;
+      }
+
+      if (!horarios.length) {
+        setHorarioMensagem("Nenhum horário disponível para esta data");
+        return;
+      }
+
+      const options = horarios.map((horario) => {
+        const inicio = normalizar(horario?.hora_inicio);
+        const fim = normalizar(horario?.hora_fim);
+        return `<option value="${escapeHtml(inicio)}" data-hora-fim="${escapeHtml(fim)}">${escapeHtml(inicio)} às ${escapeHtml(fim)}</option>`;
+      }).join("");
+
+      preencherSelect(selectHora, `
+        <option value="">Selecione o horário</option>
+        ${options}
+      `);
+      selectHora.disabled = false;
+      renderizarBotoesHorarios(horarios);
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      console.error("[horarios-disponiveis-modal-agendamento]", err);
+      setHorarioMensagem("Não foi possível carregar os horários");
+    }
+  }
+
   selectProfissional.addEventListener("change", () => {
     const idProfissional = selectProfissional.value;
 
     limparServicos();
     preencherDuracaoServico("");
+    limparDataEHorarios({ limparData: true });
+    limparDias();
+    if (disponibilidadeSecao) disponibilidadeSecao.hidden = true;
 
     if (!idProfissional) {
       return;
@@ -494,10 +772,15 @@
   });
 
   selectServico.addEventListener("change", () => {
+    limparDataEHorarios({ limparData: true });
+
     if (selectServico.value === ACAO_NOVO_SERVICO) {
+      if (disponibilidadeSecao) disponibilidadeSecao.hidden = true;
       abrirModalNovoServico();
       return;
     }
+
+    if (disponibilidadeSecao) disponibilidadeSecao.hidden = !normalizar(selectServico.value);
 
     if (!selectDuracao) return;
 
@@ -505,7 +788,73 @@
     const duracao = normalizar(option?.getAttribute("data-duracao"));
 
     preencherDuracaoServico(duracao);
+    if (selectServico.value) carregarDiasAtendimento();
   });
+
+  if (inputData) {
+    renderizarCalendario();
+  }
+
+  if (calendarioAnterior) {
+    calendarioAnterior.addEventListener("click", () => {
+      mesCalendarioAtual = new Date(mesCalendarioAtual.getFullYear(), mesCalendarioAtual.getMonth() - 1, 1);
+      renderizarCalendario();
+    });
+  }
+
+  if (calendarioProximo) {
+    calendarioProximo.addEventListener("click", () => {
+      mesCalendarioAtual = new Date(mesCalendarioAtual.getFullYear(), mesCalendarioAtual.getMonth() + 1, 1);
+      renderizarCalendario();
+    });
+  }
+
+  if (calendarioDias) {
+    calendarioDias.addEventListener("click", (event) => {
+      const botaoDia = event.target.closest(".ag-calendario-dia.disponivel");
+      if (!botaoDia || botaoDia.disabled || !inputData) return;
+
+      inputData.value = normalizar(botaoDia.dataset.data);
+      const dataVisual = new Date(`${inputData.value}T12:00:00`).toLocaleDateString("pt-BR", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long"
+      });
+      if (dataSelecionadaTexto) {
+        dataSelecionadaTexto.textContent = dataVisual.charAt(0).toUpperCase() + dataVisual.slice(1);
+      }
+      renderizarCalendario();
+      carregarHorariosDisponiveis();
+    });
+  }
+
+  if (selectHora) {
+    selectHora.addEventListener("change", () => {
+      const option = selectHora.options[selectHora.selectedIndex];
+      const horaFim = normalizar(option?.getAttribute("data-hora-fim"));
+      if (horaFim) selectHora.dataset.horaFim = horaFim;
+      else selectHora.removeAttribute("data-hora-fim");
+    });
+  }
+
+  if (boxHorariosDisponiveis) {
+    boxHorariosDisponiveis.addEventListener("click", (event) => {
+      const botao = event.target.closest(".ag-horario-opcao");
+      if (!botao || !selectHora) return;
+
+      const horaInicio = normalizar(botao.dataset.horaInicio);
+      const horaFim = normalizar(botao.dataset.horaFim);
+      selectHora.value = horaInicio;
+      selectHora.dataset.horaFim = horaFim;
+      selectHora.dispatchEvent(new Event("change", { bubbles: true }));
+
+      boxHorariosDisponiveis.querySelectorAll(".ag-horario-opcao").forEach((item) => {
+        const selecionado = item === botao;
+        item.classList.toggle("selecionado", selecionado);
+        item.setAttribute("aria-pressed", selecionado ? "true" : "false");
+      });
+    });
+  }
 
   document.addEventListener("agenda:servico-agendamento:cadastrado", (e) => {
     const servico = e?.detail?.servico || null;
@@ -527,9 +876,13 @@
     form.addEventListener("reset", () => {
       setTimeout(() => {
         profissionaisCarregados = false;
+        mesCalendarioAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
         preencherSelect(selectProfissional, optionPadrao("Selecione o profissional"));
         limparServicos();
+        limparDataEHorarios();
+        limparDias();
+        if (disponibilidadeSecao) disponibilidadeSecao.hidden = true;
 
         if (abortServicos) {
           abortServicos.abort();
@@ -550,6 +903,9 @@
         carregarProfissionais();
       } else {
         limparServicos();
+        limparDataEHorarios();
+        limparDias();
+        if (disponibilidadeSecao) disponibilidadeSecao.hidden = true;
 
         if (abortServicos) {
           abortServicos.abort();

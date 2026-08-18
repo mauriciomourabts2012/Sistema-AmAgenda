@@ -1,0 +1,188 @@
+/* ==========================================================
+   MENU LATERAL UNIVERSAL — TABLET E MOBILE
+   ----------------------------------------------------------
+   Até 960px o menu deixa de usar hover e passa a funcionar
+   como drawer, com overlay e áreas de toque confortáveis.
+   ========================================================== */
+@media (max-width: 960px) {
+  body {
+    padding-bottom: 0;
+    overflow-x: hidden;
+  }
+
+  body.sidebar-agenda-aberta { overflow: hidden; }
+
+  .agenda-app-shell {
+    width: 100%;
+    min-height: 100vh;
+    margin-left: 0;
+    transition: none;
+  }
+
+  .sidebar-agenda {
+    z-index: 10020;
+    width: min(82vw, 292px);
+    padding: 16px 12px;
+    transform: translateX(-105%);
+    visibility: hidden;
+    box-shadow: 14px 0 34px rgba(2, 20, 48, .3);
+    transition: transform .24s ease, visibility 0s linear .24s;
+  }
+
+  body.sidebar-agenda-aberta .sidebar-agenda {
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .sidebar-marca {
+    grid-template-columns: 52px minmax(0, 1fr) 42px;
+    margin-bottom: 22px;
+  }
+
+  /* Mantém a identidade visual legível sem ampliar o cabeçalho no mobile. */
+  .sidebar-marca-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .sidebar-texto,
+  body.sidebar-agenda-aberta .sidebar-texto {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+
+  .sidebar-fechar {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 11px;
+    color: #fff;
+    background: rgba(255, 255, 255, .1);
+    font-size: 17px;
+  }
+
+  .sidebar-item { min-height: 54px; }
+  .sidebar-ajuda { margin-top: auto; }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10010;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+    background: rgba(15, 23, 42, .52);
+    transition: opacity .22s ease, visibility 0s linear .22s;
+  }
+
+  body.sidebar-agenda-aberta .sidebar-overlay {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .cabecalho-agenda {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+  }
+
+  .cabecalho-esquerda {
+    min-width: 0;
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .sidebar-abrir {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px;
+    border: 1px solid #dbe4ef;
+    border-radius: 12px;
+    color: #26364d;
+    background: #fff;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, .1);
+    font-size: 18px;
+  }
+
+  .cabecalho-data-grupo { min-width: 0; }
+
+  .cabecalho-direita {
+    order: initial;
+    flex: 0 0 auto;
+    overflow: visible;
+    padding: 0;
+    gap: 9px;
+  }
+
+  .cabecalho-notificacoes {
+    width: 42px;
+    height: 42px;
+  }
+
+  .cabecalho-perfil {
+    width: 46px;
+    height: 46px;
+  }
+
+  .cabecalho-perfil .botao-perfil-avatar {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+@media (max-width: 450px) {
+  .cabecalho-agenda {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .cabecalho-esquerda {
+    order: initial;
+    gap: 8px;
+  }
+
+  .cabecalho-dia { font-size: 20px; }
+  .cabecalho-data { font-size: 11px; }
+  .badge-hoje { padding: 3px 8px; font-size: 11px; }
+
+  .cabecalho-direita {
+    order: initial;
+    gap: 6px;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .sidebar-abrir,
+  .cabecalho-notificacoes {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .cabecalho-perfil {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (max-width: 360px) {
+  .cabecalho-notificacoes { display: none; }
+  .cabecalho-dia { font-size: 18px; }
+  .cabecalho-data { font-size: 10px; }
+}

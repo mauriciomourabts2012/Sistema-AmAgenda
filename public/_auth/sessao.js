@@ -15,6 +15,7 @@
     if (!auth || typeof auth !== "object") return;
 
     window.__AUTH__ = auth;
+    document.dispatchEvent(new CustomEvent("amagenda:sessao-carregada", { detail: auth }));
 
     const elNomeEmpresa = document.getElementById("nomeEmpresaCabecalho");
     if (!elNomeEmpresa) return;

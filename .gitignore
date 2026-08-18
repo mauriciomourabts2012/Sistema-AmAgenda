@@ -1,0 +1,6 @@
+/public/uploads/*
+!/public/uploads/.gitkeep
+!/public/uploads/.htaccess
+/storage/identidade-visual/temporarios/*
+!/storage/identidade-visual/temporarios/.gitkeep
+

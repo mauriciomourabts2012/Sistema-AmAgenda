@@ -1,10 +1,8 @@
 /* ==========================================================
-   ListaAgenda.js — ENXUTO (usa window.ListaCore)
-   - Renderiza MOCK (DEMO) por dia ✅
-   - ✅ Filtro por período por ABA (IDs únicos por dia)
-   - ✅ Filtro por STATUS no mesmo popover ✅ (pendente/confirmado/concluido/cancelado)
+   ListaAgenda.js — dados reais da tabela agendamento
+   - Consulta a API central e renderiza os registros por dia da semana
+   - Pesquisa e filtro por status compartilhados pelas sete abas
    - ✅ Paginação por DIA (PADRÃO MANUTENÇÃO: btn-pag, Anterior/Próximo, sem contador)
-   - Futuro: troca para PHP via CFG.MOCK=false
    - WhatsApp no card (desabilita se não tiver tel)
    - Menu ⋮ flutuante anti-corte via ListaCore
    - Pesquisa na aba ativa + limpar
@@ -90,8 +88,7 @@
 
   // ===== CONFIG =====
   const CFG = {
-    MOCK: true,
-    ENDPOINT: "/backend/Agenda/ListaAgendaSemana.php",
+    ENDPOINT: "/public/api/api_central.php?path=agenda/agendamento/listar",
     ROOT_SELECTOR_MENU: ".conteudo-agenda",
     itensPorPagina: 4, // ✅ igual manutenção
   };
@@ -100,55 +97,22 @@
   // MAPA: seus IDs por dia
   // =========================
   const DIAS = [
-    { dia: "segunda", box: "cardsAgendaSegunda", boxCard: "cardsAgendaSegunda", pag: "paginacao_segunda", searchId: "pesquisar-agenda",  filtro: "segunda" },
-    { dia: "terca",   box: "cardsAgendaTerca",   boxCard: "cardsAgendaTerca",   pag: "paginacao_terca",   searchId: "pesquisar-terca",   filtro: "terca" },
-    { dia: "quarta",  box: "cardsAgendaQuarta",  boxCard: "cardsAgendaQuarta",  pag: "paginacao_quarta",  searchId: "pesquisar-quarta",  filtro: "quarta" },
-    { dia: "quinta",  box: "cardsAgendaQuinta",  boxCard: "cardsAgendaQuinta",  pag: "paginacao_quinta",  searchId: "pesquisar-quinta",  filtro: "quinta" },
-    { dia: "sexta",   box: "cardsAgendaSexta",   boxCard: "cardsAgendaSexta",   pag: "paginacao_sexta",   searchId: "pesquisar-sexta",   filtro: "sexta" },
-    { dia: "sabado",  box: "cardsAgendaSabado",  boxCard: "cardsAgendaSabado",  pag: "paginacao_sabado",  searchId: "pesquisar-sabado",  filtro: "sabado" },
-    { dia: "domingo", box: "cardsAgendaDomingo", boxCard: "cardsAgendaDomingo", pag: "paginacao_domingo", searchId: "pesquisar-domingo", filtro: "domingo" },
+    { dia: "segunda", box: "cardsAgendaSegunda", pag: "paginacao_segunda" },
+    { dia: "terca", box: "cardsAgendaTerca", pag: "paginacao_terca" },
+    { dia: "quarta", box: "cardsAgendaQuarta", pag: "paginacao_quarta" },
+    { dia: "quinta", box: "cardsAgendaQuinta", pag: "paginacao_quinta" },
+    { dia: "sexta", box: "cardsAgendaSexta", pag: "paginacao_sexta" },
+    { dia: "sabado", box: "cardsAgendaSabado", pag: "paginacao_sabado" },
+    { dia: "domingo", box: "cardsAgendaDomingo", pag: "paginacao_domingo" },
   ];
 
-  // =========================
-  // MOCK (com data ISO p/ filtro)
-  // ✅ adicionado: profissional (para identificar no card)
-  // =========================
-  const MOCK = {
-    segunda: [
-      { id: 101, data: "2026-02-10", hora: "08:00", cliente: "Ana Paula", profissional: "Bia", servico: "Unhas em gel", duracao: "1h30", telefone: "(38) 99822-7737", status: "Confirmado", obs: "Preferência: alongamento curto", pagamento_confirmado: true },
-      { id: 102, data: "2026-02-10", hora: "10:30", cliente: "Bruna", profissional: "Bia", servico: "Manicure + esmaltação", duracao: "1h00", telefone: "(38) 99822-7737", status: "Pendente", obs: "", pagamento_confirmado: false },
-      { id: 103, data: "2026-02-10", hora: "14:00", cliente: "Carla", profissional: "Bia", servico: "Pedicure", duracao: "45min", telefone: "", status: "Concluído", obs: "Chegar 10 min antes", pagamento_confirmado: true },
-      { id: 104, data: "2026-02-10", hora: "15:00", cliente: "Daniela", profissional: "Cris", servico: "Design de sobrancelha", duracao: "40min", telefone: "(38) 99711-2233", status: "Confirmado", obs: "", pagamento_confirmado: true },
-      { id: 105, data: "2026-02-10", hora: "16:00", cliente: "Elaine", profissional: "Maria", servico: "Escova", duracao: "1h10", telefone: "", status: "Pendente", obs: "Cabelo longo", pagamento_confirmado: false },
-      { id: 106, data: "2026-02-10", hora: "17:00", cliente: "Marina", profissional: "João", servico: "Corte", duracao: "45min", telefone: "(38) 99700-1111", status: "Cancelado", obs: "", pagamento_confirmado: false },
-    ],
-    terca: [
-      { id: 201, data: "2026-02-11", hora: "09:00", cliente: "Daniela", profissional: "Cris", servico: "Design de sobrancelha", duracao: "40min", telefone: "(38) 99822-7737", status: "Confirmado", obs: "", pagamento_confirmado: true },
-      { id: 202, data: "2026-02-11", hora: "16:30", cliente: "Elaine", profissional: "Maria", servico: "Escova", duracao: "1h10", telefone: "(34) 9xxxx-4444", status: "Pendente", obs: "Cabelo longo", pagamento_confirmado: false },
-    ],
-    quarta: [
-      { id: 301, data: "2026-02-12", hora: "11:00", cliente: "Fernanda", profissional: "Ana", servico: "Hidratação", duracao: "1h00", telefone: "", status: "Confirmado", obs: "", pagamento_confirmado: true },
-    ],
-    quinta: [
-      { id: 401, data: "2026-02-13", hora: "13:00", cliente: "Giovana", profissional: "Maria", servico: "Corte + escova", duracao: "1h20", telefone: "(38) 99822-7737", status: "Confirmado", obs: "", pagamento_confirmado: true },
-      { id: 402, data: "2026-02-13", hora: "18:00", cliente: "Helena", profissional: "Bia", servico: "Manicure", duracao: "50min", telefone: "", status: "Pendente", obs: "", pagamento_confirmado: false },
-      { id: 403, data: "2026-02-13", hora: "19:00", cliente: "Paula", profissional: "Bia", servico: "Pedicure", duracao: "45min", telefone: "(38) 99111-2222", status: "Concluído", obs: "", pagamento_confirmado: true },
-    ],
-    sexta: [
-      { id: 501, data: "2026-02-14", hora: "08:30", cliente: "Isabela", profissional: "Lu", servico: "Alongamento", duracao: "2h00", telefone: "", status: "Confirmado", obs: "Gel nude", pagamento_confirmado: true },
-      { id: 502, data: "2026-02-14", hora: "15:00", cliente: "Juliana", profissional: "Lu", servico: "Pedicure + spa", duracao: "1h30", telefone: "(38) 99822-7737", status: "Pendente", obs: "", pagamento_confirmado: false },
-    ],
-    sabado: [
-      { id: 601, data: "2026-02-15", hora: "10:00", cliente: "Fernanda", profissional: "Maria", servico: "Corte + Escova", duracao: "1h30", telefone: "(38) 99822-7737", status: "Confirmado", obs: "", pagamento_confirmado: true },
-      { id: 602, data: "2026-02-15", hora: "10:30", cliente: "Larissa", profissional: "Maria", servico: "Escova", duracao: "1h00", telefone: "", status: "Pendente", obs: "", pagamento_confirmado: false },
-    ],
-    domingo: []
-  };
 
   // =========================
   // ESTADOS
   // =========================
-  const FILTRO = {};       // { dia:{inicio,fim,status} }
+  // Um único filtro e uma única pesquisa administram as sete abas.
+  const FILTRO_GLOBAL = { status: "" };
+  let PESQUISA_GLOBAL = "";
   const PAGINA_ATUAL = {}; // { dia: 1 }
 
   // =========================
@@ -164,6 +128,7 @@
     if (s.includes("confirm")) return "confirmado";
     if (s.includes("conclu")) return "concluido";
     if (s.includes("cancel")) return "cancelado";
+    if (s.includes("falt")) return "faltou";
     return s;
   }
 
@@ -179,10 +144,14 @@
     if (st.includes("confirm")) cls = "st-confirmado";
     else if (st.includes("conclu")) cls = "st-concluido";
     else if (st.includes("cancel")) cls = "st-cancelado";
-    return `<span class="agenda-status ${cls}">${C.escapeHtml(status || "Pendente")}</span>`;
+    else if (st.includes("falt")) cls = "st-cancelado";
+    const rotulos = { pendente: "Pendente", confirmado: "Confirmado", concluido: "Concluído", cancelado: "Cancelado", faltou: "Faltou" };
+    return `<span class="agenda-status ${cls}">${C.escapeHtml(rotulos[normalizarStatus(status)] || status || "Pendente")}</span>`;
   }
 
   function textoPagamento(ok) {
+    // O banco de agendamento ainda não possui informação de pagamento.
+    if (ok === null || typeof ok === "undefined") return "";
     return ok
       ? `<span class="agenda-pagamento pago">Pago</span>`
       : `<span class="agenda-pagamento nao-pago">Não pago</span>`;
@@ -197,7 +166,7 @@
   }
 
   function buildMenuAcoes(item) {
-    const pago = !!item.pagamento_confirmado;
+    const pago = item.pagamento_confirmado === true;
     return `
       <div class="agenda-menu" role="menu">
         <button class="agenda-menu-item" type="button"
@@ -269,6 +238,31 @@
     `;
   }
 
+  function estaEmAtendimento({ data, horaInicio, horaFim, status }) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !horaInicio || !horaFim) return false;
+    // Somente um agendamento confirmado pode assumir o estado visual de
+    // atendimento; pendente ainda aguarda confirmação.
+    if (normalizarStatus(status) !== "confirmado") return false;
+    const agora = new Date();
+    const inicio = new Date(`${data}T${String(horaInicio).slice(0, 5)}:00`);
+    const fim = new Date(`${data}T${String(horaFim).slice(0, 5)}:00`);
+    return agora >= inicio && agora < fim;
+  }
+
+  function atualizarEstadosTemporais() {
+    document.querySelectorAll(".agenda-card[data-data][data-hora-inicio][data-hora-fim]").forEach((card) => {
+      const emAtendimento = estaEmAtendimento({
+        data: card.dataset.data || "",
+        horaInicio: card.dataset.horaInicio || "",
+        horaFim: card.dataset.horaFim || "",
+        status: card.dataset.status || "",
+      });
+      card.classList.toggle("agenda-card-em-atendimento", emAtendimento);
+      const indicador = card.querySelector(".agenda-em-atendimento");
+      if (indicador) indicador.hidden = !emAtendimento;
+    });
+  }
+
   function cardTemplate(item) {
     const id = item.id ?? "";
     const hora = item.hora ?? "--:--";
@@ -279,14 +273,21 @@
 
     const duracao = item.duracao ?? "";
     const obs = item.obs ?? "";
-    const pago = !!item.pagamento_confirmado;
+    const pagamento = item.pagamento_confirmado;
+    const pago = pagamento === true;
+    const data = String(item.data_agendamento ?? item.data ?? "");
+    const horaInicio = String(item.hora_inicio ?? item.hora ?? "");
+    const horaFim = String(item.hora_fim ?? "");
+    const statusNormalizado = normalizarStatus(item.status);
+    const emAtendimento = estaEmAtendimento({ data, horaInicio, horaFim, status: statusNormalizado });
+    const dataBr = /^\d{4}-\d{2}-\d{2}$/.test(data) ? data.split("-").reverse().join("/") : data;
 
     const telRaw = String(item.telefone || "");
     const temTel = onlyDigits(telRaw).length >= 10;
 
     return `
-      <article class="agenda-card" data-id="${C.escapeHtml(id)}" data-pago="${pago ? "1" : "0"}">
-        <div class="agenda-hora">${C.escapeHtml(hora)}</div>
+      <article class="agenda-card ${emAtendimento ? "agenda-card-em-atendimento" : ""}" data-id="${C.escapeHtml(id)}" data-pago="${pago ? "1" : "0"}" data-data="${C.escapeHtml(data)}" data-hora-inicio="${C.escapeHtml(horaInicio)}" data-hora-fim="${C.escapeHtml(horaFim)}" data-status="${C.escapeHtml(statusNormalizado)}">
+        <div class="agenda-hora"><strong>${C.escapeHtml(hora)}</strong>${dataBr ? `<small>${C.escapeHtml(dataBr)}</small>` : ""}</div>
 
         <div class="agenda-info">
 
@@ -303,8 +304,9 @@
           ${renderIdentificacao({ ...item, profissional })}
 
           <div class="agenda-linha-extra">
+            <span class="agenda-em-atendimento" ${emAtendimento ? "" : "hidden"}><i aria-hidden="true"></i> Em atendimento</span>
             ${badgeStatus(item.status)}
-            ${textoPagamento(pago)}
+            ${textoPagamento(pagamento)}
           </div>
 
           ${obs ? `<div class="agenda-obs">${C.escapeHtml(obs)}</div>` : ""}
@@ -333,31 +335,67 @@
     `;
   }
 
-  async function obterDados() {
-    if (CFG.MOCK) return MOCK;
-    const json = await C.fetchJSON(CFG.ENDPOINT);
-    return json?.data ?? json;
+  async function obterDados(parametros = {}) {
+    const url = new URL(CFG.ENDPOINT, window.location.origin);
+    Object.entries(parametros).forEach(([chave, valor]) => {
+      if (valor !== "" && valor !== null && typeof valor !== "undefined") url.searchParams.set(chave, String(valor));
+    });
+    const resposta = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      cache: "no-store"
+    });
+    const json = await resposta.json().catch(() => null);
+    if (!resposta.ok || !json || json.ok === false) {
+      throw new Error(json?.user_msg || "Não foi possível carregar os agendamentos.");
+    }
+    return json.data || {};
   }
 
-  // =========================
-  // Filtro período
-  // =========================
-  function inRange(dataISO, iniISO, fimISO) {
-    if (!dataISO || !iniISO || !fimISO) return true;
-    return dataISO >= iniISO && dataISO <= fimISO;
+  function formatarDataBr(data) {
+    const valor = String(data || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return "—";
+    return new Date(`${valor}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  }
+
+  function formatarMoeda(valor) {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+  }
+
+  function preencherModalVisualizar(item) {
+    if (!item) return;
+    const set = (id, valor) => { const campo = document.getElementById(id); if (campo) campo.textContent = valor; };
+    const cliente = resolveCliente(item) || "Cliente";
+    const telefone = String(item.telefone || "").trim();
+    set("vc_avatar", cliente.charAt(0).toUpperCase());
+    set("vc_nome", cliente);
+    set("vc_telefone", telefone ? `Telefone: ${telefone}` : "Telefone não informado");
+    set("vc_data", formatarDataBr(item.data_agendamento || item.data));
+    set("vc_hora", `${item.hora_inicio || item.hora || "—"}${item.hora_fim ? ` às ${item.hora_fim}` : ""}`);
+    set("vc_servico", resolveServico(item) || "—");
+    set("vc_duracao", item.duracao || `${item.duracao_min || 0} min`);
+    set("vc_valor", formatarMoeda(item.valor_aplicado));
+    set("vc_profissional", resolveProfissional(item) || "—");
+    set("vc_especialidade", item.especialidade || "Não informada");
+    set("vc_recorrencia", Number(item.repetir_semanalmente) === 1 ? `Semanal${item.recorrencia_data_fim ? ` até ${formatarDataBr(item.recorrencia_data_fim)}` : ""}` : "Não se repete");
+    set("vc_obs", item.observacao || item.obs || "Nenhuma observação informada.");
+
+    const chip = document.getElementById("vc_chip_status");
+    if (chip) { const status = normalizarStatus(item.status); chip.textContent = ({pendente:"Pendente",confirmado:"Confirmado",concluido:"Concluído",cancelado:"Cancelado",faltou:"Faltou"})[status] || item.status; chip.dataset.status = status; }
+    const whats = document.getElementById("vc_btn_whats");
+    if (whats) { whats.disabled = onlyDigits(telefone).length < 10; whats.onclick = () => abrirWhatsapp({ telefone, cliente, servico: resolveServico(item), hora: item.hora_inicio || item.hora }); }
+    const copiar = document.getElementById("vc_btn_copiar_tel");
+    if (copiar) { copiar.disabled = !telefone; copiar.onclick = async () => { try { await navigator.clipboard.writeText(telefone); uiToast("success", "Telefone", "Telefone copiado."); } catch { uiToast("warning", "Telefone", "Não foi possível copiar o telefone."); } }; }
   }
 
   // ✅ aplica período + status
   function aplicarFiltroLista(dia, lista) {
-    const f = FILTRO[dia] || {};
+    const f = FILTRO_GLOBAL;
     return lista.filter(item => {
-      const okPeriodo = (!f.inicio || !f.fim)
-        ? true
-        : inRange(String(item.data || ""), f.inicio, f.fim);
-
       const okStatus = statusBate(item.status, f.status);
-
-      return okPeriodo && okStatus;
+      return okStatus;
     });
   }
 
@@ -433,26 +471,41 @@
       .slice()
       .sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
 
+    const termoPesquisa = C.normalizar(PESQUISA_GLOBAL);
+
+    // Sem pesquisa, cada aba representa somente a data da semana selecionada.
+    // Durante a pesquisa global, o recorte de data é suspenso exclusivamente
+    // para ela, mantendo os resultados organizados pelas mesmas sete abas.
+    const botaoDia = document.querySelector(`.menu-principal-abas button[data-aba="${dia}"]`);
+    const dataDaAba = String(botaoDia?.dataset?.dataAgenda || "");
+    if (dataDaAba && !termoPesquisa) {
+      lista = lista.filter((item) => String(item.data_agendamento || item.data || "") === dataDaAba);
+    }
+
     // filtro (período + status)
     lista = aplicarFiltroLista(dia, lista);
+
+    // A pesquisa é única e consulta os dados de todas as abas da semana.
+    // Cada aba continua exibindo exclusivamente os registros da própria data.
+    if (termoPesquisa) {
+      lista = lista.filter((item) => C.normalizar(Object.values(item || {}).join(" ")).includes(termoPesquisa));
+    }
 
     // paginação (padrão manutenção)
     const info = paginarLista(dia, lista);
 
     // vazio
     if (info.total === 0) {
-      const f = FILTRO[dia] || {};
-      const temPeriodo = !!(f.inicio && f.fim);
+      const f = FILTRO_GLOBAL;
       const temStatus = !!normalizarStatus(f.status);
 
       const detalhe = [
-        temPeriodo ? "no filtro selecionado" : "",
         temStatus ? `com status "${normalizarStatus(f.status)}"` : "",
       ].filter(Boolean).join(" ");
 
       const msg = detalhe
         ? `Nenhum agendamento ${detalhe}.`
-        : `Nenhum agendamento para ${dia}.`;
+        : `Nenhum agendamento para ${dataDaAba ? dataDaAba.split("-").reverse().join("/") : dia}.`;
 
       box.innerHTML = `
         <div class="agenda-vazio">
@@ -467,24 +520,11 @@
 
     // render cards da página
     box.innerHTML = info.pageItems.map(cardTemplate).join("");
+    atualizarEstadosTemporais();
 
     // render paginação (Anterior/Próximo)
     const renderTudoDia = () => renderDia(dia, boxId, pagId, dadosSemana);
     renderPaginacao(dia, info, pagDiv, renderTudoDia);
-  }
-
-  // =========================
-  // Aba ativa / box ativa (pesquisa)
-  // =========================
-  function diaAtivo() {
-    const aba = document.querySelector(".conteudo-aba.ativa");
-    return aba?.id || "segunda";
-  }
-
-  function boxAtiva() {
-    const d = diaAtivo();
-    const it = DIAS.find(x => x.dia === d);
-    return it ? document.getElementById(it.box) : null;
   }
 
   // =========================
@@ -493,54 +533,61 @@
   const menuCtrl = C.createFloatingMenuController({ rootSelector: CFG.ROOT_SELECTOR_MENU });
 
   // =========================
-  // Pesquisa (aba ativa)
+  // Pesquisa global aplicada aos sete dias da semana
   // =========================
   function getPesquisaAbaAtiva() {
-    const aba = document.querySelector(".conteudo-aba.ativa");
-    if (!aba) return { input: null, limpar: null, info: null };
-
-    const input =
-      aba.querySelector(".pesquisar input") ||
-      aba.querySelector(".pesquisar-super input") ||
-      aba.querySelector('input[type="search"]');
-
-    const limpar = aba.querySelector(".btn-limpar-pesquisa");
-    const info = aba.querySelector(".pesquisa-info");
+    const barra = document.querySelector(".agenda-pesquisa-global");
+    const input = document.getElementById("pesquisar-agenda-global");
+    const limpar = barra?.querySelector(".btn-limpar-pesquisa") || null;
+    const info = barra?.querySelector(".pesquisa-info") || null;
     return { input, limpar, info };
   }
 
-  function pesquisa_aplicar() {
-    const { input, limpar, info } = getPesquisaAbaAtiva();
-    const box = boxAtiva();
-    if (!input || !box) return;
+  let getDadosPesquisa = () => ({});
 
-    const termo = C.normalizar(input.value.trim());
+  function atualizarResumoPesquisa(dadosSemana) {
+    const { input, limpar, info } = getPesquisaAbaAtiva();
+    if (!input) return;
+
+    input.value = PESQUISA_GLOBAL;
+    const termo = C.normalizar(PESQUISA_GLOBAL);
     if (limpar) limpar.style.display = termo ? "inline-flex" : "none";
 
-    const cards = box.querySelectorAll(".agenda-card");
-    let vis = 0;
+    if (!info || !termo) { if (info) info.textContent = ""; return; }
 
-    cards.forEach(card => {
-      const ok = !termo || C.normalizar(card.innerText).includes(termo);
-      card.style.display = ok ? "" : "none";
-      if (ok) vis++;
+    const total = DIAS.reduce((soma, { dia }) => {
+      let itens = (dadosSemana?.[dia] || []).slice();
+      itens = aplicarFiltroLista(dia, itens);
+      return soma + itens.filter((item) => C.normalizar(Object.values(item || {}).join(" ")).includes(termo)).length;
+    }, 0);
+
+    info.textContent = total ? `${total} encontrado(s) em toda a agenda.` : "Nenhum agendamento encontrado em toda a agenda.";
+  }
+
+  function pesquisa_aplicar() {
+    const dados = getDadosPesquisa();
+    DIAS.forEach(({ dia, box, pag }) => {
+      PAGINA_ATUAL[dia] = 1;
+      renderDia(dia, box, pag, dados);
     });
-
-    if (info) info.textContent = !termo ? "" : (vis ? `${vis} encontrado(s).` : "Nenhum agendamento encontrado.");
+    atualizarResumoPesquisa(dados);
   }
 
   const pesquisa_deb = C.debounce(pesquisa_aplicar, 80);
 
+  function sincronizarPesquisas() {
+    const input = document.getElementById("pesquisar-agenda-global");
+    if (input && input.value !== PESQUISA_GLOBAL) input.value = PESQUISA_GLOBAL;
+  }
+
   // =========================
-  // ✅ Filtro por ABAS (IDs únicos)
+  // Filtro único compartilhado por todas as abas da semana
   // =========================
   function idsFiltro(sufixo) {
     return {
       btn:     `btnPeriodo_${sufixo}`,
       pop:     `popoverPeriodo_${sufixo}`,
       form:    `formPeriodo_${sufixo}`,
-      ini:     `inicio_${sufixo}`,
-      fim:     `fim_${sufixo}`,
       status:  `status_${sufixo}`,
       label:   `labelPeriodo_${sufixo}`,
       limpar:  `limparFiltro_${sufixo}`,
@@ -549,58 +596,64 @@
   }
 
   function fecharTodosPopovers() {
-    DIAS.forEach(({ filtro }) => {
-      const { btn, pop } = idsFiltro(filtro);
-      const b = document.getElementById(btn);
-      const p = document.getElementById(pop);
-      if (!p || !b) return;
-      p.setAttribute("hidden", "");
-      b.setAttribute("aria-expanded", "false");
-    });
+    const { btn, pop } = idsFiltro("global");
+    const botao = document.getElementById(btn);
+    const painel = document.getElementById(pop);
+    if (!painel || !botao) return;
+    painel.setAttribute("hidden", "");
+    botao.setAttribute("aria-expanded", "false");
   }
 
   // ✅ label mostra filtro + status (se tiver)
   function setLabelPeriodo(labelEl, iniISO, fimISO, statusVal) {
     if (!labelEl) return;
 
-    const temPeriodo = !!iniISO && !!fimISO;
     const st = normalizarStatus(statusVal);
 
-    if (!temPeriodo && !st) {
+    if (!st) {
       labelEl.textContent = "Filtro";
       return;
     }
 
-    const br = (iso) => String(iso).split("-").reverse().join("/");
-
     const partes = [];
-    if (temPeriodo) partes.push(`${br(iniISO)} - ${br(fimISO)}`);
     if (st) partes.push(st.charAt(0).toUpperCase() + st.slice(1));
 
     labelEl.textContent = partes.join(" • ");
   }
 
-  function bindFiltroPorDia({ dia, box, pag, filtro }, getDadosSemanaRef) {
+  function sincronizarControlesFiltro() {
+    const ids = idsFiltro("global");
+    const status = document.getElementById(ids.status);
+    if (status) status.value = FILTRO_GLOBAL.status;
+    setLabelPeriodo(document.getElementById(ids.label), "", "", FILTRO_GLOBAL.status);
+  }
+
+  function renderizarTodasAbas(dadosSemana) {
+    DIAS.forEach(({ dia, box, pag }) => {
+      PAGINA_ATUAL[dia] = 1;
+      renderDia(dia, box, pag, dadosSemana);
+    });
+    sincronizarControlesFiltro();
+    sincronizarPesquisas();
+    atualizarResumoPesquisa(dadosSemana);
+  }
+
+  function bindFiltroGlobal(getDadosSemanaRef) {
+    const filtro = "global";
     const ids = idsFiltro(filtro);
 
     const btn    = document.getElementById(ids.btn);
     const pop    = document.getElementById(ids.pop);
     const form   = document.getElementById(ids.form);
-    const ini    = document.getElementById(ids.ini);
-    const fim    = document.getElementById(ids.fim);
     const status = document.getElementById(ids.status);
     const label  = document.getElementById(ids.label);
     const limpar = document.getElementById(ids.limpar);
     const fechar = document.getElementById(ids.fechar);
 
-    if (!btn || !pop || !form || !ini || !fim || !status || !label || !limpar || !fechar) return;
+    if (!btn || !pop || !form || !status || !label || !limpar || !fechar) return;
 
-    // restaura estado se já tiver
-    const f = FILTRO[dia] || {};
-    if (f.inicio) ini.value = f.inicio;
-    if (f.fim) fim.value = f.fim;
-    if (typeof f.status !== "undefined") status.value = f.status || "";
-    setLabelPeriodo(label, f.inicio, f.fim, f.status);
+    // O controle visual reflete o estado global aplicado à semana.
+    sincronizarControlesFiltro();
 
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -621,52 +674,26 @@
     limpar.addEventListener("click", (ev) => {
       ev.stopPropagation();
 
-      ini.value = "";
-      fim.value = "";
       status.value = "";
-      delete FILTRO[dia];
-
-      PAGINA_ATUAL[dia] = 1;
-
-      setLabelPeriodo(label, "", "", "");
+      FILTRO_GLOBAL.status = "";
       pop.setAttribute("hidden", "");
       btn.setAttribute("aria-expanded", "false");
 
       const dados = getDadosSemanaRef();
-      renderDia(dia, box, pag, dados);
-      setTimeout(pesquisa_aplicar, 0);
+      renderizarTodasAbas(dados);
     });
 
     form.addEventListener("submit", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
 
-      // ✅ período é opcional (pode filtrar só por status)
-      if ((ini.value && !fim.value) || (!ini.value && fim.value)) {
-        uiToast("warning", "Filtro", "Selecione início e fim (ou deixe os dois vazios).");
-        return;
-      }
-      if (ini.value && fim.value && ini.value > fim.value) {
-        uiToast("danger", "Filtro", "Início não pode ser maior que o fim.");
-        return;
-      }
-
-      FILTRO[dia] = {
-        inicio: ini.value || "",
-        fim: fim.value || "",
-        status: status.value || "",
-      };
-
-      PAGINA_ATUAL[dia] = 1;
-
-      setLabelPeriodo(label, ini.value || "", fim.value || "", status.value || "");
+      FILTRO_GLOBAL.status = status.value || "";
 
       pop.setAttribute("hidden", "");
       btn.setAttribute("aria-expanded", "false");
 
       const dados = getDadosSemanaRef();
-      renderDia(dia, box, pag, dados);
-      setTimeout(pesquisa_aplicar, 0);
+      renderizarTodasAbas(dados);
     });
   }
 
@@ -678,7 +705,8 @@
       const btnWhats  = ev.target.closest('button[data-acao="whatsapp"]');
       const btnToggle = ev.target.closest('button[data-acao="toggle-menu"]');
       const menuItem  = ev.target.closest(".agenda-menu-item");
-      const btnLimpar = ev.target.closest(".conteudo-aba .btn-limpar-pesquisa");
+      const cardClicado = ev.target.closest(".agenda-card");
+      const btnLimpar = ev.target.closest(".agenda-pesquisa-global .btn-limpar-pesquisa");
       const btnAba    = ev.target.closest(".menu-principal-abas button[data-aba]");
       const cliqueDentroPopover = ev.target.closest(".popover");
 
@@ -712,14 +740,23 @@
         const modal = menuItem.dataset.abrirModal || "";
 
         menuCtrl.fechar();
-        console.log("AÇÃO:", acao, "ID:", id, "PAGO:", pago, "MODAL:", modal);
+        const dados = getDadosSemanaRef();
+        const item = Object.values(dados || {}).flat().find((registro) => String(registro.id_agendamento ?? registro.id) === String(id));
+        if (acao === "visualizar") preencherModalVisualizar(item);
+        if (acao === "editar") {
+          document.dispatchEvent(new CustomEvent("agenda:editar:selecionado", { detail: { id_agendamento: id, agendamento: item || null } }));
+        }
+        if (acao === "excluir") {
+          document.dispatchEvent(new CustomEvent("agenda:excluir:selecionado", { detail: { id_agendamento: id, agendamento: item || null } }));
+        }
         return;
       }
 
       if (btnLimpar) {
         const { input } = getPesquisaAbaAtiva();
         if (input) {
-          input.value = "";
+          PESQUISA_GLOBAL = "";
+          sincronizarPesquisas();
           input.focus();
           pesquisa_aplicar();
         }
@@ -729,7 +766,28 @@
       if (btnAba) {
         menuCtrl.fechar();
         fecharTodosPopovers();
-        setTimeout(pesquisa_aplicar, 0);
+        setTimeout(() => {
+          sincronizarControlesFiltro();
+          sincronizarPesquisas();
+          atualizarResumoPesquisa(getDadosSemanaRef());
+        }, 0);
+        return;
+      }
+
+      // O corpo inteiro do card abre a visualização. Botões, links e itens do
+      // menu mantêm suas próprias ações e não disparam o modal por acidente.
+      if (cardClicado && !ev.target.closest("button, a, input, select, textarea, .agenda-menu")) {
+        const id = String(cardClicado.dataset.id || "");
+        const dados = getDadosSemanaRef();
+        const item = Object.values(dados || {}).flat().find((registro) => String(registro.id_agendamento ?? registro.id) === id);
+        if (item) {
+          preencherModalVisualizar(item);
+          const modalVisualizar = document.getElementById("modalVisualizarAgendamento");
+          if (modalVisualizar) {
+            modalVisualizar.classList.add("ativo");
+            modalVisualizar.setAttribute("aria-hidden", "false");
+          }
+        }
         return;
       }
 
@@ -738,7 +796,9 @@
 
     document.addEventListener("input", (ev) => {
       const el = ev.target;
-      if (!el.matches(".conteudo-aba input[type='search'], .conteudo-aba .pesquisar input, .conteudo-aba .pesquisar-super input")) return;
+      if (!el.matches("#pesquisar-agenda-global")) return;
+      PESQUISA_GLOBAL = el.value;
+      sincronizarPesquisas();
       pesquisa_deb();
     });
 
@@ -754,8 +814,16 @@
   // Init
   // =========================
   async function init() {
-    let dadosSemana = await obterDados();
+    let dadosSemana;
+    try {
+      dadosSemana = await obterDados();
+    } catch (erro) {
+      console.error("[lista-agenda]", erro);
+      uiToast("danger", "Agenda", erro.message || "Não foi possível carregar os agendamentos.");
+      dadosSemana = { segunda: [], terca: [], quarta: [], quinta: [], sexta: [], sabado: [], domingo: [] };
+    }
     const getDadosSemanaRef = () => dadosSemana;
+    getDadosPesquisa = getDadosSemanaRef;
 
     // render inicial
     DIAS.forEach(({ dia, box, pag }) => {
@@ -763,14 +831,96 @@
       renderDia(dia, box, pag, dadosSemana);
     });
 
-    // bind filtros por dia
-    DIAS.forEach((it) => bindFiltroPorDia(it, getDadosSemanaRef));
+    // Um único formulário controla o período e o status das sete abas.
+    bindFiltroGlobal(getDadosSemanaRef);
 
     // eventos globais
     bindEventosGlobais(getDadosSemanaRef);
 
+    // O calendário mensal pode trocar a semana sem recarregar a página.
+    document.addEventListener("agenda:semana:alterada", () => {
+      renderizarTodasAbas(dadosSemana);
+    });
+
+    // Recebe um resultado da pesquisa geral, abre sua página dentro da aba
+    // correta e destaca somente o card localizado.
+    document.addEventListener("agenda:localizar-agendamento", async (evento) => {
+      const id = String(evento.detail?.id_agendamento || "");
+      const data = String(evento.detail?.data_agendamento || "");
+      if (!id || !data) return;
+
+      PESQUISA_GLOBAL = "";
+      FILTRO_GLOBAL.status = "";
+      sincronizarPesquisas();
+      sincronizarControlesFiltro();
+
+      const mapa = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"];
+      const dataLocal = new Date(`${data}T12:00:00`);
+      const dia = mapa[dataLocal.getDay()];
+      const config = DIAS.find((item) => item.dia === dia);
+      if (!config) return;
+
+      // Carrega a semana específica diretamente da API. Assim, até um registro
+      // fora do limite da listagem inicial pode ser localizado corretamente.
+      const deslocamento = (dataLocal.getDay() + 6) % 7;
+      const inicioSemana = new Date(dataLocal);
+      inicioSemana.setDate(dataLocal.getDate() - deslocamento);
+      const fimSemana = new Date(inicioSemana);
+      fimSemana.setDate(inicioSemana.getDate() + 6);
+      const paraIso = (valor) => `${valor.getFullYear()}-${String(valor.getMonth() + 1).padStart(2, "0")}-${String(valor.getDate()).padStart(2, "0")}`;
+      const inicioIso = paraIso(inicioSemana);
+      const fimIso = paraIso(fimSemana);
+
+      try {
+        const semanaLocalizada = await obterDados({ data_inicio: inicioIso, data_fim: fimIso });
+        DIAS.forEach(({ dia: nomeDia }) => {
+          const foraDaSemana = (dadosSemana?.[nomeDia] || []).filter((item) => {
+            const dataItem = String(item.data_agendamento || item.data || "");
+            return dataItem < inicioIso || dataItem > fimIso;
+          });
+          dadosSemana[nomeDia] = [...foraDaSemana, ...(semanaLocalizada?.[nomeDia] || [])];
+        });
+      } catch (erro) {
+        console.error("[lista-agenda:localizar-semana]", erro);
+        uiToast("danger", "Pesquisa", erro.message || "Não foi possível abrir a semana do agendamento.");
+        return;
+      }
+
+      renderizarTodasAbas(dadosSemana);
+
+      const itensDaData = (dadosSemana?.[dia] || [])
+        .filter((item) => String(item.data_agendamento || item.data || "") === data)
+        .sort((a, b) => String(a.hora_inicio || a.hora || "").localeCompare(String(b.hora_inicio || b.hora || "")));
+      const indice = itensDaData.findIndex((item) => String(item.id_agendamento ?? item.id) === id);
+      PAGINA_ATUAL[dia] = indice >= 0 ? Math.floor(indice / CFG.itensPorPagina) + 1 : 1;
+      renderDia(dia, config.box, config.pag, dadosSemana);
+
+      requestAnimationFrame(() => {
+        const card = document.querySelector(`#${config.box} .agenda-card[data-id="${CSS.escape(id)}"]`);
+        if (!card) return;
+        card.classList.add("agenda-card-localizado");
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => card.classList.remove("agenda-card-localizado"), 3500);
+      });
+    });
+
+    // Após uma exclusão, consulta novamente a API e atualiza somente a lista.
+    // A página, a semana ativa, a pesquisa e o filtro permanecem como estão.
+    document.addEventListener("agenda:agendamento:excluido", async () => {
+      try {
+        dadosSemana = await obterDados();
+        renderizarTodasAbas(dadosSemana);
+      } catch (erro) {
+        console.error("[lista-agenda:atualizar-apos-exclusao]", erro);
+        uiToast("danger", "Agenda", erro.message || "O agendamento foi excluído, mas não foi possível atualizar a lista.");
+      }
+    });
+
     setTimeout(pesquisa_aplicar, 0);
+    setInterval(atualizarEstadosTemporais, 60000);
   }
 
   document.addEventListener("DOMContentLoaded", init);
+
+  // Cadastro e edição controlam o momento da atualização após exibirem o retorno ao usuário.
 })();

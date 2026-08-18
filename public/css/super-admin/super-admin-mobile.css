@@ -1,4 +1,9 @@
 
+@media (max-width: 480px) {
+  .super-admin-cabecalho-global .cabecalho-data { max-width: 46vw; }
+  .super-admin-conteudo-global { padding-top: 10px; }
+}
+
 @media (max-width: 820px) { 
 /* ==========================================================
    SUPER ADMIN — CARDS (EMPRESAS PROPRIETÁRIOS PLANOS BLOQUEIO)

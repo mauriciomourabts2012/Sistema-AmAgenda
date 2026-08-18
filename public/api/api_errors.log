@@ -1,38 +1,51 @@
-[01-May-2026 22:27:21 America/Sao_Paulo] [salvar_config_profissional] Erro ao preparar atualização do início da semana: Unknown column 'inicio_semana' in 'field list'
-[01-May-2026 22:27:38 America/Sao_Paulo] [salvar_config_profissional] Erro ao preparar salvamento geral: Unknown column 'inicio_semana' in 'field list'
-[01-May-2026 22:36:45 America/Sao_Paulo] [salvar_config_profissional] Erro ao preparar salvamento geral: Unknown column 'inicio_semana' in 'field list'
-[01-May-2026 23:18:01 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar busca do profissional: Unknown column 'id_empresa' in 'where clause'
-[01-May-2026 23:19:16 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar busca do profissional: Unknown column 'id_empresa' in 'where clause'
-[01-May-2026 23:20:49 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar busca do profissional: Unknown column 'id_empresa' in 'where clause'
-[01-May-2026 23:20:59 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar busca do profissional: Unknown column 'id_empresa' in 'where clause'
-[01-May-2026 23:21:09 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar busca do profissional: Unknown column 'id_empresa' in 'where clause'
-[01-May-2026 23:21:36 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar busca do profissional: Unknown column 'id_empresa' in 'where clause'
-[16-May-2026 15:37:09 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar lista de profissionais: Unknown column 'nome' in 'field list'
-[16-May-2026 15:37:22 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar lista de profissionais: Unknown column 'nome' in 'field list'
-[16-May-2026 15:37:27 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar lista de profissionais: Unknown column 'nome' in 'field list'
-[16-May-2026 15:37:38 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar lista de profissionais: Unknown column 'nome' in 'field list'
-[16-May-2026 15:37:54 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar lista de profissionais: Unknown column 'nome' in 'field list'
-[16-May-2026 15:39:08 America/Sao_Paulo] [buscar_dados_modal_profissional_conf] Erro ao preparar lista de profissionais: Unknown column 'nome' in 'field list'
-[16-May-2026 22:44:17 Europe/Berlin] PHP Fatal error:  Cannot redeclare out() (previously declared in C:\xampp\htdocs\public\api\api_central.php:23) in C:\xampp\htdocs\backend\painel_administrativo\configuracao_empresa\ResetarConfiguracaoProfissional.php on line 25
-[16-May-2026 22:45:09 Europe/Berlin] PHP Fatal error:  Cannot redeclare out() (previously declared in C:\xampp\htdocs\public\api\api_central.php:23) in C:\xampp\htdocs\backend\painel_administrativo\configuracao_empresa\ResetarConfiguracaoProfissional.php on line 25
-[16-May-2026 22:47:45 Europe/Berlin] PHP Fatal error:  Cannot redeclare out() (previously declared in C:\xampp\htdocs\public\api\api_central.php:23) in C:\xampp\htdocs\backend\agenda\configuracao_profissional\ResetarConfiguracaoProfissional.php on line 25
-[16-May-2026 22:52:26 Europe/Berlin] PHP Fatal error:  Cannot redeclare out() (previously declared in C:\xampp\htdocs\public\api\api_central.php:23) in C:\xampp\htdocs\backend\agenda\configuracao_profissional\ResetarConfiguracaoProfissional.php on line 25
-[06-Jun-2026 16:39:02 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 16:39:10 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 16:39:14 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 16:39:28 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:03:20 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:03:20 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:03:20 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:03:21 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:03:21 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:07:31 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:08:37 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:23:01 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:26:04 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 22:27:42 Europe/Berlin] PHP Warning:  require(C:\xampp\htdocs\backend\_auth../_config/conexao.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\backend\_auth\login.php on line 50
-[06-Jun-2026 22:27:42 Europe/Berlin] API EXCEPTION: Failed opening required 'C:\xampp\htdocs\backend\_auth../_config/conexao.php' (include_path='C:\xampp\php\PEAR')
-[06-Jun-2026 17:35:07 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[06-Jun-2026 17:35:10 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/1045): Access denied for user 'AmAgenda'@'172.24.0.12' (using password: YES) in C:\xampp\htdocs\backend\_config\conexao.php on line 14
-[01-Jul-2026 01:50:59 Europe/Berlin] PHP Warning:  require(C:\xampp\htdocs\backend\agenda/../../_config/conexao.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\backend\agenda\cadastrar_servico_modal_novo_agendamento.php on line 127
-[01-Jul-2026 01:50:59 Europe/Berlin] [cadastrar_servico_agendamento] Failed opening required 'C:\xampp\htdocs\backend\agenda/../../_config/conexao.php' (include_path='C:\xampp\php\PEAR')
+[15-Aug-2026 15:45:02 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:05 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:05 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:05 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:05 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:23 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:23 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:45:26 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:03 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:03 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:03 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:03 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:03 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:03 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:24 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[15-Aug-2026 15:46:24 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\backend\_config\conexao.php on line 14
+[18-Aug-2026 10:33:17 America/Sao_Paulo] PHP Warning:  mysqli::__construct(): (HY000/2002): Uma tentativa de conexão falhou porque o componente conectado não respondeu
+corretamente após um período de tempo ou a conexão estabelecida falhou
+porque o host conectado não respondeu in C:\xampp\htdocs\Sistema-AmAgenda\backend\_config\conexao.php on line 14

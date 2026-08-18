@@ -228,6 +228,11 @@ $routes = [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/usuario/lista_usuario.php',
     ],
 
+    // Resumo operacional do dia da empresa autenticada
+    'painel/resumo-dia' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/resumo_dia/lista_resumo_dia.php',
+    ],
+
     // Editar Usuário (FUNCIONARIO)
     'painel/usuario/editar' => [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/usuario/editar_usuario.php',
@@ -246,6 +251,20 @@ $routes = [
     // SALVAR CONFIGURAÇÕES GERAL DA EMPRESA - MODAL CONFIGURAÇÃO DA EMPRESA PADRÃO
     'painel/configuracao-geral-salvar' => [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/configuracao_empresa/salvar_dados_modal_empresa_conf.php',
+    ],
+
+    // IDENTIDADE VISUAL DA EMPRESA
+    'empresa/identidade-visual' => [
+        'GET' => __DIR__ . '/../../backend/empresa/identidade_visual/buscar_identidade_visual.php',
+    ],
+    'empresa/identidade-visual/salvar' => [
+        'POST' => __DIR__ . '/../../backend/empresa/identidade_visual/salvar_identidade_visual.php',
+    ],
+    'empresa/identidade-visual/restaurar' => [
+        'POST' => __DIR__ . '/../../backend/empresa/identidade_visual/restaurar_identidade_visual.php',
+    ],
+    'empresa/identidade-visual/publica' => [
+        'GET' => __DIR__ . '/../../backend/empresa/identidade_visual/buscar_identidade_visual_publica.php',
     ],
 
     /*
@@ -293,6 +312,33 @@ $routes = [
     // CADASTRAR SERVICO PELO MODAL NOVO AGENDAMENTO
     'agenda/servico-profissional/cadastrar-agendamento' => [
         'POST' => __DIR__ . '/../../backend/agenda/cadastrar_servico_modal_novo_agendamento.php',
+    ],
+
+    // LISTAR HORÁRIOS DISPONÍVEIS NO MODAL NOVO AGENDAMENTO
+    'agenda/horarios-disponiveis' => [
+        'GET' => __DIR__ . '/../../backend/agenda/lista_horarios_disponiveis.php',
+    ],
+
+    // CADASTRAR AGENDAMENTO
+    'agenda/agendamento/cadastrar' => [
+        'POST' => __DIR__ . '/../../backend/agenda/cadastrar_agendamento.php',
+    ],
+
+    // DETALHAR E EDITAR AGENDAMENTO
+    'agenda/agendamento/detalhar' => [
+        'GET' => __DIR__ . '/../../backend/agenda/detalhar_agendamento.php',
+    ],
+    'agenda/agendamento/editar' => [
+        'POST' => __DIR__ . '/../../backend/agenda/editar_agendamento.php',
+    ],
+    'agenda/agendamento/excluir' => [
+        'POST' => __DIR__ . '/../../backend/agenda/excluir_agendamento.php',
+    ],
+    'agenda/agendamento/pesquisar' => [
+        'GET' => __DIR__ . '/../../backend/agenda/pesquisar_agendamento.php',
+    ],
+    'agenda/agendamento/listar' => [
+        'GET' => __DIR__ . '/../../backend/agenda/lista_agenda.php',
     ],
 
 ];

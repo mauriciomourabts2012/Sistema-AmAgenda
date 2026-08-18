@@ -1,141 +1,25 @@
-/* Usa as MESMAS variáveis do seu LoginWeb.css */
-
-/*  garante que só 1 step apareça */
-.step{ display:none; }
-.step.is-active{ display:block; }
-
-/* mantém o título no topo */
-.h2-titulo{
-  margin-bottom: 0;
-}
-
-/* desce SOMENTE o restante */
-.login-dados-right .step{
-  margin-top: 84px;   /* ajuste fino: 36px / 42px / 48px */
-}
-
-
-.cliente-sub{
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.35;
-}
-
-.cliente-titulo{
-  margin: 2px 0 10px 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--text);
-}
-
-.cliente-voltar{
-  width: 40px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: #fff;
-  cursor: pointer;
-  font-size: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-
-.cliente-linha-telefone{
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 10px;
-  align-items: center;
-}
-
-.cliente-ddi{
-  height: 48px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #fff;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cliente-flag{ font-size: 18px; }
-
-.cliente-select{
-  border: none;
-  outline: none;
-  font-weight: 700;
-  background: transparent;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.cliente-input{
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: var(--text);
-  border-radius: 12px;
-  font-size: 15px;
-  outline: none;
-  transition: box-shadow .2s, border-color .2s;
-}
-
-.cliente-input::placeholder{ color: #9aa3af; }
-
-.cliente-input:focus{
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(38, 76, 247, 0.15);
-}
-
-.cliente-info{
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.cliente-link{
-  display: inline-block;   /* 🔥 AJUSTE IMPORTANTE */
-  width: 100%;
-  margin-top: 10px;
-  border: none;
-  background: transparent;
-  color: var(--accent);
-  font-weight: 700;
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 6px 2px;
-  text-align: center;
-}
-
-.cliente-termos{
-  margin: 12px 0 0;
-  font-size: 12.5px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.cliente-link-a{
-  color: var(--accent);
-  font-weight: 800;
-  text-decoration: underline;
-}
-
-.cliente-link:hover{
-  opacity: .85;
-}
-
-
-/* mobile: deixa DDI e telefone confortáveis */
-@media (max-width: 600px){
-  .cliente-linha-telefone{
-    grid-template-columns: 100px 1fr;
-  }
-
-
-
+.step { display: none; }
+.step.is-active { display: block; }
+.login-dados-right .step { width: 100%; }
+.cliente-sub { display: none; }
+.cliente-titulo { margin: 2px 0 14px; color: var(--text); font-size: 18px; font-weight: 800; }
+.cliente-voltar { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); cursor: pointer; font-size: 18px; }
+.cliente-linha-telefone { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 10px; align-items: center; }
+.cliente-ddi { height: 50px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.cliente-flag { font-size: 17px; }
+.cliente-select { min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cliente-input { width: 100%; min-height: 50px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 12px; outline: 0; background: #fff; color: var(--text); font: inherit; font-size: 14px; transition: border-color .2s, box-shadow .2s; }
+.cliente-input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(17,99,221,.13); }
+.cliente-info { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.cliente-link { width: 100%; display: inline-block; margin-top: 6px; padding: 7px 2px; border: 0; background: transparent; color: var(--primary); font: inherit; font-size: 13px; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; }
+.cliente-link:hover { text-decoration: underline; }
+.step[data-step="1"] > .cliente-link { min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 0; padding: 13px 18px; border: 1px solid #b8c8dd; border-radius: 12px; background: #fff; font-size: 14px; font-weight: 700; }
+.step[data-step="1"] > .cliente-link:hover { border-color: var(--primary); background: var(--primary-weak); text-decoration: none; }
+.cliente-termos { margin: 32px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
+.cliente-termos::before { content: "\1F6E1"; margin-right: 6px; color: #71819a; }
+.cliente-link-a { color: var(--primary); font-weight: 700; text-decoration: none; }
+.cliente-link-a:hover { text-decoration: underline; }
+@media (max-width: 480px) {
+  .cliente-linha-telefone { grid-template-columns: 96px minmax(0, 1fr); }
+  .cliente-termos { margin-top: 28px; }
 }

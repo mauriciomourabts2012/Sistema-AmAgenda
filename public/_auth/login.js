@@ -37,7 +37,14 @@
     isSending = !!busy;
     $btn.disabled = !!busy;
     $btn.setAttribute("aria-busy", busy ? "true" : "false");
-    $btn.textContent = busy ? "Entrando..." : "Entrar";
+    const idleLabel = $btn.dataset.labelIdle || "Entrar";
+    const busyLabel = $btn.dataset.labelBusy || "Entrando...";
+    const labelElement = $btn.querySelector("[data-button-label]");
+    if (labelElement) {
+      labelElement.textContent = busy ? busyLabel : idleLabel;
+    } else {
+      $btn.textContent = busy ? busyLabel : idleLabel;
+    }
   }
 
   function loadRemember() {

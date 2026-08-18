@@ -274,11 +274,36 @@
 
   #resumo .painel-prof-nome{
     font-size: 0.98rem;
-    margin-bottom: 8px;
+    margin-bottom: 0;
+  }
+
+  #resumo .painel-prof-avatar{
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
   }
 
   #resumo .painel-prof-metrics{
     gap: 8px;
+  }
+
+  #resumo .painel-prof-list{
+    grid-template-columns: 1fr;
+  }
+
+  #resumo .painel-prof{
+    display: flex;
+    gap: 8px;
+    padding: 11px;
+  }
+
+  #resumo .painel-prof-metrics{
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  #resumo .painel-bloco-topo{
+    align-items: flex-start;
   }
 
   #resumo .pill{
@@ -333,29 +358,10 @@
 ========================================================== */
 }
 
-/*  CELULARES MUITO PEQUENOS */
 @media (max-width: 480px){
-
-/* ==========================================================
-CABEÇALHO DO PAINEL — MOBILE
-========================================================== */
-
-  .cabecalho-painel{
-    flex-wrap: wrap;
-    align-items: flex-start;
+  .painel-cabecalho-global .cabecalho-data {
+    max-width: 46vw;
   }
-
-  .cabecalho-painel .cabecalho-esquerda{
-    width: 100%;
-  }
-
-  .cabecalho-painel .cabecalho-direita{
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-/* ==========================================================
-FIM
-========================================================== */
+  .painel-conteudo-global { padding-top: 10px; }
 }
 /* 

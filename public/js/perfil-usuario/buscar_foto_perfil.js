@@ -42,14 +42,30 @@
     return Array.from(document.querySelectorAll("[data-avatar-usuario], .perfil-foto"));
   }
 
-  function applyAvatar(url) {
+  function applyAvatar(url, temFoto = false) {
     const finalUrl = normalizeUrl(url);
 
     getAvatarElements().forEach((img) => {
       if (!(img instanceof HTMLImageElement)) return;
 
+      const avatarCabecalho = img.hasAttribute("data-avatar-cabecalho");
+      const botao = avatarCabecalho ? img.closest(".botao-perfil-usuario") : null;
+      const iconeFallback = botao?.querySelector("[data-icone-perfil-cabecalho]");
+
+      if (avatarCabecalho) {
+        img.hidden = !temFoto;
+        if (iconeFallback) iconeFallback.hidden = Boolean(temFoto);
+      }
+
       img.onerror = function () {
         this.onerror = null;
+
+        if (avatarCabecalho) {
+          this.hidden = true;
+          if (iconeFallback) iconeFallback.hidden = false;
+          return;
+        }
+
         this.src = withBust(FALLBACK);
       };
 
@@ -91,7 +107,7 @@
       const fotoUrl = json?.data?.foto_url || FALLBACK;
       const nome = json?.data?.nome || FALLBACK_NAME;
 
-      applyAvatar(fotoUrl);
+      applyAvatar(fotoUrl, Boolean(json?.data?.tem_foto));
       applyNome(nome);
 
       window.dispatchEvent(new CustomEvent("perfil:foto-carregada", {

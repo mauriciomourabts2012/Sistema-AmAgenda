@@ -1,4 +1,15 @@
 
+/* O shell, o menu e o cabeçalho são fornecidos pelos componentes globais. */
+.super-admin-app-shell main { min-width: 0; }
+.super-admin-cabecalho-global .cabecalho-data-grupo { min-width: 0; }
+.super-admin-cabecalho-global .cabecalho-data {
+  max-width: min(560px, 58vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.super-admin-conteudo-global { padding-top: 18px; }
+
 /* =========================
    TOPO — AÇÕES
 ========================= */

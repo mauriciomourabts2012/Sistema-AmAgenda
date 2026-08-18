@@ -1,73 +1,28 @@
 
-/* ==========================================================
-   CABEÇALHO DO PAINEL (SIMPLES)
-   ========================================================== */
-
-.cabecalho-painel{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-
-  background: rgba(255,255,255,.92);
-  backdrop-filter: blur(10px);
-
-  padding: 14px 22px;
-  margin-bottom: 14px;
-
-  border-bottom: 1px solid var(--border);
-  border-radius: 0 0 16px 16px;
-
-  /* sombra mais leve (a sua estava bem forte) */
-  box-shadow: 0 10px 22px rgba(17,24,39,.08);
-}
-
-/* Esquerda */
-.cabecalho-painel .cabecalho-esquerda{
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0; /* evita quebrar layout com textos longos */
-}
-
-.cabecalho-painel .cabecalho-titulo{
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: -0.2px;
-  color: var(--text);
-  line-height: 1.1;
-  margin: 0;
-}
-
-.cabecalho-painel .cabecalho-sub{
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-  line-height: 1.2;
-
-  white-space: nowrap;
+/* O shell, o menu e o cabeçalho são fornecidos pelos componentes globais. */
+.painel-app-shell main { min-width: 0; }
+.painel-cabecalho-global .cabecalho-data-grupo { min-width: 0; }
+.painel-cabecalho-global .cabecalho-data {
+  max-width: min(560px, 58vw);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.painel-conteudo-global {
+  height: auto;
+  min-height: calc(100vh - 110px);
+  padding-top: 18px;
+  overflow: visible;
 }
 
-/* Direita */
-.cabecalho-painel .cabecalho-direita{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
+#resumo,
+#resumo .painel-resumo,
+#resumo .resumo-graficos,
+#resumo .painel-bloco--profissionais {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
-
-/* Se quiser que o botão fique mais chamativo sem mudar seu .destaque */
-.cabecalho-painel .botao-geral.destaque{
-  box-shadow: 0 12px 20px rgba(16,61,145,.25);
-}
-/* =========================================
-   FIM
-   ========================================== */
 
 
 
@@ -439,6 +394,159 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Resumo operacional real */
+#resumo .painel-bloco--proximos,
+#resumo .painel-bloco--profissionais{
+  grid-column: 1 / -1;
+}
+
+#resumo .painel-bloco-topo small{
+  color: var(--muted, #6b7280);
+  font-size: .78rem;
+}
+
+#resumo .painel-prof-list{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+#resumo .painel-prof{
+  min-width: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+#resumo .painel-prof--atendendo{
+  border-color: #65c985;
+  background: linear-gradient(145deg, #f4fff7, #fff);
+  box-shadow: 0 0 0 1px rgba(22, 163, 74, .08), 0 8px 22px rgba(22, 163, 74, .14);
+  animation: atendimentoPulse 2.4s ease-in-out infinite;
+}
+
+#resumo .painel-prof-cabecalho{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+#resumo .painel-prof-avatar{
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  overflow: hidden;
+  border: 1px solid #dce5f0;
+  border-radius: 50%;
+  background: #eef3f9;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, .09);
+}
+
+#resumo .painel-prof--atendendo .painel-prof-avatar{
+  border-color: rgba(22, 163, 74, .42);
+}
+#resumo .painel-prof-servico{ color: #283d59; font-size: .85rem; font-weight: 700; }
+#resumo .painel-prof-estado{ display: flex; align-items: center; gap: 8px; }
+#resumo .painel-prof-estado .agenda-status{ padding: 4px 9px; font-size: .72rem; }
+#resumo .painel-prof-nome{
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#resumo .painel-prof-badge,
+#resumo .painel-prof-livre{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+#resumo .painel-prof-badge{
+  color: #087a2b;
+  text-transform: uppercase;
+  letter-spacing: .025em;
+}
+
+#resumo .painel-prof-badge i,
+#resumo .painel-prof-livre i{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+#resumo .painel-prof-livre{
+  color: var(--muted, #6b7280);
+  margin: 0;
+}
+
+#resumo .painel-prof-metrics{
+  max-width: none;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+#resumo .painel-prof-atual{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 3px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(22, 163, 74, .18);
+  color: #30445d;
+  font-size: .78rem;
+}
+
+#resumo .painel-prof-atual > span{
+  color: #087a2b;
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+#resumo .painel-prof-atual strong{ color: var(--text, #0f172a); }
+#resumo .painel-prof-atual i{ width: 18px; color: #64809f; }
+#resumo .painel-prof-atual small{ font-size: .76rem; }
+
+#resumo .painel-prof .pill{
+  padding: 4px 8px;
+  font-size: .72rem;
+}
+
+#resumo .painel-kpi--indisponivel .painel-kpi-valor{
+  color: var(--muted, #6b7280);
+  font-size: 1.05rem;
+}
+
+#resumo .painel-erro{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #a11212;
+}
+
+@keyframes atendimentoPulse{
+  0%, 100% { box-shadow: 0 0 0 1px rgba(22, 163, 74, .08), 0 8px 22px rgba(22, 163, 74, .12); }
+  50% { box-shadow: 0 0 0 3px rgba(22, 163, 74, .11), 0 10px 26px rgba(22, 163, 74, .2); }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #resumo .painel-prof--atendendo{
+    animation: none;
+  }
 }
 
 /* pills */

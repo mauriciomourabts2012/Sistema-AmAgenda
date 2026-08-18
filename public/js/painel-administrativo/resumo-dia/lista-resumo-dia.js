@@ -1,287 +1,153 @@
-/* ==========================================================
-   ResumoDia.js (MÓDULO) — PADRÃO CORE (ListaCore)
-   - Renderiza KPIs em:  #resumo .resumo-cards
-   - Renderiza listas rápidas em: #resumo .resumo-graficos
-   - MOCK por padrão + pronto para backend
-========================================================== */
+/* Resumo operacional do dia, alimentado pela empresa da sessão autenticada. */
 (() => {
   "use strict";
 
   const C = window.ListaCore;
-  if (!C) return;
+  if (!C || window.__AMAGENDA_RESUMO_DIA_INIT__) return;
+  window.__AMAGENDA_RESUMO_DIA_INIT__ = true;
 
-  const CFG = {
-    MOCK: true,
-    ENDPOINT: "/backend/Agenda/Resumo/ResumoDia.php",
+  const ENDPOINT = "/api/api_central.php?path=painel/resumo-dia";
+  const FOTO_FALLBACK = "/public/imagens/avatar-default.png";
+  const INTERVALO_ATUALIZACAO_RESUMO = 60000;
+  const aba = document.getElementById("resumo");
+  const cards = document.querySelector("#resumo .resumo-cards");
+  const graficos = document.querySelector("#resumo .resumo-graficos");
+  if (!aba || !cards || !graficos) return;
 
-    ABA_ID: "resumo",
-    CARDS_SELECTOR: "#resumo .resumo-cards",
-    GRAFICOS_SELECTOR: "#resumo .resumo-graficos",
+  let carregando = false;
+  let intervaloId = null;
 
-    AUTO_REFRESH_ON_TAB: true,
-    REFRESH_COOLDOWN_MS: 800, // evita fetch repetido
-  };
-
-  const aba = document.getElementById(CFG.ABA_ID);
-  const $cards = document.querySelector(CFG.CARDS_SELECTOR);
-  const $graficos = document.querySelector(CFG.GRAFICOS_SELECTOR);
-  if (!aba || !$cards || !$graficos) return;
-
-  // =========================
-  // MOCK (exemplo)
-  // =========================
-  const MOCK_DATA = {
-    date: hojeISO(),
-
-    kpis: {
-      total: 12,
-      confirmados: 8,
-      pendentes: 3,
-      cancelados: 1,
-      faturamentoDia: 420.0,
-      ocupacaoPct: 74, // %
-    },
-
-    // próximos agendamentos (hoje)
-    proximos: [
-      { hora: "09:00", cliente: "Ana Souza", servico: "Corte", profissional: "João", status: "Confirmado" },
-      { hora: "10:30", cliente: "Carlos Lima", servico: "Barba", profissional: "João", status: "Pendente" },
-      { hora: "11:30", cliente: "Fernanda Alves", servico: "Escova", profissional: "Maria", status: "Confirmado" },
-    ],
-
-    // resumo por profissional (hoje)
-    porProfissional: [
-      { profissional: "João", total: 6, confirmados: 4, pendentes: 2, cancelados: 0 },
-      { profissional: "Maria", total: 6, confirmados: 4, pendentes: 1, cancelados: 1 },
-    ],
-  };
-
-  // =========================
-  // Helpers
-  // =========================
-  function hojeISO() {
-    // yyyy-mm-dd (local)
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
+  function formatarData(iso) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(iso || "")) ? String(iso).split("-").reverse().join("/") : "Hoje";
   }
 
-  function formatBRMoney(v) {
-    const n = Number(v || 0);
-    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  function formatarHora(valor) {
+    const hora = String(valor || "").slice(0, 5);
+    return /^\d{2}:\d{2}$/.test(hora) ? hora : "--:--";
   }
 
-  function formatBRDate(iso) {
-    // iso yyyy-mm-dd -> dd/mm/yyyy
-    if (!iso || typeof iso !== "string" || !iso.includes("-")) return String(iso || "");
-    const [y, m, d] = iso.split("-");
-    return `${d}/${m}/${y}`;
+  function calcularDuracao(inicio, fim) {
+    const [hi, mi] = formatarHora(inicio).split(":").map(Number);
+    const [hf, mf] = formatarHora(fim).split(":").map(Number);
+    const minutos = (hf * 60 + mf) - (hi * 60 + mi);
+    return Number.isFinite(minutos) && minutos > 0 ? `${minutos} min` : "";
   }
 
-  function normStatus(st) {
-    const s = C.normalizar(st).trim();
-    if (s.includes("confirm")) return "Confirmado";
-    if (s.includes("pend")) return "Pendente";
-    if (s.includes("cancel")) return "Cancelado";
-    return st || "Pendente";
+  function formatarMoeda(valor) {
+    if (valor === null || valor === undefined) return "Não disponível";
+    return Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   }
 
-  function statusClass(st) {
-    const n = normStatus(st);
-    // reaproveita seus estilos já existentes (você usa st-confirmado / st-cancelado)
-    if (n === "Confirmado") return "st-confirmado";
-    if (n === "Cancelado") return "st-cancelado";
-    return "st-pendente";
+  function normalizarStatus(status) {
+    const valor = C.normalizar(status || "").trim();
+    if (valor.includes("confirm")) return { texto: "Confirmado", classe: "st-confirmado" };
+    if (valor.includes("cancel")) return { texto: "Cancelado", classe: "st-cancelado" };
+    return { texto: "Pendente", classe: "st-pendente" };
   }
 
-  // Card KPI (bem simples, usa classes do seu design; se já tiver classe própria, troca aqui)
-  function kpiCard({ titulo, valor, sub, icon }) {
-    return `
-      <article class="painel-kpi">
-        <div class="painel-kpi-topo">
-          <div class="painel-kpi-titulo">${C.escapeHtml(titulo)}</div>
-          ${icon ? `<div class="painel-kpi-ico">${icon}</div>` : ""}
-        </div>
-        <div class="painel-kpi-valor">${C.escapeHtml(valor)}</div>
-        ${sub ? `<div class="painel-kpi-sub">${C.escapeHtml(sub)}</div>` : ""}
-      </article>
-    `;
+  function cardKpi({ titulo, valor, subtitulo, icone, indisponivel = false }) {
+    return `<article class="painel-kpi${indisponivel ? " painel-kpi--indisponivel" : ""}"><div class="painel-kpi-topo"><div class="painel-kpi-titulo">${C.escapeHtml(titulo)}</div><div class="painel-kpi-ico"><i class="${C.escapeHtml(icone)}" aria-hidden="true"></i></div></div><div class="painel-kpi-valor">${C.escapeHtml(String(valor))}</div><div class="painel-kpi-sub">${C.escapeHtml(subtitulo)}</div></article>`;
   }
 
-  function renderKPIs(payload) {
-    const k = payload?.kpis || {};
-    const dataLabel = payload?.date ? `Hoje • ${formatBRDate(payload.date)}` : "Hoje";
-
-    const html = [
-      kpiCard({ titulo: "Agendamentos", valor: String(k.total ?? 0), sub: dataLabel, icon: `<i class="fa-regular fa-calendar"></i>` }),
-      kpiCard({ titulo: "Confirmados", valor: String(k.confirmados ?? 0), sub: "Atendimentos confirmados", icon: `<i class="fa-regular fa-circle-check"></i>` }),
-      kpiCard({ titulo: "Pendentes", valor: String(k.pendentes ?? 0), sub: "Aguardando confirmação", icon: `<i class="fa-regular fa-clock"></i>` }),
-      kpiCard({ titulo: "Cancelados", valor: String(k.cancelados ?? 0), sub: "Cancelamentos no dia", icon: `<i class="fa-regular fa-circle-xmark"></i>` }),
-      kpiCard({ titulo: "Faturamento (dia)", valor: formatBRMoney(k.faturamentoDia ?? 0), sub: "Estimado / realizado", icon: `<i class="fa-solid fa-sack-dollar"></i>` }),
-      kpiCard({ titulo: "Ocupação", valor: `${Number(k.ocupacaoPct ?? 0)}%`, sub: "Agenda preenchida", icon: `<i class="fa-solid fa-chart-simple"></i>` }),
+  function renderizarCardsResumo(data) {
+    const resumo = data?.resumo || {};
+    const ocupacao = resumo.ocupacao;
+    const ocupacaoDisponivel = ocupacao && ocupacao.percentual !== null && ocupacao.percentual !== undefined;
+    const ocupacaoMotivo = ocupacao?.motivo_indisponivel === "nenhum_profissional_ativo"
+      ? "Nenhum profissional ativo"
+      : "Horários da agenda não configurados";
+    const dataHoje = `Hoje • ${formatarData(data?.data)}`;
+    cards.innerHTML = [
+      cardKpi({ titulo: "Agendamentos", valor: resumo.agendamentos ?? 0, subtitulo: dataHoje, icone: "fa-regular fa-calendar" }),
+      cardKpi({ titulo: "Confirmados", valor: resumo.confirmados ?? 0, subtitulo: "Inclui quem está em atendimento", icone: "fa-regular fa-circle-check" }),
+      cardKpi({ titulo: "Pendentes", valor: resumo.pendentes ?? 0, subtitulo: "Aguardando confirmação", icone: "fa-regular fa-clock" }),
+      cardKpi({ titulo: "Cancelados", valor: resumo.cancelados ?? 0, subtitulo: "Cancelamentos no dia", icone: "fa-regular fa-circle-xmark" }),
+      cardKpi({ titulo: "Faturamento (dia)", valor: formatarMoeda(resumo.faturamento), subtitulo: resumo.faturamento == null ? "Pagamento ainda não controlado" : "Receita realizada", icone: "fa-solid fa-sack-dollar", indisponivel: resumo.faturamento == null }),
+      cardKpi({ titulo: "Ocupação semanal", valor: ocupacaoDisponivel ? `${Number(ocupacao.percentual)}%` : "Não disponível", subtitulo: ocupacaoDisponivel ? "Agenda preenchida nesta semana" : ocupacaoMotivo, icone: "fa-solid fa-chart-simple", indisponivel: !ocupacaoDisponivel }),
     ].join("");
-
-    $cards.innerHTML = html;
   }
 
-  function renderProximos(payload) {
-    const itens = Array.isArray(payload?.proximos) ? payload.proximos : [];
-
-    if (!itens.length) {
-      return `
-        <section class="painel-bloco">
-          <div class="painel-bloco-topo">
-            <h3>Próximos atendimentos</h3>
-          </div>
-          <div class="painel-vazio">Nenhum atendimento para hoje.</div>
-        </section>
-      `;
-    }
-
-    const rows = itens.map((x) => `
-      <div class="painel-linha">
-        <div class="painel-linha-esq">
-          <div class="painel-hora">${C.escapeHtml(x.hora || "--:--")}</div>
-          <div class="painel-info">
-            <div class="painel-cliente">${C.escapeHtml(x.cliente || "Cliente")}</div>
-            <div class="painel-sub">
-              ${C.escapeHtml(x.servico || "")}
-              ${x.profissional ? `• ${C.escapeHtml(x.profissional)}` : ""}
-            </div>
-          </div>
-        </div>
-        <div class="painel-linha-dir">
-          <span class="agenda-status ${statusClass(x.status)}">${C.escapeHtml(normStatus(x.status))}</span>
-        </div>
-      </div>
-    `).join("");
-
-    return `
-      <section class="painel-bloco">
-        <div class="painel-bloco-topo">
-          <h3>Próximos atendimentos</h3>
-        </div>
-        <div class="painel-lista">
-          ${rows}
-        </div>
-      </section>
-    `;
+  function renderizarProximosAtendimentos(data) {
+    const itens = Array.isArray(data?.proximos_atendimentos) ? data.proximos_atendimentos : [];
+    const conteudo = itens.length ? itens.map((item) => {
+      const status = normalizarStatus(item.status);
+      return `<div class="painel-linha"><div class="painel-linha-esq"><div class="painel-hora">${C.escapeHtml(formatarHora(item.hora_inicio))}</div><div class="painel-info"><div class="painel-cliente">${C.escapeHtml(item.cliente || "Cliente")}</div><div class="painel-sub">${C.escapeHtml(item.servico || "Serviço")} • ${C.escapeHtml(item.profissional || "Profissional")} • até ${C.escapeHtml(formatarHora(item.hora_fim))}</div></div></div><div class="painel-linha-dir"><span class="agenda-status ${status.classe}">${status.texto}</span></div></div>`;
+    }).join("") : '<div class="painel-vazio">Nenhum próximo atendimento para hoje.</div>';
+    return `<section class="painel-bloco painel-bloco--proximos"><div class="painel-bloco-topo"><h3>Próximos atendimentos</h3></div><div class="painel-lista">${conteudo}</div></section>`;
   }
 
-  function renderPorProfissional(payload) {
-    const arr = Array.isArray(payload?.porProfissional) ? payload.porProfissional : [];
-
-    if (!arr.length) {
-      return `
-        <section class="painel-bloco">
-          <div class="painel-bloco-topo">
-            <h3>Por profissional</h3>
-          </div>
-          <div class="painel-vazio">Sem dados para hoje.</div>
-        </section>
-      `;
-    }
-
-    const rows = arr.map((p) => `
-      <div class="painel-prof">
-        <div class="painel-prof-nome">${C.escapeHtml(p.profissional || "Profissional")}</div>
-        <div class="painel-prof-metrics">
-          <span class="pill">${C.escapeHtml(String(p.total ?? 0))} total</span>
-          <span class="pill ok">${C.escapeHtml(String(p.confirmados ?? 0))} conf.</span>
-          <span class="pill warn">${C.escapeHtml(String(p.pendentes ?? 0))} pend.</span>
-          <span class="pill danger">${C.escapeHtml(String(p.cancelados ?? 0))} canc.</span>
-        </div>
-      </div>
-    `).join("");
-
-    return `
-      <section class="painel-bloco">
-        <div class="painel-bloco-topo">
-          <h3>Por profissional</h3>
-        </div>
-        <div class="painel-prof-list">
-          ${rows}
-        </div>
-      </section>
-    `;
+  function renderizarProfissional(profissional, dataResumo) {
+    const atual = profissional?.atendimento_atual;
+    const atendendo = profissional?.em_atendimento === true && atual;
+    const nomeProfissional = C.escapeHtml(profissional?.nome || "Profissional");
+    const fotoInformada = String(profissional?.foto_perfil || "").trim().replace(/\\/g, "/");
+    const fotoPerfil = fotoInformada
+      ? (/^(https?:)?\/\//i.test(fotoInformada) || fotoInformada.startsWith("data:") || fotoInformada.startsWith("blob:") || fotoInformada.startsWith("/")
+        ? fotoInformada
+        : `/${fotoInformada.replace(/^(\.\.\/)+/, "").replace(/^\.\//, "")}`)
+      : FOTO_FALLBACK;
+    const avatar = `<span class="painel-prof-avatar" aria-hidden="true"><img src="${C.escapeHtml(fotoPerfil)}" alt="" class="agenda-avatar-img" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="if(this.dataset.fallbackApplied==='1'){this.onerror=null;return;}this.dataset.fallbackApplied='1';this.src='${FOTO_FALLBACK}';"></span>`;
+    const total = Number(profissional?.total || 0);
+    const estado = atendendo
+      ? '<span class="painel-prof-badge"><i aria-hidden="true"></i> Em atendimento</span>'
+      : '<span class="painel-prof-livre"><i aria-hidden="true"></i> Livre neste momento</span>';
+    const atendimentoAtual = atendendo
+      ? `<div class="painel-prof-atual"><span>Atendendo agora</span><strong><i class="fa-regular fa-user" aria-hidden="true"></i>${C.escapeHtml(atual.cliente || "Cliente")}</strong><small>${C.escapeHtml(atual.servico || "Serviço")}</small><small><i class="fa-regular fa-clock" aria-hidden="true"></i>${C.escapeHtml(formatarHora(atual.hora_inicio))} às ${C.escapeHtml(formatarHora(atual.hora_fim))}</small></div>`
+      : "";
+    return `<article class="painel-prof${atendendo ? " painel-prof--atendendo" : ""}"><header class="painel-prof-cabecalho"><div class="painel-prof-nome">${nomeProfissional}</div>${avatar}</header><div class="painel-prof-estado">${estado}</div><div class="painel-prof-servico">${total} agendamento(s) hoje</div><div class="painel-prof-metrics"><span class="pill">${total} total</span><span class="pill ok">${Number(profissional?.confirmados || 0)} conf.</span><span class="pill warn">${Number(profissional?.pendentes || 0)} pend.</span><span class="pill danger">${Number(profissional?.cancelados || 0)} canc.</span></div>${atendimentoAtual}</article>`;
   }
 
-  function renderGraficos(payload) {
-    const html = [
-      renderProximos(payload),
-      renderPorProfissional(payload),
-    ].join("");
-
-    $graficos.innerHTML = html;
+  function renderizarProfissionais(data) {
+    const profissionais = Array.isArray(data?.profissionais) ? data.profissionais : [];
+    const conteudo = profissionais.length ? profissionais.map((profissional) => renderizarProfissional(profissional, data?.data)).join("") : '<div class="painel-vazio">Nenhum profissional ativo nesta empresa.</div>';
+    return `<section class="painel-bloco painel-bloco--profissionais"><div class="painel-bloco-topo"><h3>Por profissional</h3><small>Atualizado pelo horário do servidor</small></div><div class="painel-prof-list">${conteudo}</div></section>`;
   }
 
-  // =========================
-  // Load / Refresh
-  // =========================
-  let lastLoadAt = 0;
+  function renderizarConteudo(data) {
+    renderizarCardsResumo(data);
+    graficos.innerHTML = renderizarProfissionais(data) + renderizarProximosAtendimentos(data);
+  }
 
-  async function carregar() {
-    const now = Date.now();
-    if (now - lastLoadAt < CFG.REFRESH_COOLDOWN_MS) return;
-    lastLoadAt = now;
+  function renderizarCarregamento() {
+    cards.innerHTML = Array.from({ length: 6 }, () => '<article class="painel-kpi painel-kpi--carregando"><div class="painel-kpi-valor">…</div></article>').join("");
+    graficos.innerHTML = '<section class="painel-bloco"><div class="painel-vazio">Carregando resumo…</div></section>';
+  }
 
-    // skeleton simples
-    $cards.innerHTML = `
-      <article class="painel-kpi"><div class="painel-kpi-valor">…</div></article>
-      <article class="painel-kpi"><div class="painel-kpi-valor">…</div></article>
-      <article class="painel-kpi"><div class="painel-kpi-valor">…</div></article>
-    `;
-    $graficos.innerHTML = `
-      <section class="painel-bloco"><div class="painel-vazio">Carregando resumo…</div></section>
-    `;
+  function renderizarErro(mensagem) {
+    cards.innerHTML = "";
+    graficos.innerHTML = `<section class="painel-bloco"><div class="painel-erro"><strong>Não foi possível carregar o resumo.</strong><span>${C.escapeHtml(mensagem || "Tente novamente em instantes.")}</span></div></section>`;
+  }
 
+  async function carregarResumoDia({ silencioso = false } = {}) {
+    if (carregando) return;
+    carregando = true;
+    if (!silencioso) renderizarCarregamento();
     try {
-      let payload;
-
-      if (CFG.MOCK) {
-        payload = MOCK_DATA;
-      } else {
-        const json = await C.fetchJSON(CFG.ENDPOINT);
-        // Aceita {ok:true,data:{...}} OU direto {...}
-        payload = json?.data ?? json;
-      }
-
-      renderKPIs(payload);
-      renderGraficos(payload);
-    } catch (e) {
-      $cards.innerHTML = "";
-      $graficos.innerHTML = `
-        <div class="painel-card" style="padding:14px">
-          <strong>⚠️ Resumo do dia</strong><br>
-          <span style="color:var(--muted)">Falha ao carregar: ${C.escapeHtml(e.message)}</span>
-        </div>
-      `;
-      console.error("[ResumoDia]", e);
+      const json = await C.fetchJSON(ENDPOINT);
+      if (!json?.ok || !json?.data) throw new Error(json?.user_msg || "Resposta inválida do servidor.");
+      renderizarConteudo(json.data);
+    } catch (erro) {
+      if (!silencioso) renderizarErro(erro.message);
+      console.error("[ResumoDia]", erro);
+    } finally {
+      carregando = false;
     }
   }
 
-  // =========================
-  // Auto refresh ao abrir a aba
-  // =========================
-  function abaEstaAtiva() {
-    // seu HTML usa "ativa" na aba atual
-    return aba.classList.contains("ativa");
+  function abaEstaAtiva() { return aba.classList.contains("ativa"); }
+
+  function iniciarAtualizacaoAutomatica() {
+    if (intervaloId !== null) return;
+    intervaloId = window.setInterval(() => {
+      if (abaEstaAtiva() && !document.hidden) carregarResumoDia({ silencioso: true });
+    }, INTERVALO_ATUALIZACAO_RESUMO);
   }
 
-  if (CFG.AUTO_REFRESH_ON_TAB) {
-    const obs = new MutationObserver(() => {
-      if (abaEstaAtiva()) carregar();
-    });
-    obs.observe(aba, { attributes: true, attributeFilter: ["class"] });
-  }
-
+  new MutationObserver(() => { if (abaEstaAtiva()) carregarResumoDia({ silencioso: true }); }).observe(aba, { attributes: true, attributeFilter: ["class"] });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && abaEstaAtiva()) carregarResumoDia({ silencioso: true }); });
+  document.addEventListener("resumo:recarregar", () => carregarResumoDia({ silencioso: true }));
   document.addEventListener("DOMContentLoaded", () => {
-    if (abaEstaAtiva()) carregar();
+    if (abaEstaAtiva()) carregarResumoDia();
+    iniciarAtualizacaoAutomatica();
   });
-
-  // ✅ opcional: você pode forçar refresh de fora com:
-  // document.dispatchEvent(new CustomEvent("resumo:recarregar"));
-  document.addEventListener("resumo:recarregar", () => carregar());
 })();

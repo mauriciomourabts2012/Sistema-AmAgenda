@@ -5,7 +5,7 @@ date_default_timezone_set('America/Sao_Paulo');
 
 mysqli_report(MYSQLI_REPORT_OFF);
 
-$dbServidor = "172.24.0.15";
+$dbServidor = "10.0.0.54";
 $dbPorta    = 3306;
 $dbUsuario  = "AmAgenda";
 $dbSenha    = "#UvWQL4dx4#";

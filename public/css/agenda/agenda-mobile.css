@@ -1,6 +1,37 @@
 
 @media (max-width: 960px){
 
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-agenda{
+    padding: 9px 12px;
+    margin-bottom: 6px;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-esquerda,
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-data-grupo{
+    min-width: 0;
+    gap: 2px;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-dia{
+    font-size: 19px;
+    line-height: 1.12;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-data{
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-notificacoes{
+    width: 40px;
+    height: 40px;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-perfil{
+    width: 42px;
+    height: 42px;
+  }
+
 /* ==========================================================
    BOTAO-GERAL — MOBILE
    ========================================================== */
@@ -17,6 +48,14 @@
   .botao-geral i{
     font-size: 16px;
     width: 18px;
+  }
+
+  /* Avatar compacto e bem enquadrado no botão Perfil do celular/tablet. */
+  .botao-perfil-avatar {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+    border-width: 2px;
   }
 
  /*Esconder texto e deixar só ícone */
@@ -142,6 +181,18 @@
     flex: 0 0 auto;
     padding: 12px 10px;
     border-radius: 14px;
+    /* A cor vem do padrão compartilhado; no mobile a sombra é reduzida. */
+    box-shadow: 0 5px 12px rgba(31, 93, 63, .10);
+  }
+
+  .menu-principal-abas button.ativa,
+  .menu-principal-abas button.hoje.ativa {
+    box-shadow: 0 7px 16px rgba(17, 99, 221, .22), inset 0 0 0 1px rgba(255, 255, 255, .24);
+  }
+
+  .menu-principal-abas button.feriado,
+  .menu-principal-abas button.feriado.ativa {
+    box-shadow: 0 6px 14px rgba(198, 40, 40, .20);
   }
 
   /* Ativo vira underline */
@@ -155,13 +206,6 @@
     border-radius: 999px;
   }
 
-  /* No mobile, não “zera” o menu ao fechar */
-  body.menu-fechado .menu-principal-abas{
-    width: 100%;
-    opacity: 1;
-    pointer-events: auto;
-  }
-
   /* Aba ocupa 100% */
   .conteudo-aba{
     width: 100%;
@@ -172,20 +216,6 @@
   }
 
   .conteudo-agenda{ overflow: visible; } /* ✅ evita cortar dropdown */
-
-  /* Botões do topo viram barra rolável */
-  .conteudo-agenda > div:first-child{
-    display: flex;
-    gap: 10px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 10px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .conteudo-agenda > div:first-child::-webkit-scrollbar{ display:none; }
-
-
 
   /* ==========================================================
      CARDS - MOBILE (APP STYLE)
@@ -224,6 +254,358 @@
     min-width: 0;
   }
   
+}
+
+/* Confirmação de exclusão confortável em celulares. */
+@media (max-width: 768px) {
+  .agenda-exclusao-confirmacao {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+
+  .agenda-exclusao-confirmacao .ui-alert__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .agenda-exclusao-confirmacao .ui-alert__btn { width: 100%; }
+
+  .agenda-pesquisa-resultados {
+    position: fixed;
+    top: var(--agenda-pesquisa-top, 170px);
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .agenda-pesquisa-resultados:not([hidden]) { display: flex; flex-direction: column; }
+  .agenda-pesquisa-resultados-lista {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    align-content: start;
+    grid-auto-rows: max-content;
+  }
+  .agenda-pesquisa-item { grid-template-columns: 82px minmax(0, 1fr) 18px; gap: 8px; padding: 10px 8px; }
+  .agenda-pesquisa-item-status { display: none; }
+  .agenda-pesquisa-resultados-paginacao { flex-wrap: wrap; }
+
+  /* No celular o indicador mantém pouco espaço e não compete com as ações. */
+  .agenda-em-atendimento { padding: 4px 7px; font-size: 10px; }
+
+  /* Atendimento atual: mesmo contorno contínuo usado no desktop, adaptado
+     ao raio maior dos cards mobile e sem barra lateral recortada. */
+  .agenda-card.agenda-card-em-atendimento {
+    border-color: #3b82f6;
+    box-shadow: 0 7px 20px rgba(59, 130, 246, .12);
+  }
+
+  .agenda-card.agenda-card-em-atendimento::before { content: none; }
+}
+
+/* Novo Agendamento: disponibilidade adaptada para telas estreitas. */
+@media (max-width: 600px) {
+  /* Segurança de viewport: preserva o visual mobile aprovado sem cortar o topo. */
+  #modalNovoAgendamento .modal-conteudo {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .agenda-painel-global { width: 100%; flex: none; gap: 10px; }
+  .agenda-ferramentas-global {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 14px;
+  }
+  .agenda-ferramentas-global .pesquisar { position: static; padding: 0; }
+  .agenda-ferramentas-global .input-wrapper { min-width: 0; }
+  .agenda-filtro-global .btn-filtro { min-height: 40px; padding-inline: 10px; }
+  .agenda-filtro-global .btn-filtro .caret,
+  .agenda-filtro-global #labelPeriodo_global { display: none; }
+  .agenda-filtro-global .popover { right: 0; left: auto; width: min(340px, calc(100vw - 28px)); min-width: 0; }
+
+  .ag-disponibilidade {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .ag-disponibilidade-cabecalho {
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .ag-dia-disponivel {
+    min-width: 44px;
+    padding-inline: 9px;
+  }
+
+  .ag-horario-opcao {
+    flex: 1 1 calc(33.333% - 8px);
+    min-width: 72px;
+  }
+
+  .ag-disponibilidade-legendas {
+    justify-content: flex-start;
+  }
+
+  .ag-disponibilidade-conteudo {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .ag-calendario,
+  .ag-horarios-painel {
+    padding: 12px;
+  }
+
+  .ag-calendario {
+    width: 100%;
+    max-width: 360px;
+    margin-inline: auto;
+  }
+
+  .ag-calendario-semana,
+  .ag-calendario-dias {
+    gap: 3px;
+  }
+
+  .ag-calendario-dia {
+    border-radius: 8px;
+    font-size: 11px;
+  }
+
+  .ag-horarios-titulo {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .ag-horarios-titulo strong {
+    text-align: left;
+  }
+
+  .ag-horarios-disponiveis {
+    max-height: 190px;
+  }
+
+  .ag-recorrencia-fim {
+    width: 100%;
+  }
+}
+
+/* ==========================================================
+   AGENDA REAL — MOBILE
+   Cartões legíveis e modais em formato de painel, sem rolagem
+   horizontal e com áreas de toque adequadas.
+   ========================================================== */
+@media (max-width: 600px) {
+  .agenda-card {
+    min-height: 178px;
+    padding: 14px 14px 66px;
+    border-radius: 17px;
+    gap: 12px;
+  }
+  .agenda-card:hover { transform: none; }
+
+  .agenda-card.agenda-card-em-atendimento:hover {
+    /* Protege o contorno em aparelhos que mantêm o hover após o toque. */
+    transform: none;
+    border-color: #3b82f6;
+  }
+  .agenda-hora {
+    width: fit-content;
+    min-width: 92px;
+    align-items: flex-start;
+    padding: 9px 11px;
+    border-radius: 11px;
+  }
+  .agenda-hora strong { font-size: 16px; }
+  .agenda-hora small { font-size: 10px; }
+  .agenda-info { gap: 7px; padding-right: 0; }
+  .agenda-nome { font-size: 16px; }
+  .agenda-acoes { right: 14px; bottom: 14px; }
+
+  #modalVisualizarAgendamento .modal-conteudo,
+  #modalEditarAgendamento .modal-conteudo {
+    width: calc(100vw - 16px);
+    max-width: none;
+    max-height: calc(100dvh - 16px);
+    margin: 8px;
+    border-radius: 18px;
+  }
+  #modalVisualizarAgendamento .modal-topo,
+  #modalEditarAgendamento .modal-topo { padding: 16px 18px; }
+  #modalVisualizarAgendamento .modal-corpo,
+  #modalEditarAgendamento .modal-corpo { padding: 16px; }
+  #modalVisualizarAgendamento .vc-head {
+    grid-template-columns: 48px 1fr;
+    padding: 14px;
+    gap: 10px;
+  }
+  #modalVisualizarAgendamento .vc-avatar { width: 48px; height: 48px; border-radius: 14px; }
+  #modalVisualizarAgendamento .vc-nome { font-size: 17px; }
+  #modalVisualizarAgendamento .vc-head-acoes { grid-column: 1 / -1; width: 100%; }
+  #modalVisualizarAgendamento .vc-head-acoes .vc-btn:not(.vc-btn-whats) { flex: 1; }
+  #modalVisualizarAgendamento .vc-grid { grid-template-columns: 1fr; gap: 12px; }
+  #modalVisualizarAgendamento .vc-card,
+  #modalVisualizarAgendamento .vc-card-full { grid-column: 1; padding: 14px; }
+  .vc-dados-grid { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .vc-dado { padding: 10px; }
+  #modalEditarAgendamento .modal-grid { grid-template-columns: 1fr; }
+  #modalEditarAgendamento .ag-disponibilidade { padding: 13px; }
+  #modalEditarAgendamento .modal-acoes { position: sticky; bottom: -16px; padding: 12px 0 2px; background: #fff; z-index: 3; }
+  #modalEditarAgendamento .modal-acoes .botao-geral { width: 100%; justify-content: center; }
+  .ag-form-feedback { margin-bottom: 10px; padding: 12px; font-size: 12px; }
+
+  .agenda-ferramentas-global {
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+  }
+  .agenda-ferramentas-global > .botao-geral,
+  .agenda-filtro-global .btn-filtro { width: 42px; height: 42px; padding: 0; justify-content: center; }
+  .agenda-filtro-global .popover .linha { grid-template-columns: 1fr; }
+  .agenda-filtro-global .popover .acoes { flex-wrap: wrap; }
+}
+
+/* ========================================================================== 
+   NOVO E EDITAR AGENDAMENTO — CELULARES
+   --------------------------------------------------------------------------
+   Painel ocupa a área útil, sem ultrapassar a viewport. Cabeçalho fixo,
+   conteúdo rolável, campos em uma coluna e botão de salvar sempre alcançável.
+   ========================================================================== */
+@media (max-width: 600px) {
+  :is(#modalNovoAgendamento, #modalEditarAgendamento).modal-geral {
+    align-items: flex-end;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-conteudo {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: calc(100dvh - 16px);
+    margin: 0;
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-topo {
+    flex: 0 0 auto;
+    padding: 13px 14px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-corpo {
+    min-height: 0;
+    padding: 12px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    background: #fff;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-campo {
+    min-width: 0;
+    margin-top: 14px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-disponibilidade {
+    grid-column: 1;
+    min-width: 0;
+    padding: 12px;
+    gap: 12px;
+    border-radius: 14px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-disponibilidade-cabecalho {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-disponibilidade-conteudo {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) :is(.ag-calendario, .ag-horarios-painel) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 10px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-calendario-semana,
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-calendario-dias {
+    gap: 3px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-horarios-painel {
+    max-height: none;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-horarios-disponiveis {
+    max-height: 190px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-horario-opcao {
+    flex: 1 1 calc(33.333% - 8px);
+    min-width: 68px;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .campo-checkbox {
+    padding: 12px;
+    border: 1px solid #e5ebf3;
+    border-radius: 12px;
+    background: #f8fafc;
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-acoes {
+    position: sticky;
+    bottom: -12px;
+    z-index: 6;
+    margin: 2px -12px -10px;
+    padding: 12px;
+    border-top: 1px solid #e8edf4;
+    background: rgba(255, 255, 255, .97);
+    backdrop-filter: blur(8px);
+  }
+
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-acoes .botao-geral {
+    width: 100%;
+    min-height: 46px;
+    justify-content: center;
+  }
+}
+
+/* Celulares muito estreitos: horários em duas colunas e textos compactos. */
+@media (max-width: 380px) {
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-corpo { padding: 10px; }
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-disponibilidade { padding: 9px; }
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-horario-opcao { flex-basis: calc(50% - 6px); }
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-disponibilidade-legendas { gap: 6px 10px; }
+}
+
+/* Celular em modo paisagem: reduz alturas para preservar espaço útil. */
+@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+  :is(#modalNovoAgendamento, #modalEditarAgendamento).modal-geral { align-items: center; padding: 6px; }
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-conteudo { max-height: calc(100dvh - 12px); border-radius: 14px; }
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-topo { padding-block: 8px; }
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .ag-horarios-disponiveis { max-height: 120px; }
 }
 
 @media (max-width: 768px) {
@@ -640,3 +1022,74 @@
   }
 }
 
+/* Cabeçalho azul compartilhado dos modais em tablet e celular. */
+@media (max-width: 768px) {
+  .modal-geral {
+    padding: 8px;
+  }
+
+  .modal-geral .modal-conteudo {
+    max-width: 100%;
+    border-radius: 17px;
+  }
+
+  .modal-geral .modal-topo,
+  #modalVisualizarAgendamento .modal-topo,
+  #modalEditarAgendamento .modal-topo,
+  :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-topo {
+    min-height: 62px;
+    padding: 11px 13px 11px 16px;
+    background: linear-gradient(135deg, #1769d8 0%, #0756bb 100%);
+  }
+
+  .modal-geral .modal-topo h2 {
+    font-size: clamp(17px, 5vw, 20px);
+  }
+
+  .modal-geral .modal-fechar {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+    border-radius: 11px;
+    font-size: 22px;
+  }
+
+  /* Todas as páginas compartilham o mesmo corpo e rodapé no mobile. */
+  .modal-geral .modal-corpo {
+    padding: 14px;
+  }
+
+  .modal-geral .modal-campo-full,
+  .modal-geral .modal-campo.linha {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .modal-geral .modal-acoes {
+    margin-top: 16px;
+    padding: 12px 0 0;
+  }
+}
+
+
+/* Fotos das listagens não podem herdar o formato retangular de .agenda-hora. */
+.agenda-card .agenda-hora.agenda-hora--avatar,
+.agenda-card .agenda-hora.agenda-hora--iniciais {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.agenda-card .agenda-avatar-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: 50%;
+}

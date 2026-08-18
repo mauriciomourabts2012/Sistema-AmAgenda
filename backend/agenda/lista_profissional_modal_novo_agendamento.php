@@ -288,6 +288,7 @@ $sql = "
         ON pf.id_perfil = eu.id_perfil
 
     WHERE u.status = ?
+      AND eu.status = 'ativo'
       AND (
             pf.nome IS NULL
             OR LOWER(pf.nome) IN ('profissional', 'profissionais')
@@ -296,6 +297,20 @@ $sql = "
 
 $tipos = 'is';
 $params = [$idEmpresa, $status];
+
+/*
+|----------------------------------------------------------------------
+| RESTRIÇÃO PARA O PERFIL PROFISSIONAL
+|----------------------------------------------------------------------
+| Profissional visualiza somente o próprio cadastro no Novo Agendamento.
+| Proprietário, recepção e demais perfis mantêm a listagem completa da
+| empresa. A regra fica no backend para não depender de filtro visual no JS.
+*/
+if (($profissionalLogado['eh_profissional'] ?? false) === true) {
+    $sql .= " AND p.id_usuario = ? ";
+    $tipos .= 'i';
+    $params[] = $idUsuarioSessao;
+}
 
 if ($q !== '') {
     $sql .= "
