@@ -363,12 +363,36 @@
         </div>
       </div>
 
+      <!-- MODAL: Seleção administrativa do profissional -->
+      <div id="modalSelecionarProfissionalConfig" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloSelecionarProfissionalConfig">
+          <div class="modal-topo">
+            <h2 id="tituloSelecionarProfissionalConfig">Selecionar profissional</h2>
+            <button class="modal-fechar" data-fechar-selecao-profissional type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <p class="msg-ajuda">Selecione o profissional que deseja administrar:</p><br>
+            <div class="modal-campo modal-campo-full">
+              <select id="cfg_profissional_selecionado" disabled>
+                <option value="">Carregando profissionais...</option>
+              </select>
+              <label for="cfg_profissional_selecionado">Profissional</label>
+              <small id="cfg_profissional_selecao_msg" class="msg-erro" aria-live="polite"></small>
+            </div>
+            <div class="modal-acoes">
+              <button id="btnCancelarSelecaoProfissional" class="botao-geral" type="button">Cancelar</button>
+              <button id="btnContinuarSelecaoProfissional" class="botao-geral destaque" type="button" disabled>Continuar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- MODAL: Configurações da Agenda -->
       <div id="modalConfiguracoesAgenda" class="modal-geral" aria-hidden="true">
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloConfigAgenda">
 
           <div class="modal-topo">
-            <h2 id="tituloConfigAgenda">Configurações Agenda Profissional</h2>
+            <h2 id="tituloConfigAgenda">Configurações Agenda Profissional <span id="cfg_profissional_nome_titulo"></span></h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
 

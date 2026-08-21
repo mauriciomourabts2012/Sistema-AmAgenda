@@ -41,10 +41,13 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    CONEXÃO
 ========================================================== */
 require_once __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_regras/limites_plano.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -78,7 +81,14 @@ if (!$idUsuario || $idUsuario <= 0) {
     ], 400);
 }
 
+if (!$idEmpresa || $idEmpresa <= 0) {
+    out(['ok' => false, 'code' => 'INVALID_COMPANY_ID', 'user_msg' => 'Empresa do vínculo inválida.'], 400);
+}
+
 try {
+    $conexao->begin_transaction();
+    $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, (int)$idEmpresa);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
     /* ==========================================================
        BUSCAR USUÁRIO + VÍNCULO
        - se vier id_empresa, busca vínculo exato
@@ -88,15 +98,20 @@ try {
         $sql = "
             SELECT
                 u.nome,
+                u.status AS status_usuario,
                 eu.id_empresa_usuario,
                 eu.id_empresa,
-                eu.status
+                eu.status,
+                pf.nome AS perfil_nome
             FROM empresa_usuario eu
             INNER JOIN usuario u
                 ON u.id_usuario = eu.id_usuario
+            INNER JOIN perfil pf
+                ON pf.id_perfil = eu.id_perfil
             WHERE eu.id_usuario = ?
               AND eu.id_empresa = ?
             LIMIT 1
+            FOR UPDATE
         ";
 
         $stmt = $conexao->prepare($sql);
@@ -134,6 +149,7 @@ try {
     $stmt->close();
 
     if (!$vinculo) {
+        $conexao->rollback();
         out([
             'ok' => false,
             'code' => 'NOT_FOUND',
@@ -147,6 +163,7 @@ try {
     $nomeUsuario = (string)($vinculo['nome'] ?? '');
 
     if ($idEmpresaUsuario <= 0) {
+        $conexao->rollback();
         out([
             'ok' => false,
             'code' => 'INVALID_LINK',
@@ -158,6 +175,7 @@ try {
        REGRA DE NEGÓCIO
     ========================================================== */
     if ($statusAtual === 'bloqueado') {
+        $conexao->rollback();
         out([
             'ok' => false,
             'code' => 'BLOCKED',
@@ -166,6 +184,7 @@ try {
     }
 
     if (!in_array($statusAtual, ['ativo', 'inativo'], true)) {
+        $conexao->rollback();
         out([
             'ok' => false,
             'code' => 'INVALID_CURRENT_STATUS',
@@ -174,6 +193,20 @@ try {
     }
 
     $novoStatus = ($statusAtual === 'ativo') ? 'inativo' : 'ativo';
+
+    $usuarioGlobalConta = limitesPlanoStatusConta((string)($vinculo['status_usuario'] ?? ''));
+    $statusAnteriorPlano = $usuarioGlobalConta ? $statusAtual : 'inativo';
+    $statusNovoPlano = $usuarioGlobalConta ? $novoStatus : 'inativo';
+    $resultadoLimites = limitesPlanoVerificarTransicaoPerfil(
+        $conexao,
+        $resultadoPlano['plano'],
+        (int)$idEmpresa,
+        (string)($vinculo['perfil_nome'] ?? ''),
+        $statusAnteriorPlano,
+        (string)($vinculo['perfil_nome'] ?? ''),
+        $statusNovoPlano
+    );
+    limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
 
     /* ==========================================================
        UPDATE
@@ -198,6 +231,7 @@ try {
         $errno = (int)$stmtUpdate->errno;
         $error = (string)$stmtUpdate->error;
         $stmtUpdate->close();
+        $conexao->rollback();
 
         out([
             'ok' => false,
@@ -211,6 +245,7 @@ try {
     }
 
     $stmtUpdate->close();
+    $conexao->commit();
 
     /* ==========================================================
        RESPOSTA
@@ -229,6 +264,10 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    try {
+        $conexao->rollback();
+    } catch (Throwable $ignorado) {
+    }
     out([
         'ok' => false,
         'code' => 'SERVER_ERROR',

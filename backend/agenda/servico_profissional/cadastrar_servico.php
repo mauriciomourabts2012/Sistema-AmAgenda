@@ -67,6 +67,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_regras/limites_plano.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -200,80 +201,34 @@ try {
         ], 403);
     }
 
-    $stmt = $conexao->prepare("
-        SELECT
-            p.id_profissional,
-            pf.nome AS perfil_nome,
-            pf.status AS perfil_status,
-            eu.status AS vinculo_status
-        FROM empresa_usuario eu
-        INNER JOIN perfil pf
-                ON pf.id_perfil = eu.id_perfil
-        LEFT JOIN profissional p
-               ON p.id_usuario = eu.id_usuario
-        WHERE eu.id_empresa = ?
-          AND eu.id_usuario = ?
-        LIMIT 1
-    ");
-
-    if (!$stmt) {
-        throw new RuntimeException('Erro ao preparar validação do perfil profissional: ' . $conexao->error);
+    $tipoUsuario = lower($auth['tipo_usuario'] ?? '');
+    $modoSuporte = ($auth['modo_suporte'] ?? false) === true || (int)($auth['modo_suporte'] ?? 0) === 1;
+    if ($tipoUsuario === 'super_admin') {
+        if (!$modoSuporte) out(['ok'=>false,'code'=>'SUPPORT_COMPANY_REQUIRED','user_msg'=>'Acesse uma empresa em modo suporte antes de administrar os serviços.'],403);
+    } else {
+        $stmt=$conexao->prepare("SELECT pf.nome FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' LIMIT 1");
+        $stmt->bind_param('ii',$idEmpresaSessao,$idUsuarioSessao); $stmt->execute(); $stmt->bind_result($perfilSessao); $vinculoOk=$stmt->fetch(); $stmt->close();
+        if (!$vinculoOk || !in_array(lower($perfilSessao),['proprietário','proprietario'],true)) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para cadastrar serviços para este profissional.'],403);
     }
 
-    $stmt->bind_param("ii", $idEmpresaSessao, $idUsuarioSessao);
-
-    if (!$stmt->execute()) {
-        throw new RuntimeException('Erro ao executar validação do perfil profissional: ' . $stmt->error);
-    }
-
-    $stmt->bind_result($idProfissionalDb, $perfilNomeDb, $perfilStatusDb, $vinculoStatusDb);
-    $vinculoEncontrado = $stmt->fetch();
-    $stmt->close();
-
-    if (!$vinculoEncontrado) {
-        out([
-            'ok' => false,
-            'code' => 'USER_COMPANY_LINK_NOT_FOUND',
-            'user_msg' => 'Seu usuário não possui vínculo com esta empresa.'
-        ], 403);
-    }
-
-    if (lower((string)$vinculoStatusDb) !== 'ativo') {
-        out([
-            'ok' => false,
-            'code' => 'USER_COMPANY_LINK_INACTIVE',
-            'user_msg' => 'Seu vínculo com esta empresa está inativo.'
-        ], 403);
-    }
-
-    if (lower((string)$perfilStatusDb) !== 'ativo') {
-        out([
-            'ok' => false,
-            'code' => 'PROFILE_INACTIVE',
-            'user_msg' => 'O perfil vinculado ao seu usuário está inativo.'
-        ], 403);
-    }
-
-    $perfilNomeNormalizado = lower((string)$perfilNomeDb);
-
-    if ($perfilNomeNormalizado !== 'profissional') {
-        out([
-            'ok' => false,
-            'code' => 'USER_NOT_PROFESSIONAL_PROFILE',
-            'user_msg' => 'Apenas usuários com perfil Profissional podem cadastrar serviços. Seu perfil atual é ' . (string)$perfilNomeDb . '.'
-        ], 403);
-    }
-
-    if ((int)$idProfissionalDb <= 0) {
-        out([
-            'ok' => false,
-            'code' => 'PROFESSIONAL_RECORD_NOT_FOUND',
-            'user_msg' => 'Seu usuário tem perfil Profissional, mas ainda não possui cadastro profissional vinculado. Procure o administrador.'
-        ], 403);
-    }
-
-    $idProfissional = (int)$idProfissionalDb;
+    $idProfissional = filter_input(INPUT_POST,'id_profissional',FILTER_VALIDATE_INT)
+        ?: (is_numeric($_POST['id_profissional'] ?? null) ? (int)$_POST['id_profissional'] : 0);
+    if ($idProfissional<=0) out(['ok'=>false,'code'=>'PROFESSIONAL_REQUIRED','user_msg'=>'Selecione um profissional para continuar.'],422);
+    $stmt=$conexao->prepare("SELECT p.id_profissional FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt->bind_param('ii',$idProfissional,$idEmpresaSessao); $stmt->execute(); $stmt->store_result(); $profissionalOk=$stmt->num_rows===1; $stmt->close();
+    if (!$profissionalOk) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional selecionado não está ativo ou não pertence à empresa acessada.'],403);
     $nomeNormalizado = lower($nome);
+
+    $conexao->begin_transaction();
+    $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresaSessao);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+    $resultadoLimiteServico = limitesPlanoVerificarServico(
+        $conexao,
+        $resultadoPlano['plano'],
+        $idEmpresaSessao,
+        $status
+    );
+    limitesPlanoAbortarSeNegado($conexao, $resultadoLimiteServico);
 
     $stmt = $conexao->prepare("
         SELECT id_servico
@@ -298,6 +253,7 @@ try {
 
     if ($stmt->num_rows > 0) {
         $stmt->close();
+        $conexao->rollback();
 
         out([
             'ok' => false,
@@ -339,6 +295,7 @@ try {
         $stmt->close();
 
         if ($errno === 1062) {
+            $conexao->rollback();
             out([
                 'ok' => false,
                 'code' => 'DUPLICATE_SERVICE',
@@ -354,6 +311,7 @@ try {
 
     $idServico = (int)$stmt->insert_id;
     $stmt->close();
+    $conexao->commit();
 
     out([
         'ok' => true,
@@ -373,6 +331,12 @@ try {
     ], 201);
 
 } catch (Throwable $e) {
+    if (isset($conexao) && $conexao instanceof mysqli) {
+        try {
+            $conexao->rollback();
+        } catch (Throwable $ignorado) {
+        }
+    }
     error_log('[cadastrar_servico] ' . $e->getMessage());
 
     out([

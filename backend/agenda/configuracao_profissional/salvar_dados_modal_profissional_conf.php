@@ -180,6 +180,35 @@ try {
         ], 403);
     }
 
+    $tipoUsuario = lower($auth['tipo_usuario'] ?? '');
+    $modoSuporte = ($auth['modo_suporte'] ?? false) === true || (int)($auth['modo_suporte'] ?? 0) === 1;
+    $idProfissionalProprio = 0;
+    $restringirAoProfissionalProprio = false;
+    if ($tipoUsuario === 'super_admin') {
+        if (!$modoSuporte) {
+            out(['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar estas configurações.'], 403);
+        }
+    } else {
+        $stmt = $conexao->prepare("SELECT pf.nome, p.id_profissional FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' LIMIT 1");
+        $stmt->bind_param('ii', $idEmpresaSessao, $idUsuarioSessao);
+        $stmt->execute(); $stmt->bind_result($perfilSessao, $idProfissionalProprio); $vinculoOk = $stmt->fetch(); $stmt->close();
+        $perfilNormalizado = lower($perfilSessao ?? '');
+        $restringirAoProfissionalProprio = in_array($perfilNormalizado, ['profissional', 'profissionais'], true);
+        if (!$vinculoOk || !in_array($perfilNormalizado, ['proprietário', 'proprietario', 'profissional', 'profissionais'], true)) {
+            out(['ok' => false, 'code' => 'ACCESS_DENIED', 'user_msg' => 'Você não possui permissão para administrar estas configurações.'], 403);
+        }
+    }
+
+    // O alvo vem do modal, mas empresa, vínculo e status são revalidados aqui.
+    $idProfissionalSolicitado = filter_input(INPUT_POST, 'id_profissional', FILTER_VALIDATE_INT)
+        ?: (is_numeric($_POST['id_profissional'] ?? null) ? (int)$_POST['id_profissional'] : 0);
+    if ($idProfissionalSolicitado <= 0) {
+        out(['ok' => false, 'code' => 'PROFESSIONAL_REQUIRED', 'user_msg' => 'Selecione um profissional para continuar.'], 422);
+    }
+    if ($restringirAoProfissionalProprio && ((int)$idProfissionalProprio <= 0 || (int)$idProfissionalProprio !== $idProfissionalSolicitado)) {
+        out(['ok' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED', 'user_msg' => 'O profissional só pode alterar as configurações da própria agenda.'], 403);
+    }
+
     $stmt = $conexao->prepare("
         SELECT p.id_profissional, p.id_usuario, p.especialidade
         FROM profissional p
@@ -187,7 +216,8 @@ try {
             ON eu.id_usuario = p.id_usuario
            AND eu.id_empresa = ?
            AND eu.status = 'ativo'
-        WHERE p.id_usuario = ?
+        INNER JOIN usuario u ON u.id_usuario = p.id_usuario AND u.status = 'ativo'
+        WHERE p.id_profissional = ?
         LIMIT 1
     ");
 
@@ -195,7 +225,7 @@ try {
         throw new RuntimeException('Erro ao preparar consulta do profissional: ' . $conexao->error);
     }
 
-    $stmt->bind_param('ii', $idEmpresaSessao, $idUsuarioSessao);
+    $stmt->bind_param('ii', $idEmpresaSessao, $idProfissionalSolicitado);
     $stmt->execute();
     $stmt->bind_result($idProfissionalDb, $idUsuarioProfissionalDb, $especialidadeDb);
 
@@ -206,7 +236,7 @@ try {
         out([
             'ok' => false,
             'code' => 'PROFISSIONAL_NOT_FOUND',
-            'user_msg' => 'Profissional não encontrado para o usuário logado nesta empresa.'
+            'user_msg' => 'O profissional selecionado não está ativo ou não pertence à empresa acessada.'
         ], 404);
     }
 

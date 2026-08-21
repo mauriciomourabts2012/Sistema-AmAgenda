@@ -167,6 +167,7 @@ function normalizar_status(?string $status): string
 */
 $idEmpresa = obter_id_empresa_sessao();
 $idUsuarioSessao = obter_id_usuario_sessao();
+$contextoAdministrativo = trim((string)($_GET['contexto'] ?? '')) === 'administracao';
 
 if (!$idEmpresa) {
     responder_json(401, [
@@ -174,6 +175,47 @@ if (!$idEmpresa) {
         'erro' => 'EMPRESA_NAO_IDENTIFICADA',
         'mensagem' => 'Empresa não identificada na sessão.'
     ]);
+}
+
+/*
+| Esta rota também é utilizada pelo Novo Agendamento e pela edição.
+| Não restringir globalmente aos perfis administrativos. Apenas o contexto
+| de configuração exige Proprietário ou Super Admin em modo suporte; a
+| autorização continua sendo derivada da sessão, nunca do parâmetro isolado.
+*/
+if ($contextoAdministrativo) {
+    $auth = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+    $tipoUsuario = normalizar_texto((string)($auth['tipo_usuario'] ?? ''));
+    $statusUsuario = normalizar_texto((string)($auth['status'] ?? ''));
+    $modoSuporte = ($auth['modo_suporte'] ?? false) === true || (int)($auth['modo_suporte'] ?? 0) === 1;
+
+    if ($idUsuarioSessao <= 0 || ($statusUsuario !== '' && $statusUsuario !== 'ativo')) {
+        responder_json(401, ['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sua sessão expirou. Faça login novamente.']);
+    }
+
+    if ($tipoUsuario === 'super_admin') {
+        if (!$modoSuporte || $idEmpresa <= 0) {
+            responder_json(403, ['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar as configurações de um profissional.']);
+        }
+    } else {
+        $stmtAutorizacao = $conexao->prepare("
+            SELECT pf.nome
+            FROM empresa_usuario eu
+            INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+            INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
+            WHERE eu.id_empresa = ? AND eu.id_usuario = ?
+              AND eu.status = 'ativo' AND pf.status = 'ativo' AND e.status = 'ativo'
+            LIMIT 1
+        ");
+        $stmtAutorizacao->bind_param('ii', $idEmpresa, $idUsuarioSessao);
+        $stmtAutorizacao->execute();
+        $stmtAutorizacao->bind_result($perfilAdministrativo);
+        $autorizado = $stmtAutorizacao->fetch();
+        $stmtAutorizacao->close();
+        if (!$autorizado || !in_array(normalizar_texto((string)$perfilAdministrativo), ['proprietário', 'proprietario'], true)) {
+            responder_json(403, ['ok' => false, 'code' => 'ACCESS_DENIED', 'user_msg' => 'Somente o Proprietário pode administrar as configurações de outros profissionais.']);
+        }
+    }
 }
 
 $profissionalLogado = [

@@ -8,9 +8,30 @@
   window.__CONFIG_AGENDA_EMPRESA_DADOS_JS_INIT__ = true;
 
   const MODAL_ID = "modalConfiguracoesAgenda";
+  const MODAL_SELECAO_ID = "modalSelecionarProfissionalConfig";
   const FORM_ID = "formConfigAgenda";
 
   const API_BUSCAR = "/public/api/api_central.php?path=agenda/configuracao-geral-buscar";
+  const API_LISTAR_PROFISSIONAIS = "/public/api/api_central.php?path=agenda/profissional-modal-novo-agendamento/listar&contexto=administracao&status=ativo&pagina=1&limite=200";
+  const API_PROFISSIONAL_LOGADO = "/public/api/api_central.php?path=agenda/profissional-modal-novo-agendamento/listar&status=ativo&pagina=1&limite=1";
+
+  // Proprietário e Super Admin em suporte precisam selecionar explicitamente
+  // qual profissional desejam administrar antes de abrir as configurações.
+  const contextoProfissional = {
+    id: 0,
+    nome: "",
+    getId() { return this.id; },
+    getNome() { return this.nome; },
+    definir(id, nome) {
+      this.id = Number(id) || 0;
+      this.nome = String(nome || "").trim();
+    },
+    limpar() {
+      this.id = 0;
+      this.nome = "";
+    }
+  };
+  window.ConfigAgendaProfissional = contextoProfissional;
 
   const IDS = {
     semana: "cfg_semana_inicio",
@@ -54,6 +75,10 @@
 
   function getForm() {
     return $(FORM_ID);
+  }
+
+  function getModalSelecao() {
+    return $(MODAL_SELECAO_ID);
   }
 
   function criarStackAlertas() {
@@ -163,6 +188,100 @@
       "modal-open",
       "sem-scroll"
     );
+
+    contextoProfissional.limpar();
+    const tituloNome = $("cfg_profissional_nome_titulo");
+    if (tituloNome) tituloNome.textContent = "";
+  }
+
+  function abrirModalSelecao() {
+    const modal = getModalSelecao();
+    if (!modal) return;
+    modal.classList.add("ativo");
+    modal.setAttribute("aria-hidden", "false");
+    modal.style.display = "flex";
+    document.body.classList.add("modal-aberto");
+  }
+
+  function fecharModalSelecao() {
+    const modal = getModalSelecao();
+    if (!modal) return;
+    modal.classList.remove("ativo");
+    modal.setAttribute("aria-hidden", "true");
+    modal.style.display = "none";
+    if (!getModal()?.classList.contains("ativo")) document.body.classList.remove("modal-aberto");
+  }
+
+  async function carregarProfissionaisParaSelecao() {
+    const select = $("cfg_profissional_selecionado");
+    const continuar = $("btnContinuarSelecaoProfissional");
+    const msg = $("cfg_profissional_selecao_msg");
+    if (!select || !continuar) return;
+
+    contextoProfissional.limpar();
+    select.disabled = true;
+    continuar.disabled = true;
+    select.innerHTML = '<option value="">Carregando profissionais...</option>';
+    if (msg) { msg.textContent = ""; msg.classList.remove("ativo"); }
+    abrirModalSelecao();
+
+    try {
+      const resp = await fetch(API_LISTAR_PROFISSIONAIS, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok) throw new Error(json?.user_msg || json?.mensagem || "Não foi possível carregar os profissionais.");
+
+      const profissionais = Array.isArray(json.data) ? json.data : [];
+      select.innerHTML = '<option value="">Selecione um profissional</option>';
+      profissionais.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = String(item.id_profissional || "");
+        option.textContent = String(item.nome || "Profissional");
+        select.appendChild(option);
+      });
+      select.disabled = profissionais.length === 0;
+      if (!profissionais.length) {
+        select.innerHTML = '<option value="">Nenhum profissional ativo encontrado.</option>';
+        if (msg) { msg.textContent = "Nenhum profissional ativo encontrado."; msg.classList.add("ativo"); }
+      }
+    } catch (err) {
+      select.innerHTML = '<option value="">Profissionais indisponíveis</option>';
+      if (msg) { msg.textContent = err.message; msg.classList.add("ativo"); }
+      alertWarn(err.message || "Não foi possível carregar os profissionais.");
+    }
+  }
+
+  function usuarioLogadoEhProfissional() {
+    const auth = window.__AUTH__ || {};
+    const perfil = String(auth.perfil_nome || auth.perfil || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    return perfil === "profissional" || perfil === "profissionais";
+  }
+
+  async function abrirConfiguracaoDoProfissionalLogado() {
+    try {
+      const resp = await fetch(API_PROFISSIONAL_LOGADO, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok) {
+        throw new Error(json?.user_msg || json?.mensagem || "Não foi possível identificar seu cadastro profissional.");
+      }
+
+      const profissional = Array.isArray(json.data) ? json.data[0] : null;
+      const idProfissional = Number(json.profissional_logado?.id_profissional || profissional?.id_profissional || 0);
+      if (!idProfissional) throw new Error("Seu usuário não possui um cadastro profissional ativo nesta empresa.");
+
+      contextoProfissional.definir(idProfissional, profissional?.nome || "");
+      await carregarConfiguracao(idProfissional);
+    } catch (err) {
+      alertWarn(err.message || "Não foi possível abrir as configurações da sua agenda.");
+    }
   }
 
   function soDigitos(valor) {
@@ -283,14 +402,15 @@
     setValor(IDS.msgWhats, data.mensagem_padrao ?? MSG_WHATS_PADRAO);
   }
 
-  async function carregarConfiguracao() {
+  async function carregarConfiguracao(idProfissional) {
     const modal = getModal();
     if (!modal) return;
 
     try {
       modal.dataset.loading = "1";
 
-      const resp = await fetch(API_BUSCAR, {
+      const url = `${API_BUSCAR}&id_profissional=${encodeURIComponent(idProfissional)}`;
+      const resp = await fetch(url, {
         method: "GET",
         credentials: "same-origin",
         headers: {
@@ -321,6 +441,13 @@
       }
 
       aplicarDadosNoFormulario(json.data || {});
+      const nomeValidado = String(json.data?.profissional_nome || contextoProfissional.getNome()).trim();
+      contextoProfissional.definir(json.data?.id_profissional || idProfissional, nomeValidado);
+      const tituloNome = $("cfg_profissional_nome_titulo");
+      if (tituloNome) tituloNome.textContent = nomeValidado ? `— ${nomeValidado}` : "";
+      document.dispatchEvent(new CustomEvent("agenda:profissional-config-selecionado", {
+        detail: { id_profissional: contextoProfissional.getId(), nome: nomeValidado }
+      }));
       abrirModal();
 
     } catch (err) {
@@ -384,10 +511,11 @@
         ev.stopImmediatePropagation();
 
         fecharModal();
-
-        setTimeout(() => {
-          carregarConfiguracao();
-        }, 50);
+        if (usuarioLogadoEhProfissional()) {
+          setTimeout(abrirConfiguracaoDoProfissionalLogado, 50);
+          return;
+        }
+        setTimeout(carregarProfissionaisParaSelecao, 50);
       },
       true
     );
@@ -406,6 +534,49 @@
     });
   }
 
+  function bindSelecaoProfissional() {
+    const select = $("cfg_profissional_selecionado");
+    const continuar = $("btnContinuarSelecaoProfissional");
+    const cancelar = $("btnCancelarSelecaoProfissional");
+    const msg = $("cfg_profissional_selecao_msg");
+    if (!select || !continuar) return;
+
+    select.addEventListener("change", () => {
+      continuar.disabled = !(Number(select.value) > 0);
+      if (msg) { msg.textContent = ""; msg.classList.remove("ativo"); }
+    });
+
+    continuar.addEventListener("click", async () => {
+      const id = Number(select.value) || 0;
+      if (!id) {
+        if (msg) { msg.textContent = "Selecione um profissional para continuar."; msg.classList.add("ativo"); }
+        return;
+      }
+      contextoProfissional.definir(id, select.options[select.selectedIndex]?.textContent || "");
+      continuar.disabled = true;
+      continuar.textContent = "Carregando...";
+      fecharModalSelecao();
+      await carregarConfiguracao(id);
+      continuar.textContent = "Continuar";
+      continuar.disabled = false;
+    });
+
+    cancelar?.addEventListener("click", () => { contextoProfissional.limpar(); fecharModalSelecao(); });
+    document.addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-fechar-selecao-profissional]")) {
+        contextoProfissional.limpar();
+        fecharModalSelecao();
+      }
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && getModal()?.classList.contains("ativo")) fecharModal();
+      if (ev.key === "Escape" && getModalSelecao()?.classList.contains("ativo")) {
+        contextoProfissional.limpar();
+        fecharModalSelecao();
+      }
+    });
+  }
+
   function init() {
     const modal = getModal();
     const form = getForm();
@@ -418,6 +589,7 @@
     fecharModal();
     bindEventosCampos();
     bindEventosHorarios();
+    bindSelecaoProfissional();
     bindAberturaModal();
     bindFecharModal();
   }

@@ -305,6 +305,7 @@
     const fd = new FormData();
 
     fd.append("aba", aba);
+    fd.append("id_profissional", String(window.ConfigAgendaProfissional?.getId?.() || 0));
 
     if (aba === "cfg-geral") {
       fd.append("intervalo_padrao", String(document.getElementById("cfg_intervalo_padrao")?.value ?? "").trim());

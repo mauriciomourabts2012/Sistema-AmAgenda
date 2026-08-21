@@ -312,6 +312,7 @@
       fd.append("duracao_min", durVal);
       fd.append("valor", valorVal);
       fd.append("status", "ativo");
+      fd.append("id_profissional", String(window.ConfigAgendaProfissional?.getId?.() || 0));
 
       setLoading(true);
 

@@ -173,14 +173,16 @@
               "Content-Type": "application/json"
             },
             credentials: "same-origin",
-            body: JSON.stringify({})
+            body: JSON.stringify({
+              id_profissional: window.ConfigAgendaProfissional?.getId?.() || 0
+            })
           });
 
           const data = await lerRespostaJson(response);
 
           if (!response.ok || !data.ok) {
             throw new Error(
-              data.mensagem || "Erro ao restaurar configurações."
+              data.user_msg || data.mensagem || "Erro ao restaurar configurações."
             );
           }
 

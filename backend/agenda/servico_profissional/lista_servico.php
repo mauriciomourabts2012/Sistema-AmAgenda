@@ -92,6 +92,14 @@ try {
         return is_numeric($raw) ? (int)$raw : 0;
     }
 
+    $contextoAdministrativo = trim((string)($_GET['contexto'] ?? '')) === 'administracao';
+    $tipoUsuario = lower($auth['tipo_usuario'] ?? '');
+    $modoSuporte = ($auth['modo_suporte'] ?? false) === true || (int)($auth['modo_suporte'] ?? 0) === 1;
+    if ($contextoAdministrativo && $tipoUsuario === 'super_admin' && !$modoSuporte) {
+        out(['ok'=>false,'code'=>'SUPPORT_COMPANY_REQUIRED','user_msg'=>'Acesse uma empresa em modo suporte antes de administrar os serviços.'],403);
+    }
+
+    if (!($contextoAdministrativo && $tipoUsuario === 'super_admin')) {
     $stmt = $conexao->prepare("
         SELECT
             e.id_empresa,
@@ -144,9 +152,24 @@ try {
         ], 403);
     }
 
+    } else {
+        $stmt = $conexao->prepare("SELECT id_empresa,nome,status FROM empresa WHERE id_empresa=? LIMIT 1");
+        $stmt->bind_param('i',$idEmpresaSessao); $stmt->execute(); $stmt->bind_result($empresaIdDb,$empresaNomeDb,$empresaStatusDb); $empresaEncontrada=$stmt->fetch(); $stmt->close();
+        if (!$empresaEncontrada || lower($empresaStatusDb) !== 'ativo') out(['ok'=>false,'code'=>'EMPRESA_INACTIVE','user_msg'=>'A empresa acessada não está ativa.'],403);
+    }
+
+    if ($contextoAdministrativo && $tipoUsuario !== 'super_admin') {
+        $stmt = $conexao->prepare("SELECT pf.nome FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' LIMIT 1");
+        $stmt->bind_param('ii',$idEmpresaSessao,$idUsuarioSessao); $stmt->execute(); $stmt->bind_result($perfilSessao); $perfilOk=$stmt->fetch(); $stmt->close();
+        if (!$perfilOk || !in_array(lower($perfilSessao), ['proprietário','proprietario'], true)) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para administrar os serviços deste profissional.'],403);
+    }
+
     $idProfissionalSelecionado = intParam('id_profissional');
     if ($idProfissionalSelecionado <= 0) {
         $idProfissionalSelecionado = intParam('profissional_id');
+    }
+    if ($contextoAdministrativo && $idProfissionalSelecionado <= 0) {
+        out(['ok'=>false,'code'=>'PROFESSIONAL_REQUIRED','user_msg'=>'Selecione um profissional para continuar.'],422);
     }
 
     $idProfissionalSessao = 0;
@@ -167,9 +190,11 @@ try {
             FROM profissional p
             INNER JOIN empresa_usuario eu
                     ON eu.id_usuario = p.id_usuario
+            INNER JOIN usuario u ON u.id_usuario = p.id_usuario
             WHERE p.id_profissional = ?
               AND eu.id_empresa = ?
               AND eu.status = 'ativo'
+              AND u.status = 'ativo'
             LIMIT 1
         ");
 

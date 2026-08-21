@@ -138,7 +138,7 @@ $params = [];
   }
 
 $ordenacoesPermitidas = [
-  'nome_asc' => 'p.nome ASC, p.id_plano ASC',
+  'nome_asc' => 'CAST(p.ref AS UNSIGNED) ASC, p.id_plano ASC',
   'nome_desc' => 'p.nome DESC, p.id_plano DESC',
   'recentes' => 'p.criado_em DESC, p.id_plano DESC',
   'antigos' => 'p.criado_em ASC, p.id_plano ASC',

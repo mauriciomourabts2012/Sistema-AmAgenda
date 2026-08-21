@@ -118,6 +118,7 @@ try {
        CONEXÃO
     ========================================================== */
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_regras/limites_plano.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -394,6 +395,23 @@ try {
     $conexao->begin_transaction();
 
     try {
+        $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresaSessao);
+        limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+
+        $statusEfetivoPlano = (!$usuarioJaExiste || limitesPlanoStatusConta((string)$usuarioExistenteStatus))
+            ? $statusVinculo
+            : 'inativo';
+        $resultadoLimites = limitesPlanoVerificarTransicaoPerfil(
+            $conexao,
+            $resultadoPlano['plano'],
+            $idEmpresaSessao,
+            null,
+            null,
+            (string)$perfilNomeDb,
+            $statusEfetivoPlano
+        );
+        limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
+
         if ($usuarioJaExiste) {
             $idUsuario = (int)$usuarioExistenteId;
             $nomeRetorno = (string)$usuarioExistenteNome;

@@ -22,7 +22,9 @@ try {
         ], 405);
     }
 
+    require __DIR__ . '/../../_auth/bloquear.php';
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_regras/limites_plano.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -230,6 +232,17 @@ try {
         ], 422);
     }
 
+    // Este fluxo é exclusivo para o Proprietário inicial da empresa.
+    // Outros perfis devem ser criados no painel da empresa, inclusive em suporte.
+    if (limitesPlanoNormalizarPerfil((string)$perfilNomeDb) !== 'proprietarios') {
+        out([
+            'ok' => false,
+            'code' => 'INVALID_PROFILE_FOR_SUPERADMIN_COMPANY_USER',
+            'user_msg' => 'Neste cadastro, o Super Admin pode vincular somente o perfil Proprietário.',
+            'fields' => ['u_perfil_super_admin' => 'Selecione o perfil Proprietário.'],
+        ], 422);
+    }
+
     /* ==========================================================
        VALIDAR E-MAIL GLOBAL
        usuário é global no sistema
@@ -276,6 +289,23 @@ try {
     $conexao->begin_transaction();
 
     try {
+        $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresa);
+        limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+
+        $statusEfetivoPlano = (!$usuarioJaExiste || limitesPlanoStatusConta((string)$usuarioExistenteStatus))
+            ? $status
+            : 'inativo';
+        $resultadoLimites = limitesPlanoVerificarTransicaoPerfil(
+            $conexao,
+            $resultadoPlano['plano'],
+            $idEmpresa,
+            null,
+            null,
+            (string)$perfilNomeDb,
+            $statusEfetivoPlano
+        );
+        limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
+
         if ($usuarioJaExiste) {
             $idUsuario = (int)$usuarioExistenteId;
             $nomeRetorno = (string)$usuarioExistenteNome;

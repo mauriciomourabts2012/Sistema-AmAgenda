@@ -51,6 +51,8 @@ try {
     $auth = $_SESSION['auth'] ?? [];
     $idUsuario = (int)($auth['id_usuario'] ?? 0);
     $idEmpresa = (int)($auth['id_empresa'] ?? $_SESSION['empresa_id'] ?? $_SESSION['id_empresa'] ?? $_SESSION['empresa']['id_empresa'] ?? $_SESSION['empresa']['id'] ?? 0);
+    $superAdminSuporte = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8') === 'super_admin'
+        && (bool)($auth['modo_suporte'] ?? false);
 
     if ($idUsuario <= 0) out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
     if (($auth['status'] ?? 'ativo') !== 'ativo') out(['ok' => false, 'code' => 'USER_INACTIVE', 'user_msg' => 'Seu usuário está inativo.'], 403);
@@ -81,18 +83,30 @@ try {
     if ($fields) out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Revise os dados do agendamento.', 'fields' => $fields], 422);
 
     require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_regras/limites_plano.php';
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) throw new RuntimeException('Conexão indisponível.');
     $conexao->set_charset('utf8mb4');
 
-    // Confirma empresa, vínculo, perfil e restringe o perfil Profissional a si mesmo.
-    $stmt = $conexao->prepare("SELECT e.status, eu.status, pf.nome, p.id_profissional FROM empresa e INNER JOIN empresa_usuario eu ON eu.id_empresa=e.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE e.id_empresa=? AND eu.id_usuario=? LIMIT 1");
-    $stmt->bind_param('ii', $idEmpresa, $idUsuario);
-    $stmt->execute();
-    $stmt->bind_result($empresaStatus, $vinculoStatus, $perfilNome, $profissionalSessao);
-    $temVinculo = $stmt->fetch();
-    $stmt->close();
-    if (!$temVinculo || $empresaStatus !== 'ativo' || $vinculoStatus !== 'ativo') out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
-    if (in_array(mb_strtolower((string)$perfilNome), ['profissional', 'profissionais'], true) && (int)$profissionalSessao !== $idProfissional) out(['ok' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED', 'user_msg' => 'O profissional só pode criar agendamentos para si mesmo.'], 403);
+    // Modo suporte autoriza o Super Admin sem criar vínculo fictício na empresa.
+    if ($superAdminSuporte) {
+        $stmt = $conexao->prepare("SELECT status FROM empresa WHERE id_empresa=? LIMIT 1");
+        $stmt->bind_param('i', $idEmpresa);
+        $stmt->execute();
+        $stmt->bind_result($empresaStatus);
+        $empresaEncontrada = $stmt->fetch();
+        $stmt->close();
+        if (!$empresaEncontrada || $empresaStatus !== 'ativo') out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
+    } else {
+        // Confirma empresa, vínculo, perfil e restringe o perfil Profissional a si mesmo.
+        $stmt = $conexao->prepare("SELECT e.status, eu.status, pf.nome, p.id_profissional FROM empresa e INNER JOIN empresa_usuario eu ON eu.id_empresa=e.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE e.id_empresa=? AND eu.id_usuario=? LIMIT 1");
+        $stmt->bind_param('ii', $idEmpresa, $idUsuario);
+        $stmt->execute();
+        $stmt->bind_result($empresaStatus, $vinculoStatus, $perfilNome, $profissionalSessao);
+        $temVinculo = $stmt->fetch();
+        $stmt->close();
+        if (!$temVinculo || $empresaStatus !== 'ativo' || $vinculoStatus !== 'ativo') out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
+        if (in_array(mb_strtolower((string)$perfilNome), ['profissional', 'profissionais'], true) && (int)$profissionalSessao !== $idProfissional) out(['ok' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED', 'user_msg' => 'O profissional só pode criar agendamentos para si mesmo.'], 403);
+    }
 
     $stmt = $conexao->prepare("SELECT id_cliente FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
     $stmt->bind_param('ii', $idCliente, $idEmpresa);
@@ -125,6 +139,16 @@ try {
     $grupo = $repetir ? uuid_v4() : null;
 
     $conexao->begin_transaction();
+    $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresa);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+    $resultadoAgendamentos = limitesPlanoVerificarAgendamentosPorMes(
+        $conexao,
+        $resultadoPlano['plano'],
+        $idEmpresa,
+        $datas
+    );
+    limitesPlanoAbortarSeNegado($conexao, $resultadoAgendamentos);
+
     $stmtConflito = $conexao->prepare("SELECT id_agendamento FROM agendamento WHERE id_empresa=? AND id_profissional=? AND data_agendamento=? AND status IN ('pendente','confirmado') AND hora_inicio < ? AND hora_fim > ? LIMIT 1 FOR UPDATE");
     $stmtInserir = $conexao->prepare("INSERT INTO agendamento (id_empresa,id_cliente,id_profissional,id_servico,data_agendamento,hora_inicio,hora_fim,duracao_min_aplicada,valor_aplicado,status,observacao,repetir_semanalmente,recorrencia_data_fim,grupo_recorrencia,criado_por) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     $ids = [];

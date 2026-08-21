@@ -243,6 +243,7 @@ if (!empty($erros)) {
    DB
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_regras/limites_plano.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -305,15 +306,19 @@ try {
             u.nome,
             u.email,
             u.telefone,
+            u.status AS status_usuario,
             u.tipo_usuario,
             eu.id_empresa_usuario,
             eu.id_empresa,
             eu.id_perfil,
-            eu.status AS status_vinculo
+            eu.status AS status_vinculo,
+            perfil_atual.nome AS perfil_anterior
         FROM usuario u
         INNER JOIN empresa_usuario eu
             ON eu.id_usuario = u.id_usuario
            AND eu.id_empresa = ?
+        INNER JOIN perfil perfil_atual
+            ON perfil_atual.id_perfil = eu.id_perfil
         WHERE u.id_usuario = ?
         LIMIT 1
     ";
@@ -427,6 +432,14 @@ try {
     }
 
     $nomePerfilNormalizado = mb_strtolower(trim((string)($perfil['nome'] ?? '')), 'UTF-8');
+    if (in_array($nomePerfilNormalizado, ['super admin', 'super_admin', 'superadmin'], true)) {
+        out([
+            'ok' => false,
+            'code' => 'PERFIL_NAO_PERMITIDO',
+            'user_msg' => 'Super Admin não pode ser usado como perfil de empresa.',
+            'fields' => ['u_e_perfil' => 'Perfil não permitido.'],
+        ], 403);
+    }
     $isProfissional = ($nomePerfilNormalizado === 'profissional');
 
     if ($isProfissional && $especialidade === '') {
@@ -444,6 +457,23 @@ try {
        TRANSAÇÃO
     ========================================================== */
     $conexao->begin_transaction();
+
+    $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresaSessao);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+
+    $usuarioGlobalConta = limitesPlanoStatusConta((string)($usuario['status_usuario'] ?? ''));
+    $statusAnteriorPlano = $usuarioGlobalConta ? (string)$usuario['status_vinculo'] : 'inativo';
+    $statusNovoPlano = $usuarioGlobalConta ? $status : 'inativo';
+    $resultadoLimites = limitesPlanoVerificarTransicaoPerfil(
+        $conexao,
+        $resultadoPlano['plano'],
+        $idEmpresaSessao,
+        (string)($usuario['perfil_anterior'] ?? ''),
+        $statusAnteriorPlano,
+        (string)($perfil['nome'] ?? ''),
+        $statusNovoPlano
+    );
+    limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
 
     /* ==========================================================
        UPDATE usuario

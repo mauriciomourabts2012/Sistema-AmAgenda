@@ -114,129 +114,40 @@ try {
         return ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDAR EMPRESA + VÍNCULO DO USUÁRIO
-    |--------------------------------------------------------------------------
-    */
-    $stmt = $conexao->prepare("
-        SELECT 
-            e.id_empresa,
-            e.nome,
-            e.status,
-            eu.id_perfil,
-            eu.status AS status_empresa_usuario
-        FROM empresa e
-        INNER JOIN empresa_usuario eu
-            ON eu.id_empresa = e.id_empresa
-        WHERE e.id_empresa = ?
-          AND eu.id_usuario = ?
-        LIMIT 1
-    ");
-
-    if (!$stmt) {
-        throw new RuntimeException('Erro ao preparar validação da empresa: ' . $conexao->error);
-    }
-
-    $stmt->bind_param("ii", $idEmpresaSessao, $idUsuarioSessao);
-
-    if (!$stmt->execute()) {
-        throw new RuntimeException('Erro ao executar validação da empresa: ' . $stmt->error);
-    }
-
-    $stmt->bind_result(
-        $empresaIdDb,
-        $empresaNomeDb,
-        $empresaStatusDb,
-        $idPerfilDb,
-        $empresaUsuarioStatusDb
-    );
-
-    $empresaEncontrada = $stmt->fetch();
-    $stmt->close();
-
-    if (!$empresaEncontrada) {
-        out([
-            'ok' => false,
-            'code' => 'EMPRESA_USUARIO_NOT_FOUND',
-            'user_msg' => 'Empresa vinculada ao usuário da sessão não encontrada.'
-        ], 404);
-    }
-
-    if (lower($empresaStatusDb) !== 'ativo') {
-        out([
-            'ok' => false,
-            'code' => 'EMPRESA_INACTIVE',
-            'user_msg' => 'A empresa vinculada à sessão está inativa.'
-        ], 403);
-    }
-
-    if (lower($empresaUsuarioStatusDb) !== 'ativo') {
-        out([
-            'ok' => false,
-            'code' => 'EMPRESA_USUARIO_INACTIVE',
-            'user_msg' => 'Seu acesso a esta empresa não está ativo.'
-        ], 403);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | LOCALIZAR PROFISSIONAL DA SESSÃO
-    |--------------------------------------------------------------------------
-    */
-    $idProfissionalSessao = 0;
-
-    if (isset($auth['id_profissional'])) {
-        $idProfissionalSessao = (int)$auth['id_profissional'];
-    } elseif (isset($_SESSION['id_profissional'])) {
-        $idProfissionalSessao = (int)$_SESSION['id_profissional'];
-    } elseif (isset($_SESSION['profissional_id'])) {
-        $idProfissionalSessao = (int)$_SESSION['profissional_id'];
-    } elseif (isset($_SESSION['profissional']['id_profissional'])) {
-        $idProfissionalSessao = (int)$_SESSION['profissional']['id_profissional'];
-    }
-
+    // O id_profissional identifica o alvo administrativo; a autorização é
+    // sempre confirmada pelo perfil e pela empresa presentes na sessão.
+    $idProfissionalSessao = filter_input(INPUT_GET, 'id_profissional', FILTER_VALIDATE_INT)
+        ?: (is_numeric($_GET['id_profissional'] ?? null) ? (int)$_GET['id_profissional'] : 0);
     if ($idProfissionalSessao <= 0) {
-        $stmt = $conexao->prepare("
-            SELECT p.id_profissional
-            FROM profissional p
-            INNER JOIN empresa_usuario eu
-                ON eu.id_usuario = p.id_usuario
-            WHERE p.id_usuario = ?
-              AND eu.id_empresa = ?
-              AND eu.status = 'ativo'
-            LIMIT 1
-        ");
+        out(['ok' => false, 'code' => 'PROFESSIONAL_REQUIRED', 'user_msg' => 'Selecione um profissional para continuar.'], 422);
+    }
 
-        if (!$stmt) {
-            throw new RuntimeException('Erro ao preparar busca do profissional: ' . $conexao->error);
+    $tipoUsuario = lower($auth['tipo_usuario'] ?? '');
+    $modoSuporte = ($auth['modo_suporte'] ?? false) === true || (int)($auth['modo_suporte'] ?? 0) === 1;
+    $idProfissionalProprio = 0;
+    if ($tipoUsuario === 'super_admin') {
+        if (!$modoSuporte) {
+            out(['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar estas configurações.'], 403);
         }
-
-        $stmt->bind_param("ii", $idUsuarioSessao, $idEmpresaSessao);
-
-        if (!$stmt->execute()) {
-            throw new RuntimeException('Erro ao executar busca do profissional: ' . $stmt->error);
-        }
-
-        $stmt->bind_result($idProfissionalDb);
-        $profissionalEncontrado = $stmt->fetch();
-        $stmt->close();
-
-        if ($profissionalEncontrado) {
-            $idProfissionalSessao = (int)$idProfissionalDb;
+    } else {
+        $stmt = $conexao->prepare("SELECT pf.nome, p.id_profissional FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil INNER JOIN empresa e ON e.id_empresa=eu.id_empresa LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' AND e.status='ativo' LIMIT 1");
+        $stmt->bind_param('ii', $idEmpresaSessao, $idUsuarioSessao);
+        $stmt->execute(); $stmt->bind_result($perfilSessao, $idProfissionalProprio); $vinculoOk = $stmt->fetch(); $stmt->close();
+        $perfilNormalizado = lower($perfilSessao ?? '');
+        $ehProprietario = in_array($perfilNormalizado, ['proprietário', 'proprietario'], true);
+        $ehProfissionalProprio = in_array($perfilNormalizado, ['profissional', 'profissionais'], true)
+            && (int)$idProfissionalProprio > 0
+            && (int)$idProfissionalProprio === $idProfissionalSessao;
+        if (!$vinculoOk || (!$ehProprietario && !$ehProfissionalProprio)) {
+            out(['ok' => false, 'code' => 'ACCESS_DENIED', 'user_msg' => 'Você não possui permissão para administrar estas configurações.'], 403);
         }
     }
 
-    if ($idProfissionalSessao <= 0) {
-        out([
-            'ok' => false,
-            'code' => 'PROFESSIONAL_NOT_FOUND',
-            'user_msg' => 'Seu usuário não possui um perfil profissional vinculado. Essas configurações são destinadas apenas para profissionais.',
-            'debug' => [
-                'id_usuario' => $idUsuarioSessao,
-                'id_empresa' => $idEmpresaSessao
-            ]
-        ], 404);
+    $stmt = $conexao->prepare("SELECT p.id_profissional, u.nome, e.id_empresa, e.nome, e.status FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario INNER JOIN empresa e ON e.id_empresa=eu.id_empresa WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' AND e.status='ativo' LIMIT 1");
+    $stmt->bind_param('ii', $idProfissionalSessao, $idEmpresaSessao);
+    $stmt->execute(); $stmt->bind_result($idProfissionalValidado, $profissionalNome, $empresaIdDb, $empresaNomeDb, $empresaStatusDb); $profissionalEncontrado = $stmt->fetch(); $stmt->close();
+    if (!$profissionalEncontrado) {
+        out(['ok' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED', 'user_msg' => 'O profissional selecionado não está ativo ou não pertence à empresa acessada.'], 403);
     }
 
     /*
@@ -446,6 +357,7 @@ try {
             'id_horario' => isset($row['id_horario']) ? (int)$row['id_horario'] : null,
             'id_empresa' => $idEmpresaSessao,
             'id_profissional' => $idProfissionalSessao,
+            'profissional_nome' => (string)$profissionalNome,
             'dia_semana' => $diaSemana,
             'dia_checkbox' => $diaCheckbox,
             'hora_inicio' => normalizarHora($row['hora_inicio'] ?? null),
@@ -591,6 +503,7 @@ try {
             'id_empresa' => $idEmpresaSessao,
             'id_usuario' => $idUsuarioSessao,
             'id_profissional' => $idProfissionalSessao,
+            'profissional_nome' => (string)$profissionalNome,
 
             'id_config' => $idConfig,
             'id_config_whatsapp' => $idConfigWhatsapp,

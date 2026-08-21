@@ -18,7 +18,8 @@
     perfis_proprietario: {
       // LISTA PERFIS (SOMENTE PROPRIETARIO)
       endpoint: `${API_URL}?path=superadmin/perfil/listar&status=ativo`,
-      placeholder: "Proprietário",
+      placeholder: "Perfil",
+      autoSelectSingle: true,
       targets: [
         { modalId: "modalCadastrarUsuario", selectId: "u_perfil_super_admin" },
       ],
@@ -225,6 +226,8 @@
 
       if (keepValue && select.querySelector(`option[value="${CSS.escape(String(keepValue))}"]`)) {
         select.value = keepValue;
+      } else if (cfg.autoSelectSingle && items.length === 1) {
+        select.value = String(items[0].id);
       }
 
       select.classList.remove("hidden");

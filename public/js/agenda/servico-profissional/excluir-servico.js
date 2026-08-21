@@ -199,6 +199,7 @@
     async function excluirServico(idServico) {
       const fd = new FormData();
       fd.append("id_servico", String(idServico));
+      fd.append("id_profissional", String(window.ConfigAgendaProfissional?.getId?.() || 0));
 
       const resp = await fetch(API_URL, {
         method: "POST",

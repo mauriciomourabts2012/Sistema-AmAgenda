@@ -118,7 +118,9 @@
     renderLoading();
 
     try {
-      const resp = await fetch(CFG.ENDPOINT, {
+      const idProfissional = window.ConfigAgendaProfissional?.getId?.() || 0;
+      const endpoint = `${CFG.ENDPOINT}&contexto=administracao&id_profissional=${encodeURIComponent(idProfissional)}`;
+      const resp = await fetch(endpoint, {
         method: "GET",
         credentials: "same-origin",
         headers: {
@@ -302,6 +304,12 @@
     recarregarServicos({
       manterPagina: e.detail?.manterPagina === true,
     });
+  });
+
+  document.addEventListener("agenda:profissional-config-selecionado", () => {
+    carregado = false;
+    dados = [];
+    paginaAtual = 1;
   });
 
   document.addEventListener("servico:cadastrado", () => {

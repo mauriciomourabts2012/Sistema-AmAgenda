@@ -57,6 +57,7 @@
 
     MODAL_VISUALIZAR_ID: "modalVisualizarUsuario",
     MODAL_EDITAR_ID: "modalEditarUsuario",
+    MODAL_PERMISSOES_ID: "modalPermissoesUsuario",
 
     FOTO_FALLBACK: "/public/imagens/avatar-default.png",
   };
@@ -89,6 +90,12 @@
 
   const modalVisualizar = document.getElementById(CFG.MODAL_VISUALIZAR_ID);
   const modalEditar = document.getElementById(CFG.MODAL_EDITAR_ID);
+  const modalPermissoes = document.getElementById(CFG.MODAL_PERMISSOES_ID);
+  const permissoesUsuarioId = document.getElementById("permissoes_usuario_id");
+  const permissoesUsuarioNome = document.getElementById("permissoes_usuario_nome");
+  const permissoesUsuarioPerfil = document.getElementById("permissoes_usuario_perfil");
+  const permissoesUsuarioAvatar = document.getElementById("permissoes_usuario_avatar");
+  const btnSalvarPermissoes = document.getElementById("btnSalvarPermissoesUsuario");
 
   const vcAvatar = document.getElementById("vc_usr_avatar");
   const vcNome = document.getElementById("vc_usr_nome");
@@ -114,6 +121,10 @@
   const u_e_senha = document.getElementById("u_e_senha");
   const u_e_senha2 = document.getElementById("u_e_senha2");
   const u_status = document.getElementById("u_e_status");
+
+  // Estado temporário e específico deste componente. Ele nunca é usado como
+  // autorização: cada permissão deverá ser validada pelo backend futuramente.
+  let usuarioPermissaoSelecionado = null;
 
   function getToastStack() {
     let el = document.getElementById("toastStack");
@@ -252,6 +263,12 @@
     return `<span class="agenda-status ${cls}">${C.escapeHtml(st)}</span>`;
   }
 
+  function formatarDataCadastro(valor) {
+    const texto = String(valor || "").trim();
+    const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : "—";
+  }
+
   function iconAcoes() {
     return `
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -272,6 +289,10 @@
 
         <button class="agenda-menu-item" type="button" data-acao="editar_painel_administrador">
           <i class="fa-regular fa-pen-to-square"></i> Editar
+        </button>
+
+        <button class="agenda-menu-item" type="button" data-acao="permissoes">
+          <i class="fa-solid fa-shield-halved"></i> Permissões
         </button>
 
         <button
@@ -341,29 +362,37 @@
     const perfil = normalizePerfil(u.perfil_nome || u.perfil || "Perfil");
     const email = u.email ?? "";
     const status = normalizeStatus(u.status);
+    const dataCadastro = formatarDataCadastro(u.criado_em);
     const telRaw = String(u.telefone || "");
     const temTel = onlyDigits(telRaw).length >= 10;
 
     return `
-      <article class="agenda-card"
+      <article class="agenda-card usuario-lista-card"
         data-id="${C.escapeHtml(id)}"
         data-status="${C.escapeHtml(status)}"
         data-perfil="${C.escapeHtml(perfil)}"
         data-created="${C.escapeHtml(u.criado_em || "")}">
 
-        <div class="agenda-hora agenda-hora--avatar">
-          ${avatarImgHtml(u, nome)}
-        </div>
-
-        <div class="agenda-info">
-          <div class="agenda-nome">${C.escapeHtml(nome)}</div>
-
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">${C.escapeHtml(perfil)}</div>
-            ${email ? `<div class="agenda-duracao">• ${C.escapeHtml(email)}</div>` : ""}
+        <div class="usuario-card-conteudo">
+          <div class="usuario-card-cabecalho">
+            <div class="agenda-hora agenda-hora--avatar">
+              ${avatarImgHtml(u, nome)}
+            </div>
+            <div class="usuario-card-identidade">
+              <div class="agenda-nome">${C.escapeHtml(nome)}</div>
+              <div class="usuario-card-email">${C.escapeHtml(email || "E-mail não informado")}</div>
+            </div>
           </div>
 
-          <div class="agenda-linha-extra">
+          <div class="usuario-card-dados">
+            <span><strong>ID:</strong> ${C.escapeHtml(id)}</span>
+            <span><strong>Perfil:</strong> ${C.escapeHtml(perfil)}</span>
+            <span><strong>Status:</strong> ${C.escapeHtml(status)}</span>
+            <span><strong>Data:</strong> ${C.escapeHtml(dataCadastro)}</span>
+          </div>
+
+          <div class="usuario-card-chips">
+            <span class="usuario-chip usuario-chip-perfil">${C.escapeHtml(perfil)}</span>
             ${badgeStatus(status)}
           </div>
         </div>
@@ -429,15 +458,51 @@
   function fecharModaisUsuario() {
     fecharModalLocal(modalVisualizar);
     fecharModalLocal(modalEditar);
+    fecharModalPermissoes();
   }
 
   function getModalPai(element) {
-    return element.closest(`#${CFG.MODAL_VISUALIZAR_ID}, #${CFG.MODAL_EDITAR_ID}`);
+    return element.closest(`#${CFG.MODAL_VISUALIZAR_ID}, #${CFG.MODAL_EDITAR_ID}, #${CFG.MODAL_PERMISSOES_ID}`);
   }
 
   function getUsuarioById(id) {
     const chave = String(id || "").trim();
     return (BASE_LISTA || []).find((u) => String(u.id_usuario ?? "") === chave) || null;
+  }
+
+  function limparEstadoPermissoes() {
+    usuarioPermissaoSelecionado = null;
+    if (permissoesUsuarioId) permissoesUsuarioId.value = "";
+    if (permissoesUsuarioNome) permissoesUsuarioNome.textContent = "—";
+    if (permissoesUsuarioPerfil) permissoesUsuarioPerfil.textContent = "—";
+    if (permissoesUsuarioAvatar) permissoesUsuarioAvatar.textContent = "U";
+    modalPermissoes?.querySelectorAll("select[data-permissao]").forEach((select) => { select.value = "padrao"; });
+    modalPermissoes?.querySelectorAll("details[data-grupo-permissao]").forEach((grupo, indice) => { grupo.open = indice === 0; });
+  }
+
+  function fecharModalPermissoes() {
+    fecharModalLocal(modalPermissoes);
+    limparEstadoPermissoes();
+  }
+
+  function abrirModalPermissoesUsuario(id) {
+    const usuario = getUsuarioById(id);
+    if (!usuario || !modalPermissoes) {
+      toastMsg("warning", "Não foi possível identificar o usuário selecionado.", "Atenção");
+      return;
+    }
+
+    limparEstadoPermissoes();
+    usuarioPermissaoSelecionado = {
+      id_usuario: Number(usuario.id_usuario) || 0,
+      nome: String(usuario.nome || "Usuário"),
+      perfil: normalizePerfil(usuario.perfil_nome || usuario.perfil || "Perfil")
+    };
+    if (permissoesUsuarioId) permissoesUsuarioId.value = String(usuarioPermissaoSelecionado.id_usuario);
+    if (permissoesUsuarioNome) permissoesUsuarioNome.textContent = usuarioPermissaoSelecionado.nome;
+    if (permissoesUsuarioPerfil) permissoesUsuarioPerfil.textContent = usuarioPermissaoSelecionado.perfil;
+    if (permissoesUsuarioAvatar) permissoesUsuarioAvatar.innerHTML = avatarImgHtml(usuario, usuarioPermissaoSelecionado.nome);
+    abrirModalLocal(modalPermissoes);
   }
 
   function toggleCampoEspecialidadeVisualizar(usuario) {
@@ -1048,9 +1113,20 @@
       if (btnFecharModal) {
         const modalPai = getModalPai(btnFecharModal);
         if (modalPai) {
-          fecharModalLocal(modalPai);
+          if (modalPai === modalPermissoes) fecharModalPermissoes();
+          else fecharModalLocal(modalPai);
           return;
         }
+      }
+
+      if (btnSalvarPermissoes && (ev.target === btnSalvarPermissoes || ev.target.closest("#btnSalvarPermissoesUsuario"))) {
+        ev.preventDefault();
+        if (!usuarioPermissaoSelecionado) {
+          toastMsg("warning", "Selecione um usuário antes de configurar permissões.", "Atenção");
+          return;
+        }
+        toastMsg("warning", "A interface está preparada. A persistência das permissões será implementada na próxima etapa.", "Informação");
+        return;
       }
 
       if (vcBtnWhats && (ev.target === vcBtnWhats || ev.target.closest("#vc_usr_btn_whats"))) {
@@ -1120,6 +1196,11 @@
 
         if (acao === "editar_painel_administrador") {
           abrirModalEditarUsuario(id);
+          return;
+        }
+
+        if (acao === "permissoes") {
+          abrirModalPermissoesUsuario(id);
           return;
         }
 

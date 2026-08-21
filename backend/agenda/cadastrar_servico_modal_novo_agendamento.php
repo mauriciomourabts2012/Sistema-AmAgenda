@@ -85,6 +85,8 @@ try {
 
     $idUsuarioSessao = (int)($auth['id_usuario'] ?? 0);
     $statusSessao = lower($auth['status'] ?? '');
+    $superAdminSuporte = lower($auth['tipo_usuario'] ?? '') === 'super_admin'
+        && (bool)($auth['modo_suporte'] ?? false);
 
     if ($idUsuarioSessao <= 0) {
         out([
@@ -125,6 +127,7 @@ try {
     }
 
     require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_regras/limites_plano.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -203,10 +206,10 @@ try {
             e.status,
             eu.status AS vinculo_status
         FROM empresa e
-        INNER JOIN empresa_usuario eu
-                ON eu.id_empresa = e.id_empresa
+        LEFT JOIN empresa_usuario eu
+               ON eu.id_empresa = e.id_empresa
+              AND eu.id_usuario = ?
         WHERE e.id_empresa = ?
-          AND eu.id_usuario = ?
         LIMIT 1
     ");
 
@@ -214,7 +217,7 @@ try {
         throw new RuntimeException('Erro ao preparar validação da empresa: ' . $conexao->error);
     }
 
-    $stmt->bind_param('ii', $idEmpresaSessao, $idUsuarioSessao);
+    $stmt->bind_param('ii', $idUsuarioSessao, $idEmpresaSessao);
 
     if (!$stmt->execute()) {
         throw new RuntimeException('Erro ao executar validação da empresa: ' . $stmt->error);
@@ -224,7 +227,7 @@ try {
     $empresaEncontrada = $stmt->fetch();
     $stmt->close();
 
-    if (!$empresaEncontrada) {
+    if (!$empresaEncontrada || (!$superAdminSuporte && $vinculoStatusDb === null)) {
         out([
             'ok' => false,
             'code' => 'USER_COMPANY_LINK_NOT_FOUND',
@@ -240,7 +243,7 @@ try {
         ], 403);
     }
 
-    if (lower($vinculoStatusDb) !== 'ativo') {
+    if (!$superAdminSuporte && lower($vinculoStatusDb) !== 'ativo') {
         out([
             'ok' => false,
             'code' => 'USER_COMPANY_LINK_INACTIVE',
@@ -329,6 +332,17 @@ try {
 
     $nomeNormalizado = lower($nome);
 
+    $conexao->begin_transaction();
+    $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresaSessao);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+    $resultadoLimiteServico = limitesPlanoVerificarServico(
+        $conexao,
+        $resultadoPlano['plano'],
+        $idEmpresaSessao,
+        $status
+    );
+    limitesPlanoAbortarSeNegado($conexao, $resultadoLimiteServico);
+
     $stmt = $conexao->prepare("
         SELECT id_servico
         FROM servico
@@ -352,6 +366,7 @@ try {
 
     if ($stmt->num_rows > 0) {
         $stmt->close();
+        $conexao->rollback();
 
         out([
             'ok' => false,
@@ -393,6 +408,7 @@ try {
         $stmt->close();
 
         if ($errno === 1062) {
+            $conexao->rollback();
             out([
                 'ok' => false,
                 'code' => 'DUPLICATE_SERVICE',
@@ -408,6 +424,7 @@ try {
 
     $idServico = (int)$stmt->insert_id;
     $stmt->close();
+    $conexao->commit();
 
     out([
         'ok' => true,
@@ -442,6 +459,12 @@ try {
     ], 201);
 
 } catch (Throwable $e) {
+    if (isset($conexao) && $conexao instanceof mysqli) {
+        try {
+            $conexao->rollback();
+        } catch (Throwable $ignorado) {
+        }
+    }
     error_log('[cadastrar_servico_agendamento] ' . $e->getMessage());
 
     out([

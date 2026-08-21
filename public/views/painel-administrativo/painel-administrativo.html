@@ -9,14 +9,14 @@
   <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_2"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260818_5"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260821_3"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css">
   <!--CSS MOBILE-->
   <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260818_1"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260818_4"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260821_2"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
@@ -1108,6 +1108,89 @@
 
       </div>
     </div>
+
+    <!-- =========================================================
+         MODAL — PERMISSÕES DO USUÁRIO
+         Controle visual das permissões do usuário selecionado.
+         O perfil fornecerá o padrão e, em etapa futura, poderão
+         existir permissões personalizadas validadas pelo backend.
+    ========================================================== -->
+    <div id="modalPermissoesUsuario" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-permissoes-usuario" role="dialog" aria-modal="true" aria-labelledby="tituloPermissoesUsuario">
+        <div class="modal-topo">
+          <div>
+            <h2 id="tituloPermissoesUsuario">Permissões do usuário</h2>
+            <p class="permissoes-subtitulo">Defina os acessos disponíveis para este usuário</p>
+          </div>
+          <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+        </div>
+
+        <div class="modal-corpo permissoes-modal-corpo">
+          <input type="hidden" id="permissoes_usuario_id" value="">
+
+          <div class="permissoes-usuario-resumo">
+            <div class="permissoes-usuario-avatar" id="permissoes_usuario_avatar" aria-hidden="true">U</div>
+            <div>
+              <strong id="permissoes_usuario_nome">—</strong>
+              <span>Perfil: <b id="permissoes_usuario_perfil">—</b></span>
+            </div>
+          </div>
+
+          <div class="permissoes-aviso" role="note">
+            Nesta etapa, as opções são apenas uma preparação da interface. Nenhuma permissão será gravada.
+          </div>
+
+          <div class="permissoes-grupos">
+            <details class="permissoes-grupo" data-grupo-permissao="agenda" open>
+              <summary><span><i class="fa-regular fa-calendar"></i> Agenda</span><small>6 permissões</small><i class="fa-solid fa-chevron-down"></i></summary>
+              <div class="permissoes-lista">
+                <label><span>Visualizar agenda</span><select data-permissao="agenda_visualizar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Visualizar agenda de todos os profissionais</span><select data-permissao="agenda_visualizar_todos"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Criar agendamento</span><select data-permissao="agenda_criar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Editar agendamento</span><select data-permissao="agenda_editar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Cancelar agendamento</span><select data-permissao="agenda_cancelar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Excluir agendamento</span><select data-permissao="agenda_excluir"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+              </div>
+            </details>
+
+            <details class="permissoes-grupo" data-grupo-permissao="clientes">
+              <summary><span><i class="fa-regular fa-address-book"></i> Clientes</span><small>4 permissões</small><i class="fa-solid fa-chevron-down"></i></summary>
+              <div class="permissoes-lista">
+                <label><span>Visualizar clientes</span><select data-permissao="clientes_visualizar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Cadastrar cliente</span><select data-permissao="clientes_criar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Editar cliente</span><select data-permissao="clientes_editar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Alterar status do cliente</span><select data-permissao="clientes_alterar_status"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+              </div>
+            </details>
+
+            <details class="permissoes-grupo" data-grupo-permissao="usuarios">
+              <summary><span><i class="fa-regular fa-user"></i> Usuários</span><small>4 permissões</small><i class="fa-solid fa-chevron-down"></i></summary>
+              <div class="permissoes-lista">
+                <label><span>Visualizar usuários</span><select data-permissao="usuarios_visualizar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Cadastrar usuário</span><select data-permissao="usuarios_criar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Editar usuário</span><select data-permissao="usuarios_editar"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Alterar status do usuário</span><select data-permissao="usuarios_alterar_status"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+              </div>
+            </details>
+
+            <details class="permissoes-grupo" data-grupo-permissao="configuracoes">
+              <summary><span><i class="fa-solid fa-gear"></i> Configurações</span><small>2 permissões</small><i class="fa-solid fa-chevron-down"></i></summary>
+              <div class="permissoes-lista">
+                <label><span>Configurar empresa</span><select data-permissao="configuracoes_empresa"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+                <label><span>Configurar agenda dos profissionais</span><select data-permissao="configuracoes_agenda"><option value="padrao">Padrão do perfil</option><option value="permitir">Permitir</option><option value="negar">Negar</option></select></label>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="modal-acoes permissoes-modal-acoes">
+          <button id="btnSalvarPermissoesUsuario" class="botao-geral destaque" type="button">
+            <i class="fa-solid fa-floppy-disk"></i> Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- FIM — MODAL PERMISSÕES DO USUÁRIO -->
   </section>
 
   </main>
@@ -1138,7 +1221,7 @@
   <script src="../../js/painel-administrativo/cliente/editar-cliente.js" ></script> <!--Editar cliente-->
   
   <!--ABA USUARIOS - (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=20260820_2" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=20260821_2" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
   <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
   <script src="../../js/painel-administrativo/usuario/editar-usuario.js" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
 

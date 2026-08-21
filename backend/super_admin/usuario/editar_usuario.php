@@ -38,6 +38,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    HELPERS
 ========================================================== */
@@ -184,6 +186,7 @@ if (!empty($erros)) {
    DB
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_regras/limites_plano.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -210,7 +213,7 @@ try {
     /* ==========================================================
        VALIDA SE USUÁRIO EXISTE
     ========================================================== */
-    $sqlUsuario = "SELECT id_usuario, tipo_usuario FROM usuario WHERE id_usuario = ? LIMIT 1";
+    $sqlUsuario = "SELECT id_usuario, tipo_usuario, status FROM usuario WHERE id_usuario = ? LIMIT 1";
     $st = $conexao->prepare($sqlUsuario);
 
     if (!$st) {
@@ -235,6 +238,7 @@ try {
     }
 
     $tipoUsuario = (string)($usuario['tipo_usuario'] ?? '');
+    $statusUsuarioGlobal = (string)($usuario['status'] ?? '');
 
     /* ==========================================================
        VALIDA DUPLICIDADE DE EMAIL
@@ -275,12 +279,22 @@ try {
     $idEmpresaVinculo = null;
 
     if ($tipoUsuario !== 'super_admin') {
+        if ($idEmpresa === null) {
+            out([
+                'ok' => false,
+                'code' => 'EMPRESA_OBRIGATORIA',
+                'user_msg' => 'Informe a empresa do vínculo que será alterado.',
+                'fields' => ['id_empresa' => 'Empresa obrigatória.'],
+            ], 422);
+        }
+
         if ($idEmpresa !== null) {
             $sqlVinculo = "
-                SELECT id_empresa_usuario, id_empresa
-                FROM empresa_usuario
-                WHERE id_usuario = ?
-                  AND id_empresa = ?
+                SELECT eu.id_empresa_usuario, eu.id_empresa, eu.status, pf.nome AS perfil_nome
+                FROM empresa_usuario eu
+                INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+                WHERE eu.id_usuario = ?
+                  AND eu.id_empresa = ?
                 LIMIT 1
             ";
             $st = $conexao->prepare($sqlVinculo);
@@ -339,6 +353,25 @@ try {
        TRANSAÇÃO
     ========================================================== */
     $conexao->begin_transaction();
+
+    if ($tipoUsuario !== 'super_admin') {
+        $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, (int)$idEmpresaVinculo);
+        limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+
+        $usuarioGlobalConta = limitesPlanoStatusConta($statusUsuarioGlobal);
+        $statusAnteriorPlano = $usuarioGlobalConta ? (string)($vinculo['status'] ?? '') : 'inativo';
+        $statusNovoPlano = $usuarioGlobalConta ? $status : 'inativo';
+        $resultadoLimites = limitesPlanoVerificarTransicaoPerfil(
+            $conexao,
+            $resultadoPlano['plano'],
+            (int)$idEmpresaVinculo,
+            (string)($vinculo['perfil_nome'] ?? ''),
+            $statusAnteriorPlano,
+            (string)($vinculo['perfil_nome'] ?? ''),
+            $statusNovoPlano
+        );
+        limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
+    }
 
     /* ==========================================================
        UPDATE usuario

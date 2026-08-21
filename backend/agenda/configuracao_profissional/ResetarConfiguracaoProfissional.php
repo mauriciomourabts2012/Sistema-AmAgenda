@@ -10,7 +10,6 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/php_errors.log');
 
-require_once __DIR__ . '/../../_auth/bloquear.php';
 require_once __DIR__ . '/../../_config/conexao.php';
 
 /*
@@ -89,40 +88,30 @@ try {
 
     $conexao->set_charset('utf8mb4');
 
-    /* ==========================================================
-       BUSCA O PROFISSIONAL PELO USUÁRIO DA SESSÃO
-
-       Sua tabela profissional tem:
-       - id_profissional
-       - id_usuario
-
-       Então NÃO pode usar id_usuario direto como id_profissional.
-    ========================================================== */
-    $idProfissional = 0;
-
-    $stmt = $conexao->prepare("
-        SELECT id_profissional
-        FROM profissional
-        WHERE id_usuario = ?
-        LIMIT 1
-    ");
-
-    $stmt->bind_param('i', $idUsuarioSessao);
-    $stmt->execute();
-    $stmt->bind_result($idProfissionalDb);
-
-    if ($stmt->fetch()) {
-        $idProfissional = (int)$idProfissionalDb;
+    $normalizar = static fn(mixed $valor): string => mb_strtolower(trim((string)$valor), 'UTF-8');
+    $tipoUsuario = $normalizar($auth['tipo_usuario'] ?? '');
+    $modoSuporte = ($auth['modo_suporte'] ?? false) === true || (int)($auth['modo_suporte'] ?? 0) === 1;
+    $idProfissionalProprio = 0;
+    $restringirAoProfissionalProprio = false;
+    if ($tipoUsuario === 'super_admin') {
+        if (!$modoSuporte) out(['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar estas configurações.'], 403);
+    } else {
+        $stmt = $conexao->prepare("SELECT pf.nome, p.id_profissional FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil INNER JOIN empresa e ON e.id_empresa=eu.id_empresa LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' AND e.status='ativo' LIMIT 1");
+        $stmt->bind_param('ii', $idEmpresa, $idUsuarioSessao); $stmt->execute(); $stmt->bind_result($perfilSessao, $idProfissionalProprio); $vinculoOk=$stmt->fetch(); $stmt->close();
+        $perfilNormalizado = $normalizar($perfilSessao ?? '');
+        $restringirAoProfissionalProprio = in_array($perfilNormalizado, ['profissional','profissionais'], true);
+        if (!$vinculoOk || !in_array($perfilNormalizado, ['proprietário','proprietario','profissional','profissionais'], true)) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para administrar estas configurações.'],403);
     }
 
-    $stmt->close();
+    $entrada = json_decode((string)file_get_contents('php://input'), true);
+    $idProfissional = (int)($entrada['id_profissional'] ?? $_POST['id_profissional'] ?? 0);
+    if ($idProfissional <= 0) out(['ok'=>false,'code'=>'PROFESSIONAL_REQUIRED','user_msg'=>'Selecione um profissional para continuar.'],422);
+    if ($restringirAoProfissionalProprio && ((int)$idProfissionalProprio <= 0 || (int)$idProfissionalProprio !== $idProfissional)) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode restaurar as configurações da própria agenda.'],403);
 
-    if ($idProfissional <= 0) {
-        out([
-            'ok' => false,
-            'mensagem' => 'Este usuário não possui profissional vinculado.'
-        ], 404);
-    }
+    // Confirma novamente que o alvo ativo pertence à empresa da sessão.
+    $stmt = $conexao->prepare("SELECT p.id_profissional FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt->bind_param('ii', $idProfissional, $idEmpresa); $stmt->execute(); $stmt->store_result(); $profissionalOk=$stmt->num_rows===1; $stmt->close();
+    if (!$profissionalOk) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional selecionado não está ativo ou não pertence à empresa acessada.'],403);
 
     /* ==========================================================
        APAGA DADOS PERSONALIZADOS DO PROFISSIONAL

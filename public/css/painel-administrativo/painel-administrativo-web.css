@@ -396,6 +396,83 @@
   gap: 8px;
 }
 
+/* Cards exclusivos da aba Usuários, seguindo o padrão visual do sistema. */
+#usuarios .usuario-lista-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 140px;
+  padding: 16px 20px;
+  border-color: #dfe7f1;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .07);
+}
+
+#usuarios .usuario-card-conteudo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#usuarios .usuario-card-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+#usuarios .usuario-card-identidade { min-width: 0; }
+#usuarios .usuario-card-identidade .agenda-nome {
+  font-size: 16px;
+  color: #0f172a;
+}
+
+#usuarios .usuario-card-email {
+  margin-top: 3px;
+  color: #315073;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#usuarios .usuario-card-dados,
+#usuarios .usuario-card-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+}
+
+#usuarios .usuario-card-dados {
+  color: #34506f;
+  font-size: 12px;
+}
+#usuarios .usuario-card-dados strong { color: #0f172a; }
+
+#usuarios .usuario-card-chips { gap: 8px; }
+#usuarios .usuario-chip {
+  min-width: 112px;
+  padding: 6px 13px;
+  border: 1px solid #bdebd1;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #087443;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+#usuarios .usuario-lista-card .agenda-status {
+  min-width: 72px;
+  text-align: center;
+}
+
+#usuarios .usuario-lista-card .agenda-acoes { align-self: center; }
+#usuarios .usuario-lista-card .agenda-btn-acoes {
+  background: #1163dd;
+  box-shadow: 0 8px 18px rgba(17, 99, 221, .24);
+}
+
 /* Resumo operacional real */
 #resumo .painel-bloco--proximos,
 #resumo .painel-bloco--profissionais{
@@ -655,4 +732,119 @@
 
 /* ==========================================================
    FIM
+========================================================== */
+
+/* ==========================================================
+   MODAL — PERMISSÕES DO USUÁRIO
+========================================================== */
+.modal-permissoes-usuario {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(820px, calc(100dvh - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-permissoes-usuario .modal-topo { flex: 0 0 auto; }
+.permissoes-subtitulo {
+  margin: 4px 0 0;
+  color: rgba(255,255,255,.84);
+  font-size: 13px;
+  font-weight: 600;
+}
+.permissoes-modal-corpo {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.permissoes-usuario-resumo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid #dce7f4;
+  border-radius: 14px;
+  background: #f7faff;
+}
+.permissoes-usuario-avatar {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f1ff;
+  color: #075cca;
+  font-weight: 900;
+}
+.permissoes-usuario-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.permissoes-usuario-resumo strong { display: block; color: #0f172a; font-size: 15px; }
+.permissoes-usuario-resumo span { display: block; margin-top: 3px; color: #52657d; font-size: 12px; }
+.permissoes-aviso {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #eef5ff;
+  color: #315579;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.permissoes-grupos { display: grid; gap: 10px; }
+.permissoes-grupo {
+  border: 1px solid #dce7f4;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.permissoes-grupo summary {
+  min-height: 56px;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  color: #183653;
+  font-weight: 900;
+}
+.permissoes-grupo summary::-webkit-details-marker { display: none; }
+.permissoes-grupo summary > span { display: flex; align-items: center; gap: 9px; text-transform: uppercase; }
+.permissoes-grupo summary > small { color: #61758e; font-size: 11px; white-space: nowrap; }
+.permissoes-grupo summary > .fa-chevron-down { transition: transform .18s ease; }
+.permissoes-grupo[open] summary > .fa-chevron-down { transform: rotate(180deg); }
+.permissoes-lista { padding: 0 14px 12px; border-top: 1px solid #edf2f8; }
+.permissoes-lista label {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 170px;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid #edf2f8;
+  color: #263c55;
+  font-size: 13px;
+}
+.permissoes-lista label:last-child { border-bottom: 0; }
+.permissoes-lista select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #d5e1ef;
+  border-radius: 10px;
+  padding: 0 10px;
+  background: #f8fbff;
+  color: #253b55;
+  font-weight: 700;
+}
+.permissoes-modal-acoes {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 12px 18px;
+  border-top: 1px solid #e5edf7;
+  background: #fff;
+}
+/* O controle visual adapta a interface; autorização real deverá ser
+   validada pelo backend em cada endpoint na etapa de persistência. */
+/* ==========================================================
+   FIM — MODAL PERMISSÕES DO USUÁRIO
 ========================================================== */

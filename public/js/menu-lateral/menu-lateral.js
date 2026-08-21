@@ -78,7 +78,22 @@
 
   function renderizarMenu(contexto) {
     const navegacao = document.querySelector("[data-menu-navegacao]");
-    const itens = MENUS[contexto] || [];
+    let itens = MENUS[contexto] || [];
+    if (contexto === "agenda") {
+      const auth = window.__AUTH__ || {};
+      const perfil = String(auth.perfil_nome || auth.perfil || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const superAdminSuporte = String(auth.tipo_usuario || "").toLowerCase() === "super_admin"
+        && auth.modo_suporte === true
+        && Number(auth.empresa_id || auth.id_empresa || 0) > 0;
+      const podeAcessarPainelAdmin = perfil === "proprietario" || superAdminSuporte;
+      const podeConfigurarAgenda = perfil === "proprietario" || perfil === "profissional" || superAdminSuporte;
+      itens = itens.filter(item => {
+        if (item.texto === "Painel Admin") return podeAcessarPainelAdmin;
+        if (item.modal === "modalConfiguracoesAgenda") return podeConfigurarAgenda;
+        return true;
+      });
+    }
     if (navegacao && itens.length) navegacao.innerHTML = itens.map(htmlItem).join("");
   }
 
@@ -110,6 +125,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     const contexto = document.body.dataset.menuContexto || "agenda";
     renderizarMenu(contexto);
+    document.addEventListener("amagenda:sessao-carregada", () => renderizarMenu(contexto));
 
     const sidebar = document.getElementById("sidebarAgenda");
     const abrir = document.getElementById("abrirSidebarAgenda");
