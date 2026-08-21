@@ -34,7 +34,7 @@
 
   const CFG = {
     ENDPOINT: "/public/api/api_central.php?path=painel/usuario/listar",
-    itensPorPagina: 10,
+    itensPorPagina: 20,
 
     ABA_ID: "usuarios",
     BOX_ID: "listaUsuarios",
@@ -1149,21 +1149,23 @@
     }
   }
 
-  async function obterDados() {
+  async function obterDados(signal) {
     const url = new URL(CFG.ENDPOINT, window.location.origin);
 
     if (FILTRO.busca) url.searchParams.set("q", FILTRO.busca);
-    if (FILTRO.status) url.searchParams.set("status", FILTRO.status);
+    url.searchParams.set("status", FILTRO.status || "todos");
     if (FILTRO.perfil) url.searchParams.set("perfil", FILTRO.perfil);
     if (FILTRO.inicio) url.searchParams.set("inicio", FILTRO.inicio);
     if (FILTRO.fim) url.searchParams.set("fim", FILTRO.fim);
 
     url.searchParams.set("pagina", String(PAGINA_ATUAL));
     url.searchParams.set("limite", String(CFG.itensPorPagina));
+    url.searchParams.set("ordem", FILTRO.ordem || "nome_asc");
 
     const resp = await fetch(url.toString(), {
       method: "GET",
       credentials: "same-origin",
+      signal,
       headers: {
         "Accept": "application/json",
         "X-Requested-With": "XMLHttpRequest"
@@ -1191,18 +1193,26 @@
     return Array.isArray(data?.items) ? data.items : [];
   }
 
+  let CONTROLADOR_REQUISICAO = null;
+  let REQUISICAO_ATUAL = 0;
+
   async function carregar() {
-    if (__CARREGANDO__) return;
 
     __CARREGANDO__ = true;
+    const idRequisicao = ++REQUISICAO_ATUAL;
+    CONTROLADOR_REQUISICAO?.abort();
+    CONTROLADOR_REQUISICAO = new AbortController();
 
     try {
-      BASE_LISTA = await obterDados();
+      const dados = await obterDados(CONTROLADOR_REQUISICAO.signal);
+      if (idRequisicao !== REQUISICAO_ATUAL) return;
+      BASE_LISTA = dados;
       __CARREGADO__ = true;
 
       setLabelFiltro(FILTRO.inicio, FILTRO.fim, FILTRO.status, FILTRO.perfil);
       renderTudo();
     } catch (e) {
+      if (e?.name === "AbortError") return;
       BASE_LISTA = [];
       TOTAL_PAGINAS = 1;
       TOTAL_REGISTROS = 0;
@@ -1217,7 +1227,7 @@
       console.error("[ListaUsuario]", e);
       toastMsg("danger", e?.message || "Falha ao carregar usuários.", "Erro");
     } finally {
-      __CARREGANDO__ = false;
+      if (idRequisicao === REQUISICAO_ATUAL) __CARREGANDO__ = false;
     }
   }
 
@@ -1228,7 +1238,21 @@
     return r.width > 0 && r.height > 0;
   }
 
+  function bindPreferenciasLista() {
+    const limite = document.getElementById("limite_usuarios");
+    const ordem = document.getElementById("ordem_usuarios");
+    limite?.addEventListener("change", () => {
+      CFG.itensPorPagina = [20, 50, 100].includes(Number(limite.value)) ? Number(limite.value) : 20;
+      resetPagina(); carregar();
+    });
+    ordem?.addEventListener("change", () => {
+      FILTRO.ordem = ordem.value || "nome_asc";
+      resetPagina(); carregar();
+    });
+  }
+
   function init() {
+    bindPreferenciasLista();
     if (popover && !popover.hasAttribute("hidden")) popover.setAttribute("hidden", "");
     if (btnFiltro) btnFiltro.setAttribute("aria-expanded", "false");
 

@@ -171,6 +171,14 @@
                     <span></span>
                   </div>
 
+                  <div class="linha">
+                    <label class="label-filtro" for="ordem_empresas">Ordenar
+                      <select class="input-filtro" id="ordem_empresas"><option value="recentes">Mais recentes</option><option value="antigos">Mais antigas</option><option value="nome_asc">Nome A-Z</option><option value="nome_desc">Nome Z-A</option></select>
+                    </label>
+                    <label class="label-filtro" for="limite_empresas">Por página
+                      <select class="input-filtro" id="limite_empresas"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+                    </label>
+                  </div>
                   <div class="acoes">
                     <button type="submit" class="ok">Aplicar</button>
                     <button type="button" id="limparFiltro_empresas" class="limpar">Limpar</button>
@@ -282,6 +290,14 @@
                     
                   </div>
 
+                  <div class="linha">
+                    <label class="label-filtro" for="ordem_usuarios_superadmin">Ordenar
+                      <select class="input-filtro" id="ordem_usuarios_superadmin"><option value="recentes">Mais recentes</option><option value="antigos">Mais antigos</option><option value="nome_asc">Nome A-Z</option><option value="nome_desc">Nome Z-A</option></select>
+                    </label>
+                    <label class="label-filtro" for="limite_usuarios_superadmin">Por página
+                      <select class="input-filtro" id="limite_usuarios_superadmin"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+                    </label>
+                  </div>
                   <div class="acoes">
                     <button type="submit" class="ok">Aplicar</button>
                     <button type="button" id="limparFiltro_usuarios" class="limpar">Limpar</button>
@@ -388,6 +404,14 @@
                     <span></span>
                   </div>
 
+                  <div class="linha">
+                    <label class="label-filtro" for="ordem_usuarios_super">Ordenar
+                      <select class="input-filtro" id="ordem_usuarios_super"><option value="recentes">Mais recentes</option><option value="antigos">Mais antigos</option><option value="nome_asc">Nome A-Z</option><option value="nome_desc">Nome Z-A</option></select>
+                    </label>
+                    <label class="label-filtro" for="limite_usuarios_super">Por página
+                      <select class="input-filtro" id="limite_usuarios_super"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+                    </label>
+                  </div>
                   <div class="acoes">
                     <button type="submit" class="ok">Aplicar</button>
                     <button type="button" id="limparFiltro_usuarios_super" class="limpar">Limpar</button>
@@ -496,6 +520,14 @@
                     </label>
                   </div>
 
+                  <div class="linha">
+                    <label class="label-filtro" for="ordem_planos">Ordenar
+                      <select class="input-filtro" id="ordem_planos"><option value="nome_asc">Nome A-Z</option><option value="nome_desc">Nome Z-A</option><option value="recentes">Mais recentes</option><option value="antigos">Mais antigos</option><option value="preco_asc">Menor preço</option><option value="preco_desc">Maior preço</option></select>
+                    </label>
+                    <label class="label-filtro" for="limite_planos">Por página
+                      <select class="input-filtro" id="limite_planos"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+                    </label>
+                  </div>
                   <div class="acoes">
                     <button type="submit" class="ok">Aplicar</button>
                     <button type="button" id="limparFiltro_planos" class="limpar">Limpar</button>
@@ -1548,7 +1580,7 @@
     </div><!-- /.agenda-app-shell -->
 
     <!--lista Core-->
-    <script src="../../js/core/lista-core.js" ></script>
+    <script src="../../js/core/lista-core.js?v=20260820_2" ></script>
     <script src="../../js/menu-lateral/menu-lateral.js?v=20260817_3"></script>
 
 
@@ -1560,23 +1592,23 @@
 
 
     <!--ABA EMPRESAS-->
-    <script src="../../js/super-admin/empresa/lista-empresa.js?v=20260818_1"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
+    <script src="../../js/super-admin/empresa/lista-empresa.js?v=20260820_2"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
     <script src="../../js/super-admin/empresa/cadastrar_empresa.js" ></script> <!--Cadastrar novas empresas-->
     <script src="../../js/super-admin/empresa/editar_empresa.js" ></script> <!--Editar dados de cadastro da empresa -->
 
     
     <!--ABA USUARIOS-->
-    <script src="../../js/super-admin/usuario/lista-usuario.js"></script> <!--Lista de Usuarios e preeche o modal Editar com dados necessarios para edição.-->
+    <script src="../../js/super-admin/usuario/lista-usuario.js?v=20260820_2"></script> <!--Lista de Usuarios e preeche o modal Editar com dados necessarios para edição.-->
     <script src="../../js/super-admin/usuario/cadastrar-usuario.js" ></script> <!--Cadastrar Usuarios-->
     <script src="../../js/super-admin/usuario/editar_usuario.js" ></script> <!--Editar usuario comum-->
 
     <!--ABA USUARIOS SUPER-->
-    <script src="../../js/super-admin/usuario-super/lista-usuario-super.js" ></script> <!--Listas de usuarios super-->
+    <script src="../../js/super-admin/usuario-super/lista-usuario-super.js?v=20260820_2" ></script> <!--Listas de usuarios super-->
     <script src="../../js/super-admin/usuario-super/cadastrar-usuario-super.js" ></script><!--cadastrar usuarios super administrador-->
     <script src="../../js/super-admin/usuario-super/editar_usuario_super.js" ></script>
 
     <!--ABA PLANOS-->
-    <script src="../../js/super-admin/plano/lista-plano.js" ></script>
+    <script src="../../js/super-admin/plano/lista-plano.js?v=20260820_2" ></script>
     <script src="../../js/super-admin/plano/cadastrar-plano.js" ></script> <!--Cadastrar Planos-->
     <script src="../../js/super-admin/plano/editar_plano.js" ></script> <!--Editar dados do modal-->
 

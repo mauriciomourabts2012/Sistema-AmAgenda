@@ -156,9 +156,9 @@
     PAG_ID: "paginacao_usuarios",
 
     ROOT_SELECTOR_MENU: ".conteudo-agenda",
-    itensPorPagina: 5,
+    itensPorPagina: 20,
 
-    EMPTY_MSG: "Nenhum usuário encontrado nos últimos 30 dias. Ajuste o filtro para visualizar registros mais antigos.",
+    EMPTY_MSG: "Nenhum usuário encontrado para os critérios informados.",
     MOBILE_MAX: 680,
 
     MODAL_EDITAR_USUARIO_ID: "modalEditarUsuario",
@@ -280,6 +280,8 @@
 
   const FILTRO = {};
   const PAGINA_ATUAL = { usuarios: 1 };
+  let META_API = { page: 1, limit: CFG.itensPorPagina, total: 0, pages: 1 };
+  let REQUISICAO_ATUAL = 0;
 
   // =========================
   // Helpers
@@ -509,6 +511,11 @@
 
           <div class="agenda-servico-linha">
             <div class="agenda-servico">Empresa: ${C.escapeHtml(empresa || "—")}</div>
+          </div>
+
+          <div class="agenda-linha-extra">
+            ${telefone ? `<span class="agenda-duracao"><strong>Telefone:</strong> ${C.escapeHtml(telefone)}</span>` : ""}
+            ${u.created_at ? `<span class="agenda-duracao"><strong>Cadastro:</strong> ${C.escapeHtml(String(u.created_at).split("-").reverse().join("/"))}</span>` : ""}
           </div>
 
           <div class="agenda-linha-extra">
@@ -820,15 +827,16 @@
     return { pageItems: lista.slice(ini, fim), total, porPag, totalPaginas, paginaAtual: atual };
   }
 
-  function renderPaginacao(info) {
+  function renderPaginacao(info = META_API) {
     if (!pagDiv) return;
 
-    if (info.total === 0 || info.totalPaginas <= 1) {
+    const paginaAtual = Number(info.page || 1);
+    const totalPaginas = Number(info.pages || 1);
+    if (Number(info.total || 0) === 0 || totalPaginas <= 1) {
       pagDiv.innerHTML = "";
       return;
     }
 
-    const { paginaAtual, totalPaginas } = info;
     pagDiv.innerHTML = "";
 
     if (paginaAtual > 1) {
@@ -837,8 +845,8 @@
       btnAnterior.textContent = "◀ Anterior";
       btnAnterior.classList.add("btn-pag");
       btnAnterior.addEventListener("click", () => {
-        PAGINA_ATUAL.usuarios = Math.max(1, PAGINA_ATUAL.usuarios - 1);
-        renderTudo();
+        PAGINA_ATUAL.usuarios = Math.max(1, paginaAtual - 1);
+        carregar(true);
       });
       pagDiv.appendChild(btnAnterior);
     }
@@ -849,8 +857,8 @@
       btnProximo.textContent = "Próximo ▶";
       btnProximo.classList.add("btn-pag");
       btnProximo.addEventListener("click", () => {
-        PAGINA_ATUAL.usuarios = Math.min(totalPaginas, PAGINA_ATUAL.usuarios + 1);
-        renderTudo();
+        PAGINA_ATUAL.usuarios = Math.min(totalPaginas, paginaAtual + 1);
+        carregar(true);
       });
       pagDiv.appendChild(btnProximo);
     }
@@ -882,13 +890,9 @@
       u.perfil = normalizePerfil(u.perfil);
     });
 
-    lista.sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR"));
-    lista = aplicarFiltro(lista);
-    lista = aplicarPesquisaLista(lista);
+    if (btnLimparPesquisa) btnLimparPesquisa.style.display = inputPesquisa?.value.trim() ? "inline-flex" : "none";
 
-    const info = paginarLista(lista);
-
-    if (!info.total) {
+    if (!Number(META_API.total || 0)) {
       box.innerHTML = `
         <div class="agenda-vazio">
           <div class="agenda-vazio-icone">👤</div>
@@ -899,8 +903,8 @@
       return;
     }
 
-    box.innerHTML = info.pageItems.map(cardTemplate).join("");
-    renderPaginacao(info);
+    box.innerHTML = lista.map(cardTemplate).join("");
+    renderPaginacao();
   }
 
   // =========================
@@ -927,14 +931,12 @@
     }
 
     const f = FILTRO.usuarios || {};
-    const ini30 = f.inicio || menosDiasISO(30);
-    const fimHoje = f.fim || hojeISO();
     const statusPadrao = typeof f.status !== "undefined" ? f.status : "ativo";
 
     FILTRO.usuarios = {
       ...f,
-      inicio: ini30,
-      fim: fimHoje,
+      inicio: f.inicio || "",
+      fim: f.fim || "",
       status: statusPadrao,
     };
 
@@ -963,8 +965,8 @@
     $limpar.addEventListener("click", async (ev) => {
       ev.stopPropagation();
 
-      const ini = menosDiasISO(30);
-      const fim = hojeISO();
+      const ini = "";
+      const fim = "";
 
       $ini.value = ini;
       $fim.value = fim;
@@ -997,8 +999,8 @@
         return;
       }
 
-      const ini = $ini.value || menosDiasISO(30);
-      const fim = $fim.value || hojeISO();
+      const ini = $ini.value || "";
+      const fim = $fim.value || "";
 
       FILTRO.usuarios = {
         inicio: ini,
@@ -1137,8 +1139,8 @@
         "input",
         C.debounce(() => {
           PAGINA_ATUAL.usuarios = 1;
-          renderTudo();
-        }, 80)
+          carregar(true);
+        }, 350)
       );
     }
 
@@ -1147,7 +1149,7 @@
         inputPesquisa.value = "";
         inputPesquisa.focus();
         PAGINA_ATUAL.usuarios = 1;
-        renderTudo();
+        carregar(true);
         ui.info("Pesquisa limpa.", "Usuários");
       });
     }
@@ -1160,10 +1162,15 @@
     if (CFG.MOCK) return MOCK_DATA.slice();
 
     const f = FILTRO.usuarios || {};
-    const data_inicio = f.inicio || menosDiasISO(30);
-    const data_fim = f.fim || hojeISO();
+    const data_inicio = f.inicio || "";
+    const data_fim = f.fim || "";
 
-    const url = buildApiUrl({ data_inicio, data_fim });
+    const q = inputPesquisa?.value.trim() || "";
+    const status = f.status || "todos";
+    const limit = CFG.itensPorPagina;
+    const page = PAGINA_ATUAL.usuarios;
+    const ordem = FILTRO.usuarios.ordem || "recentes";
+    const url = buildApiUrl({ q, status, data_inicio, data_fim, ordem, page, limit });
     const json = await C.fetchJSON(url);
 
     if (!json?.ok) {
@@ -1171,7 +1178,9 @@
     }
 
     const raw = Array.isArray(json?.data) ? json.data : [];
-    return raw.map((u) => ({
+    return {
+      meta: json?.meta || { page, limit, total: raw.length, pages: 1 },
+      items: raw.map((u) => ({
       id: u.id_usuario ?? u.id ?? "",
       nome: u.nome ?? "",
       email: u.email ?? "",
@@ -1185,14 +1194,21 @@
       empresa: u.empresa_nome ?? u.nome_empresa ?? u.empresa ?? "—",
       empresa_id: u.empresa_id ?? u.id_empresa ?? "",
       memento: u.memento_conectado ?? u.conectado_memento ?? u.memento_status ?? u.memento ?? "Não informado",
-    }));
+      }))
+    };
   }
 
   async function carregar(force = false) {
     if (__CARREGADO__ && !force) return;
 
+    const idRequisicao = ++REQUISICAO_ATUAL;
     try {
-      BASE_LISTA = await obterDados();
+      const resultado = await obterDados();
+      // Uma resposta antiga não pode substituir o resultado de uma pesquisa mais nova.
+      if (idRequisicao !== REQUISICAO_ATUAL) return;
+      BASE_LISTA = resultado.items;
+      META_API = resultado.meta;
+      PAGINA_ATUAL.usuarios = Number(META_API.page || 1);
       __CARREGADO__ = true;
       renderTudo();
     } catch (e) {
@@ -1216,13 +1232,14 @@
   }
 
   function init() {
-    const ini30 = menosDiasISO(30);
-    const fimHoje = hojeISO();
-
+    const limite = document.getElementById("limite_usuarios_superadmin");
+    const ordem = document.getElementById("ordem_usuarios_superadmin");
+    limite?.addEventListener("change", () => { CFG.itensPorPagina = [20, 50, 100].includes(Number(limite.value)) ? Number(limite.value) : 20; PAGINA_ATUAL.usuarios = 1; carregar(true); });
+    ordem?.addEventListener("change", () => { FILTRO.usuarios.ordem = ordem.value || "recentes"; PAGINA_ATUAL.usuarios = 1; carregar(true); });
     FILTRO.usuarios = FILTRO.usuarios || {};
 
-    if (!FILTRO.usuarios.inicio) FILTRO.usuarios.inicio = ini30;
-    if (!FILTRO.usuarios.fim) FILTRO.usuarios.fim = fimHoje;
+    if (typeof FILTRO.usuarios.inicio === "undefined") FILTRO.usuarios.inicio = "";
+    if (typeof FILTRO.usuarios.fim === "undefined") FILTRO.usuarios.fim = "";
     if (typeof FILTRO.usuarios.status === "undefined") FILTRO.usuarios.status = "ativo";
     if (typeof FILTRO.usuarios.perfil === "undefined") FILTRO.usuarios.perfil = "";
 

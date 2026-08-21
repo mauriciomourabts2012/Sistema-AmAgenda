@@ -37,7 +37,7 @@
   const CFG = {
     MOCK: false,
     ENDPOINT: "/public/api/api_central.php?path=painel/cliente/listar",
-    itensPorPagina: 5,
+    itensPorPagina: 20,
 
     ABA_ID: "clientes",
     BOX_ID: "listaClientes",
@@ -1120,7 +1120,7 @@
     };
   }
 
-  async function obterDados() {
+  async function obterDados(signal) {
     if (CFG.MOCK) {
       return {
         items: MOCK_DATA.slice(),
@@ -1139,14 +1139,15 @@
 
     url.searchParams.set("pagina", String(PAGINA_ATUAL));
     url.searchParams.set("limite", String(CFG.itensPorPagina));
+    url.searchParams.set("ordem", FILTRO.ordem || "movimentacao");
 
     const termo = getTermoPesquisa();
     if (termo) {
       url.searchParams.set("q", termo);
     }
 
-    const status = String(FILTRO.status || "ativo").trim();
-    url.searchParams.set("status", C.normalizar(status || "ativo"));
+    const status = String(FILTRO.status || "todos").trim();
+    url.searchParams.set("status", C.normalizar(status || "todos"));
 
     if (FILTRO.inicio) {
       url.searchParams.set("inicio", FILTRO.inicio);
@@ -1156,7 +1157,7 @@
       url.searchParams.set("fim", FILTRO.fim);
     }
 
-    const json = await C.fetchJSON(url.toString());
+    const json = await C.fetchJSON(url.toString(), { signal });
 
     if (!json || json.ok !== true) {
       throw new Error(json?.user_msg || "Falha ao carregar clientes.");
@@ -1180,14 +1181,20 @@
 
   let __CARREGADO__ = false;
   let __CARREGANDO__ = false;
+  let CONTROLADOR_REQUISICAO = null;
+  let REQUISICAO_ATUAL = 0;
 
   async function carregar(forcar = false) {
-    if ((__CARREGADO__ && !forcar) || __CARREGANDO__) return;
+    if (__CARREGADO__ && !forcar) return;
 
     __CARREGANDO__ = true;
+    const idRequisicao = ++REQUISICAO_ATUAL;
+    CONTROLADOR_REQUISICAO?.abort();
+    CONTROLADOR_REQUISICAO = new AbortController();
 
     try {
-      const resp = await obterDados();
+      const resp = await obterDados(CONTROLADOR_REQUISICAO.signal);
+      if (idRequisicao !== REQUISICAO_ATUAL) return;
 
       BASE_LISTA = Array.isArray(resp?.items) ? resp.items : [];
       PAGINACAO_API = resp?.paginacao || PAGINACAO_API;
@@ -1199,6 +1206,7 @@
       setLabelFiltro(FILTRO.inicio, FILTRO.fim, FILTRO.status);
       renderTudo();
     } catch (e) {
+      if (e?.name === "AbortError") return;
       box.innerHTML = `
         <div class="painel-card" style="padding:14px">
           <strong>⚠️ Clientes</strong><br>
@@ -1209,7 +1217,7 @@
       console.error("[ListaClientes]", e);
       toastMsg("danger", e?.message || "Falha ao carregar clientes.", "Erro");
     } finally {
-      __CARREGANDO__ = false;
+      if (idRequisicao === REQUISICAO_ATUAL) __CARREGANDO__ = false;
     }
   }
 
@@ -1220,7 +1228,23 @@
     return r.width > 0 && r.height > 0;
   }
 
+  function bindPreferenciasLista() {
+    const limite = document.getElementById("limite_clientes");
+    const ordem = document.getElementById("ordem_clientes");
+    limite?.addEventListener("change", () => {
+      CFG.itensPorPagina = [20, 50, 100].includes(Number(limite.value)) ? Number(limite.value) : 20;
+      resetPagina();
+      carregar(true);
+    });
+    ordem?.addEventListener("change", () => {
+      FILTRO.ordem = ordem.value || "movimentacao";
+      resetPagina();
+      carregar(true);
+    });
+  }
+
   function init() {
+    bindPreferenciasLista();
     if (popover && !popover.hasAttribute("hidden")) popover.setAttribute("hidden", "");
     if (btnFiltro) btnFiltro.setAttribute("aria-expanded", "false");
 

@@ -196,6 +196,17 @@
                   <span></span>
                 </div>
 
+                <div class="linha">
+                  <label class="label-filtro" for="ordem_clientes">Ordenar
+                    <select class="input-filtro" id="ordem_clientes">
+                      <option value="movimentacao">Última movimentação</option><option value="nome_asc">Nome A-Z</option><option value="nome_desc">Nome Z-A</option><option value="recentes">Mais recentes</option><option value="antigos">Mais antigos</option><option value="ultimo_agendamento">Último agendamento</option>
+                    </select>
+                  </label>
+                  <label class="label-filtro" for="limite_clientes">Por página
+                    <select class="input-filtro" id="limite_clientes"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+                  </label>
+                </div>
+
                 <div class="acoes">
                   <button type="submit" class="ok">Aplicar</button>
                   <button type="button" id="limparFiltro_clientes" class="limpar">Limpar</button>
@@ -300,6 +311,15 @@
                         <option value="profissional">Profissional</option>
                         <option value="recepcao">Recepção</option>
                       </select>
+                    </label>
+                  </div>
+
+                  <div class="linha">
+                    <label class="label-filtro" for="ordem_usuarios">Ordenar
+                      <select class="input-filtro" id="ordem_usuarios"><option value="nome_asc">Nome A-Z</option><option value="nome_desc">Nome Z-A</option><option value="recentes">Mais recentes</option><option value="antigos">Mais antigos</option></select>
+                    </label>
+                    <label class="label-filtro" for="limite_usuarios">Por página
+                      <select class="input-filtro" id="limite_usuarios"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
                     </label>
                   </div>
 
@@ -1093,7 +1113,7 @@
   </main>
   </div><!-- /.agenda-app-shell -->
   
-  <script src="../../js/core/lista-core.js" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
+  <script src="../../js/core/lista-core.js?v=20260820_2" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
   <script src="../../js/menu-lateral/menu-lateral.js?v=20260818_1"></script>
   <script src="../../js/identidade-visual/identidade-visual.js?v=20260818_6"></script>
 
@@ -1113,12 +1133,12 @@
   <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=20260818_6"></script> <!--DADOS RESUMO DO DIA -->
 
   <!--ABA CLIENTES -->
-  <script src="../../js/painel-administrativo/cliente/lista-cliente.js" ></script> <!-- LISTA DE CLIENTES -->
+  <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=20260820_2" ></script> <!-- LISTA DE CLIENTES -->
   <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js" ></script> <!--Cadastrar Clientes-->
   <script src="../../js/painel-administrativo/cliente/editar-cliente.js" ></script> <!--Editar cliente-->
   
   <!--ABA USUARIOS - (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/lista-usuario.js" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=20260820_2" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
   <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
   <script src="../../js/painel-administrativo/usuario/editar-usuario.js" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
 

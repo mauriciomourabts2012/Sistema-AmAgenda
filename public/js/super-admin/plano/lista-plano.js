@@ -39,8 +39,8 @@
 
     ROOT_SELECTOR_MENU: "#planos .conteudo-agenda",
 
-    itensPorPagina: 5,
-    EMPTY_MSG: "Nenhum plano encontrado nos <span class='destaque-periodo'>últimos 30 dias</span>. Ajuste o filtro para visualizar planos mais antigos.",
+    itensPorPagina: 20,
+    EMPTY_MSG: "Nenhum plano encontrado para os critérios informados.",
     MOBILE_MAX: 680,
 
     MODAL_EDITAR_ID: "modalEditarPlano",
@@ -94,6 +94,8 @@
 
   const FILTRO = {};
   const PAGINA_ATUAL = { planos: 1 };
+  let META_API = { page: 1, limit: CFG.itensPorPagina, total: 0, pages: 1 };
+  let REQUISICAO_ATUAL = 0;
 
   // ==========================================================
   // Toast
@@ -413,6 +415,13 @@
           </div>
 
           <div class="agenda-linha-extra">
+            ${p.ref ? `<span class="agenda-duracao"><strong>Referência:</strong> ${C.escapeHtml(p.ref)}</span>` : ""}
+            ${p.created_at ? `<span class="agenda-duracao"><strong>Cadastro:</strong> ${C.escapeHtml(String(p.created_at).split("-").reverse().join("/"))}</span>` : ""}
+          </div>
+
+          ${p.descricao ? `<div class="agenda-linha-extra"><span class="agenda-duracao">${C.escapeHtml(p.descricao)}</span></div>` : ""}
+
+          <div class="agenda-linha-extra">
             ${badgeStatus(status)}
             ${badgeDestaque(destaque)}
           </div>
@@ -693,15 +702,16 @@
     };
   }
 
-  function renderPaginacao(info) {
+  function renderPaginacao(info = META_API) {
     if (!pagDiv) return;
 
-    if (info.total === 0 || info.totalPaginas <= 1) {
+    const paginaAtual = Number(info.page || 1);
+    const totalPaginas = Number(info.pages || 1);
+    if (Number(info.total || 0) === 0 || totalPaginas <= 1) {
       pagDiv.innerHTML = "";
       return;
     }
 
-    const { paginaAtual, totalPaginas } = info;
     pagDiv.innerHTML = "";
 
     if (paginaAtual > 1) {
@@ -710,8 +720,8 @@
       btnAnterior.textContent = "◀ Anterior";
       btnAnterior.classList.add("btn-pag");
       btnAnterior.addEventListener("click", () => {
-        PAGINA_ATUAL.planos = Math.max(1, PAGINA_ATUAL.planos - 1);
-        renderTudo();
+        PAGINA_ATUAL.planos = Math.max(1, paginaAtual - 1);
+        carregar(true);
       });
       pagDiv.appendChild(btnAnterior);
     }
@@ -722,8 +732,8 @@
       btnProximo.textContent = "Próximo ▶";
       btnProximo.classList.add("btn-pag");
       btnProximo.addEventListener("click", () => {
-        PAGINA_ATUAL.planos = Math.min(totalPaginas, PAGINA_ATUAL.planos + 1);
-        renderTudo();
+        PAGINA_ATUAL.planos = Math.min(totalPaginas, paginaAtual + 1);
+        carregar(true);
       });
       pagDiv.appendChild(btnProximo);
     }
@@ -752,16 +762,9 @@
     let lista = (BASE_LISTA || []).slice();
     lista.forEach((p) => (p.status = normalizeStatus(p.status)));
 
-    lista.sort((a, b) =>
-      String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR")
-    );
+    if (btnLimparPesquisa) btnLimparPesquisa.style.display = inputPesquisa?.value.trim() ? "inline-flex" : "none";
 
-    lista = aplicarFiltro(lista);
-    lista = aplicarPesquisaLista(lista);
-
-    const info = paginarLista(lista);
-
-    if (!info.total) {
+    if (!Number(META_API.total || 0)) {
       box.innerHTML = `
         <div class="agenda-vazio">
           <div class="agenda-vazio-icone">💳</div>
@@ -772,8 +775,8 @@
       return;
     }
 
-    box.innerHTML = info.pageItems.map(cardTemplate).join("");
-    renderPaginacao(info);
+    box.innerHTML = lista.map(cardTemplate).join("");
+    renderPaginacao();
   }
 
   const menuCtrl = C.createFloatingMenuController({
@@ -800,13 +803,11 @@
     }
 
     const f = FILTRO.planos || {};
-    const ini30 = f.inicio || menosDiasISO(30);
-    const fimHoje = f.fim || hojeISO();
 
     FILTRO.planos = {
       ...f,
-      inicio: ini30,
-      fim: fimHoje,
+      inicio: f.inicio || "",
+      fim: f.fim || "",
       status: statusFiltroNorm(f.status || "ativo"),
       destaque: destaqueFiltroNorm(f.destaque || "")
     };
@@ -836,8 +837,8 @@
     $limpar.addEventListener("click", async (ev) => {
       ev.stopPropagation();
 
-      const ini = menosDiasISO(30);
-      const fim = hojeISO();
+      const ini = "";
+      const fim = "";
 
       $ini.value = ini;
       $fim.value = fim;
@@ -875,8 +876,8 @@
         return;
       }
 
-      const ini = $ini.value || menosDiasISO(30);
-      const fim = $fim.value || hojeISO();
+      const ini = $ini.value || "";
+      const fim = $fim.value || "";
 
       FILTRO.planos = {
         inicio: ini,
@@ -1014,8 +1015,8 @@
         "input",
         C.debounce(() => {
           PAGINA_ATUAL.planos = 1;
-          renderTudo();
-        }, 80)
+          carregar(true);
+        }, 350)
       );
     }
 
@@ -1024,7 +1025,7 @@
         inputPesquisa.value = "";
         inputPesquisa.focus();
         PAGINA_ATUAL.planos = 1;
-        renderTudo();
+        carregar(true);
       });
     }
   }
@@ -1065,50 +1066,22 @@
     if (CFG.MOCK) return [];
 
     const f = FILTRO.planos || {};
-    const inicio = f.inicio || menosDiasISO(30);
-    const fim = f.fim || hojeISO();
+    const inicio = f.inicio || "";
+    const fim = f.fim || "";
+    const busca = inputPesquisa?.value.trim() || "";
+    const status = f.status || "todos";
+    const destaque = f.destaque || "";
+    const page = PAGINA_ATUAL.planos;
+    const limit = CFG.itensPorPagina;
+    const ordem = FILTRO.planos.ordem || "nome_asc";
+    const json = await C.fetchJSON(buildApiUrl({ inicio, fim, busca, status, destaque, ordem, page, limit }));
 
-    const LIMIT_API = 50;
+    if (!json?.ok) throw new Error(json?.user_msg || json?.msg || "API retornou erro.");
 
-    const url1 = buildApiUrl({ inicio, fim, page: 1, limit: LIMIT_API });
-    const json1 = await C.fetchJSON(url1);
-
-    if (!json1?.ok) {
-      throw new Error(json1?.user_msg || json1?.msg || "API retornou erro.");
-    }
-
-    const srvIni = (json1?.filtros?.inicio || "")?.slice(0, 10);
-    const srvFim = (json1?.filtros?.fim || "")?.slice(0, 10);
-
-    if (srvIni && srvFim) {
-      FILTRO.planos.inicio = srvIni;
-      FILTRO.planos.fim = srvFim;
-      if ($ini) $ini.value = srvIni;
-      if ($fim) $fim.value = srvFim;
-      setLabelFiltro(srvIni, srvFim, FILTRO.planos.status || "ativo", FILTRO.planos.destaque || "");
-    }
-
-    const pages = Number(json1?.meta?.pages ?? 1) || 1;
-    let rawAll = Array.isArray(json1?.data) ? json1.data.slice() : [];
-
-    for (let p = 2; p <= pages; p++) {
-      const urlN = buildApiUrl({
-        inicio: srvIni || inicio,
-        fim: srvFim || fim,
-        page: p,
-        limit: LIMIT_API
-      });
-
-      const jsonN = await C.fetchJSON(urlN);
-      if (!jsonN?.ok) {
-        throw new Error(jsonN?.user_msg || jsonN?.msg || `API erro na página ${p}.`);
-      }
-
-      const chunk = Array.isArray(jsonN?.data) ? jsonN.data : [];
-      rawAll = rawAll.concat(chunk);
-    }
-
-    return rawAll.map((p) => {
+    const raw = Array.isArray(json?.data) ? json.data : [];
+    return {
+      meta: json?.meta || { page, limit, total: raw.length, pages: 1 },
+      items: raw.map((p) => {
       const valor = `${formatBRL(p.preco_mensal)} / ${cobrancaLabel(p.cobranca)}`;
       return {
         id: p.id_plano ?? "",
@@ -1132,14 +1105,20 @@
         limite_agendamentos: p.limite_agendamentos ?? "",
         preco_mensal: p.preco_mensal ?? "",
       };
-    });
+      })
+    };
   }
 
   async function carregar(force = false) {
     if (__CARREGADO__ && !force) return;
 
+    const idRequisicao = ++REQUISICAO_ATUAL;
     try {
-      BASE_LISTA = await obterDados();
+      const resultado = await obterDados();
+      if (idRequisicao !== REQUISICAO_ATUAL) return;
+      BASE_LISTA = resultado.items;
+      META_API = resultado.meta;
+      PAGINA_ATUAL.planos = Number(META_API.page || 1);
       __CARREGADO__ = true;
       renderTudo();
     } catch (e) {
@@ -1170,13 +1149,14 @@
   }
 
   function init() {
-    const ini30 = menosDiasISO(30);
-    const fimHoje = hojeISO();
-
+    const limite = document.getElementById("limite_planos");
+    const ordem = document.getElementById("ordem_planos");
+    limite?.addEventListener("change", () => { CFG.itensPorPagina = [20, 50, 100].includes(Number(limite.value)) ? Number(limite.value) : 20; PAGINA_ATUAL.planos = 1; carregar(true); });
+    ordem?.addEventListener("change", () => { FILTRO.planos.ordem = ordem.value || "nome_asc"; PAGINA_ATUAL.planos = 1; carregar(true); });
     FILTRO.planos = FILTRO.planos || {};
-    if (!FILTRO.planos.inicio) FILTRO.planos.inicio = ini30;
-    if (!FILTRO.planos.fim) FILTRO.planos.fim = fimHoje;
-    if (!FILTRO.planos.status) FILTRO.planos.status = "ativo";
+    if (typeof FILTRO.planos.inicio === "undefined") FILTRO.planos.inicio = "";
+    if (typeof FILTRO.planos.fim === "undefined") FILTRO.planos.fim = "";
+    if (typeof FILTRO.planos.status === "undefined") FILTRO.planos.status = "ativo";
     if (typeof FILTRO.planos.destaque === "undefined") FILTRO.planos.destaque = "";
 
     if ($ini) $ini.value = FILTRO.planos.inicio;
@@ -1187,7 +1167,7 @@
     setLabelFiltro(
       FILTRO.planos.inicio,
       FILTRO.planos.fim,
-      FILTRO.planos.status || "ativo",
+      FILTRO.planos.status || "",
       FILTRO.planos.destaque || ""
     );
 

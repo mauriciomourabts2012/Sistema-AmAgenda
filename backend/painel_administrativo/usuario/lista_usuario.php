@@ -147,6 +147,7 @@ try {
     $perfil = lower($_GET['perfil'] ?? '');
     $inicio = s($_GET['inicio'] ?? '');
     $fim    = s($_GET['fim'] ?? '');
+    $ordem  = lower($_GET['ordem'] ?? 'nome_asc');
 
     $pagina = (int)($_GET['pagina'] ?? 1);
     $limite = (int)($_GET['limite'] ?? 10);
@@ -285,15 +286,15 @@ try {
     }
 
     if ($inicio !== '') {
-        $where[] = 'DATE(u.criado_em) >= ?';
+        $where[] = 'u.criado_em >= ?';
         $types .= 's';
-        $params[] = $inicio;
+        $params[] = $inicio . ' 00:00:00';
     }
 
     if ($fim !== '') {
-        $where[] = 'DATE(u.criado_em) <= ?';
+        $where[] = 'u.criado_em <= ?';
         $types .= 's';
-        $params[] = $fim;
+        $params[] = $fim . ' 23:59:59';
     }
 
     if ($busca !== '') {
@@ -409,7 +410,12 @@ try {
         LEFT JOIN profissional pr
             ON pr.id_usuario = u.id_usuario
         WHERE {$whereSql}
-        ORDER BY u.nome ASC, u.id_usuario DESC
+        ORDER BY " . ([
+            'nome_asc' => 'u.nome ASC, u.id_usuario ASC',
+            'nome_desc' => 'u.nome DESC, u.id_usuario DESC',
+            'recentes' => 'u.criado_em DESC, u.id_usuario DESC',
+            'antigos' => 'u.criado_em ASC, u.id_usuario ASC',
+        ][$ordem] ?? 'u.nome ASC, u.id_usuario ASC') . "
         LIMIT ? OFFSET ?
     ";
 
@@ -503,6 +509,7 @@ try {
                 'fim'    => $fim,
                 'pagina' => $pagina,
                 'limite' => $limite
+                ,'ordem' => $ordem
             ],
             'paginacao' => [
                 'pagina_atual'    => $pagina,

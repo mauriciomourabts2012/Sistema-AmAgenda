@@ -177,9 +177,9 @@
     PAG_ID: "paginacao_usuarios_super",
 
     ROOT_SELECTOR_MENU: "#usuarios-super .conteudo-agenda",
-    itensPorPagina: 5,
+    itensPorPagina: 20,
 
-    EMPTY_MSG: "Nenhum Super Admin encontrado nos últimos 30 dias. Ajuste o filtro para visualizar registros mais antigos.",
+    EMPTY_MSG: "Nenhum Super Admin encontrado para os critérios informados.",
     MOBILE_MAX: 680,
 
     MODAL_EDITAR_ID: "modalEditarUsuarioSuper",
@@ -282,6 +282,8 @@
 
   const FILTRO = {};
   const PAGINA_ATUAL = { usuarios_super: 1 };
+  let META_API = { page: 1, limit: CFG.itensPorPagina, total: 0, pages: 1 };
+  let REQUISICAO_ATUAL = 0;
 
   // ==========================================================
   // Helpers
@@ -748,15 +750,16 @@
     };
   }
 
-  function renderPaginacao(info) {
+  function renderPaginacao(info = META_API) {
     if (!pagDiv) return;
 
-    if (info.total === 0 || info.totalPaginas <= 1) {
+    const paginaAtual = Number(info.page || 1);
+    const totalPaginas = Number(info.pages || 1);
+    if (Number(info.total || 0) === 0 || totalPaginas <= 1) {
       pagDiv.innerHTML = "";
       return;
     }
 
-    const { paginaAtual, totalPaginas } = info;
     pagDiv.innerHTML = "";
 
     if (paginaAtual > 1) {
@@ -765,8 +768,8 @@
       btnAnterior.textContent = "◀ Anterior";
       btnAnterior.classList.add("btn-pag");
       btnAnterior.addEventListener("click", () => {
-        PAGINA_ATUAL.usuarios_super = Math.max(1, PAGINA_ATUAL.usuarios_super - 1);
-        renderTudo();
+        PAGINA_ATUAL.usuarios_super = Math.max(1, paginaAtual - 1);
+        carregar(true);
       });
       pagDiv.appendChild(btnAnterior);
     }
@@ -777,8 +780,8 @@
       btnProximo.textContent = "Próximo ▶";
       btnProximo.classList.add("btn-pag");
       btnProximo.addEventListener("click", () => {
-        PAGINA_ATUAL.usuarios_super = Math.min(totalPaginas, PAGINA_ATUAL.usuarios_super + 1);
-        renderTudo();
+        PAGINA_ATUAL.usuarios_super = Math.min(totalPaginas, paginaAtual + 1);
+        carregar(true);
       });
       pagDiv.appendChild(btnProximo);
     }
@@ -812,16 +815,9 @@
       u.status = normalizeStatus(u.status);
     });
 
-    lista.sort((a, b) =>
-      String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR")
-    );
+    if (btnLimparPesquisa) btnLimparPesquisa.style.display = inputPesquisa?.value.trim() ? "inline-flex" : "none";
 
-    lista = aplicarFiltro(lista);
-    lista = aplicarPesquisaLista(lista);
-
-    const info = paginarLista(lista);
-
-    if (!info.total) {
+    if (!Number(META_API.total || 0)) {
       box.innerHTML = `
         <div class="agenda-vazio">
           <div class="agenda-vazio-icone">🛡️</div>
@@ -832,8 +828,8 @@
       return;
     }
 
-    box.innerHTML = info.pageItems.map(cardTemplate).join("");
-    renderPaginacao(info);
+    box.innerHTML = lista.map(cardTemplate).join("");
+    renderPaginacao();
   }
 
   // ==========================================================
@@ -871,13 +867,10 @@
     }
 
     const f = FILTRO.usuarios_super || {};
-    const ini30 = f.inicio || menosDiasISO(30);
-    const fimHoje = f.fim || hojeISO();
-
     FILTRO.usuarios_super = {
       ...f,
-      inicio: ini30,
-      fim: fimHoje,
+      inicio: f.inicio || "",
+      fim: f.fim || "",
       status: typeof f.status === "undefined" ? "ativo" : (f.status || "ativo")
     };
 
@@ -906,8 +899,8 @@
     $limpar.addEventListener("click", async (ev) => {
       ev.stopPropagation();
 
-      const ini = menosDiasISO(30);
-      const fim = hojeISO();
+      const ini = "";
+      const fim = "";
 
       $ini.value = ini;
       $fim.value = fim;
@@ -940,8 +933,8 @@
         return;
       }
 
-      const ini = $ini.value || menosDiasISO(30);
-      const fim = $fim.value || hojeISO();
+      const ini = $ini.value || "";
+      const fim = $fim.value || "";
 
       FILTRO.usuarios_super = {
         inicio: ini,
@@ -1066,8 +1059,8 @@
         "input",
         C.debounce(() => {
           PAGINA_ATUAL.usuarios_super = 1;
-          renderTudo();
-        }, 80)
+          carregar(true);
+        }, 350)
       );
     }
 
@@ -1076,7 +1069,7 @@
         inputPesquisa.value = "";
         inputPesquisa.focus();
         PAGINA_ATUAL.usuarios_super = 1;
-        renderTudo();
+        carregar(true);
         ui.info("Pesquisa limpa.", "Super Admin");
       });
     }
@@ -1089,11 +1082,15 @@
     if (CFG.MOCK) return MOCK_DATA.slice();
 
     const f = FILTRO.usuarios_super || {};
-    const data_inicio = f.inicio || menosDiasISO(30);
-    const data_fim = f.fim || hojeISO();
-    const status = typeof f.status === "undefined" ? "ativo" : (f.status || "");
+    const data_inicio = f.inicio || "";
+    const data_fim = f.fim || "";
+    const status = typeof f.status === "undefined" ? "ativo" : (f.status || "todos");
 
-    const url = buildApiUrl({ data_inicio, data_fim, status });
+    const busca = inputPesquisa?.value.trim() || "";
+    const limit = CFG.itensPorPagina;
+    const page = PAGINA_ATUAL.usuarios_super;
+    const ordem = FILTRO.usuarios_super.ordem || "recentes";
+    const url = buildApiUrl({ data_inicio, data_fim, status, busca, ordem, page, limit });
     const json = await C.fetchJSON(url);
 
     if (!json?.ok) {
@@ -1101,8 +1098,9 @@
     }
 
     const raw = Array.isArray(json?.data) ? json.data : [];
-
-    return raw.map((u) => ({
+    return {
+      meta: json?.meta || { page, limit, total: raw.length, pages: 1 },
+      items: raw.map((u) => ({
       id: u.id_usuario ?? u.id ?? "",
       nome: u.nome ?? "",
       email: u.email ?? "",
@@ -1114,14 +1112,20 @@
       created_at: onlyDate(u.criado_em ?? u.created_at ?? ""),
       atualizado_em: onlyDate(u.atualizado_em ?? ""),
       ultimo_login_em: u.ultimo_login_em ?? "",
-    }));
+      }))
+    };
   }
 
   async function carregar(force = false) {
     if (__CARREGADO__ && !force) return;
 
+    const idRequisicao = ++REQUISICAO_ATUAL;
     try {
-      BASE_LISTA = await obterDados();
+      const resultado = await obterDados();
+      if (idRequisicao !== REQUISICAO_ATUAL) return;
+      BASE_LISTA = resultado.items;
+      META_API = resultado.meta;
+      PAGINA_ATUAL.usuarios_super = Number(META_API.page || 1);
       __CARREGADO__ = true;
       renderTudo();
     } catch (e) {
@@ -1145,13 +1149,14 @@
   }
 
   function init() {
-    const ini30 = menosDiasISO(30);
-    const fimHoje = hojeISO();
-
+    const limite = document.getElementById("limite_usuarios_super");
+    const ordem = document.getElementById("ordem_usuarios_super");
+    limite?.addEventListener("change", () => { CFG.itensPorPagina = [20, 50, 100].includes(Number(limite.value)) ? Number(limite.value) : 20; PAGINA_ATUAL.usuarios_super = 1; carregar(true); });
+    ordem?.addEventListener("change", () => { FILTRO.usuarios_super.ordem = ordem.value || "recentes"; PAGINA_ATUAL.usuarios_super = 1; carregar(true); });
     FILTRO.usuarios_super = FILTRO.usuarios_super || {};
 
-    if (!FILTRO.usuarios_super.inicio) FILTRO.usuarios_super.inicio = ini30;
-    if (!FILTRO.usuarios_super.fim) FILTRO.usuarios_super.fim = fimHoje;
+    if (typeof FILTRO.usuarios_super.inicio === "undefined") FILTRO.usuarios_super.inicio = "";
+    if (typeof FILTRO.usuarios_super.fim === "undefined") FILTRO.usuarios_super.fim = "";
     if (typeof FILTRO.usuarios_super.status === "undefined") {
       FILTRO.usuarios_super.status = "ativo";
     }

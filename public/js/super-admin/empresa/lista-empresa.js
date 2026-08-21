@@ -53,7 +53,7 @@
     PAG_ID: "paginacao_empresas",
 
     ROOT_SELECTOR_MENU: ".conteudo-agenda",
-    itensPorPagina: 5,
+    itensPorPagina: 20,
     EMPTY_MSG: "Nenhuma empresa encontrada.",
     MOBILE_MAX: 680,
 
@@ -128,6 +128,8 @@
   let BASE_LISTA = [];
   let __CARREGADO__ = false;
   let __CARREGANDO__ = false;
+  let REQUISICAO_ATUAL = 0;
+  let CONTROLADOR_REQUISICAO = null;
 
   const FILTRO = {
     empresas: {
@@ -490,7 +492,7 @@
       const optMatch = Array.from($st.options).find(opt => statusFiltroNorm(opt.value) === stEfetivo);
       $st.value = optMatch ? optMatch.value : "";
     } else {
-      $st.value = "";
+      $st.value = "ativo";
     }
 
     setLabelFiltro(efetivo.inicio, efetivo.fim, efetivo.status);
@@ -505,13 +507,14 @@
     if (f.fim) url.searchParams.set("ate", f.fim);
 
     const st = statusFiltroNorm(f.status);
-    if (st) url.searchParams.set("status", st);
+    url.searchParams.set("status", st || "todos");
 
     const busca = String(f.busca || "").trim();
     if (busca) url.searchParams.set("busca", busca);
 
     url.searchParams.set("page", String(META.page || 1));
     url.searchParams.set("limit", String(META.limit || CFG.itensPorPagina));
+    url.searchParams.set("ordem", FILTRO.empresas.ordem || "recentes");
 
     return url.toString();
   }
@@ -741,9 +744,9 @@
   // =========================
   // FETCH API
   // =========================
-  async function obterDados() {
+  async function obterDados(signal) {
     const url = buildURL();
-    const json = await C.fetchJSON(url);
+    const json = await C.fetchJSON(url, { signal });
 
     if (!json || json.ok !== true) {
       throw new Error(json?.user_msg || "Resposta inválida da API.");
@@ -771,22 +774,28 @@
   }
 
   async function carregar(force = false) {
-    if ((__CARREGADO__ && !force) || __CARREGANDO__) return;
+    if (__CARREGADO__ && !force) return;
 
     __CARREGANDO__ = true;
     renderLoading();
 
+    const idRequisicao = ++REQUISICAO_ATUAL;
+    CONTROLADOR_REQUISICAO?.abort();
+    CONTROLADOR_REQUISICAO = new AbortController();
     try {
-      BASE_LISTA = await obterDados();
+      const dados = await obterDados(CONTROLADOR_REQUISICAO.signal);
+      if (idRequisicao !== REQUISICAO_ATUAL) return;
+      BASE_LISTA = dados;
       __CARREGADO__ = true;
 
       syncFiltroUIComMeta();
       renderTudo();
     } catch (e) {
+      if (e?.name === "AbortError") return;
       renderErro(e?.message || "Erro ao carregar empresas.");
       console.error("[ListaEmpresas]", e);
     } finally {
-      __CARREGANDO__ = false;
+      if (idRequisicao === REQUISICAO_ATUAL) __CARREGANDO__ = false;
     }
   }
 
@@ -867,7 +876,7 @@
 
       FILTRO.empresas.inicio = "";
       FILTRO.empresas.fim = "";
-      FILTRO.empresas.status = "";
+      FILTRO.empresas.status = "ativo";
       META.page = 1;
 
       fecharPopoverFiltro();
@@ -1000,6 +1009,10 @@
   // INIT
   // =========================
   function init() {
+    const limite = document.getElementById("limite_empresas");
+    const ordem = document.getElementById("ordem_empresas");
+    limite?.addEventListener("change", () => { META.limit = [20, 50, 100].includes(Number(limite.value)) ? Number(limite.value) : 20; META.page = 1; carregar(true); });
+    ordem?.addEventListener("change", () => { FILTRO.empresas.ordem = ordem.value || "recentes"; META.page = 1; carregar(true); });
     bindPesquisa();
     bindFiltro();
     bindEventosGlobais();

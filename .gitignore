@@ -1,6 +1,53 @@
+# Configuracoes locais e credenciais
+.env
+.env.*
+!.env.example
+/backend/_config/conexao.php
+/backend/_config/conexao.local.php
+
+# Logs e arquivos de diagnostico
+*.log
+*.log.*
+php_errors
+
+# Conteudo gerado ou enviado por usuarios
 /public/uploads/*
 !/public/uploads/.gitkeep
 !/public/uploads/.htaccess
+/public/imagens/usuarios/*
+!/public/imagens/usuarios/.gitkeep
+
+# Arquivos temporarios
 /storage/identidade-visual/temporarios/*
 !/storage/identidade-visual/temporarios/.gitkeep
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.cache
+
+# Backups locais e dumps de banco (migrations continuam versionadas)
+*.bak
+*.backup
+*.orig
+*.sql.gz
+*.sql.zip
+*.dump
+
+# Dependencias e artefatos de ferramentas
+/vendor/
+/node_modules/
+/.phpunit.cache/
+/.phpunit.result.cache
+/coverage/
+
+# Editores e sistema operacional
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
 

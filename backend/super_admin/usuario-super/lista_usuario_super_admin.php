@@ -12,6 +12,8 @@ if (!function_exists('out')) {
     }
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 try {
     if (!in_array(strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET'), ['GET', 'POST'], true)) {
         out([
@@ -85,7 +87,10 @@ try {
     $src = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' ? $_POST : $_GET;
 
     $busca  = s($src['busca'] ?? '');
-    $status = normalizarStatus($src['status'] ?? 'todos');
+    $status = normalizarStatus($src['status'] ?? 'ativo');
+    $inicio = s($src['inicio'] ?? ($src['data_inicio'] ?? ''));
+    $fim    = s($src['fim'] ?? ($src['data_fim'] ?? ''));
+    $ordemRaw = strtolower(s($src['ordem'] ?? 'recentes'));
     $page   = intRange($src['page'] ?? 1, 1, 999999, 1);
     $limit  = intRange($src['limit'] ?? 10, 1, 100, 10);
     $offset = ($page - 1) * $limit;
@@ -103,6 +108,26 @@ try {
         $where[] = "u.status = ?";
         $types .= 's';
         $params[] = $status;
+    }
+
+    if ($inicio !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicio)) {
+        out(['ok' => false, 'code' => 'INVALID_DATE_START', 'user_msg' => 'Data inicial inválida.'], 422);
+    }
+    if ($fim !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fim)) {
+        out(['ok' => false, 'code' => 'INVALID_DATE_END', 'user_msg' => 'Data final inválida.'], 422);
+    }
+    if ($inicio !== '' && $fim !== '' && $inicio > $fim) {
+        out(['ok' => false, 'code' => 'INVALID_DATE_RANGE', 'user_msg' => 'A data inicial não pode ser maior que a final.'], 422);
+    }
+    if ($inicio !== '') {
+        $where[] = 'u.criado_em >= ?';
+        $types .= 's';
+        $params[] = $inicio . ' 00:00:00';
+    }
+    if ($fim !== '') {
+        $where[] = 'u.criado_em <= ?';
+        $types .= 's';
+        $params[] = $fim . ' 23:59:59';
     }
 
     if ($busca !== '') {
@@ -123,6 +148,15 @@ try {
     }
 
     $whereSql = 'WHERE ' . implode(' AND ', $where);
+
+    $ordenacoesPermitidas = [
+        'recentes' => 'u.criado_em DESC, u.id_usuario DESC',
+        'antigos' => 'u.criado_em ASC, u.id_usuario ASC',
+        'nome_asc' => 'u.nome ASC, u.id_usuario ASC',
+        'nome_desc' => 'u.nome DESC, u.id_usuario DESC',
+    ];
+    $ordem = array_key_exists($ordemRaw, $ordenacoesPermitidas) ? $ordemRaw : 'recentes';
+    $orderBySql = $ordenacoesPermitidas[$ordem];
 
     /* ==========================================================
        TOTAL
@@ -175,7 +209,7 @@ try {
             u.tipo_usuario
         FROM usuario u
         {$whereSql}
-        ORDER BY u.id_usuario DESC
+        ORDER BY {$orderBySql}
         LIMIT ? OFFSET ?
     ";
 
@@ -232,6 +266,9 @@ try {
             'pages' => $pages,
             'busca' => $busca,
             'status' => $status
+            ,'inicio' => $inicio
+            ,'fim' => $fim
+            ,'ordem' => $ordem
         ]
     ]);
 

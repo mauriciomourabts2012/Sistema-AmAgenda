@@ -32,6 +32,8 @@ if (!function_exists('out')) {
     }
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 if (!function_exists('s')) {
     function s($v): ?string
     {
@@ -114,7 +116,7 @@ $q = s($_GET['q'] ?? ($_GET['busca'] ?? null));
 */
 $perfilFixo = 'Proprietario';
 
-$status = s($_GET['status'] ?? null);
+$status = s($_GET['status'] ?? 'ativo');
 if ($status === 'todos') {
     $status = null;
 }
@@ -127,20 +129,7 @@ $offset = ($page - 1) * $limit;
 
 $data_inicio = parseDateYmd($_GET['data_inicio'] ?? null);
 $data_fim    = parseDateYmd($_GET['data_fim'] ?? null);
-
-/* ==========================================================
-   PERÍODO DEFAULT
-========================================================== */
-$hoje = new DateTime('today');
-
-if (!$data_fim) {
-    $data_fim = $hoje->format('Y-m-d');
-}
-
-if (!$data_inicio) {
-    $ini = (clone $hoje)->modify('-30 days');
-    $data_inicio = $ini->format('Y-m-d');
-}
+$ordemRaw = strtolower((string)($_GET['ordem'] ?? 'recentes'));
 
 /* ==========================================================
    VALIDAÇÕES
@@ -153,7 +142,7 @@ if ($status !== null && !in_array($status, ['ativo', 'inativo', 'bloqueado'], tr
     ], 400);
 }
 
-if ($data_inicio > $data_fim) {
+if ($data_inicio && $data_fim && $data_inicio > $data_fim) {
     out([
         'ok' => false,
         'code' => 'INVALID_DATE_RANGE',
@@ -168,14 +157,19 @@ $where  = [];
 $types  = '';
 $params = [];
 
-/* período sobre o vínculo */
-$inicioDT = $data_inicio . ' 00:00:00';
-$fimDT    = $data_fim . ' 23:59:59';
+/* período opcional sobre o vínculo */
+if ($data_inicio) {
+    $where[]  = "eu.criado_em >= ?";
+    $params[] = $data_inicio . ' 00:00:00';
+    $types   .= 's';
+}
 
-$where[]  = "eu.criado_em BETWEEN ? AND ?";
-$params[] = $inicioDT;
-$params[] = $fimDT;
-$types   .= 'ss';
+
+if ($data_fim) {
+    $where[]  = "eu.criado_em <= ?";
+    $params[] = $data_fim . ' 23:59:59';
+    $types   .= 's';
+}
 
 /* empresa */
 if ($idEmpresa > 0) {
@@ -218,6 +212,15 @@ if ($status !== null) {
 $whereSql = !empty($where)
     ? 'WHERE ' . implode(' AND ', $where)
     : '';
+
+$ordenacoesPermitidas = [
+    'recentes' => 'eu.criado_em DESC, u.nome ASC',
+    'antigos' => 'eu.criado_em ASC, u.nome ASC',
+    'nome_asc' => 'u.nome ASC, eu.id_empresa_usuario ASC',
+    'nome_desc' => 'u.nome DESC, eu.id_empresa_usuario DESC',
+];
+$ordem = array_key_exists($ordemRaw, $ordenacoesPermitidas) ? $ordemRaw : 'recentes';
+$orderBySql = $ordenacoesPermitidas[$ordem];
 
 /* ==========================================================
    TOTAL
@@ -302,7 +305,7 @@ $sql = "
     INNER JOIN perfil p  ON p.id_perfil = eu.id_perfil
     INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
     {$whereSql}
-    ORDER BY eu.criado_em DESC, u.nome ASC
+    ORDER BY {$orderBySql}
     LIMIT ? OFFSET ?
 ";
 
@@ -433,6 +436,7 @@ out([
         'id_perfil'  => null,
         'status'     => $status,
         'id_empresa' => $idEmpresa > 0 ? $idEmpresa : null,
+        'ordem' => $ordem,
     ],
     'periodo' => [
         'data_inicio' => $data_inicio,

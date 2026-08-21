@@ -16,7 +16,7 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
-ini_set('display_errors', '1');
+ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/api_errors.log');
 
@@ -413,8 +413,7 @@ try {
         out([
             'ok' => false,
             'code' => 'INVALID_HANDLER_OUTPUT',
-            'user_msg' => 'Handler retornou saída inválida.',
-            'raw' => $output
+            'user_msg' => 'O servidor retornou uma resposta inválida.'
         ], 500);
     }
 
@@ -425,11 +424,7 @@ try {
     out([
         'ok' => false,
         'code' => 'EXCEPTION',
-        'user_msg' => 'Erro interno na API.',
-        'debug' => [
-            'file' => $e->getFile(),
-            'line' => $e->getLine()
-        ]
+        'user_msg' => 'Erro interno na API.'
     ], 500);
 }
 

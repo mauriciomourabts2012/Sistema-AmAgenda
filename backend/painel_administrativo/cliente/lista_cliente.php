@@ -146,6 +146,7 @@ try {
     $status = lower($_GET['status'] ?? 'ativo');
     $inicio = s($_GET['inicio'] ?? '');
     $fim    = s($_GET['fim'] ?? '');
+    $ordem  = lower($_GET['ordem'] ?? 'movimentacao');
 
     $pagina = (int)($_GET['pagina'] ?? 1);
     $limite = (int)($_GET['limite'] ?? 10);
@@ -251,15 +252,15 @@ try {
     }
 
     if ($inicio !== '') {
-        $where[] = 'DATE(c.criado_em) >= ?';
+        $where[] = 'c.criado_em >= ?';
         $types .= 's';
-        $params[] = $inicio;
+        $params[] = $inicio . ' 00:00:00';
     }
 
     if ($fim !== '') {
-        $where[] = 'DATE(c.criado_em) <= ?';
+        $where[] = 'c.criado_em <= ?';
         $types .= 's';
-        $params[] = $fim;
+        $params[] = $fim . ' 23:59:59';
     }
 
     if ($busca !== '') {
@@ -344,7 +345,17 @@ try {
        ✅ Mais movimentados primeiro
        ✅ Em empate, mais novos primeiro
     ========================================================== */
-    $orderBy = 'ORDER BY c.ultima_movimentacao_em DESC, c.id_cliente DESC';
+    // Campos permitidos para ORDER BY; nunca usar diretamente o valor recebido.
+    $ordenacoesPermitidas = [
+        'movimentacao' => 'c.ultima_movimentacao_em DESC, c.id_cliente DESC',
+        'nome_asc' => 'c.nome_completo ASC, c.id_cliente ASC',
+        'nome_desc' => 'c.nome_completo DESC, c.id_cliente DESC',
+        'recentes' => 'c.criado_em DESC, c.id_cliente DESC',
+        'antigos' => 'c.criado_em ASC, c.id_cliente ASC',
+        'ultimo_agendamento' => 'c.ultimo_agendamento_em DESC, c.id_cliente DESC',
+    ];
+    $ordem = array_key_exists($ordem, $ordenacoesPermitidas) ? $ordem : 'movimentacao';
+    $orderBy = 'ORDER BY ' . $ordenacoesPermitidas[$ordem];
 
     /* ==========================================================
        LISTA
@@ -459,6 +470,7 @@ try {
                 'fim'    => $fim,
                 'pagina' => $pagina,
                 'limite' => $limite
+                ,'ordem' => $ordem
             ],
             'ordenacao' => [
                 'campo_principal'  => 'ultima_movimentacao_em',

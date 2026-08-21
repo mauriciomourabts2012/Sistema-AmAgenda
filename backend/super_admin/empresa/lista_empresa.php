@@ -26,6 +26,8 @@ if (!function_exists('out')) {
     }
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    HELPERS
 ========================================================== */
@@ -88,6 +90,10 @@ function parseDate(?string $date): ?DateTimeImmutable {
  * bind_param dinâmico com referências
  */
 function bindParams(mysqli_stmt $stmt, string $types, array &$values): bool {
+    if ($types === '') {
+        return true;
+    }
+
     $refs = [];
     $refs[] = $types;
 
@@ -138,19 +144,18 @@ try {
     /* ==========================================================
        ENTRADAS
     ========================================================== */
-    $hoje = new DateTimeImmutable('today');
-
     $deRaw     = s($_GET['de'] ?? null);
     $ateRaw    = s($_GET['ate'] ?? null);
-    $statusRaw = s($_GET['status'] ?? null);
+    $statusRaw = s($_GET['status'] ?? 'ativo');
     $buscaRaw  = s($_GET['busca'] ?? null);
+    $planoId   = clampInt($_GET['plano_id'] ?? 0, 0, 999999999, 0);
+    $ordemRaw  = strtolower((string)($_GET['ordem'] ?? 'recentes'));
 
     $page  = clampInt($_GET['page'] ?? 1, 1, 999999, 1);
     $limit = clampInt($_GET['limit'] ?? 10, 1, 100, 10);
 
-    // padrão: últimos 3 meses até hoje
-    $deDate  = $deRaw  !== null ? parseDate($deRaw)  : $hoje->modify('-3 months');
-    $ateDate = $ateRaw !== null ? parseDate($ateRaw) : $hoje;
+    $deDate  = $deRaw !== null ? parseDate($deRaw) : null;
+    $ateDate = $ateRaw !== null ? parseDate($ateRaw) : null;
 
     if ($deRaw !== null && !$deDate) {
         out([
@@ -168,15 +173,7 @@ try {
         ], 422);
     }
 
-    if (!$deDate || !$ateDate) {
-        out([
-            'ok'       => false,
-            'code'     => 'INVALID_DATE',
-            'user_msg' => 'Período inválido.'
-        ], 422);
-    }
-
-    if ($deDate > $ateDate) {
+    if ($deDate && $ateDate && $deDate > $ateDate) {
         out([
             'ok'       => false,
             'code'     => 'INVALID_PERIOD',
@@ -184,7 +181,7 @@ try {
         ], 422);
     }
 
-    $status = strtolower((string)($statusRaw ?? 'todos'));
+    $status = strtolower((string)($statusRaw ?? 'ativo'));
     $statusPermitidos = ['ativo', 'inativo', 'bloqueado', 'todos'];
 
     if (!in_array($status, $statusPermitidos, true)) {
@@ -197,9 +194,6 @@ try {
 
     $offset = ($page - 1) * $limit;
 
-    $deSql  = $deDate->format('Y-m-d') . ' 00:00:00';
-    $ateSql = $ateDate->format('Y-m-d') . ' 23:59:59';
-
     /* ==========================================================
        WHERE DINÂMICO
     ========================================================== */
@@ -207,15 +201,28 @@ try {
     $types  = '';
     $params = [];
 
-    $where[]  = 'e.criado_em BETWEEN ? AND ?';
-    $types   .= 'ss';
-    $params[] = $deSql;
-    $params[] = $ateSql;
+    if ($deDate) {
+        $where[] = 'e.criado_em >= ?';
+        $types .= 's';
+        $params[] = $deDate->format('Y-m-d') . ' 00:00:00';
+    }
+
+    if ($ateDate) {
+        $where[] = 'e.criado_em <= ?';
+        $types .= 's';
+        $params[] = $ateDate->format('Y-m-d') . ' 23:59:59';
+    }
 
     if ($status !== 'todos') {
         $where[]  = 'e.status = ?';
         $types   .= 's';
         $params[] = $status;
+    }
+
+    if ($planoId > 0) {
+        $where[] = 'e.plano_id = ?';
+        $types .= 'i';
+        $params[] = $planoId;
     }
 
     if ($buscaRaw !== null) {
@@ -235,7 +242,17 @@ try {
         $params[] = $like;
     }
 
-    $whereSql = 'WHERE ' . implode(' AND ', $where);
+    $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+    // Whitelist de ORDER BY: valores externos nunca são tratados como coluna SQL.
+    $ordenacoesPermitidas = [
+        'recentes' => 'e.criado_em DESC, e.id_empresa DESC',
+        'antigos' => 'e.criado_em ASC, e.id_empresa ASC',
+        'nome_asc' => 'e.nome ASC, e.id_empresa ASC',
+        'nome_desc' => 'e.nome DESC, e.id_empresa DESC',
+    ];
+    $ordem = array_key_exists($ordemRaw, $ordenacoesPermitidas) ? $ordemRaw : 'recentes';
+    $orderBySql = $ordenacoesPermitidas[$ordem];
 
     /* ==========================================================
        TOTAL
@@ -286,7 +303,7 @@ try {
         LEFT JOIN plano p
             ON p.id_plano = e.plano_id
         {$whereSql}
-        ORDER BY e.id_empresa DESC
+        ORDER BY {$orderBySql}
         LIMIT ? OFFSET ?
     ";
 
@@ -346,8 +363,10 @@ try {
                 'total'       => $total,
                 'total_pages' => $totalPages,
                 'offset'      => $offset,
-                'de'          => $deDate->format('Y-m-d'),
-                'ate'         => $ateDate->format('Y-m-d'),
+                'de'          => $deDate?->format('Y-m-d'),
+                'ate'         => $ateDate?->format('Y-m-d'),
+                'plano_id'    => $planoId > 0 ? $planoId : null,
+                'ordem'       => $ordem,
                 'status'      => $status,
                 'busca'       => $buscaRaw
             ]

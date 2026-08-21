@@ -27,8 +27,8 @@ window.ListaCore = (() => {
     };
   }
 
-  async function fetchJSON(url) {
-    const r = await fetch(url, { cache: "no-store" });
+  async function fetchJSON(url, options = {}) {
+    const r = await fetch(url, { cache: "no-store", ...options });
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error(j?.reason || `HTTP ${r.status}`);
     return j;

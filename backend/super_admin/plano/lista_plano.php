@@ -77,9 +77,13 @@ function bindParams(mysqli_stmt $stmt, string $types, array $values): void {
 // ==========================================================
 // PARAMETROS
 // ==========================================================
-$status = s($_GET['status'] ?? null);
+$status = s($_GET['status'] ?? 'ativo');
+if ($status === 'todos') $status = null;
 $inicio = s($_GET['inicio'] ?? null);
 $fim    = s($_GET['fim'] ?? null);
+$busca  = s($_GET['busca'] ?? ($_GET['q'] ?? null));
+$destaque = s($_GET['destaque'] ?? null);
+$ordemRaw = strtolower((string)($_GET['ordem'] ?? 'nome_asc'));
 
 $page   = clampInt($_GET['page'] ?? 1, 1, 999999, 1);
 $limit  = clampInt($_GET['limit'] ?? 10, 1, 50, 10);
@@ -91,6 +95,9 @@ $data_fim    = parseDate($fim);
 // valida status
 if ($status !== null && !in_array($status, ['ativo', 'inativo', 'bloqueado'], true)) {
   out(['ok' => false, 'code' => 'INVALID_STATUS'], 400);
+}
+if ($destaque !== null && !in_array($destaque, ['0', '1'], true)) {
+  out(['ok' => false, 'code' => 'INVALID_HIGHLIGHT', 'user_msg' => 'Filtro de destaque inválido.'], 400);
 }
 
 // ✅ robustez: se vier só uma ponta do período, usa a outra igual
@@ -104,12 +111,6 @@ $where  = [];
 $types  = '';
 $params = [];
 
-// 🔥 REGRA PRINCIPAL
-if (!$data_inicio && !$data_fim && !$status) {
-  // Se não veio nada → SOMENTE ATIVOS
-  $where[] = "p.status = 'ativo'";
-} else {
-
   if ($data_inicio && $data_fim) {
     $where[] = "p.criado_em BETWEEN ? AND ?";
     $params[] = $data_inicio . ' 00:00:00';
@@ -122,7 +123,30 @@ if (!$data_inicio && !$data_fim && !$status) {
     $params[] = $status;
     $types .= 's';
   }
-}
+
+  if ($destaque !== null) {
+    $where[] = 'p.destaque = ?';
+    $params[] = (int)$destaque;
+    $types .= 'i';
+  }
+
+  if ($busca !== null) {
+    $where[] = '(p.nome LIKE ? OR p.ref LIKE ? OR p.descricao LIKE ? OR p.observacao LIKE ?)';
+    $like = '%' . $busca . '%';
+    array_push($params, $like, $like, $like, $like);
+    $types .= 'ssss';
+  }
+
+$ordenacoesPermitidas = [
+  'nome_asc' => 'p.nome ASC, p.id_plano ASC',
+  'nome_desc' => 'p.nome DESC, p.id_plano DESC',
+  'recentes' => 'p.criado_em DESC, p.id_plano DESC',
+  'antigos' => 'p.criado_em ASC, p.id_plano ASC',
+  'preco_asc' => 'p.preco_mensal ASC, p.id_plano ASC',
+  'preco_desc' => 'p.preco_mensal DESC, p.id_plano DESC',
+];
+$ordem = array_key_exists($ordemRaw, $ordenacoesPermitidas) ? $ordemRaw : 'nome_asc';
+$orderBySql = $ordenacoesPermitidas[$ordem];
 
 $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
@@ -168,7 +192,7 @@ SELECT
   p.atualizado_em
 FROM plano p
 {$whereSql}
-ORDER BY p.nome ASC
+ORDER BY {$orderBySql}
 LIMIT ? OFFSET ?
 ";
 
@@ -207,6 +231,9 @@ out([
     'status' => $status,
     'inicio' => $data_inicio,
     'fim' => $data_fim
+    ,'busca' => $busca
+    ,'destaque' => $destaque
+    ,'ordem' => $ordem
   ],
   'data' => $data
 ]);
