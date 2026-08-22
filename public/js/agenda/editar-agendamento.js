@@ -51,8 +51,8 @@
     let stack = document.querySelector(".ui-toast-stack");
     if (!stack) { stack = document.createElement("div"); stack.className = "ui-toast-stack"; document.body.appendChild(stack); }
     const box = document.createElement("div");
-    box.className = `ui-alert ${tipo === "success" ? "ui-alert--success" : "ui-alert--danger"}`;
-    box.innerHTML = `<div class="ui-alert__icon">${tipo === "success" ? "✓" : "×"}</div><div class="ui-alert__content"><p class="ui-alert__title">${tipo === "success" ? "Sucesso" : "Atenção"}</p><div class="ui-alert__msg"></div></div>`;
+    box.className = `ui-alert ${tipo === "success" ? "ui-alert--success" : tipo === "warning" ? "ui-alert--warning" : "ui-alert--danger"}`;
+    box.innerHTML = `<div class="ui-alert__icon">${tipo === "success" ? "✓" : tipo === "warning" ? "!" : "×"}</div><div class="ui-alert__content"><p class="ui-alert__title">${tipo === "success" ? "Sucesso" : "Atenção"}</p><div class="ui-alert__msg"></div></div>`;
     box.querySelector(".ui-alert__msg").textContent = msg; stack.appendChild(box); setTimeout(() => box.remove(), 4500);
   }
 
@@ -84,7 +84,7 @@
   async function carregarGrade(data, horaAtual = "") {
     limparHorario("Carregando horários disponíveis...");
     try {
-      const j = await api("agenda/horarios-disponiveis", { id_profissional: el.profissional.value, id_servico: el.servico.value, data, id_agendamento: el.id.value });
+      const j = await api("agenda/horarios-disponiveis", { id_profissional: el.profissional.value, id_servico: el.servico.value, duracao: el.duracao.value, data, id_agendamento: el.id.value });
       diasAtendimento = j.data?.dias_atendimento || []; renderCalendario();
       const horarios = j.data?.horarios || [];
       if (!horarios.length) { limparHorario("Nenhum horário disponível para esta data."); return; }
@@ -154,7 +154,15 @@
   el.servico.addEventListener("change", async () => {
     el.data.value = ""; limparHorario(); el.disponibilidade.hidden = !el.servico.value;
     const op = el.servico.options[el.servico.selectedIndex]; el.duracao.value = op?.dataset.duracao || "";
-    if (el.servico.value) { try { const j = await api("agenda/horarios-disponiveis", { id_profissional: el.profissional.value, id_servico: el.servico.value, data: hoje(), id_agendamento: el.id.value }); diasAtendimento = j.data?.dias_atendimento || []; el.instrucao.textContent = "Os dias destacados estão disponíveis para agendamento, incluindo hoje enquanto houver horários futuros."; renderCalendario(); } catch(e) { toast("danger", e.message); } }
+    if (el.servico.value) { try { const j = await api("agenda/horarios-disponiveis", { id_profissional: el.profissional.value, id_servico: el.servico.value, duracao: el.duracao.value, data: hoje(), id_agendamento: el.id.value }); diasAtendimento = j.data?.dias_atendimento || []; el.instrucao.textContent = "Os dias destacados estão disponíveis para agendamento, incluindo hoje enquanto houver horários futuros."; renderCalendario(); } catch(e) { toast("danger", e.message); } }
+  });
+  el.duracao.addEventListener("change", async () => {
+    el.data.value = ""; limparHorario();
+    if (!el.servico.value || !el.duracao.value) return;
+    try {
+      const j = await api("agenda/horarios-disponiveis", { id_profissional: el.profissional.value, id_servico: el.servico.value, duracao: el.duracao.value, data: hoje(), id_agendamento: el.id.value });
+      diasAtendimento = j.data?.dias_atendimento || []; renderCalendario();
+    } catch (e) { toast("danger", e.message); }
   });
   el.dias.addEventListener("click", (ev) => { const b = ev.target.closest("button.disponivel"); if (!b) return; el.data.value = b.dataset.data; el.dataTexto.textContent = new Date(`${b.dataset.data}T12:00:00`).toLocaleDateString("pt-BR", {weekday:"long",day:"2-digit",month:"long"}); renderCalendario(); carregarGrade(b.dataset.data); });
   el.horarios.addEventListener("click", (ev) => { const b = ev.target.closest(".ag-horario-opcao"); if (!b) return; el.hora.value = b.dataset.hora; el.horarios.querySelectorAll("button").forEach(x => x.classList.toggle("selecionado", x === b)); });
@@ -164,14 +172,16 @@
 
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    if (!el.id.value || !el.cliente.value || !el.profissional.value || !el.servico.value || !el.data.value || !el.hora.value) { toast("danger", "Preencha cliente, profissional, serviço, data e horário."); return; }
+    if (!el.id.value || !el.cliente.value || !el.profissional.value || !el.servico.value || !el.duracao.value || !el.data.value || !el.hora.value) { toast("danger", "Preencha cliente, profissional, serviço, duração, data e horário."); return; }
     const body = new FormData(form); body.set("repetir_semanalmente", el.repetir.checked ? "1" : "0");
     el.salvar.disabled = true; const original = el.salvar.textContent; el.salvar.textContent = "Salvando...";
     try {
       const j = await api("agenda/agendamento/editar", {}, { method:"POST", body });
       toast("success", j.user_msg || "Agendamento atualizado com sucesso.");
+      const avisosPlano = Array.isArray(j.data?.avisos_plano) ? j.data.avisos_plano : [];
+      avisosPlano.forEach((aviso) => toast("warning", aviso?.mensagem || "O consumo mensal do plano está próximo do limite."));
       document.dispatchEvent(new CustomEvent("agenda:agendamento:atualizado", { detail:j.data }));
-      setTimeout(() => { window.fecharModal?.("modalEditarAgendamento"); window.location.reload(); }, 1200);
+      setTimeout(() => { window.fecharModal?.("modalEditarAgendamento"); window.location.reload(); }, avisosPlano.length ? 5200 : 1200);
     } catch(e) { toast("danger", e.message); } finally { el.salvar.disabled = false; el.salvar.textContent = original; }
   });
 })();

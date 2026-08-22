@@ -77,6 +77,10 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0 && $idEmpresa > 0) {
   $auth = $_SESSION['auth'];
 }
 
+if (!isset($conexao) || !($conexao instanceof mysqli)) require __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_regras/permissoes_usuario.php';
+$permissoesEfetivas = obterPermissoesEfetivas($conexao);
+
 out([
   'ok' => true,
   'code' => 'AUTHENTICATED',
@@ -96,6 +100,7 @@ out([
       'modo_suporte'  => (bool)($auth['modo_suporte'] ?? false),
       'status'        => (string)($auth['status'] ?? ''),
       'login_em'      => (string)($auth['login_em'] ?? ''),
+      'permissoes'    => $permissoesEfetivas,
     ]
   ]
 ]);

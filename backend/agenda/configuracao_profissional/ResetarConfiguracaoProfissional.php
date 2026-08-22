@@ -96,17 +96,19 @@ try {
     if ($tipoUsuario === 'super_admin') {
         if (!$modoSuporte) out(['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar estas configurações.'], 403);
     } else {
-        $stmt = $conexao->prepare("SELECT pf.nome, p.id_profissional FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil INNER JOIN empresa e ON e.id_empresa=eu.id_empresa LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' AND e.status='ativo' LIMIT 1");
-        $stmt->bind_param('ii', $idEmpresa, $idUsuarioSessao); $stmt->execute(); $stmt->bind_result($perfilSessao, $idProfissionalProprio); $vinculoOk=$stmt->fetch(); $stmt->close();
-        $perfilNormalizado = $normalizar($perfilSessao ?? '');
-        $restringirAoProfissionalProprio = in_array($perfilNormalizado, ['profissional','profissionais'], true);
-        if (!$vinculoOk || !in_array($perfilNormalizado, ['proprietário','proprietario','profissional','profissionais'], true)) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para administrar estas configurações.'],403);
+        $stmt = $conexao->prepare("SELECT p.id_profissional FROM empresa_usuario eu LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' LIMIT 1");
+        $stmt->bind_param('ii', $idEmpresa, $idUsuarioSessao); $stmt->execute(); $stmt->bind_result($idProfissionalProprio); $vinculoOk=$stmt->fetch(); $stmt->close();
+        if (!$vinculoOk) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Seu vínculo com a empresa não está ativo.'],403);
     }
 
     $entrada = json_decode((string)file_get_contents('php://input'), true);
     $idProfissional = (int)($entrada['id_profissional'] ?? $_POST['id_profissional'] ?? 0);
     if ($idProfissional <= 0) out(['ok'=>false,'code'=>'PROFESSIONAL_REQUIRED','user_msg'=>'Selecione um profissional para continuar.'],422);
-    if ($restringirAoProfissionalProprio && ((int)$idProfissionalProprio <= 0 || (int)$idProfissionalProprio !== $idProfissional)) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode restaurar as configurações da própria agenda.'],403);
+    require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
+    $permissaoEdicao = (int)$idProfissionalProprio > 0 && (int)$idProfissionalProprio === $idProfissional
+        ? 'agenda_configuracao.editar_propria'
+        : 'agenda_configuracao.editar_todos_profissionais';
+    exigirPermissao($conexao, $permissaoEdicao);
 
     // Confirma novamente que o alvo ativo pertence à empresa da sessão.
     $stmt = $conexao->prepare("SELECT p.id_profissional FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");

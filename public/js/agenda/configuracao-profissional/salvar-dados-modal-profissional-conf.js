@@ -344,6 +344,11 @@
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    if (form.dataset.somenteLeitura === "1") {
+      window.MensagemSistema?.aviso("Você possui acesso somente para visualizar estas configurações.");
+      return;
+    }
+
     const aba = getAbaAtiva();
 
     if (!validarLocal(aba)) return;

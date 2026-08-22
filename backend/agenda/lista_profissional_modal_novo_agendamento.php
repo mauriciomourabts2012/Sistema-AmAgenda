@@ -198,23 +198,15 @@ if ($contextoAdministrativo) {
             responder_json(403, ['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar as configurações de um profissional.']);
         }
     } else {
-        $stmtAutorizacao = $conexao->prepare("
-            SELECT pf.nome
-            FROM empresa_usuario eu
-            INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
-            INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
-            WHERE eu.id_empresa = ? AND eu.id_usuario = ?
-              AND eu.status = 'ativo' AND pf.status = 'ativo' AND e.status = 'ativo'
-            LIMIT 1
-        ");
-        $stmtAutorizacao->bind_param('ii', $idEmpresa, $idUsuarioSessao);
-        $stmtAutorizacao->execute();
-        $stmtAutorizacao->bind_result($perfilAdministrativo);
-        $autorizado = $stmtAutorizacao->fetch();
-        $stmtAutorizacao->close();
-        if (!$autorizado || !in_array(normalizar_texto((string)$perfilAdministrativo), ['proprietário', 'proprietario'], true)) {
-            responder_json(403, ['ok' => false, 'code' => 'ACCESS_DENIED', 'user_msg' => 'Somente o Proprietário pode administrar as configurações de outros profissionais.']);
+        require_once __DIR__ . '/../_regras/permissoes_usuario.php';
+        if (!usuarioTemPermissao($conexao, 'agenda_configuracao.visualizar')) {
+            responder_json(403, ['ok' => false, 'code' => 'PERMISSION_DENIED', 'user_msg' => 'Você não possui permissão para visualizar as configurações da agenda.']);
         }
+    }
+} else {
+    require_once __DIR__ . '/../_regras/permissoes_usuario.php';
+    if (!usuarioTemPermissao($conexao, 'agenda.visualizar')) {
+        responder_json(403, ['ok' => false, 'code' => 'PERMISSION_DENIED', 'user_msg' => 'Você não possui permissão para visualizar os profissionais da agenda.']);
     }
 }
 

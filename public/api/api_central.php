@@ -243,6 +243,16 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/usuario/alterar_status_usuario.php',
     ],
 
+    'painel/usuario/permissoes' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/usuario/buscar_permissoes_usuario.php',
+    ],
+    'painel/usuario/permissoes/salvar' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/usuario/salvar_permissoes_usuario.php',
+    ],
+    'painel/usuario/permissoes/restaurar' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/usuario/restaurar_permissoes_usuario.php',
+    ],
+
     //BUSCAR CONFIGURAÇÕES GERAL DA EMPRESA MODAL CONFIGURAÇÃO DA EMPRESA PADRÃO 
     'painel/configuracao-geral-buscar' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/configuracao_empresa/buscar_dados_modal_empresa_conf.php',
@@ -385,6 +395,42 @@ if (!is_file($handler)) {
         'code' => 'HANDLER_NOT_FOUND',
         'user_msg' => 'Handler não encontrado.'
     ], 500);
+}
+
+/* Autorização central das áreas administrativas e da agenda. O backend
+   continua sendo a fonte de verdade, independentemente do menu exibido. */
+$permissoesPorRota = [
+    'painel/configuracao-geral-buscar' => 'empresa.visualizar_configuracoes',
+    'painel/configuracao-geral-salvar' => 'empresa.editar_configuracoes',
+    'empresa/identidade-visual' => 'empresa.visualizar_configuracoes',
+    'empresa/identidade-visual/salvar' => 'empresa.editar_identidade_visual',
+    'empresa/identidade-visual/restaurar' => 'empresa.editar_identidade_visual',
+    'painel/cliente/listar' => 'clientes.visualizar',
+    'painel/cliente/cadastrar' => 'clientes.cadastrar',
+    'painel/cliente/editar' => 'clientes.editar',
+    'painel/cliente/alterar-status' => 'clientes.alterar_status',
+    'painel/usuario/listar' => 'usuarios.visualizar',
+    'painel/usuario/cadastrar' => 'usuarios.cadastrar',
+    'painel/usuario/editar' => 'usuarios.editar',
+    'painel/usuario/alterar-status' => 'usuarios.alterar_status',
+    'agenda/servico-profissional/listar' => 'servicos.visualizar',
+    'agenda/servico-profissional/cadastrar' => 'servicos.cadastrar',
+    'agenda/servico-profissional/cadastrar-agendamento' => 'servicos.cadastrar',
+    'agenda/servico-profissional/excluir' => 'servicos.excluir',
+    'agenda/agendamento/listar' => 'agenda.visualizar',
+    'agenda/agendamento/pesquisar' => 'agenda.visualizar',
+    'agenda/agendamento/detalhar' => 'agenda.visualizar',
+    'agenda/agendamento/cadastrar' => 'agenda.criar_agendamento',
+    'agenda/agendamento/editar' => 'agenda.editar_agendamento',
+    'agenda/agendamento/excluir' => 'agenda.excluir_agendamento',
+    'agenda/horarios-disponiveis' => 'agenda.visualizar',
+    'agenda/configuracao-geral-buscar' => 'agenda_configuracao.visualizar',
+];
+
+if (isset($permissoesPorRota[$rota])) {
+    require_once __DIR__ . '/../../backend/_config/conexao.php';
+    require_once __DIR__ . '/../../backend/_regras/permissoes_usuario.php';
+    exigirPermissao($conexao, $permissoesPorRota[$rota]);
 }
 
 /*

@@ -16,17 +16,17 @@
 
   const MENUS = {
     agenda: [
-      { tipo: "link", texto: "Painel Admin", icone: "fa-solid fa-user-gear", href: "/public/views/painel-administrativo/painel-administrativo.html", titulo: "Painel do Administrador" },
+      { tipo: "link", texto: "Painel Admin", icone: "fa-solid fa-user-gear", href: "/public/views/painel-administrativo/painel-administrativo.html", titulo: "Painel do Administrador", permissao: "painel.acessar" },
       { tipo: "button", texto: "Novo Cliente", icone: "fa-solid fa-user-plus", modal: "modalNovoCliente", titulo: "Cadastrar novo cliente" },
       { tipo: "button", texto: "Novo Agendamento", icone: "fa-solid fa-plus", modal: "modalNovoAgendamento", titulo: "Adicionar um agendamento" },
       { tipo: "button", texto: "Configurações Agenda", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", titulo: "Configurações da agenda" }
     ],
     "painel-administrativo": [
-      { tipo: "aba", aba: "resumo", texto: "Resumo do dia", icone: "fa-solid fa-chart-line" },
+      { tipo: "aba", aba: "resumo", texto: "Resumo do dia", icone: "fa-solid fa-chart-line", permissao: "painel.visualizar_resumo" },
       { tipo: "link", texto: "Agenda", icone: "fa-solid fa-calendar-days", href: "/public/views/agenda.html", titulo: "Abrir Agenda" },
-      { tipo: "aba", aba: "clientes", texto: "Clientes", icone: "fa-solid fa-users" },
-      { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-user-gear" },
-      { tipo: "button", texto: "Configurações da Empresa", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda" }
+      { tipo: "aba", aba: "clientes", texto: "Clientes", icone: "fa-solid fa-users", permissao: "clientes.visualizar" },
+      { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-user-gear", permissao: "usuarios.visualizar" },
+      { tipo: "button", texto: "Configurações da Empresa", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", permissao: "empresa.visualizar_configuracoes" }
     ],
     "super-admin": [
       { tipo: "aba", aba: "empresas", texto: "Empresas", icone: "fa-solid fa-building" },
@@ -86,15 +86,26 @@
       const superAdminSuporte = String(auth.tipo_usuario || "").toLowerCase() === "super_admin"
         && auth.modo_suporte === true
         && Number(auth.empresa_id || auth.id_empresa || 0) > 0;
-      const podeAcessarPainelAdmin = perfil === "proprietario" || superAdminSuporte;
-      const podeConfigurarAgenda = perfil === "proprietario" || perfil === "profissional" || superAdminSuporte;
+      const temMapa = auth.permissoes && typeof auth.permissoes === "object";
+      const podeAcessarPainelAdmin = superAdminSuporte || (temMapa ? window.usuarioPode?.("painel.acessar") : perfil === "proprietario");
+      const podeConfigurarAgenda = superAdminSuporte || (temMapa ? window.usuarioPode?.("agenda_configuracao.visualizar") : perfil === "proprietario" || perfil === "profissional");
       itens = itens.filter(item => {
         if (item.texto === "Painel Admin") return podeAcessarPainelAdmin;
         if (item.modal === "modalConfiguracoesAgenda") return podeConfigurarAgenda;
         return true;
       });
     }
-    if (navegacao && itens.length) navegacao.innerHTML = itens.map(htmlItem).join("");
+    if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
+      itens = itens.filter(item => !item.permissao || window.usuarioPode?.(item.permissao));
+    }
+    if (navegacao) navegacao.innerHTML = itens.map(htmlItem).join("");
+    if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
+      const abaAtiva = document.querySelector(".conteudo-aba.ativa")?.id;
+      const abasPermitidas = itens.filter(item => item.aba).map(item => item.aba);
+      if (!abasPermitidas.includes(abaAtiva) && abasPermitidas[0]) {
+        ativarAbaContexto(contexto, abasPermitidas[0], false);
+      }
+    }
   }
 
   function ativarAbaContexto(contexto, idAba, salvar = true) {

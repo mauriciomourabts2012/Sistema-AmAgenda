@@ -20,15 +20,18 @@
   const contextoProfissional = {
     id: 0,
     nome: "",
+    proprio: false,
     getId() { return this.id; },
     getNome() { return this.nome; },
-    definir(id, nome) {
+    definir(id, nome, proprio = false) {
       this.id = Number(id) || 0;
       this.nome = String(nome || "").trim();
+      this.proprio = proprio === true;
     },
     limpar() {
       this.id = 0;
       this.nome = "";
+      this.proprio = false;
     }
   };
   window.ConfigAgendaProfissional = contextoProfissional;
@@ -142,6 +145,7 @@
   }
 
   function alertWarn(mensagem) {
+    if (window.MensagemSistema) return window.MensagemSistema.aviso(mensagem);
     return alertaBase("warning", mensagem, {
       autoClose: false,
       textoBotao: "OK"
@@ -149,6 +153,7 @@
   }
 
   function alertErr(mensagem) {
+    if (window.MensagemSistema) return window.MensagemSistema.erro(mensagem);
     return alertaBase("danger", mensagem, {
       autoClose: false,
       textoBotao: "OK"
@@ -277,7 +282,7 @@
       const idProfissional = Number(json.profissional_logado?.id_profissional || profissional?.id_profissional || 0);
       if (!idProfissional) throw new Error("Seu usuário não possui um cadastro profissional ativo nesta empresa.");
 
-      contextoProfissional.definir(idProfissional, profissional?.nome || "");
+      contextoProfissional.definir(idProfissional, profissional?.nome || "", true);
       await carregarConfiguracao(idProfissional);
     } catch (err) {
       alertWarn(err.message || "Não foi possível abrir as configurações da sua agenda.");
@@ -442,11 +447,20 @@
 
       aplicarDadosNoFormulario(json.data || {});
       const nomeValidado = String(json.data?.profissional_nome || contextoProfissional.getNome()).trim();
-      contextoProfissional.definir(json.data?.id_profissional || idProfissional, nomeValidado);
+      contextoProfissional.definir(json.data?.id_profissional || idProfissional, nomeValidado, contextoProfissional.proprio);
+      const podeEditar = contextoProfissional.proprio
+        ? window.usuarioPode?.("agenda_configuracao.editar_propria") === true
+        : window.usuarioPode?.("agenda_configuracao.editar_todos_profissionais") === true;
+      const form = getForm();
+      if (form) {
+        form.dataset.somenteLeitura = podeEditar ? "0" : "1";
+        form.querySelectorAll("input, select, textarea").forEach((campo) => { campo.disabled = !podeEditar; });
+        form.querySelectorAll('button[type="submit"], #btnResetarConfigAgenda').forEach((botao) => { botao.hidden = !podeEditar; botao.disabled = !podeEditar; });
+      }
       const tituloNome = $("cfg_profissional_nome_titulo");
       if (tituloNome) tituloNome.textContent = nomeValidado ? `— ${nomeValidado}` : "";
       document.dispatchEvent(new CustomEvent("agenda:profissional-config-selecionado", {
-        detail: { id_profissional: contextoProfissional.getId(), nome: nomeValidado }
+        detail: { id_profissional: contextoProfissional.getId(), nome: nomeValidado, somente_leitura: !podeEditar }
       }));
       abrirModal();
 
@@ -511,7 +525,8 @@
         ev.stopImmediatePropagation();
 
         fecharModal();
-        if (usuarioLogadoEhProfissional()) {
+        const podeEditarTodos = window.usuarioPode?.("agenda_configuracao.editar_todos_profissionais") === true;
+        if (usuarioLogadoEhProfissional() && !podeEditarTodos) {
           setTimeout(abrirConfiguracaoDoProfissionalLogado, 50);
           return;
         }
@@ -552,7 +567,7 @@
         if (msg) { msg.textContent = "Selecione um profissional para continuar."; msg.classList.add("ativo"); }
         return;
       }
-      contextoProfissional.definir(id, select.options[select.selectedIndex]?.textContent || "");
+      contextoProfissional.definir(id, select.options[select.selectedIndex]?.textContent || "", false);
       continuar.disabled = true;
       continuar.textContent = "Carregando...";
       fecharModalSelecao();

@@ -13,10 +13,12 @@
     <link rel="stylesheet" href="../css/filtro-paginacao-web.css"/>
     <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
-    <link rel="stylesheet" href="../css/mensagem-erro-universal.css">
+    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=20260821_2">
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
     <script src="/public/_auth/sessao.js?v=20260818_1"></script>
+    <script src="/public/_auth/permissoes.js?v=20260821_1"></script>
+    <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
 
   </head>
 
@@ -872,16 +874,20 @@
 
                 <!-- Duração -->
                 <div class="modal-campo">
-                  <select id="ag_duracao" name="duracao" disabled>
+                  <select id="ag_duracao" name="duracao" required>
                     <option value="">Duração</option>
+                    <option value="15">15 min</option>
                     <option value="30">30 min</option>
                     <option value="45">45 min</option>
                     <option value="60">1h</option>
+                    <option value="75">1h15</option>
                     <option value="90">1h30</option>
+                    <option value="105">1h45</option>
                     <option value="120">2h</option>
                     <option value="150">2h30</option>
                     <option value="180">3h</option>
                     <option value="210">3h30</option>
+                    <option value="240">4h</option>
                   </select>
                   <label for="ag_duracao">Duração</label>
                   <small class="msg-erro" data-erro-for="ag_duracao"></small>
@@ -1040,13 +1046,20 @@
 
                 <!-- Duração -->
                 <div class="modal-campo">
-                  <select id="ed_ag_duracao" name="duracao" disabled>
+                  <select id="ed_ag_duracao" name="duracao" required>
                     <option value="">Duração</option>
+                    <option value="15">15 min</option>
                     <option value="30">30 min</option>
                     <option value="45">45 min</option>
                     <option value="60">1h</option>
+                    <option value="75">1h15</option>
                     <option value="90">1h30</option>
+                    <option value="105">1h45</option>
                     <option value="120">2h</option>
+                    <option value="150">2h30</option>
+                    <option value="180">3h</option>
+                    <option value="210">3h30</option>
+                    <option value="240">4h</option>
                   </select>
                   <label for="ed_ag_duracao">Duração</label>
                   <small class="msg-erro" data-erro-for="ed_ag_duracao"></small>
@@ -1316,8 +1329,8 @@
     <script src="../../js/perfil-usuario/alterar_senha_perfil.js" ></script> <!--Alterar senha perfil-->
 
     <!--Modal Configuração Geral-->
-    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=20260821_2" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=20260821_2" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
     <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js" ></script> <!--Script para resetar as configurações padrão da empresa-->
     <script src="../js/agenda/servico-profissional/cadastrar-servico.js" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
     <script src="../js/agenda/servico-profissional/lista-servico.js" ></script> <!--Lista Serviço do Modal Configurações-->
@@ -1327,13 +1340,13 @@
     <!--Modal Novo Agendamento-->
     <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js" ></script> <!--Lista de clientes no modal novo agendamento-->
     <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js" ></script> <!--Busca de clientes no modal editar agendamento-->
-    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js" ></script>
-    <script src="../js/agenda/cadastrar-agendamento.js?v=20260818_1"></script> <!--Valida e salva o Novo Agendamento-->
-    <script src="../js/agenda/editar-agendamento.js" ></script> <!--Carrega e atualiza o agendamento-->
+    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js?v=20260821_1" ></script>
+    <script src="../js/agenda/cadastrar-agendamento.js?v=20260821_1"></script> <!--Valida e salva o Novo Agendamento-->
+    <script src="../js/agenda/editar-agendamento.js?v=20260821_1" ></script> <!--Carrega e atualiza o agendamento-->
 
     <!--Modal Novo CLiente-->
     <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js" ></script> <!--Cadastrar Clientes-->
-    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
+    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=20260821_1" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
 
 
     <!--Universal-->

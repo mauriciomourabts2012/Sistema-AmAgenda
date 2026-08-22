@@ -61,11 +61,13 @@ try {
 
     $idProfissional = filter_input(INPUT_GET, 'id_profissional', FILTER_VALIDATE_INT) ?: 0;
     $idServico = filter_input(INPUT_GET, 'id_servico', FILTER_VALIDATE_INT) ?: 0;
+    $duracaoSolicitada = filter_input(INPUT_GET, 'duracao', FILTER_VALIDATE_INT) ?: 0;
     $idAgendamentoIgnorar = filter_input(INPUT_GET, 'id_agendamento', FILTER_VALIDATE_INT) ?: 0;
     $dataTexto = trim((string)($_GET['data'] ?? ''));
     $data = DateTimeImmutable::createFromFormat('!Y-m-d', $dataTexto);
 
-    if ($idProfissional <= 0 || $idServico <= 0 || !$data || $data->format('Y-m-d') !== $dataTexto) {
+    $duracoesPermitidas = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
+    if ($idProfissional <= 0 || $idServico <= 0 || !in_array($duracaoSolicitada, $duracoesPermitidas, true) || !$data || $data->format('Y-m-d') !== $dataTexto) {
         out(['ok' => false, 'code' => 'INVALID_PARAMETERS', 'user_msg' => 'Informe profissional, serviço e uma data válida.'], 422);
     }
     $hoje = new DateTimeImmutable('today');
@@ -112,11 +114,12 @@ try {
     $stmt->bind_result($duracaoMinDb);
     $servicoEncontrado = $stmt->fetch();
     $stmt->close();
-    $duracaoMin = (int)$duracaoMinDb;
+    $duracaoPadraoMin = (int)$duracaoMinDb;
 
-    if (!$servicoEncontrado || $duracaoMin <= 0) {
+    if (!$servicoEncontrado || $duracaoPadraoMin <= 0) {
         out(['ok' => false, 'code' => 'SERVICE_NOT_FOUND', 'user_msg' => 'Serviço não encontrado para o profissional selecionado.'], 404);
     }
+    $duracaoMin = $duracaoSolicitada;
 
     // Na edição, o horário da própria ocorrência precisa continuar visível,
     // inclusive se já tiver começado. Isso permite atualizar cliente/status

@@ -503,6 +503,9 @@
     if (permissoesUsuarioPerfil) permissoesUsuarioPerfil.textContent = usuarioPermissaoSelecionado.perfil;
     if (permissoesUsuarioAvatar) permissoesUsuarioAvatar.innerHTML = avatarImgHtml(usuario, usuarioPermissaoSelecionado.nome);
     abrirModalLocal(modalPermissoes);
+    document.dispatchEvent(new CustomEvent("amagenda:permissoes-usuario:abrir", {
+      detail: { ...usuarioPermissaoSelecionado }
+    }));
   }
 
   function toggleCampoEspecialidadeVisualizar(usuario) {
@@ -1117,16 +1120,6 @@
           else fecharModalLocal(modalPai);
           return;
         }
-      }
-
-      if (btnSalvarPermissoes && (ev.target === btnSalvarPermissoes || ev.target.closest("#btnSalvarPermissoesUsuario"))) {
-        ev.preventDefault();
-        if (!usuarioPermissaoSelecionado) {
-          toastMsg("warning", "Selecione um usuário antes de configurar permissões.", "Atenção");
-          return;
-        }
-        toastMsg("warning", "A interface está preparada. A persistência das permissões será implementada na próxima etapa.", "Informação");
-        return;
       }
 
       if (vcBtnWhats && (ev.target === vcBtnWhats || ev.target.closest("#vc_usr_btn_whats"))) {

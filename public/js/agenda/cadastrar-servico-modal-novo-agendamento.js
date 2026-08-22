@@ -24,6 +24,24 @@
     return String(v ?? "").trim();
   }
 
+  function perfilRecepcionista() {
+    const auth = window.__AUTH__ || window.AUTH_USER || window.usuarioLogado || {};
+    const perfil = normalizar(auth.perfil_nome ?? auth.perfil ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    return perfil === "recepcionista" || perfil === "recepcao";
+  }
+
+  function bloquearModalParaRecepcionista() {
+    if (!modal || !perfilRecepcionista()) return;
+    const aberto = modal.classList.contains("ativo") || modal.getAttribute("aria-hidden") === "false";
+    if (!aberto) return;
+    modal.classList.remove("ativo", "aberto", "show");
+    modal.setAttribute("aria-hidden", "true");
+    mostrarMensagem("warning", "Acesso negado. O perfil Recepcionista não pode cadastrar novos serviços.");
+  }
+
   function escapeHtml(v) {
     return String(v ?? "")
       .replace(/&/g, "&amp;")
@@ -305,6 +323,11 @@
   }
 
   function validar() {
+    if (perfilRecepcionista()) {
+      mostrarMensagem("warning", "Acesso negado. O perfil Recepcionista não pode cadastrar novos serviços.");
+      return false;
+    }
+
     limparErros();
 
     const idProfissional = normalizar(campos.idProfissional?.value);
@@ -426,6 +449,8 @@
   }
 
   form.addEventListener("submit", enviar);
+  document.addEventListener("amagenda:sessao-carregada", bloquearModalParaRecepcionista);
+  if (modal) new MutationObserver(bloquearModalParaRecepcionista).observe(modal, { attributes: true, attributeFilter: ["class", "aria-hidden"] });
 
   [
     campos.idProfissional,

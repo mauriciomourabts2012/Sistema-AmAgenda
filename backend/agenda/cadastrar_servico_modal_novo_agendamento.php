@@ -204,11 +204,13 @@ try {
             e.id_empresa,
             e.nome,
             e.status,
-            eu.status AS vinculo_status
+            eu.status AS vinculo_status,
+            pf.nome AS perfil_solicitante
         FROM empresa e
         LEFT JOIN empresa_usuario eu
                ON eu.id_empresa = e.id_empresa
               AND eu.id_usuario = ?
+        LEFT JOIN perfil pf ON pf.id_perfil = eu.id_perfil
         WHERE e.id_empresa = ?
         LIMIT 1
     ");
@@ -223,7 +225,7 @@ try {
         throw new RuntimeException('Erro ao executar validação da empresa: ' . $stmt->error);
     }
 
-    $stmt->bind_result($empresaIdDb, $empresaNomeDb, $empresaStatusDb, $vinculoStatusDb);
+    $stmt->bind_result($empresaIdDb, $empresaNomeDb, $empresaStatusDb, $vinculoStatusDb, $perfilSolicitanteDb);
     $empresaEncontrada = $stmt->fetch();
     $stmt->close();
 
@@ -248,6 +250,15 @@ try {
             'ok' => false,
             'code' => 'USER_COMPANY_LINK_INACTIVE',
             'user_msg' => 'Seu vínculo com esta empresa está inativo.'
+        ], 403);
+    }
+
+    $perfilSolicitante = lower($perfilSolicitanteDb ?? '');
+    if (!$superAdminSuporte && in_array($perfilSolicitante, ['recepção', 'recepcao', 'recepcionista'], true)) {
+        out([
+            'ok' => false,
+            'code' => 'SERVICE_CREATE_ACCESS_DENIED',
+            'user_msg' => 'Acesso negado. O perfil Recepcionista não pode cadastrar novos serviços.'
         ], 403);
     }
 

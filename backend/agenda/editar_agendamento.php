@@ -29,6 +29,7 @@ try {
     $idCliente=filter_input(INPUT_POST,'id_cliente',FILTER_VALIDATE_INT) ?: 0;
     $idProfissional=filter_input(INPUT_POST,'id_profissional',FILTER_VALIDATE_INT) ?: 0;
     $idServico=filter_input(INPUT_POST,'id_servico',FILTER_VALIDATE_INT) ?: 0;
+    $duracaoSolicitada=filter_input(INPUT_POST,'duracao',FILTER_VALIDATE_INT) ?: 0;
     $dataTexto=trim((string)($_POST['data_agendamento'] ?? '')); $data=ed_data($dataTexto);
     $horaTexto=trim((string)($_POST['hora_inicio'] ?? '')); $status=strtolower(trim((string)($_POST['status'] ?? 'pendente')));
     $obs=trim((string)($_POST['observacao'] ?? '')); $repetir=(int)($_POST['repetir_semanalmente'] ?? 0)===1;
@@ -38,13 +39,17 @@ try {
     if ($idCliente<=0) $erros['id_cliente']='Selecione o cliente.';
     if ($idProfissional<=0) $erros['id_profissional']='Selecione o profissional.';
     if ($idServico<=0) $erros['id_servico']='Selecione o serviço.';
+    $duracoesPermitidas=[15,30,45,60,75,90,105,120,150,180,210,240];
+    if (!in_array($duracaoSolicitada,$duracoesPermitidas,true)) $erros['duracao']='Selecione uma duração válida.';
     if (!$data || $data < new DateTimeImmutable('today')) $erros['data_agendamento']='Não é permitido agendar em uma data passada.';
     if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/',$horaTexto)) $erros['hora_inicio']='Selecione um horário válido.';
     if (!in_array($status,['pendente','confirmado','concluido','cancelado','faltou'],true)) $erros['status']='Status inválido.';
     if (mb_strlen($obs)>220) $erros['observacao']='A observação deve ter no máximo 220 caracteres.';
     if ($erros) out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Revise os dados do agendamento.','fields'=>$erros],422);
 
-    require __DIR__ . '/../_config/conexao.php'; $conexao->set_charset('utf8mb4');
+    require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_regras/limites_plano.php';
+    $conexao->set_charset('utf8mb4');
     $stmt=$conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND e.status='ativo' LIMIT 1");
     $stmt->bind_param('ii',$idEmpresa,$idUsuario); $stmt->execute(); $stmt->bind_result($perfil,$profSessao); $vinculo=$stmt->fetch(); $stmt->close();
     if (!$vinculo) out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Acesso à empresa não autorizado.'],403);
@@ -69,7 +74,8 @@ try {
 
     $stmt=$conexao->prepare("SELECT s.duracao_min,s.valor FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
     $stmt->bind_param('iii',$idServico,$idProfissional,$idEmpresa); $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb); $servico=$stmt->fetch(); $stmt->close();
-    $duracao=(int)$duracaoDb; if (!$servico || $duracao<=0) out(['ok'=>false,'code'=>'SERVICE_NOT_FOUND','user_msg'=>'Serviço não encontrado para o profissional selecionado.'],404);
+    if (!$servico || (int)$duracaoDb<=0) out(['ok'=>false,'code'=>'SERVICE_NOT_FOUND','user_msg'=>'Serviço não encontrado para o profissional selecionado.'],404);
+    $duracao=$duracaoSolicitada;
     $inicio=DateTimeImmutable::createFromFormat('!H:i',$horaTexto); $fim=$inicio?->modify('+'.$duracao.' minutes');
     if (!$inicio || !$fim || $fim->format('Y-m-d')!=='1970-01-01') out(['ok'=>false,'code'=>'INVALID_END_TIME','user_msg'=>'A duração do serviço ultrapassa o fim do dia.'],422);
     $horaInicio=$inicio->format('H:i:s'); $horaFim=$fim->format('H:i:s'); $valor=(float)$valorDb;
@@ -98,6 +104,14 @@ try {
     }
 
     $conexao->begin_transaction();
+    $avisosPlano=[];
+    if (substr((string)$dataOriginalTexto,0,7)!==$data->format('Y-m')) {
+        $resultadoPlano=limitesPlanoBloquearEmpresa($conexao,$idEmpresa);
+        limitesPlanoAbortarSeNegado($conexao,$resultadoPlano);
+        $resultadoAgendamentos=limitesPlanoVerificarAgendamentosPorMes($conexao,$resultadoPlano['plano'],$idEmpresa,[$dataTexto]);
+        limitesPlanoAbortarSeNegado($conexao,$resultadoAgendamentos);
+        $avisosPlano=$resultadoAgendamentos['avisos'] ?? [];
+    }
     if ($statusBloqueiaHorario) {
         $stmt=$conexao->prepare("SELECT id_agendamento FROM agendamento WHERE id_empresa=? AND id_profissional=? AND data_agendamento=? AND id_agendamento<>? AND status IN ('pendente','confirmado') AND hora_inicio<? AND hora_fim>? LIMIT 1 FOR UPDATE");
         $stmt->bind_param('iisiss',$idEmpresa,$idProfissional,$dataTexto,$id,$horaFim,$horaInicio); $stmt->execute(); $stmt->store_result();
@@ -108,5 +122,5 @@ try {
     $stmt=$conexao->prepare("UPDATE agendamento SET id_cliente=?,id_profissional=?,id_servico=?,data_agendamento=?,hora_inicio=?,hora_fim=?,duracao_min_aplicada=?,valor_aplicado=?,status=?,observacao=?,repetir_semanalmente=?,recorrencia_data_fim=?,grupo_recorrencia=? WHERE id_agendamento=? AND id_empresa=? LIMIT 1");
     $stmt->bind_param('iiisssidssissii',$idCliente,$idProfissional,$idServico,$dataTexto,$horaInicio,$horaFim,$duracao,$valor,$status,$obsDb,$rep,$fimRecDb,$grupo,$id,$idEmpresa);
     $stmt->execute(); $stmt->close(); $conexao->commit();
-    out(['ok'=>true,'code'=>'APPOINTMENT_UPDATED','user_msg'=>$ocorrenciaRecorrente?'Ocorrência reagendada sem alterar as demais semanas.':'Agendamento atualizado com sucesso.','data'=>['id_agendamento'=>$id,'ocorrencia_recorrente'=>$ocorrenciaRecorrente]],200);
+    out(['ok'=>true,'code'=>'APPOINTMENT_UPDATED','user_msg'=>$ocorrenciaRecorrente?'Ocorrência reagendada sem alterar as demais semanas.':'Agendamento atualizado com sucesso.','data'=>['id_agendamento'=>$id,'ocorrencia_recorrente'=>$ocorrenciaRecorrente,'avisos_plano'=>$avisosPlano]],200);
 } catch (Throwable $e) { if ($conexao instanceof mysqli) { try{$conexao->rollback();}catch(Throwable $x){} } error_log('[editar_agendamento] '.$e->getMessage()); out(['ok'=>false,'code'=>'INTERNAL_ERROR','user_msg'=>'Não foi possível atualizar o agendamento.'],500); }

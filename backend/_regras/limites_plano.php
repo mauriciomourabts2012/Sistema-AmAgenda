@@ -353,6 +353,7 @@ function limitesPlanoVerificarAgendamentosPorMes(
         throw new RuntimeException('Falha ao preparar contagem mensal de agendamentos.');
     }
 
+    $avisos = [];
     ksort($porMes);
     foreach ($porMes as $mes => $novas) {
         $inicio = $mes . '-01';
@@ -368,7 +369,8 @@ function limitesPlanoVerificarAgendamentosPorMes(
         $stmt->free_result();
         $consumo = (int)$consumo;
 
-        if (($consumo + $novas) > $limite) {
+        $consumoProjetado = $consumo + $novas;
+        if ($consumoProjetado > $limite) {
             $stmt->close();
             $planoNome = trim((string)($plano['plano_nome'] ?? ''));
             $planoNome = $planoNome !== '' ? $planoNome : 'atual';
@@ -377,12 +379,15 @@ function limitesPlanoVerificarAgendamentosPorMes(
             $quantidadeTexto = $novas === 1
                 ? 'o novo agendamento solicitado'
                 : "os {$novas} novos agendamentos solicitados";
+            $mensagemLimite = $consumo >= $limite
+                ? "Limite mensal atingido. Sua empresa utilizou os {$limite} agendamentos disponíveis no plano em {$mesReferencia}. Para continuar criando agendamentos, será necessário alterar o plano."
+                : "Não foi possível concluir porque {$quantidadeTexto} ultrapassaria o limite mensal do plano {$planoNome}. Em {$mesReferencia}, já existem {$consumo} agendamentos registrados, e o plano permite até {$limite} por mês. Para continuar agendando neste período, é necessário alterar o plano.";
 
             return [
                 'ok' => false,
                 'http_status' => 409,
                 'code' => 'PLAN_MONTHLY_APPOINTMENT_LIMIT_REACHED',
-                'user_msg' => "Não foi possível concluir porque {$quantidadeTexto} ultrapassaria o limite mensal do plano {$planoNome}. Em {$mesReferencia}, já existem {$consumo} agendamentos registrados, e o plano permite até {$limite} por mês. Para continuar agendando neste período, é necessário fazer upgrade do plano.",
+                'user_msg' => $mensagemLimite,
                 'data' => [
                     'recurso' => 'agendamentos',
                     'plano' => (string)($plano['plano_nome'] ?? ''),
@@ -393,10 +398,26 @@ function limitesPlanoVerificarAgendamentosPorMes(
                 ],
             ];
         }
+        // ceil evita antecipar o aviso quando 80% resulta em fração.
+        $inicioAviso = (int)ceil($limite * 0.80);
+        if ($limite > 0 && $consumoProjetado >= $inicioAviso && $consumoProjetado < $limite) {
+            [$ano, $numeroMes] = explode('-', $mes);
+            $restantes = max(0, $limite - $consumoProjetado);
+            $rotuloRestante = $restantes === 1 ? 'agendamento' : 'agendamentos';
+            $avisos[] = [
+                'mes' => $mes,
+                'mes_referencia' => $numeroMes . '/' . $ano,
+                'consumo' => $consumoProjetado,
+                'limite' => $limite,
+                'restantes' => $restantes,
+                'inicio_aviso' => $inicioAviso,
+                'mensagem' => "Atenção: sua empresa já utilizou {$consumoProjetado} dos {$limite} agendamentos mensais disponíveis no plano em {$numeroMes}/{$ano}. Restam {$restantes} {$rotuloRestante}.",
+            ];
+        }
     }
 
     $stmt->close();
-    return ['ok' => true];
+    return ['ok' => true, 'avisos' => $avisos];
 }
 
 /**

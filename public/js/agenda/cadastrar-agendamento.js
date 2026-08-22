@@ -16,6 +16,7 @@
     servico: document.getElementById("ag_servico"),
     data: document.getElementById("ag_data"),
     hora: document.getElementById("ag_hora"),
+    duracao: document.getElementById("ag_duracao"),
     status: document.getElementById("ag_status"),
     observacao: document.getElementById("ag_obs"),
     repetir: document.getElementById("ag_repetir_semanal"),
@@ -36,10 +37,11 @@
 
     const alerta = document.createElement("div");
     const sucesso = tipo === "success";
-    alerta.className = `ui-alert ${sucesso ? "ui-alert--success" : "ui-alert--danger"}`;
+    const aviso = tipo === "warning";
+    alerta.className = `ui-alert ${sucesso ? "ui-alert--success" : aviso ? "ui-alert--warning" : "ui-alert--danger"}`;
     alerta.setAttribute("role", "alert");
     alerta.innerHTML = `
-      <div class="ui-alert__icon" aria-hidden="true">${sucesso ? "✓" : "×"}</div>
+      <div class="ui-alert__icon" aria-hidden="true">${sucesso ? "✓" : aviso ? "!" : "×"}</div>
       <div class="ui-alert__content">
         <p class="ui-alert__title">${sucesso ? "Sucesso" : "Atenção"}</p>
         <div class="ui-alert__msg"></div>
@@ -107,6 +109,7 @@
     if (!texto(campos.servico?.value) || campos.servico.value === "__novo_servico__") return "Selecione um serviço.";
     if (!texto(campos.data?.value)) return "Selecione uma data disponível no calendário.";
     if (!texto(campos.hora?.value)) return "Selecione um horário disponível.";
+    if (!texto(campos.duracao?.value)) return "Selecione uma duração válida.";
     if (campos.repetir?.checked && !texto(campos.recorrenciaFim?.value)) return "Informe até quando o agendamento será repetido.";
     if (campos.repetir?.checked && campos.recorrenciaFim.value > campos.recorrenciaFim.max) return "A repetição semanal pode abranger no máximo um ano.";
     if (texto(campos.observacao?.value).length > 220) return "A observação deve ter no máximo 220 caracteres.";
@@ -133,6 +136,7 @@
     payload.append("id_servico", texto(campos.servico.value));
     payload.append("data_agendamento", texto(campos.data.value));
     payload.append("hora_inicio", texto(campos.hora.value));
+    payload.append("duracao", texto(campos.duracao.value));
     payload.append("status", texto(campos.status?.value || "confirmado"));
     payload.append("observacao", texto(campos.observacao?.value));
     payload.append("repetir_semanalmente", campos.repetir?.checked ? "1" : "0");
@@ -165,6 +169,9 @@
         ? `${quantidade} agendamentos semanais foram criados com sucesso.`
         : "Agendamento criado com sucesso.");
 
+      const avisosPlano = Array.isArray(json?.data?.avisos_plano) ? json.data.avisos_plano : [];
+      avisosPlano.forEach((aviso) => feedback("warning", aviso?.mensagem || "O consumo mensal do plano está próximo do limite."));
+
       document.dispatchEvent(new CustomEvent("agenda:agendamento:cadastrado", { detail: json.data || {} }));
       form.reset();
       atualizarRecorrencia();
@@ -172,7 +179,7 @@
         if (typeof window.fecharModal === "function") window.fecharModal("modalNovoAgendamento");
         else modal?.querySelector("[data-fechar-modal]")?.click();
         window.location.reload();
-      }, 1400);
+      }, avisosPlano.length ? 5200 : 1400);
     } catch (error) {
       console.error("[cadastrar-agendamento]", error);
       feedback("danger", "Falha de comunicação ao salvar o agendamento.");

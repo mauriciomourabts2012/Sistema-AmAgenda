@@ -142,17 +142,23 @@
   .a-card{ padding:12px; }
   .a-avatar{ width:44px; height:44px; border-radius:14px; flex-basis:44px; }
   .a-title{ white-space:normal; }
-  #usuarios .usuario-lista-card {
+  #usuarios .usuario-lista-card,
+  #clientes .cliente-lista-card {
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 0;
     padding: 14px;
     gap: 10px;
   }
-  #usuarios .usuario-card-dados { gap: 6px 10px; }
-  #usuarios .usuario-card-dados span { flex: 0 1 auto; }
-  #usuarios .usuario-card-identidade .agenda-nome { font-size: 14px; }
-  #usuarios .usuario-card-email { max-width: 220px; }
-  #usuarios .usuario-lista-card .agenda-acoes {
+  #usuarios .usuario-card-dados,
+  #clientes .cliente-card-dados { gap: 6px 10px; }
+  #usuarios .usuario-card-dados span,
+  #clientes .cliente-card-dados span { flex: 0 1 auto; }
+  #usuarios .usuario-card-identidade .agenda-nome,
+  #clientes .cliente-card-identidade .agenda-nome { font-size: 14px; }
+  #usuarios .usuario-card-email,
+  #clientes .cliente-card-email { max-width: 220px; }
+  #usuarios .usuario-lista-card .agenda-acoes,
+  #clientes .cliente-lista-card .agenda-acoes {
     flex-direction: column;
     gap: 7px;
   }

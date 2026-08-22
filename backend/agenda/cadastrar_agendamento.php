@@ -61,6 +61,7 @@ try {
     $idCliente = filter_input(INPUT_POST, 'id_cliente', FILTER_VALIDATE_INT) ?: 0;
     $idProfissional = filter_input(INPUT_POST, 'id_profissional', FILTER_VALIDATE_INT) ?: 0;
     $idServico = filter_input(INPUT_POST, 'id_servico', FILTER_VALIDATE_INT) ?: 0;
+    $duracaoSolicitada = filter_input(INPUT_POST, 'duracao', FILTER_VALIDATE_INT) ?: 0;
     $dataTexto = trim((string)($_POST['data_agendamento'] ?? ''));
     $horaTexto = trim((string)($_POST['hora_inicio'] ?? ''));
     $status = strtolower(trim((string)($_POST['status'] ?? 'pendente')));
@@ -74,6 +75,8 @@ try {
     if ($idCliente <= 0) $fields['id_cliente'] = 'Selecione um cliente.';
     if ($idProfissional <= 0) $fields['id_profissional'] = 'Selecione um profissional.';
     if ($idServico <= 0) $fields['id_servico'] = 'Selecione um serviço.';
+    $duracoesPermitidas = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
+    if (!in_array($duracaoSolicitada, $duracoesPermitidas, true)) $fields['duracao'] = 'Selecione uma duração válida.';
     if (!$data || $data < new DateTimeImmutable('today')) $fields['data_agendamento'] = 'Não é permitido agendar em uma data passada.';
     if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $horaTexto)) $fields['hora_inicio'] = 'Selecione um horário válido.';
     if (!in_array($status, ['pendente', 'confirmado'], true)) $fields['status'] = 'Status inválido para um novo agendamento.';
@@ -116,8 +119,8 @@ try {
     $stmt = $conexao->prepare("SELECT s.duracao_min, s.valor FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
     $stmt->bind_param('iii', $idServico, $idProfissional, $idEmpresa);
     $stmt->execute(); $stmt->bind_result($duracaoDb, $valorDb); $servicoOk = $stmt->fetch(); $stmt->close();
-    $duracao = (int)$duracaoDb;
-    if (!$servicoOk || $duracao <= 0) out(['ok' => false, 'code' => 'SERVICE_NOT_FOUND', 'user_msg' => 'Serviço não encontrado para o profissional selecionado.'], 404);
+    if (!$servicoOk || (int)$duracaoDb <= 0) out(['ok' => false, 'code' => 'SERVICE_NOT_FOUND', 'user_msg' => 'Serviço não encontrado para o profissional selecionado.'], 404);
+    $duracao = $duracaoSolicitada;
 
     $inicio = DateTimeImmutable::createFromFormat('!H:i', $horaTexto);
     $fim = $inicio?->modify('+' . $duracao . ' minutes');
@@ -170,7 +173,7 @@ try {
     $stmtConflito->close(); $stmtInserir->close();
     $conexao->commit();
 
-    out(['ok' => true, 'code' => 'APPOINTMENT_CREATED', 'user_msg' => count($ids) > 1 ? 'Agendamentos criados com sucesso.' : 'Agendamento criado com sucesso.', 'data' => ['id_agendamento' => $ids[0] ?? null, 'ids' => $ids, 'quantidade' => count($ids), 'grupo_recorrencia' => $grupo]], 201);
+    out(['ok' => true, 'code' => 'APPOINTMENT_CREATED', 'user_msg' => count($ids) > 1 ? 'Agendamentos criados com sucesso.' : 'Agendamento criado com sucesso.', 'data' => ['id_agendamento' => $ids[0] ?? null, 'ids' => $ids, 'quantidade' => count($ids), 'grupo_recorrencia' => $grupo, 'avisos_plano' => $resultadoAgendamentos['avisos'] ?? []]], 201);
 } catch (Throwable $e) {
     if ($conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable $ignorado) {} }
     error_log('[cadastrar_agendamento] ' . $e->getMessage());

@@ -396,8 +396,9 @@
   gap: 8px;
 }
 
-/* Cards exclusivos da aba Usuários, seguindo o padrão visual do sistema. */
-#usuarios .usuario-lista-card {
+/* Cards das listas de pessoas, com a mesma hierarquia visual. */
+#usuarios .usuario-lista-card,
+#clientes .cliente-lista-card {
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 140px;
   padding: 16px 20px;
@@ -405,14 +406,16 @@
   box-shadow: 0 8px 20px rgba(15, 23, 42, .07);
 }
 
-#usuarios .usuario-card-conteudo {
+#usuarios .usuario-card-conteudo,
+#clientes .cliente-card-conteudo {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-#usuarios .usuario-card-cabecalho {
+#usuarios .usuario-card-cabecalho,
+#clientes .cliente-card-cabecalho {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -420,12 +423,15 @@
 }
 
 #usuarios .usuario-card-identidade { min-width: 0; }
-#usuarios .usuario-card-identidade .agenda-nome {
+#clientes .cliente-card-identidade { min-width: 0; }
+#usuarios .usuario-card-identidade .agenda-nome,
+#clientes .cliente-card-identidade .agenda-nome {
   font-size: 16px;
   color: #0f172a;
 }
 
-#usuarios .usuario-card-email {
+#usuarios .usuario-card-email,
+#clientes .cliente-card-email {
   margin-top: 3px;
   color: #315073;
   font-size: 12px;
@@ -435,21 +441,27 @@
 }
 
 #usuarios .usuario-card-dados,
-#usuarios .usuario-card-chips {
+#usuarios .usuario-card-chips,
+#clientes .cliente-card-dados,
+#clientes .cliente-card-chips {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 7px 14px;
 }
 
-#usuarios .usuario-card-dados {
+#usuarios .usuario-card-dados,
+#clientes .cliente-card-dados {
   color: #34506f;
   font-size: 12px;
 }
-#usuarios .usuario-card-dados strong { color: #0f172a; }
+#usuarios .usuario-card-dados strong,
+#clientes .cliente-card-dados strong { color: #0f172a; }
 
-#usuarios .usuario-card-chips { gap: 8px; }
-#usuarios .usuario-chip {
+#usuarios .usuario-card-chips,
+#clientes .cliente-card-chips { gap: 8px; }
+#usuarios .usuario-chip,
+#clientes .cliente-chip {
   min-width: 112px;
   padding: 6px 13px;
   border: 1px solid #bdebd1;
@@ -462,13 +474,16 @@
   text-align: center;
 }
 
-#usuarios .usuario-lista-card .agenda-status {
+#usuarios .usuario-lista-card .agenda-status,
+#clientes .cliente-lista-card .agenda-status {
   min-width: 72px;
   text-align: center;
 }
 
-#usuarios .usuario-lista-card .agenda-acoes { align-self: center; }
-#usuarios .usuario-lista-card .agenda-btn-acoes {
+#usuarios .usuario-lista-card .agenda-acoes,
+#clientes .cliente-lista-card .agenda-acoes { align-self: center; }
+#usuarios .usuario-lista-card .agenda-btn-acoes,
+#clientes .cliente-lista-card .agenda-btn-acoes {
   background: #1163dd;
   box-shadow: 0 8px 18px rgba(17, 99, 221, .24);
 }
@@ -835,7 +850,11 @@
   background: #f8fbff;
   color: #253b55;
   font-weight: 700;
+  transition: border-color .18s ease, background-color .18s ease, color .18s ease;
 }
+.permissoes-lista label.permissao-permitida select { border-color: #86d6aa; background: #effbf4; color: #13733d; }
+.permissoes-lista label.permissao-bloqueada select { border-color: #efb2b2; background: #fff4f4; color: #a82f2f; }
+.permissoes-lista select:disabled { cursor: not-allowed; opacity: .7; }
 .permissoes-modal-acoes {
   flex: 0 0 auto;
   margin: 0;
@@ -843,8 +862,7 @@
   border-top: 1px solid #e5edf7;
   background: #fff;
 }
-/* O controle visual adapta a interface; autorização real deverá ser
-   validada pelo backend em cada endpoint na etapa de persistência. */
+.permissoes-modal-acoes .secundario { margin-right: auto; }
 /* ==========================================================
    FIM — MODAL PERMISSÕES DO USUÁRIO
 ========================================================== */

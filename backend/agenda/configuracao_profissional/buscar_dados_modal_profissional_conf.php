@@ -130,17 +130,8 @@ try {
             out(['ok' => false, 'code' => 'SUPPORT_COMPANY_REQUIRED', 'user_msg' => 'Acesse uma empresa em modo suporte antes de administrar estas configurações.'], 403);
         }
     } else {
-        $stmt = $conexao->prepare("SELECT pf.nome, p.id_profissional FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil INNER JOIN empresa e ON e.id_empresa=eu.id_empresa LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' AND e.status='ativo' LIMIT 1");
-        $stmt->bind_param('ii', $idEmpresaSessao, $idUsuarioSessao);
-        $stmt->execute(); $stmt->bind_result($perfilSessao, $idProfissionalProprio); $vinculoOk = $stmt->fetch(); $stmt->close();
-        $perfilNormalizado = lower($perfilSessao ?? '');
-        $ehProprietario = in_array($perfilNormalizado, ['proprietário', 'proprietario'], true);
-        $ehProfissionalProprio = in_array($perfilNormalizado, ['profissional', 'profissionais'], true)
-            && (int)$idProfissionalProprio > 0
-            && (int)$idProfissionalProprio === $idProfissionalSessao;
-        if (!$vinculoOk || (!$ehProprietario && !$ehProfissionalProprio)) {
-            out(['ok' => false, 'code' => 'ACCESS_DENIED', 'user_msg' => 'Você não possui permissão para administrar estas configurações.'], 403);
-        }
+        require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
+        exigirPermissao($conexao, 'agenda_configuracao.visualizar');
     }
 
     $stmt = $conexao->prepare("SELECT p.id_profissional, u.nome, e.id_empresa, e.nome, e.status FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario INNER JOIN empresa e ON e.id_empresa=eu.id_empresa WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' AND e.status='ativo' LIMIT 1");

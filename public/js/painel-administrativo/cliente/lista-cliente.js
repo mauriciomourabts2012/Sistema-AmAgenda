@@ -353,63 +353,38 @@
     const status = normalizeStatus(cli.status);
     const cidade = montarLocalizacao(cli);
     const telefone = String(cli.telefone || "").trim();
-    const observacao = String(cli.observacao || "").trim();
-
-    const ultimoLogin = formatarDataHoraBR(cli.ultimo_login_em);
-    const ultimaMovimentacao = formatarDataHoraBR(cli.ultima_movimentacao_em);
+    const dataCadastro = formatarDataBR(cli.created_at);
 
     const telRaw = String(cli.telefone || "");
     const temTel = onlyDigits(telRaw).length >= 10;
     const foto = normalizeFotoUrl(cli.foto_url || cli.foto_perfil || "");
 
     return `
-      <article class="agenda-card"
+      <article class="agenda-card cliente-lista-card"
         data-id="${C.escapeHtml(String(id))}"
         data-status="${C.escapeHtml(String(status))}"
         data-created="${C.escapeHtml(String(cli.created_at || cli.data_cadastro || cli.data || ""))}"
         data-foto="${C.escapeHtml(String(foto))}">
 
-        ${avatarClienteTemplate(cli)}
-
-        <div class="agenda-info">
-          <div class="agenda-nome">${C.escapeHtml(nome)}</div>
-
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">Cliente</div>
-            ${email ? `<div class="agenda-duracao">• ${C.escapeHtml(email)}</div>` : ""}
+        <div class="cliente-card-conteudo">
+          <div class="cliente-card-cabecalho">
+            ${avatarClienteTemplate(cli)}
+            <div class="cliente-card-identidade">
+              <div class="agenda-nome">${C.escapeHtml(nome)}</div>
+              <div class="cliente-card-email">${C.escapeHtml(email || "E-mail não informado")}</div>
+            </div>
           </div>
 
-          ${telefone ? `
-            <div class="agenda-servico-linha">
-              <div class="agenda-duracao">📞 ${C.escapeHtml(telefone)}</div>
-            </div>
-          ` : ""}
+          <div class="cliente-card-dados">
+            <span><strong>ID:</strong> ${C.escapeHtml(String(id))}</span>
+            <span><strong>Telefone:</strong> ${C.escapeHtml(telefone || "Não informado")}</span>
+            ${cidade ? `<span><strong>Localização:</strong> ${C.escapeHtml(cidade)}</span>` : ""}
+            <span><strong>Status:</strong> ${C.escapeHtml(status)}</span>
+            <span><strong>Data:</strong> ${C.escapeHtml(dataCadastro || "Não informada")}</span>
+          </div>
 
-          ${cidade ? `
-            <div class="agenda-servico-linha">
-              <div class="agenda-duracao">📍 ${C.escapeHtml(cidade)}</div>
-            </div>
-          ` : ""}
-
-          ${observacao ? `
-            <div class="agenda-servico-linha">
-              <div class="agenda-duracao">📝 ${C.escapeHtml(observacao)}</div>
-            </div>
-          ` : ""}
-
-          ${ultimoLogin ? `
-            <div class="agenda-servico-linha">
-              <div class="agenda-duracao">🔐 Último login: ${C.escapeHtml(ultimoLogin)}</div>
-            </div>
-          ` : ""}
-
-          ${ultimaMovimentacao ? `
-            <div class="agenda-servico-linha">
-              <div class="agenda-duracao">🔄 Última movimentação: ${C.escapeHtml(ultimaMovimentacao)}</div>
-            </div>
-          ` : ""}
-
-          <div class="agenda-linha-extra">
+          <div class="cliente-card-chips">
+            <span class="cliente-chip">Cliente</span>
             ${badgeStatus(status)}
           </div>
         </div>

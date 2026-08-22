@@ -161,15 +161,10 @@
    TOKENS
 ========================================================== */
 :root{
-  --primary: #1163dd;
-  --primary-hover: #0f57c5;
-  --primary-soft: rgba(17, 99, 221, .08);
-  --primary-border: rgba(17, 99, 221, .20);
-  --primary-focus: rgba(17, 99, 221, .30);
-
-  --shadow: 0 8px 22px rgba(17,24,39,.08);
-  --alert-shadow: 0 14px 30px rgba(0,0,0,.14);
-  --alert-radius: 14px;
+  --ui-alert-primary: #1163dd;
+  --ui-alert-primary-hover: #0f57c5;
+  --ui-alert-shadow: 0 18px 46px rgba(15, 23, 42, .18);
+  --ui-alert-radius: 16px;
 }
 
 /* ==========================================================
@@ -178,16 +173,16 @@
 .ui-alert{
   position: relative;
   display: grid;
-  grid-template-columns: 42px 1fr auto;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
 
   background: #ffffff;
-  border-radius: var(--alert-radius);
-  padding: 16px;
+  border-radius: var(--ui-alert-radius);
+  padding: 16px 16px 16px 18px;
 
   border: 1px solid #e6eaf2;
-  box-shadow: var(--shadow);
+  box-shadow: var(--ui-alert-shadow);
 
   overflow: hidden;
   animation: toastIn .18s ease-out;
@@ -202,8 +197,9 @@
   bottom: 10px;
   width: 4px;
   border-radius: 4px;
-  background: var(--primary);
+  background: var(--ui-alert-primary);
 }
+.ui-alert__content { min-width: 0; }
 
 /* ==========================================================
    CONFIRM (Logout, confirmar ação)
@@ -222,6 +218,9 @@
   border: 1px solid rgba(17,99,221,.20);
   color: #1163dd;
 }
+.ui-alert--info { border-color: rgba(17,99,221,.20); }
+.ui-alert--info::before { background: #1163dd; }
+.ui-alert--info .ui-alert__icon { background: rgba(17,99,221,.10); border: 1px solid rgba(17,99,221,.20); color: #1163dd; }
 
 /* ==========================================================
    SUCCESS
@@ -296,6 +295,8 @@
   font-weight: 600;
   margin-top: 4px;
   color: #334155;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 /* ==========================================================
@@ -304,6 +305,7 @@
 .ui-alert__actions{
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 /* Botão padrão */
@@ -324,6 +326,8 @@
   transform: translateY(-1px);
   background:#f3f4f6;
 }
+.ui-alert__btn:focus-visible { outline: 3px solid rgba(17,99,221,.28); outline-offset: 2px; }
+.ui-alert__btn--secondary { color: #334155; background: #f8fafc; border-color: #dbe3ee; }
 
 /* 🔵 Botão principal azul */
 .ui-alert__btn--primary{
@@ -355,7 +359,7 @@
 
 .ui-toast-stack .ui-alert{
   pointer-events: auto;
-  box-shadow: var(--alert-shadow);
+  box-shadow: var(--ui-alert-shadow);
 }
 
 @keyframes toastIn{
@@ -381,6 +385,15 @@
     top: 12px;
     width: auto;
   }
+  .ui-alert { grid-template-columns: 38px minmax(0,1fr); gap: 10px; padding: 14px; }
+  .ui-alert__icon { width: 38px; height: 38px; }
+  .ui-alert__actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .ui-alert__btn { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-alert, .ui-alert.is-leaving { animation-duration: .01ms !important; }
+  .ui-alert__btn { transition: none; }
 }
 
 

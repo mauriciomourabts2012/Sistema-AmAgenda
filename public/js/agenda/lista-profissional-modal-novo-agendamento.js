@@ -312,6 +312,15 @@
     return perfil === "profissional" || perfil === "profissionais";
   }
 
+  function usuarioSemPermissaoCadastrarServico() {
+    const auth = getAuthUsuario();
+    if (auth?.permissoes && typeof window.usuarioPode === "function") {
+      return !window.usuarioPode("servicos.cadastrar");
+    }
+    const perfil = normalizarComparacao(auth?.perfil_nome ?? auth?.perfil ?? auth?.profile ?? "");
+    return perfil === "recepcionista" || perfil === "recepcao";
+  }
+
   function getIdUsuarioLogado() {
     const auth = getAuthUsuario();
 
@@ -364,7 +373,14 @@
   }
 
   function optionNovoServico() {
+    if (usuarioSemPermissaoCadastrarServico()) return "";
     return `<option value="${ACAO_NOVO_SERVICO}">+ Cadastrar novo serviço</option>`;
+  }
+
+  function aplicarRestricaoCadastroServico() {
+    if (!usuarioSemPermissaoCadastrarServico()) return;
+    selectServico.querySelector(`option[value="${ACAO_NOVO_SERVICO}"]`)?.remove();
+    if (selectServico.value === ACAO_NOVO_SERVICO) selectServico.value = "";
   }
 
   function getProfissionalSelecionado() {
@@ -381,11 +397,17 @@
   }
 
   function abrirModalNovoServico() {
+    if (usuarioSemPermissaoCadastrarServico()) {
+      selectServico.value = "";
+      window.MensagemSistema?.aviso("Você não possui permissão para cadastrar novos serviços.", { titulo: "Acesso não permitido" });
+      return;
+    }
+
     const profissional = getProfissionalSelecionado();
 
     if (!profissional.id) {
       selectServico.value = "";
-      alert("Selecione um profissional antes de cadastrar um serviço.");
+      window.MensagemSistema?.aviso("Selecione um profissional antes de cadastrar um serviço.");
       selectProfissional.focus();
       return;
     }
@@ -653,6 +675,7 @@
         path: "agenda/horarios-disponiveis",
         id_profissional: idProfissional,
         id_servico: idServico,
+        duracao: normalizar(selectDuracao?.value),
         data: hojeIsoLocal()
       });
       const resp = await fetch(`/public/api/api_central.php?${params.toString()}`, {
@@ -703,6 +726,7 @@
       params.set("path", "agenda/horarios-disponiveis");
       params.set("id_profissional", idProfissional);
       params.set("id_servico", idServico);
+      params.set("duracao", normalizar(selectDuracao?.value));
       params.set("data", data);
 
       const resp = await fetch(`/public/api/api_central.php?${params.toString()}`, {
@@ -791,6 +815,15 @@
     if (selectServico.value) carregarDiasAtendimento();
   });
 
+  selectDuracao?.addEventListener("change", () => {
+    limparDataEHorarios({ limparData: true });
+    if (normalizar(selectServico.value) && normalizar(selectDuracao.value)) {
+      carregarDiasAtendimento();
+    } else {
+      limparDias();
+    }
+  });
+
   if (inputData) {
     renderizarCalendario();
   }
@@ -871,6 +904,9 @@
 
     carregarServicosDoProfissional(idProfissionalAtual, idServico);
   });
+
+  document.addEventListener("amagenda:sessao-carregada", aplicarRestricaoCadastroServico);
+  aplicarRestricaoCadastroServico();
 
   if (form) {
     form.addEventListener("reset", () => {
