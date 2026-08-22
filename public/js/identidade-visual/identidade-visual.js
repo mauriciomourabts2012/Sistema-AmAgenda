@@ -30,6 +30,29 @@
     return `${valor}${valor.includes("?") ? "&" : "?"}v=${Date.now()}`;
   }
 
+  function aplicarFavicon() {
+    const favicons = [...document.querySelectorAll('link[rel~="icon"]')];
+    const favicon = favicons.shift() || document.createElement("link");
+    favicons.forEach(item => item.remove());
+
+    if (!favicon.isConnected) document.head.appendChild(favicon);
+    favicon.rel = "icon";
+    favicon.removeAttribute("type");
+
+    const logoUrl = String(identidade.logo_url || "").trim();
+    const temLogoPersonalizada = identidade.personalizada === true
+      && logoUrl !== ""
+      && logoUrl !== PADRAO.logo_url;
+
+    favicon.onerror = temLogoPersonalizada
+      ? () => {
+          favicon.onerror = null;
+          favicon.href = PADRAO.logo_url;
+        }
+      : null;
+    favicon.href = temLogoPersonalizada ? urlSemCache(logoUrl) : PADRAO.logo_url;
+  }
+
   function podeEditar() {
     const sessaoAtual = window.__AUTH__ || auth || {};
     auth = sessaoAtual;
@@ -80,6 +103,7 @@
       img.alt = `Logo ${identidade.nome_exibicao}`;
       img.onerror = () => { img.onerror = null; img.src = PADRAO.logo_url; };
     });
+    aplicarFavicon();
     atualizarPermissaoMarca();
   }
 
