@@ -28,7 +28,7 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
     <link rel="stylesheet" href="../css/login/login-web.css?v=20260818_15" />
     <link rel="stylesheet" href="../css/login/login-mobile.css?v=20260818_5" />
 
-    <link rel="shortcut icon" href="/Imagens/Log-Titulo.png" type="image/x-icon" />
+    <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
 
     <title>AmAgenda • Login</title>
@@ -127,6 +127,6 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
 
     <!-- Scripts -->
     <script src="/public/_auth/login.js"></script>
-    <script src="/public/js/identidade-visual/identidade-visual-login.js?v=20260818_6"></script>
+    <script src="/public/js/identidade-visual/identidade-visual-login.js?v=20260822_1"></script>
   </body>
 </html>

@@ -31,7 +31,7 @@ $empresaId = (int)$_SESSION['empresa_id'];
   <!-- CSS extra só para etapas do cliente -->
   <link rel="stylesheet" href="../css/login/login-cliente.css?v=20260818_3" />
 
-  <link rel="shortcut icon" href="/Imagens/Log-Titulo.png" type="image/x-icon" />
+  <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png" />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="manifest" href="/manifest.json" />
 </head>
@@ -423,6 +423,6 @@ $empresaId = (int)$_SESSION['empresa_id'];
   </script>
 
   <script src="/js/InstalarPWA.js"></script>
-  <script src="/public/js/identidade-visual/identidade-visual-login.js?v=20260818_6"></script>
+  <script src="/public/js/identidade-visual/identidade-visual-login.js?v=20260822_1"></script>
 </body>
 </html>
