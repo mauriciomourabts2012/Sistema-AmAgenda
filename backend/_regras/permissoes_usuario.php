@@ -26,6 +26,8 @@ function permissoesCatalogo(): array
         'usuarios.editar' => ['grupo'=>'usuarios','rotulo'=>'Editar usuário','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'usuarios.alterar_status' => ['grupo'=>'usuarios','rotulo'=>'Alterar status do usuário','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'usuarios.gerenciar_permissoes' => ['grupo'=>'usuarios','rotulo'=>'Gerenciar permissões','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
+        // A futura interface apenas ocultará a aba; este código continuará sendo a autoridade no backend.
+        'auditoria.visualizar' => ['grupo'=>'auditoria','rotulo'=>'Visualizar auditoria','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'empresa.visualizar_configuracoes' => ['grupo'=>'configuracoes','rotulo'=>'Visualizar configurações da empresa','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'empresa.editar_configuracoes' => ['grupo'=>'configuracoes','rotulo'=>'Editar configurações da empresa','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'empresa.editar_identidade_visual' => ['grupo'=>'configuracoes','rotulo'=>'Editar identidade visual','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
@@ -55,7 +57,19 @@ function permissoesContexto(mysqli $conexao, ?int $idUsuario = null, ?int $idEmp
     $superSuporte = mb_strtolower((string)($auth['tipo_usuario'] ?? ''), 'UTF-8') === 'super_admin'
         && (bool)($auth['modo_suporte'] ?? false) && $empresa > 0;
     if ($usuario <= 0 || $empresa <= 0) return ['valido'=>false,'super_admin_suporte'=>$superSuporte];
-    if ($superSuporte && $idUsuario === null) return ['valido'=>true,'id_usuario'=>$usuario,'id_empresa'=>$empresa,'perfil'=>'super_admin','super_admin_suporte'=>true,'id_profissional'=>0];
+    if ($superSuporte && $idUsuario === null) {
+        /* O modo suporte não cria vínculo empresarial. A autorização somente existe
+           enquanto a identidade global e a empresa selecionada continuam ativas.
+           O cache vive apenas nesta requisição e evita repetir a validação para cada
+           item do mapa de permissões devolvido pela sessão. */
+        static $contextosSuporte = [];
+        $chaveSuporte = $usuario . ':' . $empresa;
+        if (isset($contextosSuporte[$chaveSuporte])) return $contextosSuporte[$chaveSuporte];
+        $stmt = $conexao->prepare("SELECT 1 FROM usuario u INNER JOIN empresa e ON e.id_empresa=? AND e.status='ativo' WHERE u.id_usuario=? AND u.tipo_usuario='super_admin' AND u.status='ativo' LIMIT 1");
+        if (!$stmt) throw new RuntimeException('Falha ao validar o contexto de suporte.');
+        $stmt->bind_param('ii',$empresa,$usuario); $stmt->execute(); $stmt->store_result(); $ok=$stmt->num_rows===1; $stmt->close();
+        return $contextosSuporte[$chaveSuporte] = $ok ? ['valido'=>true,'id_usuario'=>$usuario,'id_empresa'=>$empresa,'perfil'=>'super_admin','super_admin_suporte'=>true,'id_profissional'=>0] : ['valido'=>false,'super_admin_suporte'=>false];
+    }
 
     $stmt = $conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa AND e.status='ativo' INNER JOIN usuario u ON u.id_usuario=eu.id_usuario AND u.status='ativo' INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil AND pf.status='ativo' LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' LIMIT 1");
     if (!$stmt) throw new RuntimeException('Falha ao preparar contexto de autorização.');
@@ -78,8 +92,15 @@ function usuarioTemPermissao(mysqli $conexao, string $codigo, array $contexto = 
     $empresa = (int)$ctx['id_empresa'];
     $usuario = (int)$ctx['id_usuario'];
     $stmt->bind_param('iis',$empresa,$usuario,$codigo); $stmt->execute(); $stmt->bind_result($estado); $tem=$stmt->fetch(); $stmt->close();
-    if ($tem) return $estado === 'permitido';
-    return (bool)($regra[$ctx['perfil']] ?? false);
+    return permissoesCalcularResultado($regra, (string)$ctx['perfil'], $tem ? (string)$estado : null);
+}
+
+/** Mantém em um único ponto o cálculo Padrão/Permitir/Bloquear usado pelas exceções por empresa. */
+function permissoesCalcularResultado(array $regra, string $perfil, ?string $estado): bool
+{
+    if (($regra['critica'] ?? '') === 'proprietario' && $perfil !== 'proprietario') return false;
+    if ($estado !== null) return $estado === 'permitido';
+    return (bool)($regra[$perfil] ?? false);
 }
 
 function exigirPermissao(mysqli $conexao, string $codigo, array $contexto = []): void

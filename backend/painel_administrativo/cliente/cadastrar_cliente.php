@@ -77,6 +77,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -283,6 +284,8 @@ try {
     ========================================================== */
     $cadastroCompleto = 0;
 
+    // A inclusão e sua trilha passam a ser atômicas na mesma conexão.
+    $conexao->begin_transaction();
     $stmt = $conexao->prepare("
         INSERT INTO cliente
             (id_empresa, nome_completo, whatsapp_celular, email, observacao, cadastro_completo, status)
@@ -324,6 +327,9 @@ try {
     $idCliente = (int)$stmt->insert_id;
     $stmt->close();
 
+    auditoriaRegistrar($conexao,'cliente.criado',['entidade_id'=>$idCliente,'entidade_rotulo'=>$nome,'descricao'=>'Cadastrou o cliente '.$nome.'.','alteracoes'=>['nome'=>['antes'=>null,'depois'=>$nome],'telefone'=>['antes'=>null,'depois'=>$telefone],'email'=>['antes'=>null,'depois'=>$email],'status'=>['antes'=>null,'depois'=>$status],'observacao'=>['antes'=>null,'depois'=>$observacao]],'contexto'=>['origem'=>'painel_administrativo']]);
+    $conexao->commit();
+
     out([
         'ok' => true,
         'code' => 'CLIENT_CREATED',
@@ -342,6 +348,7 @@ try {
     ], 201);
 
 } catch (Throwable $e) {
+    try { $conexao->rollback(); } catch (Throwable $ignorado) {}
     error_log('[cadastrar_cliente] ' . $e->getMessage());
 
     out([

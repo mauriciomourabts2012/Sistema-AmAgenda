@@ -87,6 +87,7 @@ try {
 
     require __DIR__ . '/../_config/conexao.php';
     require_once __DIR__ . '/../_regras/limites_plano.php';
+    require_once __DIR__ . '/../_servicos/auditoria.php';
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) throw new RuntimeException('Conexão indisponível.');
     $conexao->set_charset('utf8mb4');
 
@@ -111,14 +112,14 @@ try {
         if (in_array(mb_strtolower((string)$perfilNome), ['profissional', 'profissionais'], true) && (int)$profissionalSessao !== $idProfissional) out(['ok' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED', 'user_msg' => 'O profissional só pode criar agendamentos para si mesmo.'], 403);
     }
 
-    $stmt = $conexao->prepare("SELECT id_cliente FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
+    $stmt = $conexao->prepare("SELECT id_cliente,nome_completo FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
     $stmt->bind_param('ii', $idCliente, $idEmpresa);
-    $stmt->execute(); $stmt->store_result(); $clienteOk = $stmt->num_rows === 1; $stmt->close();
+    $stmt->execute(); $stmt->bind_result($clienteIdDb,$clienteNome); $clienteOk=$stmt->fetch(); $stmt->close();
     if (!$clienteOk) out(['ok' => false, 'code' => 'CLIENT_NOT_FOUND', 'user_msg' => 'Cliente não encontrado ou inativo.'], 404);
 
-    $stmt = $conexao->prepare("SELECT s.duracao_min, s.valor FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt = $conexao->prepare("SELECT s.duracao_min,s.valor,s.nome,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
     $stmt->bind_param('iii', $idServico, $idProfissional, $idEmpresa);
-    $stmt->execute(); $stmt->bind_result($duracaoDb, $valorDb); $servicoOk = $stmt->fetch(); $stmt->close();
+    $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb,$servicoNome,$profissionalNome); $servicoOk = $stmt->fetch(); $stmt->close();
     if (!$servicoOk || (int)$duracaoDb <= 0) out(['ok' => false, 'code' => 'SERVICE_NOT_FOUND', 'user_msg' => 'Serviço não encontrado para o profissional selecionado.'], 404);
     $duracao = $duracaoSolicitada;
 
@@ -171,6 +172,10 @@ try {
         $ids[] = $conexao->insert_id;
     }
     $stmtConflito->close(); $stmtInserir->close();
+    // Uma única ação recorrente produz um único evento com quantidade e grupo da série.
+    auditoriaRegistrar($conexao,'agendamento.criado',['entidade_id'=>(int)($ids[0]??0),'entidade_rotulo'=>(string)$clienteNome,'descricao'=>'Criou o agendamento de '.$clienteNome.'.','alteracoes'=>[
+        'cliente'=>['antes'=>null,'depois'=>['id'=>$idCliente,'rotulo'=>$clienteNome]],'profissional'=>['antes'=>null,'depois'=>['id'=>$idProfissional,'rotulo'=>$profissionalNome]],'servico'=>['antes'=>null,'depois'=>['id'=>$idServico,'rotulo'=>$servicoNome]],'data_agendamento'=>['antes'=>null,'depois'=>$dataTexto],'hora_inicio'=>['antes'=>null,'depois'=>$horaInicio],'hora_fim'=>['antes'=>null,'depois'=>$horaFim],'status'=>['antes'=>null,'depois'=>$status],'duracao_min_aplicada'=>['antes'=>null,'depois'=>$duracao],'valor_aplicado'=>['antes'=>null,'depois'=>$valorDb],'recorrencia'=>['antes'=>null,'depois'=>['grupo'=>$grupo,'quantidade'=>count($ids),'data_fim'=>$fimRecDb]]
+    ],'contexto'=>['origem'=>'agenda','quantidade_afetada'=>count($ids),'escopo'=>$repetir?'toda_recorrencia':'ocorrencia_unica','grupo_recorrencia'=>$grupo,'data_referencia'=>$dataTexto]]);
     $conexao->commit();
 
     out(['ok' => true, 'code' => 'APPOINTMENT_CREATED', 'user_msg' => count($ids) > 1 ? 'Agendamentos criados com sucesso.' : 'Agendamento criado com sucesso.', 'data' => ['id_agendamento' => $ids[0] ?? null, 'ids' => $ids, 'quantidade' => count($ids), 'grupo_recorrencia' => $grupo, 'avisos_plano' => $resultadoAgendamentos['avisos'] ?? []]], 201);

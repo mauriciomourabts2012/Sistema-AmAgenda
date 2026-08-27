@@ -72,6 +72,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -328,6 +329,8 @@ try {
     /* ==========================================================
        UPDATE CLIENTE
     ========================================================== */
+    // O snapshot anterior acima já foi limitado pelo id da empresa da sessão.
+    $conexao->begin_transaction();
     $stmt = $conexao->prepare("
         UPDATE cliente
         SET
@@ -374,6 +377,11 @@ try {
 
     $stmt->close();
 
+    $campos=['nome'=>[$clienteNomeDb,$nome],'telefone'=>[$clienteTelefoneDb,$telefone],'email'=>[$clienteEmailDb,$email],'observacao'=>[$clienteObservacaoDb,$observacao],'status'=>[$clienteStatusDb,$status]];
+    $diferencas=[];foreach($campos as $campo=>[$antes,$depois])if(!auditoriaValoresIguais($antes,$depois))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depois];
+    if($diferencas!==[])auditoriaRegistrar($conexao,'cliente.editado',['entidade_id'=>$idCliente,'entidade_rotulo'=>$nome,'descricao'=>'Alterou o cliente '.$nome.'.','alteracoes'=>$diferencas,'contexto'=>['origem'=>'painel_administrativo']]);
+    $conexao->commit();
+
     out([
         'ok' => true,
         'code' => 'CLIENT_UPDATED',
@@ -391,6 +399,7 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    try { $conexao->rollback(); } catch (Throwable $ignorado) {}
     error_log('[editar_cliente] ' . $e->getMessage());
 
     out([

@@ -65,6 +65,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -132,6 +133,22 @@ try {
     function tsHora(?string $hora): int
     {
         return strtotime('1970-01-01 ' . (string)$hora) ?: 0;
+    }
+
+    /** Snapshot mínimo das configurações próprias; sempre limitado à empresa e ao profissional alvo. */
+    function auditoriaSnapshotConfiguracaoProfissional(mysqli $conexao, int $empresa, int $profissional): array
+    {
+        $snapshot=['intervalo_padrao'=>null,'observacao_padrao'=>null,'horarios'=>[],'ddi_padrao'=>null,'ddd_padrao'=>null,'mensagem_whatsapp'=>null];
+        $stmt=$conexao->prepare('SELECT intervalo_padrao_min,observacao_padrao FROM configuracao_geral_profissional WHERE id_empresa=? AND id_profissional=? LIMIT 1');$stmt->bind_param('ii',$empresa,$profissional);$stmt->execute();$res=$stmt->get_result();if($row=$res->fetch_assoc()){$snapshot['intervalo_padrao']=(int)$row['intervalo_padrao_min'];$snapshot['observacao_padrao']=$row['observacao_padrao'];}$stmt->close();
+        $stmt=$conexao->prepare('SELECT dia_semana,hora_inicio,hora_fim,almoco_inicio,almoco_fim,disponivel FROM horario_profissional WHERE id_empresa=? AND id_profissional=? ORDER BY dia_semana');$stmt->bind_param('ii',$empresa,$profissional);$stmt->execute();$res=$stmt->get_result();while($row=$res->fetch_assoc()){$dia=(string)$row['dia_semana'];$snapshot['horarios'][$dia]=['dia_semana'=>$dia,'disponivel'=>(int)$row['disponivel'],'hora_inicio'=>$row['hora_inicio'],'hora_fim'=>$row['hora_fim'],'almoco_inicio'=>$row['almoco_inicio'],'almoco_fim'=>$row['almoco_fim']];}$stmt->close();
+        $stmt=$conexao->prepare('SELECT ddi_padrao,ddd_padrao,mensagem_padrao FROM configuracao_whatsapp_profissional WHERE id_empresa=? AND id_profissional=? LIMIT 1');$stmt->bind_param('ii',$empresa,$profissional);$stmt->execute();$res=$stmt->get_result();if($row=$res->fetch_assoc()){$snapshot['ddi_padrao']=$row['ddi_padrao'];$snapshot['ddd_padrao']=$row['ddd_padrao'];$snapshot['mensagem_whatsapp']=$row['mensagem_padrao'];}$stmt->close();
+        return $snapshot;
+    }
+
+    function auditoriaRegistrarConfiguracaoProfissional(mysqli $conexao, int $idProfissional, string $nome, string $aba, array $antes, array $depois): void
+    {
+        $diferencas=[];foreach($antes as $campo=>$valor)if(!auditoriaValoresIguais($valor,$depois[$campo]??null))$diferencas[$campo]=['antes'=>$valor,'depois'=>$depois[$campo]??null];
+        if($diferencas!==[])auditoriaRegistrar($conexao,'agenda_profissional.configuracao_alterada',['entidade_id'=>$idProfissional,'entidade_rotulo'=>$nome,'descricao'=>'Alterou a configuração da agenda de '.$nome.'.','alteracoes'=>$diferencas,'contexto'=>['aba'=>$aba,'origem'=>'configuracao_profissional']]);
     }
 
     $aba = s($_POST['aba'] ?? 'cfg-geral');
@@ -208,7 +225,7 @@ try {
     exigirPermissao($conexao, $permissaoEdicao);
 
     $stmt = $conexao->prepare("
-        SELECT p.id_profissional, p.id_usuario, p.especialidade
+        SELECT p.id_profissional, p.id_usuario, p.especialidade, u.nome
         FROM profissional p
         INNER JOIN empresa_usuario eu
             ON eu.id_usuario = p.id_usuario
@@ -225,7 +242,7 @@ try {
 
     $stmt->bind_param('ii', $idEmpresaSessao, $idProfissionalSolicitado);
     $stmt->execute();
-    $stmt->bind_result($idProfissionalDb, $idUsuarioProfissionalDb, $especialidadeDb);
+    $stmt->bind_result($idProfissionalDb, $idUsuarioProfissionalDb, $especialidadeDb, $nomeProfissionalDb);
 
     $profissionalEncontrado = $stmt->fetch();
     $stmt->close();
@@ -243,6 +260,8 @@ try {
     $fields = [];
 
     $conexao->begin_transaction();
+    // Estado anterior capturado dentro da mesma transação usada pela operação principal.
+    $auditoriaAntes = auditoriaSnapshotConfiguracaoProfissional($conexao, $idEmpresaSessao, $idProfissional);
 
     /*
     |--------------------------------------------------------------------------
@@ -314,6 +333,7 @@ try {
         }
 
         $stmt->close();
+        $auditoriaDepois=auditoriaSnapshotConfiguracaoProfissional($conexao,$idEmpresaSessao,$idProfissional);auditoriaRegistrarConfiguracaoProfissional($conexao,$idProfissional,(string)$nomeProfissionalDb,$aba,$auditoriaAntes,$auditoriaDepois);
         $conexao->commit();
 
         out([
@@ -557,6 +577,7 @@ try {
             ];
         }
 
+        $auditoriaDepois=auditoriaSnapshotConfiguracaoProfissional($conexao,$idEmpresaSessao,$idProfissional);auditoriaRegistrarConfiguracaoProfissional($conexao,$idProfissional,(string)$nomeProfissionalDb,$aba,$auditoriaAntes,$auditoriaDepois);
         $conexao->commit();
 
         out([
@@ -653,6 +674,7 @@ try {
         }
 
         $stmt->close();
+        $auditoriaDepois=auditoriaSnapshotConfiguracaoProfissional($conexao,$idEmpresaSessao,$idProfissional);auditoriaRegistrarConfiguracaoProfissional($conexao,$idProfissional,(string)$nomeProfissionalDb,$aba,$auditoriaAntes,$auditoriaDepois);
         $conexao->commit();
 
         out([

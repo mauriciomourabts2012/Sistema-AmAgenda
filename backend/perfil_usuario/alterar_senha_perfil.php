@@ -110,6 +110,7 @@ if ($senhaAtual === $novaSenha) {
    BANCO
 ========================================================== */
 require_once __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -130,7 +131,7 @@ if ($conexao->connect_errno) {
 $conexao->set_charset('utf8mb4');
 
 try {
-    $sqlUser = "SELECT id_usuario, senha_hash, status FROM usuario WHERE id_usuario = ? LIMIT 1";
+    $sqlUser = "SELECT id_usuario, nome, senha_hash, status FROM usuario WHERE id_usuario = ? LIMIT 1";
     $stmtUser = $conexao->prepare($sqlUser);
 
     if (!$stmtUser) {
@@ -176,6 +177,8 @@ try {
         throw new Exception('Falha ao gerar hash da nova senha.');
     }
 
+    // A atualização da senha e o registro do fato passam a ser atômicos.
+    $conexao->begin_transaction();
     $sqlUpdate = "UPDATE usuario SET senha_hash = ? WHERE id_usuario = ? LIMIT 1";
     $stmtUpdate = $conexao->prepare($sqlUpdate);
 
@@ -188,12 +191,28 @@ try {
     $stmtUpdate->close();
 
     if (!$ok) {
+        $conexao->rollback();
         out([
             'ok'       => false,
             'code'     => 'DB_UPDATE_ERROR',
             'user_msg' => 'Não foi possível atualizar a senha.',
         ], 500);
     }
+
+    // Nenhuma senha, hash, tamanho ou característica é enviada ao serviço central.
+    $tipoAtor = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8');
+    $superAdminSemEmpresa = $tipoAtor === 'super_admin' && !((bool)($auth['modo_suporte'] ?? false));
+    // Super Admin fora de suporte não possui empresa para a tabela empresarial de auditoria; o fluxo legado é preservado.
+    if (!$superAdminSemEmpresa) {
+        auditoriaRegistrar($conexao, 'perfil.senha_alterada', [
+            'entidade_id' => $idUsuario,
+            'entidade_rotulo' => (string)($usuario['nome'] ?? 'Usuário'),
+            'descricao' => 'Alterou a própria senha.',
+            'alteracoes' => ['senha_alterada' => ['antes' => false, 'depois' => true]],
+            'contexto' => ['origem' => 'perfil_usuario'],
+        ]);
+    }
+    $conexao->commit();
 
     out([
         'ok'       => true,
@@ -205,6 +224,8 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    try { $conexao->rollback(); } catch (Throwable $ignorado) {}
+    error_log('[alterar_senha_perfil] ' . $e->getMessage());
     out([
         'ok'       => false,
         'code'     => 'SERVER_ERROR',

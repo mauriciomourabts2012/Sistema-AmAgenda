@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_2"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260821_6"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260827_1"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
   <!--CSS MOBILE-->
   <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260818_1"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260821_3"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260827_1"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
@@ -346,6 +346,76 @@
         </div>
 
 
+      </div>
+    </div>
+
+    <!-- ABA: AUDITORIA -->
+    <div id="auditoria" class="conteudo-aba">
+      <div class="conteudo-agenda auditoria-conteudo">
+        <form id="formFiltrosAuditoria" class="auditoria-filtros" autocomplete="off">
+          <header class="auditoria-filtros-cabecalho">
+            <span class="auditoria-filtros-icone" aria-hidden="true"><i class="fas fa-filter"></i></span>
+            <div>
+              <h2>Filtros</h2>
+              <p>Encontre atividades por palavras-chave, período, módulo ou tipo de evento.</p>
+            </div>
+          </header>
+
+          <div class="auditoria-filtros-grade">
+            <div class="auditoria-filtro-campo auditoria-filtro-pesquisa">
+              <label for="busca_auditoria">Pesquisar</label>
+              <div class="auditoria-pesquisa-controle">
+                <i class="fas fa-search" aria-hidden="true"></i>
+                <input type="search" id="busca_auditoria" placeholder="Ator, entidade, descrição ou evento">
+              </div>
+            </div>
+
+            <fieldset class="auditoria-filtro-periodo">
+              <legend>Período</legend>
+              <div class="auditoria-filtro-periodo-grade">
+                <div class="auditoria-filtro-campo">
+                  <label for="inicio_auditoria">Início</label>
+                  <input type="date" id="inicio_auditoria">
+                </div>
+                <div class="auditoria-filtro-campo">
+                  <label for="fim_auditoria">Fim</label>
+                  <input type="date" id="fim_auditoria">
+                </div>
+              </div>
+            </fieldset>
+
+            <div class="auditoria-filtro-campo">
+              <label for="modulo_auditoria">Módulo</label>
+              <select id="modulo_auditoria">
+                <option value="">Todos</option>
+                <option value="agenda">Agenda</option>
+                <option value="clientes">Clientes</option>
+                <option value="usuarios">Usuários</option>
+                <option value="permissoes">Permissões</option>
+                <option value="servicos">Serviços</option>
+                <option value="configuracoes">Configurações</option>
+                <option value="perfil">Perfil</option>
+              </select>
+            </div>
+            <div class="auditoria-filtro-campo">
+              <label for="evento_auditoria">Evento</label>
+              <select id="evento_auditoria">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="auditoria-filtro-acoes">
+            <button class="botao-geral auditoria-btn-aplicar" type="submit"><i class="fas fa-filter" aria-hidden="true"></i><span>Aplicar</span></button>
+            <button id="limparFiltrosAuditoria" class="auditoria-btn-secundario" type="button"><i class="fas fa-rotate-left" aria-hidden="true"></i><span>Limpar</span></button>
+          </div>
+        </form>
+
+        <div id="estadoAuditoria" class="auditoria-estado" role="status" aria-live="polite"></div>
+        <div id="listaAuditoria" class="auditoria-timeline" aria-live="polite"></div>
+        <div class="section-paginacao">
+          <div id="paginacaoAuditoria" class="paginacao-div" aria-label="Paginação da auditoria"></div>
+        </div>
       </div>
     </div>
 
@@ -1195,6 +1265,14 @@
               </div>
             </details>
 
+            <!-- A visibilidade futura da aba será complementar; a autorização real permanece no backend. -->
+            <details class="permissoes-grupo" data-grupo-permissao="auditoria">
+              <summary><span><i class="fa-solid fa-shield-halved"></i> Auditoria</span><small>1 permissão</small><i class="fa-solid fa-chevron-down"></i></summary>
+              <div class="permissoes-lista">
+                <label><span>Visualizar auditoria</span><select data-permissao="auditoria.visualizar"></select></label>
+              </div>
+            </details>
+
             <details class="permissoes-grupo" data-grupo-permissao="configuracoes">
               <summary><span><i class="fa-solid fa-gear"></i> Configurações</span><small>6 permissões</small><i class="fa-solid fa-chevron-down"></i></summary>
               <div class="permissoes-lista">
@@ -1226,7 +1304,7 @@
   </div><!-- /.agenda-app-shell -->
   
   <script src="../../js/core/lista-core.js?v=20260820_2" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
-  <script src="../../js/menu-lateral/menu-lateral.js?v=20260821_2"></script>
+  <script src="../../js/menu-lateral/menu-lateral.js?v=20260827_1"></script>
   <script src="../../js/identidade-visual/identidade-visual.js?v=20260822_1"></script>
 
 
@@ -1254,6 +1332,9 @@
   <script src="../../js/painel-administrativo/usuario/permissoes-usuario.js?v=20260821_1"></script>
   <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
   <script src="../../js/painel-administrativo/usuario/editar-usuario.js" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
+
+  <!--ABA AUDITORIA-->
+  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260827_1"></script>
 
   <!--Universal-->
   <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->

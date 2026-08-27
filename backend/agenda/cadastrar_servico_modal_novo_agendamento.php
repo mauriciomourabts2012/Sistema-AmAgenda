@@ -128,6 +128,7 @@ try {
 
     require __DIR__ . '/../_config/conexao.php';
     require_once __DIR__ . '/../_regras/limites_plano.php';
+    require_once __DIR__ . '/../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -435,6 +436,8 @@ try {
 
     $idServico = (int)$stmt->insert_id;
     $stmt->close();
+    // Cadastro rápido usa o mesmo evento, diferenciando a origem da ação administrativa.
+    auditoriaRegistrar($conexao,'servico.criado',['entidade_id'=>$idServico,'entidade_rotulo'=>$nome,'descricao'=>'Criou o serviço '.$nome.' durante um novo agendamento.','alteracoes'=>['nome'=>['antes'=>null,'depois'=>$nome],'descricao'=>['antes'=>null,'depois'=>$descricao],'profissional'=>['antes'=>null,'depois'=>['id'=>$idProfissional,'rotulo'=>$profissionalNomeDb]],'duracao_min'=>['antes'=>null,'depois'=>$duracaoMin],'valor'=>['antes'=>null,'depois'=>$valorDb],'status'=>['antes'=>null,'depois'=>$status],'origem'=>['antes'=>null,'depois'=>'novo_agendamento']],'contexto'=>['origem'=>'novo_agendamento']]);
     $conexao->commit();
 
     out([

@@ -119,6 +119,7 @@ try {
     ========================================================== */
     require __DIR__ . '/../../_config/conexao.php';
     require_once __DIR__ . '/../../_regras/limites_plano.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -637,6 +638,23 @@ try {
             }
         }
 
+        // O evento usa somente dados administrativos explícitos; senha e hash nunca entram no payload.
+        auditoriaRegistrar($conexao, 'usuario.criado', [
+            'entidade_id' => $idUsuario,
+            'entidade_rotulo' => $nomeRetorno,
+            'descricao' => ($usuarioFoiCriadoAgora ? 'Cadastrou' : 'Vinculou') . ' o usuário ' . $nomeRetorno . '.',
+            'alteracoes' => [
+                'nome' => ['antes' => null, 'depois' => $nomeRetorno],
+                'email' => ['antes' => null, 'depois' => $emailRetorno],
+                'telefone' => ['antes' => null, 'depois' => $telefoneRetorno],
+                'perfil' => ['antes' => null, 'depois' => (string)$perfilNomeDb],
+                'status' => ['antes' => null, 'depois' => $usuarioFoiCriadoAgora ? $statusNovoUsuario : (string)$usuarioExistenteStatus],
+                'status_vinculo' => ['antes' => null, 'depois' => $statusVinculo],
+                'especialidade' => ['antes' => null, 'depois' => $isProfissional ? $especialidade : null],
+            ],
+            'contexto' => ['origem' => 'painel_administrativo'],
+        ]);
+        // Cadastro/vínculo e auditoria são confirmados na mesma transação.
         $conexao->commit();
     } catch (Throwable $e) {
         $conexao->rollback();

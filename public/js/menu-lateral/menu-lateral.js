@@ -26,6 +26,7 @@
       { tipo: "link", texto: "Agenda", icone: "fa-solid fa-calendar-days", href: "/public/views/agenda.html", titulo: "Abrir Agenda" },
       { tipo: "aba", aba: "clientes", texto: "Clientes", icone: "fa-solid fa-users", permissao: "clientes.visualizar" },
       { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-user-gear", permissao: "usuarios.visualizar" },
+      { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left", permissao: "auditoria.visualizar" },
       { tipo: "button", texto: "Configurações da Empresa", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", permissao: "empresa.visualizar_configuracoes" }
     ],
     "super-admin": [
@@ -43,7 +44,8 @@
       titulos: {
         resumo: ["Resumo do dia", "Acompanhe as principais informações de hoje"],
         clientes: ["Clientes", "Gerencie os clientes da sua empresa"],
-        usuarios: ["Usuários", "Gerencie os usuários da sua empresa"]
+        usuarios: ["Usuários", "Gerencie os usuários da sua empresa"],
+        auditoria: ["Auditoria", "Consulte o histórico de atividades e alterações realizadas na empresa."]
       }
     },
     "super-admin": {

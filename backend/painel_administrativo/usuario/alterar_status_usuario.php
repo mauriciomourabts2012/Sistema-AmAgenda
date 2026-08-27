@@ -64,6 +64,7 @@ if ($idEmpresaSessao <= 0 || ($tipoUsuarioSessao === 'super_admin' && !$modoSupo
 ========================================================== */
 require_once __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/limites_plano.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -231,6 +232,14 @@ try {
     }
 
     $stmtUpdate->close();
+    // O status auditado é o vínculo empresarial, não o status global do usuário.
+    auditoriaRegistrar($conexao, 'usuario.status_alterado', [
+        'entidade_id' => $idUsuario,
+        'entidade_rotulo' => $nomeUsuario,
+        'descricao' => 'Alterou o status do usuário ' . $nomeUsuario . '.',
+        'alteracoes' => ['status_vinculo' => ['antes' => $statusAtual, 'depois' => $novoStatus]],
+        'contexto' => ['origem' => 'painel_administrativo'],
+    ]);
     $conexao->commit();
 
     /* ==========================================================

@@ -49,15 +49,17 @@ try {
 
     require __DIR__ . '/../_config/conexao.php';
     require_once __DIR__ . '/../_regras/limites_plano.php';
+    require_once __DIR__ . '/../_servicos/auditoria.php';
     $conexao->set_charset('utf8mb4');
     $stmt=$conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND e.status='ativo' LIMIT 1");
     $stmt->bind_param('ii',$idEmpresa,$idUsuario); $stmt->execute(); $stmt->bind_result($perfil,$profSessao); $vinculo=$stmt->fetch(); $stmt->close();
     if (!$vinculo) out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Acesso à empresa não autorizado.'],403);
     if (in_array(mb_strtolower((string)$perfil),['profissional','profissionais'],true) && (int)$profSessao!==$idProfissional) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode editar os próprios agendamentos.'],403);
 
-    $stmt=$conexao->prepare("SELECT id_agendamento,data_agendamento,hora_inicio,repetir_semanalmente,recorrencia_data_fim,grupo_recorrencia FROM agendamento WHERE id_agendamento=? AND id_empresa=? LIMIT 1");
+    // Snapshot mínimo com rótulos históricos, sempre limitado à empresa da sessão.
+    $stmt=$conexao->prepare("SELECT a.id_agendamento,a.id_cliente,c.nome_completo,a.id_profissional,up.nome,a.id_servico,s.nome,a.data_agendamento,a.hora_inicio,a.hora_fim,a.duracao_min_aplicada,a.valor_aplicado,a.status,a.repetir_semanalmente,a.recorrencia_data_fim,a.grupo_recorrencia FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario up ON up.id_usuario=p.id_usuario INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_empresa=a.id_empresa WHERE a.id_agendamento=? AND a.id_empresa=? LIMIT 1");
     $stmt->bind_param('ii',$id,$idEmpresa); $stmt->execute();
-    $stmt->bind_result($idDb,$dataOriginalTexto,$horaOriginalTexto,$repetirDb,$fimRecDbOriginal,$grupoDb); $existe=$stmt->fetch(); $stmt->close();
+    $stmt->bind_result($idDb,$clienteAnteriorId,$clienteAnteriorNome,$profAnteriorId,$profAnteriorNome,$servicoAnteriorId,$servicoAnteriorNome,$dataOriginalTexto,$horaOriginalTexto,$horaFimAnterior,$duracaoAnterior,$valorAnterior,$statusAnterior,$repetirDb,$fimRecDbOriginal,$grupoDb); $existe=$stmt->fetch(); $stmt->close();
     if (!$existe) out(['ok'=>false,'code'=>'APPOINTMENT_NOT_FOUND','user_msg'=>'Agendamento não encontrado.'],404);
 
     $ocorrenciaRecorrente=trim((string)$grupoDb)!=='';
@@ -68,12 +70,12 @@ try {
         out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Informe uma data final válida para a recorrência.','fields'=>['recorrencia_data_fim'=>'Informe uma data final válida.']],422);
     }
 
-    $stmt=$conexao->prepare("SELECT id_cliente FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
-    $stmt->bind_param('ii',$idCliente,$idEmpresa); $stmt->execute(); $stmt->store_result(); $ok=$stmt->num_rows===1; $stmt->close();
+    $stmt=$conexao->prepare("SELECT id_cliente,nome_completo FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
+    $stmt->bind_param('ii',$idCliente,$idEmpresa); $stmt->execute(); $stmt->bind_result($clienteNovoId,$clienteNovoNome); $ok=$stmt->fetch(); $stmt->close();
     if (!$ok) out(['ok'=>false,'code'=>'CLIENT_NOT_FOUND','user_msg'=>'Cliente não encontrado ou inativo.'],404);
 
-    $stmt=$conexao->prepare("SELECT s.duracao_min,s.valor FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
-    $stmt->bind_param('iii',$idServico,$idProfissional,$idEmpresa); $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb); $servico=$stmt->fetch(); $stmt->close();
+    $stmt=$conexao->prepare("SELECT s.duracao_min,s.valor,s.nome,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt->bind_param('iii',$idServico,$idProfissional,$idEmpresa); $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb,$servicoNovoNome,$profNovoNome); $servico=$stmt->fetch(); $stmt->close();
     if (!$servico || (int)$duracaoDb<=0) out(['ok'=>false,'code'=>'SERVICE_NOT_FOUND','user_msg'=>'Serviço não encontrado para o profissional selecionado.'],404);
     $duracao=$duracaoSolicitada;
     $inicio=DateTimeImmutable::createFromFormat('!H:i',$horaTexto); $fim=$inicio?->modify('+'.$duracao.' minutes');
@@ -121,6 +123,10 @@ try {
     // nenhuma outra ocorrência do mesmo grupo de recorrência seja alterada.
     $stmt=$conexao->prepare("UPDATE agendamento SET id_cliente=?,id_profissional=?,id_servico=?,data_agendamento=?,hora_inicio=?,hora_fim=?,duracao_min_aplicada=?,valor_aplicado=?,status=?,observacao=?,repetir_semanalmente=?,recorrencia_data_fim=?,grupo_recorrencia=? WHERE id_agendamento=? AND id_empresa=? LIMIT 1");
     $stmt->bind_param('iiisssidssissii',$idCliente,$idProfissional,$idServico,$dataTexto,$horaInicio,$horaFim,$duracao,$valor,$status,$obsDb,$rep,$fimRecDb,$grupo,$id,$idEmpresa);
-    $stmt->execute(); $stmt->close(); $conexao->commit();
+    $stmt->execute(); $stmt->close();
+    $campos=['cliente'=>[['id'=>(int)$clienteAnteriorId,'rotulo'=>$clienteAnteriorNome],['id'=>$idCliente,'rotulo'=>$clienteNovoNome]],'profissional'=>[['id'=>(int)$profAnteriorId,'rotulo'=>$profAnteriorNome],['id'=>$idProfissional,'rotulo'=>$profNovoNome]],'servico'=>[['id'=>(int)$servicoAnteriorId,'rotulo'=>$servicoAnteriorNome],['id'=>$idServico,'rotulo'=>$servicoNovoNome]],'data_agendamento'=>[$dataOriginalTexto,$dataTexto],'hora_inicio'=>[$horaOriginalTexto,$horaInicio],'hora_fim'=>[$horaFimAnterior,$horaFim],'duracao_min_aplicada'=>[(int)$duracaoAnterior,$duracao],'valor_aplicado'=>[(float)$valorAnterior,(float)$valor],'status'=>[$statusAnterior,$status],'recorrencia'=>[['grupo'=>$grupoDb,'data_fim'=>$fimRecDbOriginal],['grupo'=>$grupo,'data_fim'=>$fimRecDb]]];
+    $diferencas=[];foreach($campos as $campo=>[$antes,$depois])if(!auditoriaValoresIguais($antes,$depois))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depois];
+    if($diferencas!==[]){$somenteStatus=array_keys($diferencas)===['status'];$eventoStatus=['confirmado'=>'agendamento.confirmado','cancelado'=>'agendamento.cancelado','concluido'=>'agendamento.concluido'];$evento=$somenteStatus&&isset($eventoStatus[$status])?$eventoStatus[$status]:'agendamento.editado';auditoriaRegistrar($conexao,$evento,['entidade_id'=>$id,'entidade_rotulo'=>(string)$clienteNovoNome,'descricao'=>($evento==='agendamento.confirmado'?'Confirmou':($evento==='agendamento.cancelado'?'Cancelou':($evento==='agendamento.concluido'?'Concluiu':'Alterou'))).' o agendamento de '.$clienteNovoNome.'.','alteracoes'=>$diferencas,'contexto'=>['origem'=>'agenda','escopo'=>'ocorrencia_unica','grupo_recorrencia'=>$grupo]]);}
+    $conexao->commit();
     out(['ok'=>true,'code'=>'APPOINTMENT_UPDATED','user_msg'=>$ocorrenciaRecorrente?'Ocorrência reagendada sem alterar as demais semanas.':'Agendamento atualizado com sucesso.','data'=>['id_agendamento'=>$id,'ocorrencia_recorrente'=>$ocorrenciaRecorrente,'avisos_plano'=>$avisosPlano]],200);
 } catch (Throwable $e) { if ($conexao instanceof mysqli) { try{$conexao->rollback();}catch(Throwable $x){} } error_log('[editar_agendamento] '.$e->getMessage()); out(['ok'=>false,'code'=>'INTERNAL_ERROR','user_msg'=>'Não foi possível atualizar o agendamento.'],500); }

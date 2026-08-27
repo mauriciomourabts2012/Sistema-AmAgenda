@@ -244,6 +244,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 | Ajuste o caminho se o seu arquivo de conexão estiver em outro local.
 */
 require_once __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -387,7 +388,7 @@ try {
         }
 
         $sqlExiste = "
-            SELECT id_config
+            SELECT id_config, inicio_semana, intervalo_padrao_min, observacao_padrao
             FROM configuracao_geral_empresa
             WHERE id_empresa = ?
             LIMIT 1
@@ -472,6 +473,10 @@ try {
             $stmtInsert->close();
         }
 
+        $antesGeral = ['inicio_semana'=>$registroExiste['inicio_semana']??null,'intervalo_padrao'=>$registroExiste===null?null:(int)$registroExiste['intervalo_padrao_min'],'observacao_padrao'=>$registroExiste['observacao_padrao']??null];
+        $depoisGeral = ['inicio_semana'=>$inicioSemana,'intervalo_padrao'=>$intervaloPadraoMin,'observacao_padrao'=>$observacaoPadrao];
+        $diferencas=[];foreach($antesGeral as $campo=>$antes)if(!auditoriaValoresIguais($antes,$depoisGeral[$campo]))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depoisGeral[$campo]];
+        if($diferencas!==[])auditoriaRegistrar($conexao,'empresa.configuracoes_alteradas',['entidade_id'=>$idEmpresa,'entidade_rotulo'=>(string)$empresa['nome'],'descricao'=>'Alterou as configurações gerais da empresa.','alteracoes'=>$diferencas,'contexto'=>['aba'=>$aba,'origem'=>'configuracoes_empresa']]);
         $conexao->commit();
 
         out([
@@ -633,7 +638,7 @@ try {
         |--------------------------------------------------------------------------
         */
         $sqlExistentes = "
-            SELECT id_horario_empresa, dia_semana
+            SELECT id_horario_empresa, dia_semana, hora_inicio, hora_fim, almoco_inicio, almoco_fim, disponivel
             FROM horario_empresa
             WHERE id_empresa = ?
             ORDER BY id_horario_empresa ASC
@@ -650,6 +655,7 @@ try {
 
         $resultExistentes = $stmtExistentes->get_result();
         $existentes = [];
+        $horariosAnteriores = [];
 
         if ($resultExistentes) {
             while ($row = $resultExistentes->fetch_assoc()) {
@@ -657,6 +663,7 @@ try {
 
                 if (!isset($existentes[$dia])) {
                     $existentes[$dia] = (int)$row['id_horario_empresa'];
+                    $horariosAnteriores[$dia] = ['dia_semana'=>$dia,'disponivel'=>(int)$row['disponivel'],'hora_inicio'=>$row['hora_inicio'],'hora_fim'=>$row['hora_fim'],'almoco_inicio'=>$row['almoco_inicio'],'almoco_fim'=>$row['almoco_fim']];
                 }
             }
         }
@@ -870,6 +877,7 @@ try {
             $stmtInsertConfigGeral->close();
         }
 
+        if(!auditoriaValoresIguais($horariosAnteriores,$horariosNormalizados))auditoriaRegistrar($conexao,'empresa.configuracoes_alteradas',['entidade_id'=>$idEmpresa,'entidade_rotulo'=>(string)$empresa['nome'],'descricao'=>'Alterou os horários da empresa.','alteracoes'=>['horarios'=>['antes'=>$horariosAnteriores,'depois'=>$horariosNormalizados]],'contexto'=>['aba'=>$aba,'origem'=>'configuracoes_empresa']]);
         $conexao->commit();
 
         /*
@@ -939,7 +947,7 @@ try {
         }
 
         $sqlExisteWhatsapp = "
-            SELECT id_config_whatsapp
+            SELECT id_config_whatsapp, ddi_padrao, ddd_padrao, mensagem_padrao
             FROM configuracao_whatsapp_empresa
             WHERE id_empresa = ?
             LIMIT 1
@@ -1024,6 +1032,10 @@ try {
             $stmtInsertWhatsapp->close();
         }
 
+        $antesWhatsapp=['ddi_padrao'=>$registroWhatsapp['ddi_padrao']??null,'ddd_padrao'=>$registroWhatsapp['ddd_padrao']??null,'mensagem_whatsapp'=>$registroWhatsapp['mensagem_padrao']??null];
+        $depoisWhatsapp=['ddi_padrao'=>$ddiPadrao,'ddd_padrao'=>$dddPadrao,'mensagem_whatsapp'=>$mensagemPadrao];
+        $diferencas=[];foreach($antesWhatsapp as $campo=>$antes)if(!auditoriaValoresIguais($antes,$depoisWhatsapp[$campo]))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depoisWhatsapp[$campo]];
+        if($diferencas!==[])auditoriaRegistrar($conexao,'empresa.configuracoes_alteradas',['entidade_id'=>$idEmpresa,'entidade_rotulo'=>(string)$empresa['nome'],'descricao'=>'Alterou as configurações de WhatsApp da empresa.','alteracoes'=>$diferencas,'contexto'=>['aba'=>$aba,'origem'=>'configuracoes_empresa']]);
         $conexao->commit();
 
         out([

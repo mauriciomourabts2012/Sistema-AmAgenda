@@ -68,6 +68,7 @@ try {
 
     require __DIR__ . '/../../_config/conexao.php';
     require_once __DIR__ . '/../../_regras/limites_plano.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -214,8 +215,8 @@ try {
     $idProfissional = filter_input(INPUT_POST,'id_profissional',FILTER_VALIDATE_INT)
         ?: (is_numeric($_POST['id_profissional'] ?? null) ? (int)$_POST['id_profissional'] : 0);
     if ($idProfissional<=0) out(['ok'=>false,'code'=>'PROFESSIONAL_REQUIRED','user_msg'=>'Selecione um profissional para continuar.'],422);
-    $stmt=$conexao->prepare("SELECT p.id_profissional FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
-    $stmt->bind_param('ii',$idProfissional,$idEmpresaSessao); $stmt->execute(); $stmt->store_result(); $profissionalOk=$stmt->num_rows===1; $stmt->close();
+    $stmt=$conexao->prepare("SELECT p.id_profissional,u.nome FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt->bind_param('ii',$idProfissional,$idEmpresaSessao); $stmt->execute(); $stmt->bind_result($profissionalIdDb,$profissionalNome); $profissionalOk=$stmt->fetch(); $stmt->close();
     if (!$profissionalOk) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional selecionado não está ativo ou não pertence à empresa acessada.'],403);
     $nomeNormalizado = lower($nome);
 
@@ -311,6 +312,7 @@ try {
 
     $idServico = (int)$stmt->insert_id;
     $stmt->close();
+    auditoriaRegistrar($conexao,'servico.criado',['entidade_id'=>$idServico,'entidade_rotulo'=>$nome,'descricao'=>'Criou o serviço '.$nome.'.','alteracoes'=>['nome'=>['antes'=>null,'depois'=>$nome],'descricao'=>['antes'=>null,'depois'=>$descricao],'profissional'=>['antes'=>null,'depois'=>['id'=>$idProfissional,'rotulo'=>$profissionalNome]],'duracao_min'=>['antes'=>null,'depois'=>$duracaoMin],'valor'=>['antes'=>null,'depois'=>$valorDb],'status'=>['antes'=>null,'depois'=>$status],'origem'=>['antes'=>null,'depois'=>'configuracao_servicos']],'contexto'=>['origem'=>'configuracao_servicos']]);
     $conexao->commit();
 
     out([

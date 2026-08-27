@@ -40,6 +40,7 @@ try {
     }
 
     require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_servicos/auditoria.php';
     $conexao->set_charset('utf8mb4');
 
     $stmt = $conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND e.status='ativo' LIMIT 1");
@@ -51,10 +52,11 @@ try {
     if (!$vinculo) out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
 
     $conexao->begin_transaction();
-    $stmt = $conexao->prepare("SELECT id_profissional,data_agendamento,grupo_recorrencia FROM agendamento WHERE id_agendamento=? AND id_empresa=? LIMIT 1 FOR UPDATE");
+    // Snapshot anterior ao DELETE com relacionamentos e rótulos históricos.
+    $stmt = $conexao->prepare("SELECT a.id_profissional,a.data_agendamento,a.grupo_recorrencia,a.id_cliente,c.nome_completo,up.nome,a.id_servico,s.nome,a.hora_inicio,a.hora_fim,a.status,a.repetir_semanalmente FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario up ON up.id_usuario=p.id_usuario INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_empresa=a.id_empresa WHERE a.id_agendamento=? AND a.id_empresa=? LIMIT 1 FOR UPDATE");
     $stmt->bind_param('ii', $idAgendamento, $idEmpresa);
     $stmt->execute();
-    $stmt->bind_result($idProfissionalAgendamento, $dataSelecionada, $grupoRecorrencia);
+    $stmt->bind_result($idProfissionalAgendamento,$dataSelecionada,$grupoRecorrencia,$idClienteSnapshot,$clienteNomeSnapshot,$profNomeSnapshot,$idServicoSnapshot,$servicoNomeSnapshot,$horaInicioSnapshot,$horaFimSnapshot,$statusSnapshot,$repetirSnapshot);
     $existe = $stmt->fetch();
     $stmt->close();
     if (!$existe) {
@@ -93,6 +95,8 @@ try {
         out(['ok' => false, 'code' => 'NOTHING_DELETED', 'user_msg' => 'Nenhum agendamento foi excluído.'], 409);
     }
 
+    $escoposAuditoria=['somente_este'=>'ocorrencia_unica','este_e_proximos'=>'esta_e_proximas','toda_recorrencia'=>'toda_recorrencia'];
+    auditoriaRegistrar($conexao,'agendamento.excluido',['entidade_id'=>$idAgendamento,'entidade_rotulo'=>(string)$clienteNomeSnapshot,'descricao'=>'Excluiu o agendamento de '.$clienteNomeSnapshot.'.','alteracoes'=>['cliente'=>['antes'=>['id'=>(int)$idClienteSnapshot,'rotulo'=>$clienteNomeSnapshot],'depois'=>null],'profissional'=>['antes'=>['id'=>(int)$idProfissionalAgendamento,'rotulo'=>$profNomeSnapshot],'depois'=>null],'servico'=>['antes'=>['id'=>(int)$idServicoSnapshot,'rotulo'=>$servicoNomeSnapshot],'depois'=>null],'data_agendamento'=>['antes'=>$dataSelecionada,'depois'=>null],'hora_inicio'=>['antes'=>$horaInicioSnapshot,'depois'=>null],'hora_fim'=>['antes'=>$horaFimSnapshot,'depois'=>null],'status'=>['antes'=>$statusSnapshot,'depois'=>null],'recorrencia'=>['antes'=>['grupo'=>$grupoRecorrencia,'repetir'=>(bool)$repetirSnapshot],'depois'=>null]],'contexto'=>['origem'=>'agenda','quantidade_afetada'=>$quantidade,'escopo'=>$escoposAuditoria[$escopo],'grupo_recorrencia'=>$grupoRecorrencia,'data_referencia'=>$dataSelecionada]]);
     $conexao->commit();
     out([
         'ok' => true,

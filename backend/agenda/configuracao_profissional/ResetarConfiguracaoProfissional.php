@@ -11,6 +11,7 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/php_errors.log');
 
 require_once __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 /*
   IMPORTANTE:
@@ -111,14 +112,18 @@ try {
     exigirPermissao($conexao, $permissaoEdicao);
 
     // Confirma novamente que o alvo ativo pertence à empresa da sessão.
-    $stmt = $conexao->prepare("SELECT p.id_profissional FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
-    $stmt->bind_param('ii', $idProfissional, $idEmpresa); $stmt->execute(); $stmt->store_result(); $profissionalOk=$stmt->num_rows===1; $stmt->close();
+    $stmt = $conexao->prepare("SELECT p.id_profissional,u.nome FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt->bind_param('ii', $idProfissional, $idEmpresa); $stmt->execute(); $stmt->bind_result($idProfissionalDb,$nomeProfissional); $profissionalOk=$stmt->fetch(); $stmt->close();
     if (!$profissionalOk) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional selecionado não está ativo ou não pertence à empresa acessada.'],403);
 
     /* ==========================================================
        APAGA DADOS PERSONALIZADOS DO PROFISSIONAL
     ========================================================== */
     $conexao->begin_transaction();
+
+    // Snapshot controlado das configurações próprias que serão excluídas, sempre isolado pela empresa.
+    $snapshot=[];
+    foreach(['configuracao_geral_profissional','horario_profissional','configuracao_whatsapp_profissional'] as $tabela){$stmt=$conexao->prepare("SELECT COUNT(*) FROM {$tabela} WHERE id_empresa=? AND id_profissional=?");$stmt->bind_param('ii',$idEmpresa,$idProfissional);$stmt->execute();$stmt->bind_result($quantidade);$stmt->fetch();$stmt->close();$snapshot[$tabela]=(int)$quantidade;}
 
     $apagados = [
         'configuracao_geral_profissional' => 0,
@@ -156,6 +161,9 @@ try {
     $apagados['configuracao_whatsapp_profissional'] = max(0, $stmt->affected_rows);
     $stmt->close();
 
+    $totalApagado=array_sum($apagados);
+    if($totalApagado>0)auditoriaRegistrar($conexao,'agenda_profissional.configuracao_restaurada',['entidade_id'=>$idProfissional,'entidade_rotulo'=>(string)$nomeProfissional,'descricao'=>'Restaurou a configuração padrão de '.$nomeProfissional.'.','alteracoes'=>['antes'=>['antes'=>$snapshot,'depois'=>[]]],'contexto'=>['quantidade_afetada'=>$totalApagado,'origem'=>'configuracao_profissional']]);
+    // Exclusão das personalizações e auditoria são confirmadas juntas.
     $conexao->commit();
 
     out([

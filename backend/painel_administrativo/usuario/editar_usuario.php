@@ -244,6 +244,7 @@ if (!empty($erros)) {
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/limites_plano.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -312,13 +313,16 @@ try {
             eu.id_empresa,
             eu.id_perfil,
             eu.status AS status_vinculo,
-            perfil_atual.nome AS perfil_anterior
+            perfil_atual.nome AS perfil_anterior,
+            prof.especialidade AS especialidade_anterior
         FROM usuario u
         INNER JOIN empresa_usuario eu
             ON eu.id_usuario = u.id_usuario
            AND eu.id_empresa = ?
         INNER JOIN perfil perfil_atual
             ON perfil_atual.id_perfil = eu.id_perfil
+        LEFT JOIN profissional prof
+            ON prof.id_usuario = u.id_usuario
         WHERE u.id_usuario = ?
         LIMIT 1
     ";
@@ -662,6 +666,19 @@ try {
         $stmt->close();
     }
 
+    // Monta diferenças a partir do snapshot empresarial carregado antes da operação.
+    $valoresAuditaveis = [
+        'nome' => [(string)$usuario['nome'], $nome],
+        'email' => [(string)$usuario['email'], $email],
+        'telefone' => [$usuario['telefone'], $telefone],
+        'perfil' => [(string)$usuario['perfil_anterior'], (string)$perfil['nome']],
+        'status_vinculo' => [(string)$usuario['status_vinculo'], $status],
+        'especialidade' => [$usuario['especialidade_anterior'], $isProfissional ? $especialidade : null],
+    ];
+    $diferencas=[];foreach($valoresAuditaveis as $campo=>[$antes,$depois])if(!auditoriaValoresIguais($antes,$depois))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depois];
+    if($diferencas!==[])auditoriaRegistrar($conexao,'usuario.editado',['entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,'descricao'=>'Alterou o usuário '.$nome.'.','alteracoes'=>$diferencas,'contexto'=>['origem'=>'painel_administrativo']]);
+    // A redefinição administrativa registra somente o fato, sem qualquer característica da senha.
+    if($alterarSenha)auditoriaRegistrar($conexao,'usuario.senha_redefinida',['entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,'descricao'=>'Redefiniu a senha do usuário '.$nome.'.','alteracoes'=>['senha_alterada'=>['antes'=>false,'depois'=>true]],'contexto'=>['origem'=>'painel_administrativo']]);
     $conexao->commit();
 
     $houveAlteracao = (

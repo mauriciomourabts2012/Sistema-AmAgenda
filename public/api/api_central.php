@@ -233,6 +233,11 @@ $routes = [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/resumo_dia/lista_resumo_dia.php',
     ],
 
+    // Consulta cronológica da auditoria da empresa autenticada
+    'painel/auditoria/listar' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/auditoria/lista_auditoria.php',
+    ],
+
     // Editar Usuário (FUNCIONARIO)
     'painel/usuario/editar' => [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/usuario/editar_usuario.php',
@@ -413,6 +418,7 @@ $permissoesPorRota = [
     'painel/usuario/cadastrar' => 'usuarios.cadastrar',
     'painel/usuario/editar' => 'usuarios.editar',
     'painel/usuario/alterar-status' => 'usuarios.alterar_status',
+    'painel/auditoria/listar' => 'auditoria.visualizar',
     'agenda/servico-profissional/listar' => 'servicos.visualizar',
     'agenda/servico-profissional/cadastrar' => 'servicos.cadastrar',
     'agenda/servico-profissional/cadastrar-agendamento' => 'servicos.cadastrar',

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../_config/identidade_visual.php';
 require_once __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 $permissao = identidadeExigirProprietario($conexao);
 
 $idEmpresa = (int)$permissao['id_empresa'];
@@ -33,6 +34,19 @@ try {
     $stmt->bind_param('isssiii', $idEmpresa, $nomeDb, $logoDb, $loginDb, $escala, $posX, $posY);
     if (!$stmt->execute()) throw new RuntimeException('Falha ao atualizar a identidade.');
     $stmt->close();
+    // Os uploads já foram concluídos; a diferença registra somente presença/substituição, nunca caminhos físicos ou bytes.
+    $alteracoes = [];
+    $campos = [
+        'nome_exibicao' => [$atual['nome_exibicao'] ?? null, $nomeDb],
+        'logo' => [empty($atual['logo_empresa']) ? 'padrao' : 'personalizada', empty($logoDb) ? 'padrao' : ($logoNovo ? 'substituida' : 'personalizada')],
+        'imagem_login' => [empty($atual['imagem_login']) ? 'padrao' : 'personalizada', empty($loginDb) ? 'padrao' : ($loginNovo ? 'substituida' : 'personalizada')],
+        'imagem_login_escala' => [(int)($atual['imagem_login_escala'] ?? 100), $escala],
+        'imagem_login_pos_x' => [(int)($atual['imagem_login_pos_x'] ?? 0), $posX],
+        'imagem_login_pos_y' => [(int)($atual['imagem_login_pos_y'] ?? 0), $posY],
+    ];
+    foreach ($campos as $campo => [$antes, $depois]) if (!auditoriaValoresIguais($antes, $depois)) $alteracoes[$campo] = ['antes' => $antes, 'depois' => $depois];
+    if ($alteracoes !== []) auditoriaRegistrar($conexao, 'empresa.identidade_visual_alterada', ['entidade_id' => $idEmpresa, 'entidade_rotulo' => $nomeDb ?: 'Empresa', 'descricao' => 'Alterou a identidade visual da empresa.', 'alteracoes' => $alteracoes, 'contexto' => ['origem' => 'configuracoes_empresa']]);
+    // Banco e auditoria pertencem à mesma transação; qualquer falha remove também os novos arquivos no catch.
     $conexao->commit();
 
     if ($logoNovo) identidadeRemoverArquivoSeguro($atual['logo_empresa'] ?? null, $idEmpresa);

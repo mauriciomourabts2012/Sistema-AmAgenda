@@ -78,6 +78,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -107,6 +108,12 @@ try {
     $stmt->bind_param('ii',$idProfissionalSessao,$idEmpresaSessao);$stmt->execute();$stmt->store_result();$profissionalOk=$stmt->num_rows===1;$stmt->close();
     if(!$profissionalOk) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional selecionado não está ativo ou não pertence à empresa acessada.'],403);
 
+    $conexao->begin_transaction();
+    // Snapshot mínimo anterior à exclusão, isolado por empresa e profissional.
+    $stmt=$conexao->prepare("SELECT s.nome,s.descricao,s.duracao_min,s.valor,s.status,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario WHERE s.id_servico=? AND s.id_empresa=? AND s.id_profissional=? LIMIT 1 FOR UPDATE");
+    $stmt->bind_param('iii',$idServico,$idEmpresaSessao,$idProfissionalSessao);$stmt->execute();$stmt->bind_result($servicoNome,$servicoDescricao,$servicoDuracao,$servicoValor,$servicoStatus,$profissionalNome);$servicoEncontrado=$stmt->fetch();$stmt->close();
+    if(!$servicoEncontrado){$conexao->rollback();out(['ok'=>false,'code'=>'SERVICE_NOT_FOUND','user_msg'=>'Serviço não encontrado para o profissional logado.'],404);}
+
     $stmt = $conexao->prepare("
         DELETE FROM servico
         WHERE id_servico = ?
@@ -127,6 +134,7 @@ try {
         $stmt->close();
 
         if ($errno === 1451) {
+            $conexao->rollback();
             out([
                 'ok' => false,
                 'code' => 'SERVICE_IN_USE',
@@ -141,12 +149,16 @@ try {
     $stmt->close();
 
     if ($apagados <= 0) {
+        $conexao->rollback();
         out([
             'ok' => false,
             'code' => 'SERVICE_NOT_FOUND',
             'user_msg' => 'Serviço não encontrado para o profissional logado.'
         ], 404);
     }
+
+    auditoriaRegistrar($conexao,'servico.excluido',['entidade_id'=>$idServico,'entidade_rotulo'=>$servicoNome,'descricao'=>'Excluiu o serviço '.$servicoNome.'.','alteracoes'=>['nome'=>['antes'=>$servicoNome,'depois'=>null],'descricao'=>['antes'=>$servicoDescricao,'depois'=>null],'profissional'=>['antes'=>['id'=>$idProfissionalSessao,'rotulo'=>$profissionalNome],'depois'=>null],'duracao_min'=>['antes'=>(int)$servicoDuracao,'depois'=>null],'valor'=>['antes'=>$servicoValor,'depois'=>null],'status'=>['antes'=>$servicoStatus,'depois'=>null],'origem'=>['antes'=>'configuracao_servicos','depois'=>null]],'contexto'=>['origem'=>'configuracao_servicos']]);
+    $conexao->commit();
 
     out([
         'ok' => true,
@@ -160,6 +172,7 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    try { $conexao->rollback(); } catch (Throwable $ignorado) {}
     error_log('[excluir_servico] ' . $e->getMessage());
 
     out([
