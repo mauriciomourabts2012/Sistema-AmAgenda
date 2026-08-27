@@ -29,9 +29,10 @@
   const lista = document.getElementById("listaAuditoria");
   const estado = document.getElementById("estadoAuditoria");
   const paginacao = document.getElementById("paginacaoAuditoria");
+  const busca = document.getElementById("busca_auditoria");
   const modulo = document.getElementById("modulo_auditoria");
   const evento = document.getElementById("evento_auditoria");
-  if (!aba || !form || !lista || !estado || !paginacao || !modulo || !evento) return;
+  if (!aba || !form || !lista || !estado || !paginacao || !busca || !modulo || !evento) return;
 
   // Histórico de cursores mantido apenas em memória durante a navegação atual.
   let cursoresPaginas = [null];
@@ -39,8 +40,10 @@
   let proximoCursor = null;
   let temMais = false;
   let filtrosAplicados = null;
-  let carregado = false;
   let requisicao = null;
+  let sequenciaRequisicao = 0;
+  let temporizadorPesquisa = null;
+  const controlesAcao = [...form.querySelectorAll("button")];
 
   function texto(valor) {
     if (valor === null || valor === undefined || valor === "") return "—";
@@ -195,15 +198,19 @@
 
   async function consultar(paginaAlvo = 0) {
     if (requisicao) requisicao.abort();
-    requisicao = new AbortController();
+    const controlador = new AbortController();
+    const sequenciaAtual = ++sequenciaRequisicao;
+    requisicao = controlador;
     const cursorPagina = cursoresPaginas[paginaAlvo] || null;
-    lista.replaceChildren();
     paginacao.replaceChildren();
     mostrarEstado("Carregando atividades…");
+    controlesAcao.forEach(controle => controle.disabled = true);
+    form.setAttribute("aria-busy", "true");
 
     try {
-      const resposta = await fetch(`${ENDPOINT}&${parametros(cursorPagina)}`, { credentials: "same-origin", signal: requisicao.signal });
+      const resposta = await fetch(`${ENDPOINT}&${parametros(cursorPagina)}`, { credentials: "same-origin", signal: controlador.signal });
       const json = await resposta.json().catch(() => null);
+      if (sequenciaAtual !== sequenciaRequisicao) return;
       if (!resposta.ok || !json?.ok) throw new Error(json?.user_msg || "Não foi possível consultar a auditoria.");
       const itens = Array.isArray(json?.data?.items) ? json.data.items : [];
       const fragmento = document.createDocumentFragment();
@@ -215,29 +222,53 @@
       temMais = !!json?.meta?.tem_mais;
       renderizarPaginacao();
       mostrarEstado(lista.childElementCount ? "" : "Nenhuma atividade encontrada para os filtros selecionados.");
-      carregado = true;
     } catch (erro) {
-      if (erro?.name === "AbortError") return;
+      if (erro?.name === "AbortError" || sequenciaAtual !== sequenciaRequisicao) return;
       lista.replaceChildren();
       mostrarEstado(erro?.message || "Não foi possível consultar a auditoria.", true);
       renderizarPaginacao();
     } finally {
-      requisicao = null;
+      if (sequenciaAtual === sequenciaRequisicao) {
+        requisicao = null;
+        controlesAcao.forEach(controle => controle.disabled = false);
+        form.removeAttribute("aria-busy");
+      }
     }
+  }
+
+  function cancelarPesquisaAgendada() {
+    if (temporizadorPesquisa === null) return;
+    clearTimeout(temporizadorPesquisa);
+    temporizadorPesquisa = null;
+  }
+
+  function agendarPesquisa() {
+    cancelarPesquisaAgendada();
+    if (requisicao) requisicao.abort();
+    resetarPaginacao();
+    temporizadorPesquisa = setTimeout(() => {
+      temporizadorPesquisa = null;
+      resetarPaginacao({ atualizarFiltros: true });
+      consultar(0);
+    }, 350);
   }
 
   datasPadrao();
   preencherEventos();
   filtrosAplicados = capturarFiltros();
   modulo.addEventListener("change", preencherEventos);
-  form.addEventListener("input", () => resetarPaginacao());
-  form.addEventListener("change", () => resetarPaginacao());
+  busca.addEventListener("input", agendarPesquisa);
+  form.addEventListener("change", eventoForm => {
+    if (eventoForm.target !== busca) resetarPaginacao();
+  });
   form.addEventListener("submit", eventoForm => {
     eventoForm.preventDefault();
+    cancelarPesquisaAgendada();
     resetarPaginacao({ atualizarFiltros: true });
     consultar(0);
   });
   document.getElementById("limparFiltrosAuditoria").addEventListener("click", () => {
+    cancelarPesquisaAgendada();
     form.reset();
     datasPadrao();
     preencherEventos();
@@ -245,7 +276,11 @@
     consultar(0);
   });
   document.addEventListener("amagenda:painel-aba-alterada", eventoAba => {
-    if (eventoAba.detail?.aba === "auditoria" && !carregado) consultar(0);
+    if (eventoAba.detail?.aba === "auditoria") {
+      cancelarPesquisaAgendada();
+      resetarPaginacao({ atualizarFiltros: true });
+      consultar(0);
+    }
   });
   if (aba.classList.contains("ativa")) consultar(0);
 })();

@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_2"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260827_1"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260827_3"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
@@ -366,7 +366,7 @@
               <label for="busca_auditoria">Pesquisar</label>
               <div class="auditoria-pesquisa-controle">
                 <i class="fas fa-search" aria-hidden="true"></i>
-                <input type="search" id="busca_auditoria" placeholder="Ator, entidade, descrição ou evento">
+                <input type="search" id="busca_auditoria" maxlength="100" placeholder="Ator, entidade, descrição ou evento">
               </div>
             </div>
 
@@ -384,31 +384,34 @@
               </div>
             </fieldset>
 
-            <div class="auditoria-filtro-campo">
-              <label for="modulo_auditoria">Módulo</label>
-              <select id="modulo_auditoria">
-                <option value="">Todos</option>
-                <option value="agenda">Agenda</option>
-                <option value="clientes">Clientes</option>
-                <option value="usuarios">Usuários</option>
-                <option value="permissoes">Permissões</option>
-                <option value="servicos">Serviços</option>
-                <option value="configuracoes">Configurações</option>
-                <option value="perfil">Perfil</option>
-              </select>
+            <div class="auditoria-filtro-classificacao">
+              <div class="auditoria-filtro-campo">
+                <label for="modulo_auditoria">Módulo</label>
+                <select id="modulo_auditoria">
+                  <option value="">Todos</option>
+                  <option value="agenda">Agenda</option>
+                  <option value="clientes">Clientes</option>
+                  <option value="usuarios">Usuários</option>
+                  <option value="permissoes">Permissões</option>
+                  <option value="servicos">Serviços</option>
+                  <option value="configuracoes">Configurações</option>
+                  <option value="perfil">Perfil</option>
+                </select>
+              </div>
+              <div class="auditoria-filtro-campo">
+                <label for="evento_auditoria">Evento</label>
+                <select id="evento_auditoria">
+                  <option value="">Todos</option>
+                </select>
+              </div>
             </div>
-            <div class="auditoria-filtro-campo">
-              <label for="evento_auditoria">Evento</label>
-              <select id="evento_auditoria">
-                <option value="">Todos</option>
-              </select>
+
+            <div class="auditoria-filtro-acoes">
+              <button class="botao-geral auditoria-btn-aplicar" type="submit"><i class="fas fa-filter" aria-hidden="true"></i><span>Aplicar</span></button>
+              <button id="limparFiltrosAuditoria" class="auditoria-btn-secundario" type="button"><i class="fas fa-rotate-left" aria-hidden="true"></i><span>Limpar</span></button>
             </div>
           </div>
 
-          <div class="auditoria-filtro-acoes">
-            <button class="botao-geral auditoria-btn-aplicar" type="submit"><i class="fas fa-filter" aria-hidden="true"></i><span>Aplicar</span></button>
-            <button id="limparFiltrosAuditoria" class="auditoria-btn-secundario" type="button"><i class="fas fa-rotate-left" aria-hidden="true"></i><span>Limpar</span></button>
-          </div>
         </form>
 
         <div id="estadoAuditoria" class="auditoria-estado" role="status" aria-live="polite"></div>
@@ -1334,7 +1337,7 @@
   <script src="../../js/painel-administrativo/usuario/editar-usuario.js" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
 
   <!--ABA AUDITORIA-->
-  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260827_1"></script>
+  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260827_3"></script>
 
   <!--Universal-->
   <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->

@@ -84,6 +84,23 @@ function auditoriaListaBind(mysqli_stmt $stmt, string $tipos, array &$valores): 
     }
 }
 
+function auditoriaListaBuscaSemAcentos(string $valor): string
+{
+    $valor = mb_strtolower(trim($valor), 'UTF-8');
+    $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $valor);
+    return is_string($ascii) ? $ascii : $valor;
+}
+
+function auditoriaListaDataBusca(string $valor): ?DateTimeImmutable
+{
+    foreach (['!d/m/Y', '!Y-m-d'] as $formato) {
+        $data = DateTimeImmutable::createFromFormat($formato, $valor);
+        $erros = DateTimeImmutable::getLastErrors();
+        if ($data && (!is_array($erros) || ($erros['warning_count'] === 0 && $erros['error_count'] === 0))) return $data;
+    }
+    return null;
+}
+
 try {
     if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
         out(['ok'=>false,'code'=>'METHOD_NOT_ALLOWED','user_msg'=>'Método não permitido.'], 405);
@@ -167,10 +184,42 @@ try {
     if ($evento !== '') { $where[] = 'evento_codigo = ?'; $tipos .= 's'; $parametros[] = $evento; }
     if ($entidade !== '') { $where[] = 'entidade_tipo = ?'; $tipos .= 's'; $parametros[] = $entidade; }
     if ($busca !== '') {
-        $where[] = '(ator_nome LIKE ? OR entidade_rotulo LIKE ? OR descricao LIKE ? OR evento_codigo LIKE ?)';
+        $camposBusca = ['ator_nome', 'ator_perfil', 'ator_tipo', 'entidade_rotulo', 'entidade_tipo', 'descricao', 'modulo', 'evento_codigo'];
+        $partesBusca = array_map(static fn(string $campo): string => "{$campo} LIKE ?", $camposBusca);
         $termo = '%' . $busca . '%';
-        $tipos .= 'ssss';
-        array_push($parametros, $termo, $termo, $termo, $termo);
+        foreach ($camposBusca as $_) { $tipos .= 's'; $parametros[] = $termo; }
+
+        if (ctype_digit($busca)) {
+            $partesBusca[] = 'entidade_id = ?';
+            $tipos .= 'i';
+            $parametros[] = (int)$busca;
+        }
+
+        $dataBusca = auditoriaListaDataBusca($busca);
+        if ($dataBusca) {
+            $partesBusca[] = '(ocorrido_em >= ? AND ocorrido_em < ?)';
+            $tipos .= 'ss';
+            $parametros[] = $dataBusca->format('Y-m-d 00:00:00.000000');
+            $parametros[] = $dataBusca->modify('+1 day')->format('Y-m-d 00:00:00.000000');
+        }
+
+        // Rótulos exibidos são convertidos em códigos do catálogo sem alterar o contrato da rota.
+        $buscaNormalizada = auditoriaListaBuscaSemAcentos($busca);
+        foreach ($catalogo as $codigo => $definicao) {
+            $rotulos = [
+                auditoriaListaBuscaSemAcentos((string)$codigo),
+                auditoriaListaBuscaSemAcentos(str_replace(['.', '_'], ' ', (string)$codigo)),
+                auditoriaListaBuscaSemAcentos((string)$definicao['modulo']),
+                auditoriaListaBuscaSemAcentos((string)$definicao['entidade']),
+                auditoriaListaBuscaSemAcentos((string)$definicao['descricao_padrao']),
+            ];
+            if (array_filter($rotulos, static fn(string $rotulo): bool => str_contains($rotulo, $buscaNormalizada))) {
+                $partesBusca[] = 'evento_codigo = ?';
+                $tipos .= 's';
+                $parametros[] = (string)$codigo;
+            }
+        }
+        $where[] = '(' . implode(' OR ', $partesBusca) . ')';
     }
     if ($cursor !== null) {
         // A dupla data+ID mantém ordem determinística mesmo quando eventos compartilham o timestamp.
