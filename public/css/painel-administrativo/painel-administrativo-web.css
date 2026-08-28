@@ -122,132 +122,12 @@
 }
 
 /* ====== AUDITORIA ====== */
-/* Card principal dos filtros da Auditoria.
-   Mantém o mesmo padrão visual do Painel Administrativo. */
-.auditoria-conteudo { display: grid; gap: 20px; }
-.auditoria-filtros {
-  container: auditoria-filtros / inline-size;
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  gap: 20px;
-  padding: 22px 24px 18px;
-  background: #fff;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 18px;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, .055);
-}
-.auditoria-filtros-cabecalho {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-.auditoria-filtros-icone {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  flex: 0 0 34px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--ui-alert-primary) 10%, white);
-  color: var(--ui-alert-primary);
-}
-.auditoria-filtros-cabecalho h2 {
-  margin: 0;
-  color: var(--text, #0f172a);
-  font-size: 18px;
-  line-height: 1.25;
-}
-.auditoria-filtros-cabecalho p {
-  margin: 4px 0 0;
-  color: var(--muted, #64748b);
-  font-size: 13px;
-  line-height: 1.45;
-}
-.auditoria-filtros-grade {
-  display: grid;
-  grid-template-columns: minmax(250px, 1.5fr) minmax(280px, 1.25fr) minmax(260px, 1.15fr) auto;
-  gap: 16px;
-  align-items: end;
-}
-.auditoria-filtro-campo { display: grid; gap: 6px; min-width: 0; }
-.auditoria-filtro-campo label,
-.auditoria-filtro-periodo legend { color: #475569; font-size: 12px; font-weight: 800; }
-.auditoria-filtro-periodo { min-width: 0; margin: 0; padding: 0; border: 0; }
-.auditoria-filtro-periodo legend { margin-bottom: 6px; padding: 0; }
-.auditoria-filtro-periodo-grade,
-.auditoria-filtro-classificacao { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
-.auditoria-filtro-campo input,
-.auditoria-filtro-campo select {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  min-height: 46px;
-  padding: 10px 12px;
-  border: 1px solid #d7e0ea;
-  border-radius: 12px;
-  outline: 0;
-  background: #fff;
-  color: #0f172a;
-  font: inherit;
-  transition: border-color .2s ease, box-shadow .2s ease;
-}
-.auditoria-filtro-campo input:hover,
-.auditoria-filtro-campo select:hover { border-color: #b8c6d8; }
-.auditoria-filtro-campo input:focus,
-.auditoria-filtro-campo select:focus {
-  border-color: var(--ui-alert-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-alert-primary) 12%, transparent);
-}
-.auditoria-pesquisa-controle { position: relative; min-width: 0; }
-.auditoria-pesquisa-controle i { position: absolute; left: 14px; top: 50%; color: #718096; transform: translateY(-50%); pointer-events: none; }
-.auditoria-pesquisa-controle input { padding-left: 40px; }
-.auditoria-filtro-acoes {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  padding-bottom: 5px;
-}
-.auditoria-btn-aplicar,
-.auditoria-btn-secundario {
-  min-width: 0;
-  min-height: 35px;
-  height: 35px;
-  padding: 6px 11px;
-  gap: 6px;
-  justify-content: center;
-  font-size: 14px;
-  white-space: nowrap;
-}
-.auditoria-btn-aplicar i,
-.auditoria-btn-secundario i { font-size: 12px; }
-.auditoria-btn-aplicar {
-  background: var(--ui-alert-primary);
-  color: #fff;
-}
-.auditoria-btn-aplicar:hover { background: var(--ui-alert-primary-hover); }
-.auditoria-btn-aplicar:focus-visible { outline: 3px solid color-mix(in srgb, var(--ui-alert-primary) 28%, transparent); outline-offset: 2px; }
-.auditoria-btn-secundario {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 11px;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  background: #fff;
-  color: #334155;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-  transition: border-color .2s ease, background .2s ease, color .2s ease;
-}
-.auditoria-btn-secundario:hover { border-color: var(--ui-alert-primary); background: color-mix(in srgb, var(--ui-alert-primary) 8%, white); color: var(--ui-alert-primary); }
-.auditoria-btn-secundario:focus-visible { outline: 3px solid color-mix(in srgb, var(--ui-alert-primary) 20%, transparent); outline-offset: 2px; }
-.auditoria-btn-secundario:disabled { cursor: wait; opacity: .6; }
+.auditoria-conteudo { display: grid; gap: 14px; }
+.auditoria-topo { align-items: flex-end; margin-bottom: 0; }
+.auditoria-topo .auditoria-pesquisa { flex: 1 1 auto; min-width: 0; margin-left: 0; }
+.auditoria-topo .auditoria-pesquisa .input-wrapper { width: 100%; }
+.auditoria-topo .section-filtro { flex: 0 0 auto; }
+#popoverPeriodo_auditoria { max-height: calc(100dvh - 24px); overflow-y: auto; }
 .auditoria-estado {
   padding: 20px;
   border: 1px dashed #cbd5e1;
@@ -303,32 +183,6 @@
 .auditoria-alteracao-depois { color: #166534; overflow-wrap: anywhere; }
 .auditoria-alteracao-seta { padding-bottom: 1px; color: #94a3b8; }
 .auditoria-alteracao-seta::before { content: none !important; }
-@container auditoria-filtros (max-width: 1100px) {
-  .auditoria-filtros-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .auditoria-filtro-pesquisa { grid-column: 1 / -1; }
-  .auditoria-filtro-acoes { grid-column: 1 / -1; padding-bottom: 0; }
-}
-@container auditoria-filtros (max-width: 680px) {
-  .auditoria-filtros-grade { grid-template-columns: 1fr; }
-  .auditoria-filtro-pesquisa,
-  .auditoria-filtro-acoes { grid-column: auto; }
-  .auditoria-filtro-acoes { justify-content: flex-start; }
-}
-@container auditoria-filtros (max-width: 460px) {
-  .auditoria-filtros-grade { gap: 14px; }
-  .auditoria-filtro-periodo-grade,
-  .auditoria-filtro-classificacao { grid-template-columns: 1fr; gap: 14px; }
-  .auditoria-btn-aplicar,
-  .auditoria-btn-secundario { min-height: 40px; height: 40px; flex: 1 1 0; }
-}
-@media (max-width: 560px) {
-  .auditoria-filtros { gap: 16px; padding: 18px 16px; }
-}
-@container auditoria-filtros (max-width: 300px) {
-  .auditoria-filtro-acoes { flex-wrap: wrap; }
-  .auditoria-btn-aplicar,
-  .auditoria-btn-secundario { flex-basis: 100%; }
-}
 /* ====== RESUMO KPIs ====== */
 .resumo-cards{
   display:grid;

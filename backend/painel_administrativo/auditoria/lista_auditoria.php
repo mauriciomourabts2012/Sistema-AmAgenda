@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
 require_once __DIR__ . '/../../_regras/catalogo_auditoria.php';
 
-const AUDITORIA_LISTA_PERIODO_PADRAO_DIAS = 30;
+const AUDITORIA_LISTA_PERIODO_PADRAO_DIAS = 7;
 const AUDITORIA_LISTA_PERIODO_MAXIMO_DIAS = 90;
 const AUDITORIA_LISTA_BUSCA_MAX = 100;
 
@@ -121,7 +121,9 @@ try {
     $agora = new DateTimeImmutable('now');
     $inicioRaw = trim((string)($_GET['inicio'] ?? ''));
     $fimRaw = trim((string)($_GET['fim'] ?? ''));
-    $inicio = $inicioRaw === '' ? $agora->modify('-29 days')->setTime(0, 0) : auditoriaListaData($inicioRaw);
+    $inicio = $inicioRaw === ''
+        ? $agora->modify('-' . (AUDITORIA_LISTA_PERIODO_PADRAO_DIAS - 1) . ' days')->setTime(0, 0)
+        : auditoriaListaData($inicioRaw);
     $fim = $fimRaw === '' ? $agora : auditoriaListaData($fimRaw, true);
     if (!$inicio || !$fim) {
         out(['ok'=>false,'code'=>'INVALID_DATE_FILTER','user_msg'=>'Informe datas válidas no formato AAAA-MM-DD.'], 422);
@@ -147,7 +149,8 @@ try {
     $atorIdRaw = trim((string)($_GET['ator_id'] ?? ''));
     $idAuditoriaRaw = trim((string)($_GET['id_auditoria'] ?? ''));
     $busca = trim((string)($_GET['q'] ?? $_GET['busca'] ?? ''));
-    $limiteRaw = trim((string)($_GET['limite'] ?? '25'));
+    $ordem = trim((string)($_GET['ordem'] ?? 'recentes'));
+    $limiteRaw = trim((string)($_GET['limite'] ?? '20'));
     $cursorRaw = trim((string)($_GET['cursor'] ?? ''));
 
     if ($modulo !== '' && !isset($modulos[$modulo])) out(['ok'=>false,'code'=>'INVALID_MODULE','user_msg'=>'Módulo de auditoria inválido.'], 422);
@@ -167,7 +170,9 @@ try {
         if ($idAuditoria === false) out(['ok'=>false,'code'=>'INVALID_AUDIT_ID','user_msg'=>'Identificador da auditoria inválido.'], 422);
         $idAuditoria = (int)$idAuditoria;
     }
-    if (!in_array($limiteRaw, ['25', '50'], true)) out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'O limite deve ser 25 ou 50.'], 422);
+    if (!in_array($ordem, ['recentes', 'antigos'], true)) out(['ok'=>false,'code'=>'INVALID_ORDER','user_msg'=>'Ordenação da auditoria inválida.'], 422);
+    // 25 permanece aceito para compatibilidade com versões anteriores da tela.
+    if (!in_array($limiteRaw, ['20', '25', '50', '100'], true)) out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'Quantidade por página inválida.'], 422);
     $limite = (int)$limiteRaw;
     $cursor = $cursorRaw === '' ? null : auditoriaListaLerCursor($cursorRaw);
     if ($cursorRaw !== '' && $cursor === null) out(['ok'=>false,'code'=>'INVALID_CURSOR','user_msg'=>'Cursor de paginação inválido.'], 422);
@@ -223,7 +228,8 @@ try {
     }
     if ($cursor !== null) {
         // A dupla data+ID mantém ordem determinística mesmo quando eventos compartilham o timestamp.
-        $where[] = '(ocorrido_em < ? OR (ocorrido_em = ? AND id_auditoria < ?))';
+        $operadorCursor = $ordem === 'antigos' ? '>' : '<';
+        $where[] = "(ocorrido_em {$operadorCursor} ? OR (ocorrido_em = ? AND id_auditoria {$operadorCursor} ?))";
         $tipos .= 'ssi';
         array_push($parametros, $cursor['ocorrido_em'], $cursor['ocorrido_em'], $cursor['id']);
     }
@@ -231,10 +237,11 @@ try {
     $limiteConsulta = $limite + 1;
     $tipos .= 'i';
     $parametros[] = $limiteConsulta;
+    $direcaoSql = $ordem === 'antigos' ? 'ASC' : 'DESC';
     $sql = 'SELECT id_auditoria,ator_tipo,id_ator,ator_nome,ator_perfil,modo_suporte,evento_codigo,modulo,entidade_tipo,entidade_id,entidade_rotulo,descricao,alteracoes,contexto,ocorrido_em FROM auditoria WHERE '
         . implode(' AND ', $where)
-        . ' ORDER BY ocorrido_em DESC, id_auditoria DESC LIMIT ?';
-    // A ordenação é fixa; nenhum nome de coluna vindo da requisição é concatenado.
+        . " ORDER BY ocorrido_em {$direcaoSql}, id_auditoria {$direcaoSql} LIMIT ?";
+    // A direção aceita somente os dois valores validados acima; nomes de coluna permanecem fixos.
 
     $stmt = $conexao->prepare($sql);
     if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta da auditoria.');
@@ -285,6 +292,7 @@ try {
         'data'=>['items'=>$itens],
         'meta'=>[
             'periodo'=>['inicio'=>$inicio->format('Y-m-d'),'fim'=>$fim->format('Y-m-d')],
+            'ordem'=>$ordem,
             'limite'=>$limite,
             'tem_mais'=>$temMais,
             'proximo_cursor'=>$proximoCursor,

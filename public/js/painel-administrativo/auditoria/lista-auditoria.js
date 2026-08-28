@@ -1,17 +1,28 @@
 (() => {
   "use strict";
 
-  const ENDPOINT = "/api/api_central.php?path=painel/auditoria/listar";
+  const C = window.ListaCore;
+  if (!C) return;
+
+  const AUDITORIA_GLOBAL = document.body.dataset.menuContexto === "super-admin";
+  const ENDPOINT = AUDITORIA_GLOBAL
+    ? "/api/api_central.php?path=superadmin/auditoria/listar"
+    : "/api/api_central.php?path=painel/auditoria/listar";
+  const PERIODO_PADRAO_DIAS = 7;
   const EVENTOS = {
     agenda: ["agendamento.criado", "agendamento.editado", "agendamento.confirmado", "agendamento.cancelado", "agendamento.concluido", "agendamento.excluido"],
     clientes: ["cliente.criado", "cliente.editado", "cliente.status_alterado"],
-    usuarios: ["usuario.criado", "usuario.editado", "usuario.status_alterado", "usuario.senha_redefinida"],
+    usuarios: ["usuario.criado", "usuario.editado", "usuario.status_alterado", "usuario.senha_redefinida", "super_admin.criado", "super_admin.editado", "super_admin.status_alterado"],
     permissoes: ["usuario.permissoes_alteradas", "usuario.permissoes_restauradas"],
     servicos: ["servico.criado", "servico.excluido"],
     configuracoes: ["empresa.configuracoes_alteradas", "empresa.identidade_visual_alterada", "empresa.identidade_visual_restaurada", "agenda_profissional.configuracao_alterada", "agenda_profissional.configuracao_restaurada"],
-    perfil: ["perfil.senha_alterada"]
+    perfil: ["perfil.senha_alterada"],
+    empresas: ["empresa.criada", "empresa.editada", "empresa.status_alterado"],
+    planos: ["plano.criado", "plano.editado", "plano.status_alterado"],
+    autenticacao: ["autenticacao.credenciais_invalidas", "autenticacao.usuario_inativo", "autenticacao.empresa_inativa", "autenticacao.vinculo_inativo", "autenticacao.acesso_negado"]
   };
-  const ROTULOS_MODULOS = { agenda: "Agenda", clientes: "Clientes", usuarios: "Usuários", permissoes: "Permissões", servicos: "Serviços", configuracoes: "Configurações", perfil: "Perfil" };
+  const ROTULOS_MODULOS = { agenda: "Agenda", clientes: "Clientes", usuarios: "Usuários", permissoes: "Permissões", servicos: "Serviços", configuracoes: "Configurações", perfil: "Perfil", empresas: "Empresas", planos: "Planos", autenticacao: "Autenticação" };
+  const ROTULOS_ORIGENS = { empresa: "Empresa", plataforma: "Plataforma", modo_suporte: "Modo suporte", autenticacao: "Autenticação" };
   const ROTULOS_CAMPOS = {
     nome: "Nome", telefone: "Telefone", email: "E-mail", perfil: "Perfil", status: "Status",
     status_vinculo: "Situação do vínculo", especialidade: "Especialidade", observacao: "Observação",
@@ -21,7 +32,10 @@
     observacao_padrao: "Observação padrão", inicio_semana: "Início da semana", horarios: "Horários",
     ddi_padrao: "DDI padrão", ddd_padrao: "DDD padrão", mensagem_whatsapp: "Mensagem do WhatsApp",
     nome_exibicao: "Nome de exibição", logo: "Logo", imagem_login: "Imagem de login",
-    senha_alterada: "Senha", repetir_semanalmente: "Repetição semanal", recorrencia_data_fim: "Fim da recorrência"
+    senha_alterada: "Senha", repetir_semanalmente: "Repetição semanal", recorrencia_data_fim: "Fim da recorrência",
+    cnpj: "CNPJ", plano: "Plano", preco_mensal: "Preço mensal", cobranca: "Cobrança",
+    limite_usuarios: "Limite de usuários", limite_profissionais: "Limite de profissionais",
+    limite_servicos: "Limite de serviços", limite_agendamentos: "Limite de agendamentos", destaque: "Destaque"
   };
 
   const aba = document.getElementById("auditoria");
@@ -30,9 +44,22 @@
   const estado = document.getElementById("estadoAuditoria");
   const paginacao = document.getElementById("paginacaoAuditoria");
   const busca = document.getElementById("busca_auditoria");
+  const btnLimparPesquisa = aba?.querySelector(".btn-limpar-pesquisa");
+  const btnFiltro = document.getElementById("btnPeriodo_auditoria");
+  const labelFiltro = document.getElementById("labelPeriodo_auditoria");
+  const popover = document.getElementById("popoverPeriodo_auditoria");
+  const inicio = document.getElementById("inicio_auditoria");
+  const fim = document.getElementById("fim_auditoria");
   const modulo = document.getElementById("modulo_auditoria");
   const evento = document.getElementById("evento_auditoria");
-  if (!aba || !form || !lista || !estado || !paginacao || !busca || !modulo || !evento) return;
+  const ordem = document.getElementById("ordem_auditoria");
+  const limite = document.getElementById("limite_auditoria");
+  const empresa = document.getElementById("empresa_auditoria");
+  const ator = document.getElementById("ator_auditoria");
+  const origem = document.getElementById("origem_auditoria");
+  const btnLimparFiltro = document.getElementById("limparFiltrosAuditoria");
+  const btnFecharFiltro = document.getElementById("fecharPopover_auditoria");
+  if (!aba || !form || !lista || !estado || !paginacao || !busca || !btnFiltro || !labelFiltro || !popover || !inicio || !fim || !modulo || !evento || !ordem || !limite || !btnLimparFiltro || !btnFecharFiltro) return;
 
   // Histórico de cursores mantido apenas em memória durante a navegação atual.
   let cursoresPaginas = [null];
@@ -42,8 +69,11 @@
   let filtrosAplicados = null;
   let requisicao = null;
   let sequenciaRequisicao = 0;
-  let temporizadorPesquisa = null;
   const controlesAcao = [...form.querySelectorAll("button")];
+  const POP_MARGIN = 12;
+  const MQ_MOBILE = window.matchMedia("(max-width: 680px)");
+  const Z_FRONT = 10050;
+  const POPOVER_ORIG = { parent: popover.parentNode, next: popover.nextSibling };
 
   function texto(valor) {
     if (valor === null || valor === undefined || valor === "") return "—";
@@ -108,6 +138,8 @@
     artigo.append(topo);
 
     const etiquetas = elemento("div", "auditoria-etiquetas");
+    if (item?.empresa?.nome) etiquetas.append(elemento("span", "auditoria-etiqueta", `Empresa: ${item.empresa.nome}`));
+    if (item?.origem) etiquetas.append(elemento("span", "auditoria-etiqueta", ROTULOS_ORIGENS[item.origem] || texto(item.origem)));
     etiquetas.append(elemento("span", "auditoria-etiqueta", ROTULOS_MODULOS[item?.evento?.modulo] || texto(item?.evento?.modulo)));
     etiquetas.append(elemento("span", "auditoria-etiqueta", rotuloEvento(item?.evento?.codigo)));
     if (item?.ator?.modo_suporte) etiquetas.append(elemento("span", "auditoria-etiqueta auditoria-etiqueta--suporte", "Suporte Super Admin"));
@@ -131,7 +163,7 @@
   function datasPadrao() {
     const fim = new Date();
     const inicio = new Date();
-    inicio.setDate(inicio.getDate() - 29);
+    inicio.setDate(inicio.getDate() - (PERIODO_PADRAO_DIAS - 1));
     const local = data => new Date(data.getTime() - data.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     document.getElementById("inicio_auditoria").value = local(inicio);
     document.getElementById("fim_auditoria").value = local(fim);
@@ -145,14 +177,90 @@
     if ([...evento.options].some(opcao => opcao.value === selecionado)) evento.value = selecionado;
   }
 
+  function rotuloData(dataIso) {
+    return String(dataIso || "").split("-").reverse().join("/");
+  }
+
+  function atualizarLabelFiltro() {
+    const partes = [];
+    const inicioAplicado = filtrosAplicados?.get("inicio") || "";
+    const fimAplicado = filtrosAplicados?.get("fim") || "";
+    if (inicioAplicado && fimAplicado) partes.push(`${rotuloData(inicioAplicado)} - ${rotuloData(fimAplicado)}`);
+    if (filtrosAplicados?.get("modulo")) partes.push(ROTULOS_MODULOS[filtrosAplicados.get("modulo")] || filtrosAplicados.get("modulo"));
+    if (filtrosAplicados?.get("evento")) partes.push(rotuloEvento(filtrosAplicados.get("evento")));
+    if (filtrosAplicados?.get("origem")) partes.push(ROTULOS_ORIGENS[filtrosAplicados.get("origem")] || filtrosAplicados.get("origem"));
+    labelFiltro.textContent = partes.length ? partes.join(" • ") : "Filtro";
+  }
+
+  function isMobile() {
+    return MQ_MOBILE.matches;
+  }
+
+  function moverPopoverParaBodyNoMobile() {
+    if (!isMobile() || popover.parentNode === document.body) return;
+    document.body.appendChild(popover);
+  }
+
+  function restaurarPopover() {
+    if (popover.parentNode !== document.body || !POPOVER_ORIG.parent) return;
+    if (POPOVER_ORIG.next && POPOVER_ORIG.next.parentNode === POPOVER_ORIG.parent) {
+      POPOVER_ORIG.parent.insertBefore(popover, POPOVER_ORIG.next);
+    } else {
+      POPOVER_ORIG.parent.appendChild(popover);
+    }
+  }
+
+  function limparPosicaoPopover() {
+    ["position", "zIndex", "left", "top", "right", "bottom", "width", "maxWidth", "transform"].forEach(propriedade => {
+      popover.style[propriedade] = "";
+    });
+  }
+
+  function posicionarPopover() {
+    if (popover.hasAttribute("hidden")) return;
+    if (isMobile()) {
+      moverPopoverParaBodyNoMobile();
+      popover.style.zIndex = String(Z_FRONT);
+      Object.assign(popover.style, { position: "fixed", left: "12px", right: "12px", bottom: "12px", top: "auto", width: "auto", maxWidth: "none" });
+      return;
+    }
+
+    restaurarPopover();
+    limparPosicaoPopover();
+    popover.style.zIndex = String(Z_FRONT);
+    const botao = btnFiltro.getBoundingClientRect();
+    Object.assign(popover.style, { position: "fixed", left: "-9999px", top: "-9999px", right: "", bottom: "" });
+    const painel = popover.getBoundingClientRect();
+    const esquerda = Math.max(POP_MARGIN, Math.min(botao.right - painel.width, window.innerWidth - painel.width - POP_MARGIN));
+    const topo = Math.max(POP_MARGIN, Math.min(botao.bottom + 8, window.innerHeight - painel.height - POP_MARGIN));
+    popover.style.left = `${Math.round(esquerda)}px`;
+    popover.style.top = `${Math.round(topo)}px`;
+  }
+
+  function fecharPopover() {
+    popover.setAttribute("hidden", "");
+    btnFiltro.setAttribute("aria-expanded", "false");
+    restaurarPopover();
+    limparPosicaoPopover();
+  }
+
+  function abrirPopover() {
+    popover.removeAttribute("hidden");
+    btnFiltro.setAttribute("aria-expanded", "true");
+    if (isMobile()) moverPopoverParaBodyNoMobile();
+    requestAnimationFrame(() => {
+      posicionarPopover();
+      setTimeout(() => inicio.focus(), 0);
+    });
+  }
+
   function capturarFiltros() {
     const params = new URLSearchParams();
-    const campos = { inicio: "inicio_auditoria", fim: "fim_auditoria", modulo: "modulo_auditoria", evento: "evento_auditoria", q: "busca_auditoria" };
+    const campos = { inicio: "inicio_auditoria", fim: "fim_auditoria", empresa_id: "empresa_auditoria", ator: "ator_auditoria", modulo: "modulo_auditoria", evento: "evento_auditoria", origem: "origem_auditoria", ordem: "ordem_auditoria", limite: "limite_auditoria", q: "busca_auditoria" };
     Object.entries(campos).forEach(([nome, id]) => {
       const valor = document.getElementById(id)?.value?.trim();
       if (valor) params.set(nome, valor);
     });
-    params.set("limite", "25");
     return params;
   }
 
@@ -236,49 +344,84 @@
     }
   }
 
-  function cancelarPesquisaAgendada() {
-    if (temporizadorPesquisa === null) return;
-    clearTimeout(temporizadorPesquisa);
-    temporizadorPesquisa = null;
+  function atualizarBotaoLimparPesquisa() {
+    if (btnLimparPesquisa) btnLimparPesquisa.style.display = busca.value.trim() ? "inline-flex" : "none";
   }
 
-  function agendarPesquisa() {
-    cancelarPesquisaAgendada();
-    if (requisicao) requisicao.abort();
+  function aplicarPesquisa() {
+    const filtrosComPesquisa = new URLSearchParams(filtrosAplicados);
+    const termo = busca.value.trim();
+    if (termo) filtrosComPesquisa.set("q", termo);
+    else filtrosComPesquisa.delete("q");
+    filtrosAplicados = filtrosComPesquisa;
+    atualizarBotaoLimparPesquisa();
     resetarPaginacao();
-    temporizadorPesquisa = setTimeout(() => {
-      temporizadorPesquisa = null;
-      resetarPaginacao({ atualizarFiltros: true });
-      consultar(0);
-    }, 350);
+    consultar(0);
   }
+
+  const pesquisarComDebounce = C.debounce(aplicarPesquisa, 350);
 
   datasPadrao();
   preencherEventos();
   filtrosAplicados = capturarFiltros();
+  atualizarLabelFiltro();
+  atualizarBotaoLimparPesquisa();
   modulo.addEventListener("change", preencherEventos);
-  busca.addEventListener("input", agendarPesquisa);
-  form.addEventListener("change", eventoForm => {
-    if (eventoForm.target !== busca) resetarPaginacao();
+  busca.addEventListener("input", pesquisarComDebounce);
+  btnLimparPesquisa?.addEventListener("click", () => {
+    busca.value = "";
+    busca.focus();
+    aplicarPesquisa();
   });
   form.addEventListener("submit", eventoForm => {
     eventoForm.preventDefault();
-    cancelarPesquisaAgendada();
+    eventoForm.stopPropagation();
+    fim.setCustomValidity("");
+    if (inicio.value && fim.value && inicio.value > fim.value) {
+      fim.setCustomValidity("A data final deve ser igual ou posterior à data inicial.");
+      fim.reportValidity();
+      return;
+    }
     resetarPaginacao({ atualizarFiltros: true });
+    atualizarLabelFiltro();
+    fecharPopover();
     consultar(0);
   });
-  document.getElementById("limparFiltrosAuditoria").addEventListener("click", () => {
-    cancelarPesquisaAgendada();
+  btnLimparFiltro.addEventListener("click", eventoClique => {
+    eventoClique.stopPropagation();
     form.reset();
+    busca.value = "";
     datasPadrao();
     preencherEventos();
+    atualizarBotaoLimparPesquisa();
     resetarPaginacao({ atualizarFiltros: true });
+    atualizarLabelFiltro();
+    fecharPopover();
     consultar(0);
   });
-  document.addEventListener("amagenda:painel-aba-alterada", eventoAba => {
+  btnFecharFiltro.addEventListener("click", eventoClique => {
+    eventoClique.stopPropagation();
+    fecharPopover();
+  });
+  btnFiltro.addEventListener("click", eventoClique => {
+    eventoClique.stopPropagation();
+    if (popover.hasAttribute("hidden")) abrirPopover();
+    else fecharPopover();
+  });
+  document.addEventListener("click", eventoClique => {
+    if (popover.hasAttribute("hidden")) return;
+    const cliqueDentro = eventoClique.target.closest("#popoverPeriodo_auditoria") || eventoClique.target.closest("#btnPeriodo_auditoria");
+    if (!cliqueDentro) fecharPopover();
+  });
+  document.addEventListener("keydown", eventoTeclado => {
+    if (eventoTeclado.key === "Escape") fecharPopover();
+  });
+  window.addEventListener("scroll", posicionarPopover, true);
+  window.addEventListener("resize", posicionarPopover);
+  MQ_MOBILE.addEventListener?.("change", posicionarPopover);
+  document.addEventListener("amagenda:menu-aba-alterada", eventoAba => {
     if (eventoAba.detail?.aba === "auditoria") {
-      cancelarPesquisaAgendada();
-      resetarPaginacao({ atualizarFiltros: true });
+      resetarPaginacao();
       consultar(0);
     }
   });

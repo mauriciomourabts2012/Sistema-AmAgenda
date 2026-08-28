@@ -103,16 +103,14 @@
         return "Erro interno ao processar o login.";
 
       case "LOGIN_INVALID_USER_NOT_FOUND":
-        return "Usuário não encontrado.";
-
       case "LOGIN_INVALID_PASSWORD_MISMATCH":
-        return "Senha não confere.";
-
       case "USER_NOT_ACTIVE":
-        return "Usuário não está ativo.";
-
       case "EMPTY_HASH":
-        return "Senha não cadastrada para este usuário.";
+      case "LOGIN_INVALID_CREDENTIALS":
+        return "E-mail ou senha inválidos.";
+
+      case "LOGIN_ACCESS_DENIED":
+        return "Não foi possível realizar o acesso.";
 
       case "USER_WITHOUT_EMPRESA":
         return "Usuário sem empresa vinculada.";
@@ -139,6 +137,8 @@
       case "PASSWORD_REQUIRED":
       case "LOGIN_INVALID_PASSWORD_MISMATCH":
       case "EMPTY_HASH":
+      case "LOGIN_INVALID_CREDENTIALS":
+      case "LOGIN_ACCESS_DENIED":
         $pass.focus();
         break;
     }

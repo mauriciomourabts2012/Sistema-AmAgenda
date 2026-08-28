@@ -40,10 +40,13 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    CONEXÃO
 ========================================================== */
 require_once __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -126,6 +129,10 @@ try {
         ], 422);
     }
 
+    if ($tipoUsuario !== 'super_admin') {
+        out(['ok'=>false,'code'=>'INVALID_USER_TYPE','user_msg'=>'O usuário informado não é um Super Admin.'], 422);
+    }
+
     /* ==========================================================
        REGRA DE NEGÓCIO
     ========================================================== */
@@ -150,6 +157,7 @@ try {
     /* ==========================================================
        UPDATE
     ========================================================== */
+    $conexao->begin_transaction();
     $sqlUpdate = "
         UPDATE usuario
         SET status = ?
@@ -184,6 +192,15 @@ try {
 
     $stmtUpdate->close();
 
+    auditoriaRegistrar($conexao, 'super_admin.status_alterado', [
+        'ator'=>auditoriaResolverAtorSuperAdmin($conexao),
+        'entidade_id'=>$idUsuarioDb,'entidade_rotulo'=>$nomeUsuario,
+        'descricao'=>'Alterou o status do Super Admin ' . $nomeUsuario . '.',
+        'alteracoes'=>['status'=>['antes'=>$statusAtual,'depois'=>$novoStatus]],
+        'contexto'=>['origem'=>'painel_super_admin'],
+    ]);
+    $conexao->commit();
+
     /* ==========================================================
        RESPOSTA
     ========================================================== */
@@ -202,6 +219,7 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
     out([
         'ok' => false,
         'code' => 'SERVER_ERROR',

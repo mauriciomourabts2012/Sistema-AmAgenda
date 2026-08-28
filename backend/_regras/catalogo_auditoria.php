@@ -57,6 +57,24 @@ function auditoriaCatalogo(): array
         'agenda_profissional.configuracao_restaurada' => auditoriaDefinicaoEvento('configuracoes', 'profissional', 'alta', 'Restaurou a configuração padrão de um profissional.', ['profissional', 'antes']),
 
         'perfil.senha_alterada' => auditoriaDefinicaoEvento('perfil', 'usuario', 'critica', 'Alterou a própria senha.', ['senha_alterada']),
+
+        'empresa.criada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Criou uma empresa.', ['nome', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao', 'depois']),
+        'empresa.editada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Alterou uma empresa.', ['nome', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao']),
+        'empresa.status_alterado' => auditoriaDefinicaoEvento('empresas', 'empresa', 'critica', 'Alterou o status de uma empresa.', ['status']),
+
+        'plano.criado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Criou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'destaque', 'status', 'descricao', 'observacao', 'depois']),
+        'plano.editado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Alterou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'destaque', 'status', 'descricao', 'observacao']),
+        'plano.status_alterado' => auditoriaDefinicaoEvento('planos', 'plano', 'critica', 'Alterou o status de um plano.', ['status']),
+
+        'super_admin.criado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Criou um Super Admin.', ['nome', 'email', 'telefone', 'status', 'depois']),
+        'super_admin.editado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Alterou um Super Admin.', ['nome', 'email', 'telefone', 'status', 'senha_alterada']),
+        'super_admin.status_alterado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Alterou o status de um Super Admin.', ['status']),
+
+        'autenticacao.credenciais_invalidas' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por credenciais inválidas.', []),
+        'autenticacao.usuario_inativo' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por usuário indisponível.', []),
+        'autenticacao.empresa_inativa' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por empresa indisponível.', []),
+        'autenticacao.vinculo_inativo' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por vínculo indisponível.', []),
+        'autenticacao.acesso_negado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Acesso negado por regra de autenticação.', []),
     ];
 }
 
@@ -80,4 +98,3 @@ function auditoriaObterEvento(string $codigo): array
 
     return $evento;
 }
-

@@ -38,7 +38,7 @@ try {
 
     if ($idUsuario <= 0) out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
     if ($idEmpresa <= 0) out(['ok' => false, 'code' => 'SESSION_WITHOUT_COMPANY', 'user_msg' => 'Empresa da sessão não identificada.'], 403);
-    if (mb_strlen($termo) < 2) out(['ok' => false, 'code' => 'SEARCH_TERM_TOO_SHORT', 'user_msg' => 'Digite pelo menos 2 caracteres para pesquisar.'], 422);
+    if ($termo !== '' && mb_strlen($termo) < 2) out(['ok' => false, 'code' => 'SEARCH_TERM_TOO_SHORT', 'user_msg' => 'Digite pelo menos 2 caracteres para pesquisar.'], 422);
     if (mb_strlen($termo) > 100) out(['ok' => false, 'code' => 'SEARCH_TERM_TOO_LONG', 'user_msg' => 'A pesquisa deve ter no máximo 100 caracteres.'], 422);
 
     require __DIR__ . '/../_config/conexao.php';
@@ -56,10 +56,15 @@ try {
     if ($somenteProprio && (int)$idProfissionalSessao <= 0) out(['ok' => false, 'code' => 'PROFESSIONAL_NOT_LINKED', 'user_msg' => 'Seu usuário não possui cadastro profissional vinculado.'], 403);
 
     $joins = " FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eup ON eup.id_usuario=p.id_usuario AND eup.id_empresa=a.id_empresa AND eup.status='ativo' INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_profissional=a.id_profissional AND s.id_empresa=a.id_empresa ";
-    $where = " WHERE a.id_empresa=? AND (CAST(a.id_agendamento AS CHAR) LIKE ? OR c.nome_completo LIKE ? OR COALESCE(c.whatsapp_celular,'') LIKE ? OR u.nome LIKE ? OR s.nome LIKE ? OR a.status LIKE ? OR COALESCE(a.observacao,'') LIKE ? OR DATE_FORMAT(a.data_agendamento,'%d/%m/%Y') LIKE ? OR DATE_FORMAT(a.data_agendamento,'%Y-%m-%d') LIKE ? OR DATE_FORMAT(a.hora_inicio,'%H:%i') LIKE ?) ";
-    $like = '%' . $termo . '%';
-    $tipos = 'issssssssss';
-    $parametros = [$idEmpresa, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like];
+    $where = ' WHERE a.id_empresa=? ';
+    $tipos = 'i';
+    $parametros = [$idEmpresa];
+    if ($termo !== '') {
+        $where .= " AND (CAST(a.id_agendamento AS CHAR) LIKE ? OR c.nome_completo LIKE ? OR COALESCE(c.whatsapp_celular,'') LIKE ? OR u.nome LIKE ? OR s.nome LIKE ? OR a.status LIKE ? OR COALESCE(a.observacao,'') LIKE ? OR DATE_FORMAT(a.data_agendamento,'%d/%m/%Y') LIKE ? OR DATE_FORMAT(a.data_agendamento,'%Y-%m-%d') LIKE ? OR DATE_FORMAT(a.hora_inicio,'%H:%i') LIKE ?) ";
+        $like = '%' . $termo . '%';
+        $tipos .= 'ssssssssss';
+        array_push($parametros, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like);
+    }
     if ($somenteProprio) {
         $where .= ' AND a.id_profissional=? ';
         $tipos .= 'i';
@@ -73,7 +78,12 @@ try {
     $stmt->fetch();
     $stmt->close();
 
-    $sql = "SELECT a.id_agendamento,DATE_FORMAT(a.data_agendamento,'%Y-%m-%d') data_agendamento,DATE_FORMAT(a.hora_inicio,'%H:%i') hora_inicio,DATE_FORMAT(a.hora_fim,'%H:%i') hora_fim,a.status,c.nome_completo cliente_nome,c.whatsapp_celular cliente_telefone,u.nome profissional_nome,s.nome servico_nome" . $joins . $where . ' ORDER BY a.data_agendamento DESC,a.hora_inicio ASC,a.id_agendamento DESC LIMIT ? OFFSET ?';
+    // A abertura sem termo ordena o conjunto na fonte; buscas digitadas mantêm
+    // a ordem cronológica já utilizada pelo localizador de ocorrências.
+    $ordenacao = $termo === ''
+        ? ' ORDER BY c.nome_completo ASC,a.data_agendamento DESC,a.hora_inicio ASC,a.id_agendamento DESC '
+        : ' ORDER BY a.data_agendamento DESC,a.hora_inicio ASC,a.id_agendamento DESC ';
+    $sql = "SELECT a.id_agendamento,DATE_FORMAT(a.data_agendamento,'%Y-%m-%d') data_agendamento,DATE_FORMAT(a.hora_inicio,'%H:%i') hora_inicio,DATE_FORMAT(a.hora_fim,'%H:%i') hora_fim,a.status,c.nome_completo cliente_nome,c.whatsapp_celular cliente_telefone,u.nome profissional_nome,s.nome servico_nome" . $joins . $where . $ordenacao . 'LIMIT ? OFFSET ?';
     $tiposLista = $tipos . 'ii';
     $parametrosLista = [...$parametros, $limite, $offset];
     $stmt = $conexao->prepare($sql);

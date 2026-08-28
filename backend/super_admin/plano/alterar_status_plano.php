@@ -39,10 +39,13 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    CONEXÃO
 ========================================================== */
 require_once __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -128,6 +131,7 @@ try {
     /* ==========================================================
        UPDATE
     ========================================================== */
+    $conexao->begin_transaction();
     $sqlUpdate = "UPDATE plano SET status = ? WHERE id_plano = ?";
     $stmtUpdate = $conexao->prepare($sqlUpdate);
 
@@ -156,6 +160,14 @@ try {
 
     $stmtUpdate->close();
 
+    auditoriaRegistrar($conexao, 'plano.status_alterado', [
+        'ator'=>auditoriaResolverAtorSuperAdmin($conexao),'entidade_id'=>(int)$idPlano,'entidade_rotulo'=>$nomePlano,
+        'descricao'=>'Alterou o status do plano ' . $nomePlano . '.',
+        'alteracoes'=>['status'=>['antes'=>$statusAtual,'depois'=>$novoStatus]],
+        'contexto'=>['origem'=>'painel_super_admin'],
+    ]);
+    $conexao->commit();
+
     /* ==========================================================
        RESPOSTA
     ========================================================== */
@@ -171,6 +183,7 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
     out([
         'ok' => false,
         'code' => 'SERVER_ERROR',

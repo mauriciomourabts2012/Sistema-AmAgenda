@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_2"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260827_3"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260828_1"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
   <!--CSS MOBILE-->
   <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260818_1"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260827_1"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260828_1"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260817_3"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
@@ -352,67 +352,91 @@
     <!-- ABA: AUDITORIA -->
     <div id="auditoria" class="conteudo-aba">
       <div class="conteudo-agenda auditoria-conteudo">
-        <form id="formFiltrosAuditoria" class="auditoria-filtros" autocomplete="off">
-          <header class="auditoria-filtros-cabecalho">
-            <span class="auditoria-filtros-icone" aria-hidden="true"><i class="fas fa-filter"></i></span>
-            <div>
-              <h2>Filtros</h2>
-              <p>Encontre atividades por palavras-chave, período, módulo ou tipo de evento.</p>
-            </div>
-          </header>
-
-          <div class="auditoria-filtros-grade">
-            <div class="auditoria-filtro-campo auditoria-filtro-pesquisa">
-              <label for="busca_auditoria">Pesquisar</label>
-              <div class="auditoria-pesquisa-controle">
-                <i class="fas fa-search" aria-hidden="true"></i>
-                <input type="search" id="busca_auditoria" maxlength="100" placeholder="Ator, entidade, descrição ou evento">
-              </div>
-            </div>
-
-            <fieldset class="auditoria-filtro-periodo">
-              <legend>Período</legend>
-              <div class="auditoria-filtro-periodo-grade">
-                <div class="auditoria-filtro-campo">
-                  <label for="inicio_auditoria">Início</label>
-                  <input type="date" id="inicio_auditoria">
-                </div>
-                <div class="auditoria-filtro-campo">
-                  <label for="fim_auditoria">Fim</label>
-                  <input type="date" id="fim_auditoria">
-                </div>
-              </div>
-            </fieldset>
-
-            <div class="auditoria-filtro-classificacao">
-              <div class="auditoria-filtro-campo">
-                <label for="modulo_auditoria">Módulo</label>
-                <select id="modulo_auditoria">
-                  <option value="">Todos</option>
-                  <option value="agenda">Agenda</option>
-                  <option value="clientes">Clientes</option>
-                  <option value="usuarios">Usuários</option>
-                  <option value="permissoes">Permissões</option>
-                  <option value="servicos">Serviços</option>
-                  <option value="configuracoes">Configurações</option>
-                  <option value="perfil">Perfil</option>
-                </select>
-              </div>
-              <div class="auditoria-filtro-campo">
-                <label for="evento_auditoria">Evento</label>
-                <select id="evento_auditoria">
-                  <option value="">Todos</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="auditoria-filtro-acoes">
-              <button class="botao-geral auditoria-btn-aplicar" type="submit"><i class="fas fa-filter" aria-hidden="true"></i><span>Aplicar</span></button>
-              <button id="limparFiltrosAuditoria" class="auditoria-btn-secundario" type="button"><i class="fas fa-rotate-left" aria-hidden="true"></i><span>Limpar</span></button>
+        <div class="agenda-topo auditoria-topo">
+          <div class="pesquisar-super auditoria-pesquisa">
+            <div class="input-wrapper input-flutuante">
+              <i class="fas fa-search" aria-hidden="true"></i>
+              <input type="search" id="busca_auditoria" maxlength="100" placeholder=" " autocomplete="off">
+              <label for="busca_auditoria">Ator, entidade, descrição ou evento</label>
+              <button type="button" class="btn-limpar-pesquisa" aria-label="Limpar pesquisa">
+                <i class="fas fa-times" aria-hidden="true"></i>
+              </button>
             </div>
           </div>
 
-        </form>
+          <div class="section-filtro pesquisar-super" id="filtroAbaAuditoria">
+            <button id="btnPeriodo_auditoria"
+                    class="btn-filtro"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    aria-controls="popoverPeriodo_auditoria">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   aria-hidden="true">
+                <polygon points="22 3 2 3 10 13 10 19 14 21 14 13 22 3"></polygon>
+              </svg>
+              <span id="labelPeriodo_auditoria">Filtro</span>
+              <span class="caret" aria-hidden="true">▾</span>
+            </button>
+
+            <div id="popoverPeriodo_auditoria" class="popover" hidden>
+              <form id="formFiltrosAuditoria" autocomplete="off">
+                <div class="linha">
+                  <label class="label-filtro" for="inicio_auditoria">Início
+                    <input class="input-filtro" type="date" id="inicio_auditoria">
+                  </label>
+                  <label class="label-filtro" for="fim_auditoria">Fim
+                    <input class="input-filtro" type="date" id="fim_auditoria">
+                  </label>
+                </div>
+
+                <div class="linha">
+                  <label class="label-filtro" for="modulo_auditoria">Módulo
+                    <select class="input-filtro" id="modulo_auditoria">
+                      <option value="">Todos</option>
+                      <option value="agenda">Agenda</option>
+                      <option value="clientes">Clientes</option>
+                      <option value="usuarios">Usuários</option>
+                      <option value="permissoes">Permissões</option>
+                      <option value="servicos">Serviços</option>
+                      <option value="configuracoes">Configurações</option>
+                      <option value="perfil">Perfil</option>
+                    </select>
+                  </label>
+                  <label class="label-filtro" for="evento_auditoria">Evento
+                    <select class="input-filtro" id="evento_auditoria">
+                      <option value="">Todos</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="linha">
+                  <label class="label-filtro" for="ordem_auditoria">Ordenar
+                    <select class="input-filtro" id="ordem_auditoria">
+                      <option value="recentes">Mais recentes</option>
+                      <option value="antigos">Mais antigos</option>
+                    </select>
+                  </label>
+                  <label class="label-filtro" for="limite_auditoria">Por página
+                    <select class="input-filtro" id="limite_auditoria">
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="acoes">
+                  <button type="submit" class="ok">Aplicar</button>
+                  <button type="button" id="limparFiltrosAuditoria" class="limpar">Limpar</button>
+                  <button type="button" id="fecharPopover_auditoria" class="cancelar">Cancelar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
 
         <div id="estadoAuditoria" class="auditoria-estado" role="status" aria-live="polite"></div>
         <div id="listaAuditoria" class="auditoria-timeline" aria-live="polite"></div>
@@ -1337,7 +1361,7 @@
   <script src="../../js/painel-administrativo/usuario/editar-usuario.js" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
 
   <!--ABA AUDITORIA-->
-  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260827_3"></script>
+  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260828_2"></script>
 
   <!--Universal-->
   <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->

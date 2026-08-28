@@ -84,11 +84,12 @@
 
     empresas_ativas: {
       // LISTA EMPRESAS
-      endpoint: `${API_URL}?path=superadmin/empresa/listar&status=ativo`,
+      endpoint: `${API_URL}?path=superadmin/empresa/listar&status=ativo&ordem=nome_asc&limit=100`,
       placeholder: "Empresa",
       targets: [
         { modalId: "modalCadastrarUsuario", selectId: "u_empresa_super_admin" },
-         { modalId: "modalEditarUsuario", selectId: "edit_u_empresa_super_admin" },
+        { modalId: "modalEditarUsuario", selectId: "edit_u_empresa_super_admin" },
+        { selectId: "empresa_auditoria", placeholder: "Todas" },
       ],
       mapItem: (e) => ({
         id: e?.id_empresa ?? e?.empresa_id ?? e?.id ?? "",
@@ -218,7 +219,8 @@
       }
 
       const keepValue = select.value;
-      resetSelect(select, cfg.placeholder);
+      const target = (cfg.targets || []).find((item) => item.selectId === selectId);
+      resetSelect(select, target?.placeholder || cfg.placeholder);
 
       const items = await fetchLista(cfg);
 

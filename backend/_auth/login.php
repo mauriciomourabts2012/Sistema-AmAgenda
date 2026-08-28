@@ -48,6 +48,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 require __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -68,6 +69,15 @@ if ($conexao->connect_errno) {
 }
 
 $conexao->set_charset('utf8mb4');
+
+function registrarFalhaLogin(mysqli $conexao, string $evento, string $motivo, int $idEmpresa = 0): void
+{
+    try {
+        auditoriaRegistrarFalhaAutenticacao($conexao, $evento, $motivo, $idEmpresa > 0 ? $idEmpresa : null);
+    } catch (Throwable) {
+        error_log('[auditoria_login] Não foi possível registrar uma falha de autenticação.');
+    }
+}
 
 $email = mb_strtolower(trim((string)($_POST['email'] ?? '')), 'UTF-8');
 $senha = (string)($_POST['password'] ?? '');
@@ -165,42 +175,46 @@ $stmt->close();
  * ==========================================================
  */
 if (!$user) {
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaSessaoId);
     out([
         'ok' => false,
         'step' => 'user',
-        'code' => 'LOGIN_INVALID_USER_NOT_FOUND',
-        'user_msg' => 'Usuário não encontrado.'
+        'code' => 'LOGIN_INVALID_CREDENTIALS',
+        'user_msg' => 'E-mail ou senha inválidos.'
     ], 401);
 }
 
 $statusUsuario = mb_strtolower(trim((string)($user['status'] ?? '')), 'UTF-8');
 
 if ($statusUsuario !== 'ativo') {
+    registrarFalhaLogin($conexao, 'autenticacao.usuario_inativo', $statusUsuario === 'bloqueado' ? 'usuario_bloqueado' : 'usuario_inativo', $empresaSessaoId);
     out([
         'ok' => false,
         'step' => 'user_status',
-        'code' => 'USER_NOT_ACTIVE',
-        'user_msg' => 'Usuário não está ativo.'
+        'code' => 'LOGIN_ACCESS_DENIED',
+        'user_msg' => 'Não foi possível realizar o acesso.'
     ], 403);
 }
 
 $hash = (string)($user['senha_hash'] ?? '');
 
 if ($hash === '') {
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_indisponiveis', $empresaSessaoId);
     out([
         'ok' => false,
         'step' => 'password',
-        'code' => 'EMPTY_HASH',
-        'user_msg' => 'Senha não cadastrada para este usuário.'
+        'code' => 'LOGIN_INVALID_CREDENTIALS',
+        'user_msg' => 'E-mail ou senha inválidos.'
     ], 401);
 }
 
 if (!password_verify($senha, $hash)) {
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaSessaoId);
     out([
         'ok' => false,
         'step' => 'password',
-        'code' => 'LOGIN_INVALID_PASSWORD_MISMATCH',
-        'user_msg' => 'Senha não confere.'
+        'code' => 'LOGIN_INVALID_CREDENTIALS',
+        'user_msg' => 'E-mail ou senha inválidos.'
     ], 401);
 }
 
@@ -322,6 +336,7 @@ if ($tipoUsuario === 'super_admin') {
  * ==========================================================
  */
 if ($empresaSessaoId <= 0 || $empresaSessaoNome === '') {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'contexto_empresa_ausente');
     out([
         'ok' => false,
         'step' => 'empresa_session',
@@ -384,11 +399,12 @@ $empresaRow = $resEmp ? $resEmp->fetch_assoc() : null;
 $stmtEmp->close();
 
 if (!$empresaRow) {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'vinculo_nao_encontrado', $empresaSessaoId);
     out([
         'ok' => false,
         'step' => 'empresa',
-        'code' => 'USER_NOT_LINKED_TO_SESSION_EMPRESA',
-        'user_msg' => 'Este usuário não pertence à empresa acessada.'
+        'code' => 'LOGIN_ACCESS_DENIED',
+        'user_msg' => 'Não foi possível realizar o acesso.'
     ], 403);
 }
 
@@ -401,6 +417,7 @@ $statusEmpresa = mb_strtolower(trim((string)($empresaRow['empresa_status'] ?? ''
 $empresaNomeBd = trim((string)($empresaRow['empresa_nome'] ?? ''));
 
 if ($empresaId <= 0) {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'vinculo_invalido', $empresaSessaoId);
     out([
         'ok' => false,
         'step' => 'empresa',
@@ -410,24 +427,27 @@ if ($empresaId <= 0) {
 }
 
 if ($statusVinculo !== 'ativo') {
+    registrarFalhaLogin($conexao, 'autenticacao.vinculo_inativo', $statusVinculo === 'bloqueado' ? 'vinculo_bloqueado' : 'vinculo_inativo', $empresaId);
     out([
         'ok' => false,
         'step' => 'empresa_status',
-        'code' => 'EMPRESA_USER_LINK_INACTIVE',
-        'user_msg' => 'O vínculo do usuário com a empresa não está ativo.'
+        'code' => 'LOGIN_ACCESS_DENIED',
+        'user_msg' => 'Não foi possível realizar o acesso.'
     ], 403);
 }
 
 if ($statusEmpresa !== 'ativo') {
+    registrarFalhaLogin($conexao, 'autenticacao.empresa_inativa', $statusEmpresa === 'bloqueado' ? 'empresa_bloqueada' : 'empresa_inativa', $empresaId);
     out([
         'ok' => false,
         'step' => 'empresa_status',
-        'code' => 'EMPRESA_NOT_ACTIVE',
-        'user_msg' => 'A empresa vinculada não está ativa.'
+        'code' => 'LOGIN_ACCESS_DENIED',
+        'user_msg' => 'Não foi possível realizar o acesso.'
     ], 403);
 }
 
 if ($perfilId <= 0) {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'perfil_ausente', $empresaId);
     out([
         'ok' => false,
         'step' => 'perfil',
@@ -437,6 +457,7 @@ if ($perfilId <= 0) {
 }
 
 if ($perfilStatus !== 'ativo') {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', $perfilStatus === 'bloqueado' ? 'perfil_bloqueado' : 'perfil_inativo', $empresaId);
     out([
         'ok' => false,
         'step' => 'perfil',
@@ -458,6 +479,7 @@ if (
     $empresaNomeBdNormalizado === '' ||
     $empresaSessaoNomeNormalizado !== $empresaNomeBdNormalizado
 ) {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'contexto_empresa_incompativel', $empresaId);
     out([
         'ok' => false,
         'step' => 'empresa_nome',
@@ -563,6 +585,7 @@ switch ($perfilNomeNormalizado) {
         break;
 
     default:
+        registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'perfil_nao_permitido', $empresaId);
         out([
             'ok' => false,
             'step' => 'perfil',

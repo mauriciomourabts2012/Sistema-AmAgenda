@@ -170,12 +170,13 @@ function auditoriaRegistrar(mysqli $conexao, string $eventoCodigo, array $dados 
     $alteracoesJson = auditoriaJson($alteracoes);
     $contextoJson = auditoriaJson($contexto);
 
-    $idEmpresa = (int)$ator['id_empresa'];
+    $idEmpresa = $ator['id_empresa'] === null ? null : (int)$ator['id_empresa'];
     $atorTipo = (string)$ator['ator_tipo'];
     $idAtor = $ator['id_ator'] === null ? null : (int)$ator['id_ator'];
     $atorNome = auditoriaLimitarTexto((string)$ator['ator_nome'], 150);
     $atorPerfil = auditoriaLimitarTexto((string)$ator['ator_perfil'], 50);
     $modoSuporte = (bool)$ator['modo_suporte'] ? 1 : 0;
+    $origem = (string)$ator['origem'];
     $modulo = (string)$evento['modulo'];
     $entidadeTipo = (string)$evento['entidade'];
     $entidadeId = isset($dados['entidade_id']) ? (int)$dados['entidade_id'] : null;
@@ -189,14 +190,14 @@ function auditoriaRegistrar(mysqli $conexao, string $eventoCodigo, array $dados 
     if ($userAgent === '') $userAgent = null;
     $requestId = auditoriaRequestId();
 
-    $sql = "INSERT INTO auditoria (id_empresa,ator_tipo,id_ator,ator_nome,ator_perfil,modo_suporte,evento_codigo,modulo,entidade_tipo,entidade_id,entidade_rotulo,descricao,alteracoes,contexto,ip,user_agent,request_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,INET6_ATON(?),?,?)";
+    $sql = "INSERT INTO auditoria (id_empresa,ator_tipo,id_ator,ator_nome,ator_perfil,modo_suporte,origem,evento_codigo,modulo,entidade_tipo,entidade_id,entidade_rotulo,descricao,alteracoes,contexto,ip,user_agent,request_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,INET6_ATON(?),?,?)";
     $stmt = $conexao->prepare($sql);
     if (!$stmt) throw new RuntimeException('Falha ao preparar o registro de auditoria.');
 
     $stmt->bind_param(
-        'isississsisssssss',
+        'isississssisssssss',
         $idEmpresa, $atorTipo, $idAtor, $atorNome, $atorPerfil, $modoSuporte,
-        $eventoCodigo, $modulo, $entidadeTipo, $entidadeId, $entidadeRotulo,
+        $origem, $eventoCodigo, $modulo, $entidadeTipo, $entidadeId, $entidadeRotulo,
         $descricao, $alteracoesJson, $contextoJson, $ip, $userAgent, $requestId
     );
 
@@ -213,7 +214,7 @@ function auditoriaRegistrar(mysqli $conexao, string $eventoCodigo, array $dados 
 
 function auditoriaValidarAtor(array $ator): void
 {
-    $obrigatorios = ['ator_tipo', 'id_ator', 'ator_nome', 'ator_perfil', 'id_empresa', 'modo_suporte'];
+    $obrigatorios = ['ator_tipo', 'id_ator', 'ator_nome', 'ator_perfil', 'id_empresa', 'modo_suporte', 'origem'];
     foreach ($obrigatorios as $campo) {
         if (!array_key_exists($campo, $ator)) throw new InvalidArgumentException('Contrato do ator incompleto.');
     }
@@ -222,10 +223,39 @@ function auditoriaValidarAtor(array $ator): void
     $id = $ator['id_ator'];
     $perfil = (string)$ator['ator_perfil'];
     $suporte = (bool)$ator['modo_suporte'];
-    if ((int)$ator['id_empresa'] <= 0 || trim((string)$ator['ator_nome']) === '') throw new InvalidArgumentException('Ator sem empresa ou nome válido.');
+    $origem = (string)$ator['origem'];
+    $idEmpresa = $ator['id_empresa'] === null ? null : (int)$ator['id_empresa'];
+    if (trim((string)$ator['ator_nome']) === '') throw new InvalidArgumentException('Ator sem nome válido.');
 
-    $valido = ($tipo === 'usuario' && (int)$id > 0 && !$suporte)
-        || ($tipo === 'super_admin' && (int)$id > 0 && $perfil === 'super_admin' && $suporte)
-        || ($tipo === 'sistema' && $id === null && $perfil === 'sistema' && !$suporte);
+    $valido = ($origem === 'empresa' && $idEmpresa !== null && $idEmpresa > 0 && !$suporte
+            && (($tipo === 'usuario' && (int)$id > 0) || ($tipo === 'sistema' && $id === null && $perfil === 'sistema')))
+        || ($origem === 'modo_suporte' && $idEmpresa !== null && $idEmpresa > 0
+            && $tipo === 'super_admin' && (int)$id > 0 && $perfil === 'super_admin' && $suporte)
+        || ($origem === 'plataforma' && $tipo === 'super_admin' && (int)$id > 0 && $perfil === 'super_admin' && !$suporte)
+        || ($origem === 'autenticacao' && $tipo === 'nao_autenticado' && $id === null
+            && $perfil === 'nao_autenticado' && !$suporte);
     if (!$valido) throw new InvalidArgumentException('Combinação inválida no contrato do ator.');
+}
+
+/** Registra somente um volume limitado de falhas por IP, sem bloquear o login. */
+function auditoriaRegistrarFalhaAutenticacao(mysqli $conexao, string $eventoCodigo, string $motivo, ?int $idEmpresa = null): ?int
+{
+    $ip = auditoriaNormalizarIp((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($ip !== null) {
+        $stmt = $conexao->prepare("SELECT COUNT(*) FROM auditoria FORCE INDEX (idx_auditoria_auth_ip) WHERE origem='autenticacao' AND ip=INET6_ATON(?) AND ocorrido_em >= DATE_SUB(NOW(6), INTERVAL 10 MINUTE)");
+        if (!$stmt) throw new RuntimeException('Falha ao preparar controle de volume da autenticação.');
+        $stmt->bind_param('s', $ip);
+        $stmt->execute();
+        $stmt->bind_result($quantidade);
+        $stmt->fetch();
+        $stmt->close();
+        if ((int)$quantidade >= 10) return null;
+    }
+
+    return auditoriaRegistrar($conexao, $eventoCodigo, [
+        'ator' => auditoriaResolverAtorNaoAutenticado($conexao, $idEmpresa),
+        'descricao' => 'Falha de autenticação registrada.',
+        'contexto' => ['origem' => 'login', 'motivo' => $motivo],
+        'ip' => $ip,
+    ]);
 }

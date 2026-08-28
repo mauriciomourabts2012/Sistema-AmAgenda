@@ -72,7 +72,7 @@
     termoAtual = termo;
     paginaAtual = pagina;
     if (limpar) limpar.style.display = termo ? "inline-flex" : "none";
-    if (termo.length < 2) { ocultar(); return; }
+    if (termo !== "" && termo.length < 2) { ocultar(); return; }
 
     abortador?.abort();
     abortador = new AbortController();
@@ -95,6 +95,11 @@
     evento.stopPropagation();
     clearTimeout(timer);
     timer = setTimeout(() => pesquisar(1), 300);
+  });
+
+  input.addEventListener("focus", () => {
+    clearTimeout(timer);
+    pesquisar(1);
   });
 
   limpar?.addEventListener("click", (evento) => {

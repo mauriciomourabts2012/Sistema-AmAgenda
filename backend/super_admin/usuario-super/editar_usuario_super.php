@@ -37,6 +37,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    HELPERS
 ========================================================== */
@@ -179,6 +181,7 @@ if (!empty($erros)) {
    DB
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -206,7 +209,7 @@ try {
        VALIDA SE USUÁRIO EXISTE E SE É SUPER ADMIN
     ========================================================== */
     $sqlUsuario = "
-        SELECT id_usuario, tipo_usuario
+        SELECT id_usuario, nome, email, telefone, status, tipo_usuario
         FROM usuario
         WHERE id_usuario = ?
         LIMIT 1
@@ -358,6 +361,18 @@ try {
 
     $affected = (int)$stmt->affected_rows;
     $stmt->close();
+
+    $depois = ['nome'=>$nome,'email'=>$email,'telefone'=>$telefone,'status'=>$status];
+    $antes = ['nome'=>$usuario['nome'],'email'=>$usuario['email'],'telefone'=>$usuario['telefone'],'status'=>$usuario['status']];
+    $alteracoes = [];
+    foreach ($depois as $campo=>$valor) if (!auditoriaValoresIguais($antes[$campo] ?? null,$valor)) $alteracoes[$campo]=['antes'=>$antes[$campo] ?? null,'depois'=>$valor];
+    if ($alterarSenha) $alteracoes['senha_alterada']=['antes'=>false,'depois'=>true];
+    if ($alteracoes !== []) auditoriaRegistrar($conexao, 'super_admin.editado', [
+        'ator'=>auditoriaResolverAtorSuperAdmin($conexao),
+        'entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,
+        'descricao'=>'Alterou o Super Admin ' . $nome . '.','alteracoes'=>$alteracoes,
+        'contexto'=>['origem'=>'painel_super_admin'],
+    ]);
 
     $conexao->commit();
 

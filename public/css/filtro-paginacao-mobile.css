@@ -88,6 +88,8 @@
 
     width: auto;
     max-width: none;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
 
     border-radius: 1rem;
     padding: 1rem;

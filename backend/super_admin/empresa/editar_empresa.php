@@ -33,6 +33,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    HELPERS
 ========================================================== */
@@ -218,6 +220,7 @@ if (!empty($erros)) {
    DB
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -245,7 +248,7 @@ try {
     $observacao = ($observacao === '') ? null : trim($observacao);
 
     // valida se empresa existe
-    $sqlEmpresa = "SELECT id_empresa FROM empresa WHERE id_empresa = ? LIMIT 1";
+    $sqlEmpresa = "SELECT nome,cnpj,email,telefone,plano_id,status,endereco,observacao FROM empresa WHERE id_empresa = ? LIMIT 1";
     $st = $conexao->prepare($sqlEmpresa);
 
     if (!$st) {
@@ -254,9 +257,10 @@ try {
 
     $st->bind_param('i', $idEmpresa);
     $st->execute();
-    $st->store_result();
+    $resultadoEmpresa = $st->get_result();
+    $empresaAnterior = $resultadoEmpresa ? $resultadoEmpresa->fetch_assoc() : null;
 
-    if ($st->num_rows < 1) {
+    if (!$empresaAnterior) {
         $st->close();
 
         out([
@@ -364,6 +368,8 @@ try {
         ], 422);
     }
 
+    $conexao->begin_transaction();
+
     $sql = "
         UPDATE empresa
            SET nome = ?,
@@ -426,6 +432,18 @@ try {
     $affected = (int)$stmt->affected_rows;
     $stmt->close();
 
+    $depois = ['nome'=>$nome,'cnpj'=>$cnpj,'email'=>$email,'telefone'=>$telefone,'plano'=>$planoId,'status'=>$status,'endereco'=>$endereco,'observacao'=>$observacao];
+    $antes = ['nome'=>$empresaAnterior['nome'],'cnpj'=>$empresaAnterior['cnpj'],'email'=>$empresaAnterior['email'],'telefone'=>$empresaAnterior['telefone'],'plano'=>(int)$empresaAnterior['plano_id'],'status'=>$empresaAnterior['status'],'endereco'=>$empresaAnterior['endereco'],'observacao'=>$empresaAnterior['observacao']];
+    $alteracoes = [];
+    foreach ($depois as $campo => $valor) if (!auditoriaValoresIguais($antes[$campo] ?? null, $valor)) $alteracoes[$campo] = ['antes'=>$antes[$campo] ?? null,'depois'=>$valor];
+    if ($alteracoes !== []) auditoriaRegistrar($conexao, 'empresa.editada', [
+        'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+        'entidade_id' => $idEmpresa, 'entidade_rotulo' => $nome,
+        'descricao' => 'Alterou a empresa ' . $nome . '.', 'alteracoes' => $alteracoes,
+        'contexto' => ['origem' => 'painel_super_admin'],
+    ]);
+    $conexao->commit();
+
     out([
         'ok' => true,
         'code' => 'UPDATED',
@@ -446,6 +464,7 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
     out([
         'ok' => false,
         'code' => 'SERVER_ERROR',

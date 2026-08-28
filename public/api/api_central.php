@@ -139,6 +139,11 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/super_admin/plano/alterar_status_plano.php',
     ],
 
+    // Consulta global da auditoria, exclusiva do Super Admin
+    'superadmin/auditoria/listar' => [
+        'GET' => __DIR__ . '/../../backend/super_admin/auditoria/lista_auditoria_global.php',
+    ],
+
     // MODAL PERFIL
 
     //Alterar Foto

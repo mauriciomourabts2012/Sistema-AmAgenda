@@ -32,6 +32,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    HELPERS
 ========================================================== */
@@ -166,6 +168,7 @@ if (!is_file($arquivoConexao)) {
 }
 
 require $arquivoConexao;
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -244,6 +247,8 @@ try {
         ], 409);
     }
 
+    $conexao->begin_transaction();
+
     /* ==========================================================
        INSERT SUPER ADMIN
     ========================================================== */
@@ -298,6 +303,17 @@ try {
     $idUsuario = (int)$stmt->insert_id;
     $stmt->close();
 
+    auditoriaRegistrar($conexao, 'super_admin.criado', [
+        'ator'=>auditoriaResolverAtorSuperAdmin($conexao),
+        'entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,
+        'descricao'=>'Criou o Super Admin ' . $nome . '.',
+        'alteracoes'=>['depois'=>['antes'=>null,'depois'=>[
+            'nome'=>$nome,'email'=>$email,'telefone'=>$telefone,'status'=>$status,
+        ]]],
+        'contexto'=>['origem'=>'painel_super_admin'],
+    ]);
+    $conexao->commit();
+
     out([
         'ok' => true,
         'code' => 'CREATED',
@@ -313,6 +329,7 @@ try {
     ], 201);
 
 } catch (Throwable $e) {
+    if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
     error_log('[cadastrar_super_admin] ' . $e->getMessage());
 
     out([

@@ -33,7 +33,8 @@
       { tipo: "aba", aba: "empresas", texto: "Empresas", icone: "fa-solid fa-building" },
       { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-users" },
       { tipo: "aba", aba: "usuarios-super", texto: "Usuário Super", icone: "fa-solid fa-user-shield" },
-      { tipo: "aba", aba: "planos", texto: "Planos", icone: "fa-solid fa-layer-group" }
+      { tipo: "aba", aba: "planos", texto: "Planos", icone: "fa-solid fa-layer-group" },
+      { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" }
     ]
   };
 
@@ -55,7 +56,8 @@
         empresas: ["Empresas", "Gerencie as empresas da plataforma"],
         usuarios: ["Usuários", "Gerencie os usuários vinculados às empresas"],
         "usuarios-super": ["Usuário Super", "Gerencie os administradores globais"],
-        planos: ["Planos", "Gerencie os planos da plataforma"]
+        planos: ["Planos", "Gerencie os planos da plataforma"],
+        auditoria: ["Auditoria", "Consulte atividades globais, suporte e autenticação"]
       }
     }
   };

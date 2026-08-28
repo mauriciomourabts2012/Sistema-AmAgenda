@@ -23,6 +23,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
   ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 date_default_timezone_set('America/Sao_Paulo');
@@ -138,6 +140,7 @@ if (!empty($erros)) {
 // DB
 // =====================
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
   out([
@@ -166,15 +169,16 @@ try {
   $preco = (float)$preco_str;
 
   // Verifica se plano existe
-  $sqlExiste = "SELECT id_plano FROM plano WHERE id_plano = ? LIMIT 1";
+  $sqlExiste = "SELECT nome,ref,preco_mensal,cobranca,limite_usuarios,limite_profissionais,limite_servicos,limite_agendamentos,destaque,status,descricao,observacao FROM plano WHERE id_plano = ? LIMIT 1";
   $st = $conexao->prepare($sqlExiste);
   if (!$st) throw new Exception('Prepare check plano falhou.');
 
   $st->bind_param('i', $id_plano);
   $st->execute();
-  $st->store_result();
+  $resultadoAnterior = $st->get_result();
+  $planoAnterior = $resultadoAnterior ? $resultadoAnterior->fetch_assoc() : null;
 
-  if ($st->num_rows < 1) {
+  if (!$planoAnterior) {
     $st->close();
     out([
       'ok' => false,
@@ -225,6 +229,8 @@ try {
     }
     $st->close();
   }
+
+  $conexao->begin_transaction();
 
   // UPDATE
   $sql = "
@@ -289,6 +295,17 @@ try {
 
   $stmt->close();
 
+  $depois = ['nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,'limite_usuarios'=>$limite_usuarios,'limite_profissionais'=>$limite_profissionais,'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs];
+  $antes = ['nome'=>$planoAnterior['nome'],'ref'=>$planoAnterior['ref'],'preco_mensal'=>number_format((float)$planoAnterior['preco_mensal'],2,'.',''),'cobranca'=>$planoAnterior['cobranca'],'limite_usuarios'=>(int)$planoAnterior['limite_usuarios'],'limite_profissionais'=>(int)$planoAnterior['limite_profissionais'],'limite_servicos'=>(int)$planoAnterior['limite_servicos'],'limite_agendamentos'=>(int)$planoAnterior['limite_agendamentos'],'destaque'=>(int)$planoAnterior['destaque'],'status'=>$planoAnterior['status'],'descricao'=>$planoAnterior['descricao'],'observacao'=>$planoAnterior['observacao']];
+  $alteracoes = [];
+  foreach ($depois as $campo=>$valor) if (!auditoriaValoresIguais($antes[$campo] ?? null,$valor)) $alteracoes[$campo]=['antes'=>$antes[$campo] ?? null,'depois'=>$valor];
+  if ($alteracoes !== []) auditoriaRegistrar($conexao, 'plano.editado', [
+    'ator'=>auditoriaResolverAtorSuperAdmin($conexao),'entidade_id'=>$id_plano,'entidade_rotulo'=>$nome,
+    'descricao'=>'Alterou o plano ' . $nome . '.','alteracoes'=>$alteracoes,
+    'contexto'=>['origem'=>'painel_super_admin'],
+  ]);
+  $conexao->commit();
+
   out([
     'ok' => true,
     'code' => 'UPDATED',
@@ -311,6 +328,7 @@ try {
   ], 200);
 
 } catch (Throwable $e) {
+  if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
   out([
     'ok' => false,
     'code' => 'SERVER_ERROR',

@@ -34,6 +34,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 /* ==========================================================
    HELPERS
 ========================================================== */
@@ -213,6 +215,7 @@ if (!empty($erros)) {
    DB
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -496,6 +499,18 @@ try {
     }
 
     $stmtWhatsapp->close();
+
+    auditoriaRegistrar($conexao, 'empresa.criada', [
+        'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+        'entidade_id' => $idEmpresa,
+        'entidade_rotulo' => $nome,
+        'descricao' => 'Criou a empresa ' . $nome . '.',
+        'alteracoes' => ['depois' => ['antes' => null, 'depois' => [
+            'nome' => $nome, 'cnpj' => $cnpj, 'email' => $email, 'telefone' => $telefone,
+            'plano' => $planoId, 'status' => $status, 'endereco' => $endereco, 'observacao' => $observacao,
+        ]]],
+        'contexto' => ['origem' => 'painel_super_admin'],
+    ]);
 
     $conexao->commit();
 

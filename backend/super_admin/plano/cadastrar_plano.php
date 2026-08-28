@@ -23,6 +23,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
   ], 405);
 }
 
+require __DIR__ . '/../../_auth/bloquear.php';
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 date_default_timezone_set('America/Sao_Paulo');
@@ -130,6 +132,7 @@ if (!empty($erros)) {
 // DB
 // =====================
 require __DIR__ . '/../../_config/conexao.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
   out(['ok'=>false,'code'=>'DB_CONN_MISSING','user_msg'=>'Conexão com banco não encontrada.'], 500);
 }
@@ -183,6 +186,8 @@ try {
     }
     $st->close();
   }
+
+  $conexao->begin_transaction();
 
   // Insert
   $sql = "
@@ -262,6 +267,20 @@ try {
   $id = (int)$stmt->insert_id;
   $stmt->close();
 
+  auditoriaRegistrar($conexao, 'plano.criado', [
+    'ator' => auditoriaResolverAtorSuperAdmin($conexao),
+    'entidade_id' => $id, 'entidade_rotulo' => $nome,
+    'descricao' => 'Criou o plano ' . $nome . '.',
+    'alteracoes' => ['depois' => ['antes'=>null,'depois'=>[
+      'nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,
+      'limite_usuarios'=>$limite_usuarios,'limite_profissionais'=>$limite_profissionais,
+      'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,
+      'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs,
+    ]]],
+    'contexto' => ['origem'=>'painel_super_admin'],
+  ]);
+  $conexao->commit();
+
   out([
     'ok' => true,
     'code' => 'CREATED',
@@ -282,6 +301,7 @@ try {
   ], 201);
 
 } catch (Throwable $e) {
+  if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
   out([
     'ok' => false,
     'code' => 'SERVER_ERROR',
