@@ -30,27 +30,26 @@ try {
 
     $auth = $_SESSION['auth'] ?? [];
     $idUsuario = (int)($auth['id_usuario'] ?? 0);
-    $idEmpresa = (int)($auth['id_empresa'] ?? $_SESSION['empresa_id'] ?? $_SESSION['id_empresa'] ?? $_SESSION['empresa']['id_empresa'] ?? 0);
+    $idEmpresaSessao = (int)($auth['id_empresa'] ?? $auth['empresa_id'] ?? $_SESSION['empresa_id'] ?? 0);
     $termo = trim((string)($_GET['q'] ?? ''));
     $pagina = max(1, filter_input(INPUT_GET, 'pagina', FILTER_VALIDATE_INT) ?: 1);
     $limite = min(20, max(5, filter_input(INPUT_GET, 'limite', FILTER_VALIDATE_INT) ?: 10));
     $offset = ($pagina - 1) * $limite;
 
     if ($idUsuario <= 0) out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
-    if ($idEmpresa <= 0) out(['ok' => false, 'code' => 'SESSION_WITHOUT_COMPANY', 'user_msg' => 'Empresa da sessão não identificada.'], 403);
+    if ($idEmpresaSessao <= 0) out(['ok' => false, 'code' => 'SESSION_WITHOUT_COMPANY', 'user_msg' => 'Empresa da sessão não identificada.'], 403);
     if ($termo !== '' && mb_strlen($termo) < 2) out(['ok' => false, 'code' => 'SEARCH_TERM_TOO_SHORT', 'user_msg' => 'Digite pelo menos 2 caracteres para pesquisar.'], 422);
     if (mb_strlen($termo) > 100) out(['ok' => false, 'code' => 'SEARCH_TERM_TOO_LONG', 'user_msg' => 'A pesquisa deve ter no máximo 100 caracteres.'], 422);
 
     require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_regras/permissoes_usuario.php';
     $conexao->set_charset('utf8mb4');
 
-    $stmt = $conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND e.status='ativo' AND pf.status='ativo' LIMIT 1");
-    $stmt->bind_param('ii', $idEmpresa, $idUsuario);
-    $stmt->execute();
-    $stmt->bind_result($perfilNome, $idProfissionalSessao);
-    $vinculo = $stmt->fetch();
-    $stmt->close();
-    if (!$vinculo) out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
+    $contexto = permissoesContexto($conexao);
+    if (!($contexto['valido'] ?? false)) out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
+    $idEmpresa = (int)($contexto['id_empresa'] ?? 0);
+    $perfilNome = (string)($contexto['perfil'] ?? '');
+    $idProfissionalSessao = (int)($contexto['id_profissional'] ?? 0);
 
     $somenteProprio = in_array(mb_strtolower(trim((string)$perfilNome)), ['profissional', 'profissionais'], true);
     if ($somenteProprio && (int)$idProfissionalSessao <= 0) out(['ok' => false, 'code' => 'PROFESSIONAL_NOT_LINKED', 'user_msg' => 'Seu usuário não possui cadastro profissional vinculado.'], 403);

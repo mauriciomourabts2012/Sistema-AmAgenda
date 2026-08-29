@@ -178,7 +178,7 @@ try {
 
     /* id_empresa é sempre o primeiro predicado e provém exclusivamente do
        contexto autenticado. Nenhum parâmetro pode trocar a empresa consultada. */
-    $where = ['id_empresa = ?', 'ocorrido_em >= ?', 'ocorrido_em <= ?'];
+    $where = ['id_empresa = ?', "origem <> 'autenticacao'", 'ocorrido_em >= ?', 'ocorrido_em <= ?'];
     $tipos = 'iss';
     $parametros = [$idEmpresa, $inicio->format('Y-m-d H:i:s.u'), $fim->format('Y-m-d H:i:s.u')];
 
