@@ -70,13 +70,26 @@ if ($conexao->connect_errno) {
 
 $conexao->set_charset('utf8mb4');
 
-function registrarFalhaLogin(mysqli $conexao, string $evento, string $motivo, int $idEmpresa = 0): void
+function registrarFalhaLogin(mysqli $conexao, string $evento, string $motivo, int $idEmpresa = 0, string $loginTentado = ''): void
 {
     try {
-        auditoriaRegistrarFalhaAutenticacao($conexao, $evento, $motivo, $idEmpresa > 0 ? $idEmpresa : null);
+        auditoriaRegistrarFalhaAutenticacao($conexao, $evento, $motivo, $idEmpresa > 0 ? $idEmpresa : null, $loginTentado);
     } catch (Throwable) {
         error_log('[auditoria_login] Não foi possível registrar uma falha de autenticação.');
     }
+}
+
+function empresaAuditoriaDaSessao(mysqli $conexao, int $idEmpresa, string $nomeEmpresa): int
+{
+    if ($idEmpresa <= 0 || $nomeEmpresa === '') return 0;
+    $stmt = $conexao->prepare("SELECT 1 FROM empresa WHERE id_empresa=? AND nome=? AND status='ativo' LIMIT 1");
+    if (!$stmt) return 0;
+    $stmt->bind_param('is', $idEmpresa, $nomeEmpresa);
+    $stmt->execute();
+    $stmt->store_result();
+    $valida = $stmt->num_rows === 1;
+    $stmt->close();
+    return $valida ? $idEmpresa : 0;
 }
 
 $email = mb_strtolower(trim((string)($_POST['email'] ?? '')), 'UTF-8');
@@ -89,6 +102,7 @@ $senha = (string)($_POST['password'] ?? '');
  */
 $empresaSessaoId   = (int)($_SESSION['empresa_id'] ?? 0);
 $empresaSessaoNome = trim((string)($_SESSION['empresa_nome'] ?? ''));
+$empresaAuditoriaId = empresaAuditoriaDaSessao($conexao, $empresaSessaoId, $empresaSessaoNome);
 
 /**
  * ==========================================================
@@ -175,12 +189,12 @@ $stmt->close();
  * ==========================================================
  */
 if (!$user) {
-    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaSessaoId);
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaAuditoriaId, $email);
     out([
         'ok' => false,
         'step' => 'user',
         'code' => 'LOGIN_INVALID_CREDENTIALS',
-        'user_msg' => 'E-mail ou senha inválidos.'
+        'user_msg' => 'Usuário ou senha inválidos.'
     ], 401);
 }
 
@@ -199,22 +213,22 @@ if ($statusUsuario !== 'ativo') {
 $hash = (string)($user['senha_hash'] ?? '');
 
 if ($hash === '') {
-    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_indisponiveis', $empresaSessaoId);
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_indisponiveis', $empresaAuditoriaId, $email);
     out([
         'ok' => false,
         'step' => 'password',
         'code' => 'LOGIN_INVALID_CREDENTIALS',
-        'user_msg' => 'E-mail ou senha inválidos.'
+        'user_msg' => 'Usuário ou senha inválidos.'
     ], 401);
 }
 
 if (!password_verify($senha, $hash)) {
-    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaSessaoId);
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaAuditoriaId, $email);
     out([
         'ok' => false,
         'step' => 'password',
         'code' => 'LOGIN_INVALID_CREDENTIALS',
-        'user_msg' => 'E-mail ou senha inválidos.'
+        'user_msg' => 'Usuário ou senha inválidos.'
     ], 401);
 }
 

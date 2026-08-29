@@ -102,7 +102,7 @@ try {
     if ($evento !== '' && !isset($catalogo[$evento])) out(['ok'=>false,'code'=>'INVALID_EVENT','user_msg'=>'Evento inválido.'], 422);
     if (!in_array($origem, ['', 'empresa', 'plataforma', 'modo_suporte', 'autenticacao'], true)) out(['ok'=>false,'code'=>'INVALID_ORIGIN','user_msg'=>'Origem inválida.'], 422);
     if (!in_array($ordem, ['recentes','antigos'], true)) out(['ok'=>false,'code'=>'INVALID_ORDER','user_msg'=>'Ordenação inválida.'], 422);
-    if (!in_array($limiteRaw, ['20','50','100'], true)) out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'Quantidade por página inválida.'], 422);
+    if ($limiteRaw !== '20') out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'A auditoria exibe 20 registros por página.'], 422);
     if (mb_strlen($busca, 'UTF-8') > AUDITORIA_GLOBAL_BUSCA_MAX) out(['ok'=>false,'code'=>'SEARCH_TOO_LONG','user_msg'=>'A pesquisa deve ter no máximo 100 caracteres.'], 422);
     $limite = (int)$limiteRaw;
     $cursor = $cursorRaw === '' ? null : auditoriaGlobalLerCursor($cursorRaw);

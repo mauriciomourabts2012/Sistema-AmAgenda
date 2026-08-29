@@ -32,6 +32,7 @@
     observacao_padrao: "Observação padrão", inicio_semana: "Início da semana", horarios: "Horários",
     ddi_padrao: "DDI padrão", ddd_padrao: "DDD padrão", mensagem_whatsapp: "Mensagem do WhatsApp",
     nome_exibicao: "Nome de exibição", logo: "Logo", imagem_login: "Imagem de login",
+    login_tentado: "Login tentado",
     senha_alterada: "Senha", repetir_semanalmente: "Repetição semanal", recorrencia_data_fim: "Fim da recorrência",
     cnpj: "CNPJ", plano: "Plano", preco_mensal: "Preço mensal", cobranca: "Cobrança",
     limite_usuarios: "Limite de usuários", limite_profissionais: "Limite de profissionais",
@@ -150,7 +151,11 @@
       const entidadeTexto = item?.entidade?.rotulo || `${rotuloCampo(item.entidade.tipo)}${item.entidade.id ? ` #${item.entidade.id}` : ""}`;
       artigo.append(elemento("div", "auditoria-entidade", `Entidade: ${entidadeTexto}`));
     }
-    const alteracoes = renderizarAlteracoes(item?.alteracoes);
+    const loginTentado = item?.alteracoes?.login_tentado?.depois;
+    if (AUDITORIA_GLOBAL && loginTentado) artigo.append(elemento("div", "auditoria-entidade", `Login tentado: ${texto(loginTentado)}`));
+    const alteracoesVisiveis = item?.alteracoes && typeof item.alteracoes === "object" ? { ...item.alteracoes } : item?.alteracoes;
+    if (alteracoesVisiveis && typeof alteracoesVisiveis === "object") delete alteracoesVisiveis.login_tentado;
+    const alteracoes = renderizarAlteracoes(alteracoesVisiveis);
     if (alteracoes) artigo.append(alteracoes);
     return artigo;
   }
@@ -272,26 +277,24 @@
 
   function renderizarPaginacao() {
     paginacao.replaceChildren();
+    if (!lista.childElementCount) return;
 
-    if (indicePagina > 0) {
-      const anterior = elemento("button", "btn-pag", "◀ Anterior");
-      anterior.type = "button";
-      // Anterior: reutiliza o cursor já guardado para a página visitada.
-      anterior.addEventListener("click", () => consultar(indicePagina - 1));
-      paginacao.append(anterior);
-    }
+    const anterior = elemento("button", "btn-pag", "◀ Anterior");
+    anterior.type = "button";
+    anterior.disabled = indicePagina === 0;
+    // Anterior: reutiliza o cursor já guardado para a página visitada.
+    anterior.addEventListener("click", () => consultar(indicePagina - 1));
 
-    if (temMais && proximoCursor) {
-      const proximo = elemento("button", "btn-pag", "Próximo ▶");
-      proximo.type = "button";
-      proximo.addEventListener("click", () => {
-        // Próximo: guarda o cursor devolvido pela página atual antes de avançar.
-        cursoresPaginas[indicePagina + 1] = proximoCursor;
-        cursoresPaginas.length = indicePagina + 2;
-        consultar(indicePagina + 1);
-      });
-      paginacao.append(proximo);
-    }
+    const proximo = elemento("button", "btn-pag", "Próximo ▶");
+    proximo.type = "button";
+    proximo.disabled = !temMais || !proximoCursor;
+    proximo.addEventListener("click", () => {
+      // Próximo: guarda o cursor devolvido pela página atual antes de avançar.
+      cursoresPaginas[indicePagina + 1] = proximoCursor;
+      cursoresPaginas.length = indicePagina + 2;
+      consultar(indicePagina + 1);
+    });
+    paginacao.append(anterior, proximo);
   }
 
   function resetarPaginacao({ atualizarFiltros = false } = {}) {

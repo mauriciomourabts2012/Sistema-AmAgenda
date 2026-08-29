@@ -237,24 +237,17 @@ function auditoriaValidarAtor(array $ator): void
     if (!$valido) throw new InvalidArgumentException('Combinação inválida no contrato do ator.');
 }
 
-/** Registra somente um volume limitado de falhas por IP, sem bloquear o login. */
-function auditoriaRegistrarFalhaAutenticacao(mysqli $conexao, string $eventoCodigo, string $motivo, ?int $idEmpresa = null): ?int
+function auditoriaRegistrarFalhaAutenticacao(mysqli $conexao, string $eventoCodigo, string $motivo, ?int $idEmpresa = null, string $loginTentado = ''): int
 {
     $ip = auditoriaNormalizarIp((string)($_SERVER['REMOTE_ADDR'] ?? ''));
-    if ($ip !== null) {
-        $stmt = $conexao->prepare("SELECT COUNT(*) FROM auditoria FORCE INDEX (idx_auditoria_auth_ip) WHERE origem='autenticacao' AND ip=INET6_ATON(?) AND ocorrido_em >= DATE_SUB(NOW(6), INTERVAL 10 MINUTE)");
-        if (!$stmt) throw new RuntimeException('Falha ao preparar controle de volume da autenticação.');
-        $stmt->bind_param('s', $ip);
-        $stmt->execute();
-        $stmt->bind_result($quantidade);
-        $stmt->fetch();
-        $stmt->close();
-        if ((int)$quantidade >= 10) return null;
-    }
+    $loginTentado = preg_replace('/[\x00-\x1F\x7F]/u', '', trim($loginTentado)) ?? '';
+    $loginTentado = auditoriaLimitarTexto($loginTentado, 190);
+    $credenciaisInvalidas = $eventoCodigo === 'autenticacao.credenciais_invalidas';
 
     return auditoriaRegistrar($conexao, $eventoCodigo, [
         'ator' => auditoriaResolverAtorNaoAutenticado($conexao, $idEmpresa),
         'descricao' => 'Falha de autenticação registrada.',
+        'alteracoes' => $credenciaisInvalidas && $loginTentado !== '' ? ['login_tentado' => ['antes' => null, 'depois' => $loginTentado]] : [],
         'contexto' => ['origem' => 'login', 'motivo' => $motivo],
         'ip' => $ip,
     ]);

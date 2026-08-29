@@ -122,7 +122,7 @@
 }
 
 /* ====== AUDITORIA ====== */
-.auditoria-conteudo { display: grid; gap: 14px; }
+.auditoria-conteudo { display: grid; gap: 14px; overflow-x: hidden; overflow-y: auto; }
 .auditoria-topo { align-items: flex-end; margin-bottom: 0; }
 .auditoria-topo .auditoria-pesquisa { flex: 1 1 auto; min-width: 0; margin-left: 0; }
 .auditoria-topo .auditoria-pesquisa .input-wrapper { width: 100%; }
@@ -183,6 +183,9 @@
 .auditoria-alteracao-depois { color: #166534; overflow-wrap: anywhere; }
 .auditoria-alteracao-seta { padding-bottom: 1px; color: #94a3b8; }
 .auditoria-alteracao-seta::before { content: none !important; }
+.auditoria-conteudo .paginacao-div { display: flex; flex-wrap: wrap; }
+.auditoria-conteudo .btn-pag { min-height: 40px; }
+.auditoria-conteudo .btn-pag:disabled { cursor: not-allowed; opacity: .5; }
 /* ====== RESUMO KPIs ====== */
 .resumo-cards{
   display:grid;

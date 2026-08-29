@@ -70,7 +70,7 @@ function auditoriaCatalogo(): array
         'super_admin.editado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Alterou um Super Admin.', ['nome', 'email', 'telefone', 'status', 'senha_alterada']),
         'super_admin.status_alterado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Alterou o status de um Super Admin.', ['status']),
 
-        'autenticacao.credenciais_invalidas' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por credenciais inválidas.', []),
+        'autenticacao.credenciais_invalidas' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por credenciais inválidas.', ['login_tentado']),
         'autenticacao.usuario_inativo' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por usuário indisponível.', []),
         'autenticacao.empresa_inativa' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por empresa indisponível.', []),
         'autenticacao.vinculo_inativo' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por vínculo indisponível.', []),

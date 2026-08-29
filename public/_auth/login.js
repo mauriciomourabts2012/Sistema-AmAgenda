@@ -107,7 +107,7 @@
       case "USER_NOT_ACTIVE":
       case "EMPTY_HASH":
       case "LOGIN_INVALID_CREDENTIALS":
-        return "E-mail ou senha inválidos.";
+        return "Usuário ou senha inválidos.";
 
       case "LOGIN_ACCESS_DENIED":
         return "Não foi possível realizar o acesso.";

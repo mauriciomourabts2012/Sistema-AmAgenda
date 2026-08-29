@@ -171,8 +171,7 @@ try {
         $idAuditoria = (int)$idAuditoria;
     }
     if (!in_array($ordem, ['recentes', 'antigos'], true)) out(['ok'=>false,'code'=>'INVALID_ORDER','user_msg'=>'Ordenação da auditoria inválida.'], 422);
-    // 25 permanece aceito para compatibilidade com versões anteriores da tela.
-    if (!in_array($limiteRaw, ['20', '25', '50', '100'], true)) out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'Quantidade por página inválida.'], 422);
+    if ($limiteRaw !== '20') out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'A auditoria exibe 20 registros por página.'], 422);
     $limite = (int)$limiteRaw;
     $cursor = $cursorRaw === '' ? null : auditoriaListaLerCursor($cursorRaw);
     if ($cursorRaw !== '' && $cursor === null) out(['ok'=>false,'code'=>'INVALID_CURSOR','user_msg'=>'Cursor de paginação inválido.'], 422);
