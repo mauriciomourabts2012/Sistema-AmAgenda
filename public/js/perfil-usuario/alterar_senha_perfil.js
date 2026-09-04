@@ -6,7 +6,7 @@
    ✅ Validação front mais clara
    ✅ Marca campo com erro
    ✅ Limpa formulário ao sucesso
-   ✅ Após alterar a senha: desloga automaticamente
+   ✅ Após alterar a senha: revalida a sessão e mantém o acesso
    ✅ Mensagens mais explicativas para o usuário
 ========================================================== */
 (() => {
@@ -19,12 +19,10 @@
   window.__ALTERAR_SENHA_PERFIL_JS_INIT__ = true;
 
   const API_URL = "/public/api/api_central.php?path=perfil/alterar-senha";
-  const LOGOUT_API_URL = "/api/api_central.php?path=_auth/logout";
-  const LOGIN_FALLBACK = "/public/views/login-super-admin.html";
+  const SESSION_API_URL = "/api/api_central.php?path=_auth/session";
 
   const TOAST_DEFAULT_TIMEOUT = 4200;
   const TOAST_LEAVE_TIME = 180;
-  const LOGOUT_DELAY = 1800;
 
   // ==========================================================
   // DOM
@@ -134,13 +132,6 @@
     form.dataset.loading = loading ? "1" : "0";
     btnSalvar.classList.toggle("is-loading", !!loading);
     btnSalvar.textContent = loading ? "Alterando senha..." : "Salvar";
-  }
-
-  function setFormDisabled(disabled) {
-    const campos = form.querySelectorAll("input, button, select, textarea");
-    campos.forEach((el) => {
-      el.disabled = !!disabled;
-    });
   }
 
   // ==========================================================
@@ -376,40 +367,28 @@
   }
 
   // ==========================================================
-  // LOGOUT APÓS TROCA DE SENHA
+  // REVALIDAÇÃO AUTORITATIVA APÓS TROCA DE SENHA
   // ==========================================================
-  async function executarLogoutAposTrocaSenha() {
-    let redirectUrl = LOGIN_FALLBACK;
-
-    try {
-      const resp = await fetch(LOGOUT_API_URL, {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        },
-        body: "",
-      });
-
-      const raw = await resp.text();
-      let data = null;
-
-      try {
-        data = JSON.parse(raw);
-      } catch (_) {
-        data = null;
-      }
-
-      if (data && typeof data.redirect_url === "string" && data.redirect_url.trim() !== "") {
-        redirectUrl = data.redirect_url.trim();
-      }
-    } catch (_) {
-      // fallback silencioso
-    } finally {
-      window.location.replace(redirectUrl);
+  async function revalidarSessaoAposTrocaSenha() {
+    const resposta = await fetch(SESSION_API_URL, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const dados = await resposta.json().catch(() => null);
+    const auth = dados?.data?.user || null;
+    if (!resposta.ok || dados?.ok !== true || !auth) {
+      throw new Error("A senha foi alterada, mas não foi possível revalidar a sessão.");
     }
+    if (auth.deve_alterar_senha !== false || auth.senha_temporaria_vencida !== false) {
+      throw new Error("A alteração ainda não foi confirmada pela sessão. Tente novamente em instantes.");
+    }
+
+    window.__AUTH__ = auth;
+    document.dispatchEvent(new CustomEvent("amagenda:sessao-carregada", { detail: auth }));
+    document.dispatchEvent(new CustomEvent("perfil:senha-atualizada", { detail: { auth } }));
+    return auth;
   }
 
   // ==========================================================
@@ -442,30 +421,26 @@
     try {
       const json = await enviarFormulario();
 
-      toastMsg(
-        "success",
-        (json.user_msg || "Senha alterada com sucesso.") +
-          " Por segurança, você será desconectado e precisará entrar novamente com a nova senha.",
-        "Senha atualizada",
-        5000
-      );
-
       form.reset();
       clearErrors();
-      setFormDisabled(true);
 
-      setTimeout(() => {
-        toastMsg(
-          "neutral",
-          "Redirecionando para a tela de login...",
-          "Saindo da sessão",
-          1400
-        );
-      }, 500);
+      try {
+        await revalidarSessaoAposTrocaSenha();
+      } catch (erroRevalidacao) {
+        erroRevalidacao.senhaAlterada = true;
+        throw erroRevalidacao;
+      }
 
-      setTimeout(() => {
-        executarLogoutAposTrocaSenha();
-      }, LOGOUT_DELAY);
+      toastMsg(
+        "success",
+        (json.user_msg || "Senha alterada com sucesso.") + " Sua sessão continua ativa.",
+        "Senha atualizada",
+        4200
+      );
+
+      modal?.classList.remove("ativo");
+      modal?.setAttribute("aria-hidden", "true");
+      resetForm();
 
     } catch (err) {
       console.error("[AlterarSenhaPerfil] Erro:", err);
@@ -474,7 +449,21 @@
       const code = api?.code || "";
       const msg = err?.message || "Erro ao alterar a senha.";
 
-      if (code === "CURRENT_PASSWORD_INVALID") {
+      if (err?.senhaAlterada === true) {
+        toastMsg(
+          "warning",
+          msg + " Você pode sair e entrar novamente com a nova senha.",
+          "Confirmação da sessão pendente",
+          0
+        );
+        form.dataset.loading = "0";
+        if (btnSalvar) {
+          btnSalvar.classList.remove("is-loading");
+          btnSalvar.textContent = "Senha alterada";
+          btnSalvar.disabled = true;
+        }
+        return;
+      } else if (code === "CURRENT_PASSWORD_INVALID") {
         toastMsg(
           "danger",
           "A senha atual informada não confere. Verifique e tente novamente.",

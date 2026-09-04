@@ -117,7 +117,7 @@ try {
     $stmt->execute(); $stmt->bind_result($clienteIdDb,$clienteNome); $clienteOk=$stmt->fetch(); $stmt->close();
     if (!$clienteOk) out(['ok' => false, 'code' => 'CLIENT_NOT_FOUND', 'user_msg' => 'Cliente não encontrado ou inativo.'], 404);
 
-    $stmt = $conexao->prepare("SELECT s.duracao_min,s.valor,s.nome,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
+    $stmt = $conexao->prepare("SELECT s.duracao_min,s.valor,s.nome,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' AND eu.bloqueado_plano=0 LIMIT 1");
     $stmt->bind_param('iii', $idServico, $idProfissional, $idEmpresa);
     $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb,$servicoNome,$profissionalNome); $servicoOk = $stmt->fetch(); $stmt->close();
     if (!$servicoOk || (int)$duracaoDb <= 0) out(['ok' => false, 'code' => 'SERVICE_NOT_FOUND', 'user_msg' => 'Serviço não encontrado para o profissional selecionado.'], 404);
@@ -145,6 +145,21 @@ try {
     $conexao->begin_transaction();
     $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresa);
     limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+
+    // Revalida o vínculo escolhido sob bloqueio transacional. Assim, nem um
+    // POST manipulado nem um downgrade concorrente permitem novo agendamento.
+    $stmtVinculoProfissional = $conexao->prepare("SELECT eu.status, eu.bloqueado_plano FROM empresa_usuario eu INNER JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? LIMIT 1 FOR UPDATE");
+    $stmtVinculoProfissional->bind_param('ii', $idProfissional, $idEmpresa);
+    $stmtVinculoProfissional->execute();
+    $stmtVinculoProfissional->bind_result($statusVinculoProfissional, $bloqueadoPlanoProfissional);
+    $vinculoProfissionalValido = $stmtVinculoProfissional->fetch();
+    $stmtVinculoProfissional->close();
+
+    if (!$vinculoProfissionalValido || $statusVinculoProfissional !== 'ativo' || (int)$bloqueadoPlanoProfissional === 1) {
+        $conexao->rollback();
+        out(['ok' => false, 'code' => 'PROFESSIONAL_UNAVAILABLE', 'user_msg' => 'O profissional selecionado não está disponível para novos agendamentos.'], 409);
+    }
+
     $resultadoAgendamentos = limitesPlanoVerificarAgendamentosPorMes(
         $conexao,
         $resultadoPlano['plano'],

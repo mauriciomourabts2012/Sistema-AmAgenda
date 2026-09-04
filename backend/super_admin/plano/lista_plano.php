@@ -181,7 +181,9 @@ SELECT
   p.preco_mensal,
   p.cobranca,
   p.limite_usuarios,
+  p.limite_proprietarios,
   p.limite_profissionais,
+  p.limite_recepcionistas,
   p.limite_servicos,
   p.limite_agendamentos,
   p.destaque,
@@ -213,6 +215,8 @@ $data = [];
 while ($row = $res->fetch_assoc()) {
   $row['id_plano'] = (int)$row['id_plano'];
   $row['preco_mensal'] = (string)$row['preco_mensal'];
+  $row['limite_proprietarios'] = (int)($row['limite_proprietarios'] ?? 0);
+  $row['limite_recepcionistas'] = (int)($row['limite_recepcionistas'] ?? 0);
   $row['destaque'] = (int)$row['destaque'];
   $data[] = $row;
 }

@@ -12,14 +12,14 @@
   const EVENTOS = {
     agenda: ["agendamento.criado", "agendamento.editado", "agendamento.confirmado", "agendamento.cancelado", "agendamento.concluido", "agendamento.excluido"],
     clientes: ["cliente.criado", "cliente.editado", "cliente.status_alterado"],
-    usuarios: ["usuario.criado", "usuario.editado", "usuario.status_alterado", "usuario.senha_redefinida", "super_admin.criado", "super_admin.editado", "super_admin.status_alterado"],
+    usuarios: ["usuario.criado", "usuario.vinculado_empresa", "usuario.editado", "usuario.status_alterado", "usuario.senha_redefinida", "super_admin.criado", "super_admin.editado", "super_admin.status_alterado"],
     permissoes: ["usuario.permissoes_alteradas", "usuario.permissoes_restauradas"],
     servicos: ["servico.criado", "servico.excluido"],
     configuracoes: ["empresa.configuracoes_alteradas", "empresa.identidade_visual_alterada", "empresa.identidade_visual_restaurada", "agenda_profissional.configuracao_alterada", "agenda_profissional.configuracao_restaurada"],
     perfil: ["perfil.senha_alterada"],
     empresas: ["empresa.criada", "empresa.editada", "empresa.status_alterado"],
     planos: ["plano.criado", "plano.editado", "plano.status_alterado"],
-    autenticacao: ["autenticacao.credenciais_invalidas", "autenticacao.usuario_inativo", "autenticacao.empresa_inativa", "autenticacao.vinculo_inativo", "autenticacao.acesso_negado"]
+    autenticacao: ["autenticacao.credenciais_invalidas", "autenticacao.usuario_inativo", "autenticacao.empresa_inativa", "autenticacao.vinculo_inativo", "autenticacao.acesso_negado", "suporte.iniciado", "suporte.finalizado"]
   };
   const ROTULOS_MODULOS = { agenda: "Agenda", clientes: "Clientes", usuarios: "Usuários", permissoes: "Permissões", servicos: "Serviços", configuracoes: "Configurações", perfil: "Perfil", empresas: "Empresas", planos: "Planos", autenticacao: "Autenticação" };
   const ROTULOS_ORIGENS = { empresa: "Empresa", plataforma: "Plataforma", modo_suporte: "Modo suporte", autenticacao: "Autenticação" };

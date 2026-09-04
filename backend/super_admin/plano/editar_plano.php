@@ -82,7 +82,9 @@ $preco_raw = strv('preco', 20, true);
 $cobranca  = strv('cobranca', 20, true);
 
 $limite_usuarios      = intv('limite_usuarios', 0);
+$limite_proprietarios = intv('limite_proprietarios', 0);
 $limite_profissionais = intv('limite_profissionais', 0);
+$limite_recepcionistas = intv('limite_recepcionistas', 0);
 $limite_servicos      = intv('limite_servicos', 0);
 $limite_agendamentos  = intv('limite_agendamentos', 0);
 
@@ -118,6 +120,11 @@ if ($destaque !== 0 && $destaque !== 1) {
 }
 
 if ($limite_profissionais < 0) $erros['e_limite_profissionais'] = 'Não pode ser negativo.';
+if ($limite_profissionais > $limite_usuarios) $erros['e_limite_profissionais'] = 'O limite de profissionais não pode superar o limite total de usuários.';
+if ($limite_proprietarios < 0) $erros['e_limite_proprietarios'] = 'Não pode ser negativo.';
+if ($limite_proprietarios > $limite_usuarios) $erros['e_limite_proprietarios'] = 'O limite de proprietários não pode superar o limite total de usuários.';
+if ($limite_recepcionistas < 0) $erros['e_limite_recepcionistas'] = 'Não pode ser negativo.';
+if ($limite_recepcionistas > $limite_usuarios) $erros['e_limite_recepcionistas'] = 'O limite de recepcionistas não pode superar o limite total de usuários.';
 if ($limite_servicos < 0) $erros['e_limite_servicos'] = 'Não pode ser negativo.';
 if ($limite_agendamentos < 0) $erros['e_limite_agendamentos'] = 'Não pode ser negativo.';
 
@@ -169,7 +176,7 @@ try {
   $preco = (float)$preco_str;
 
   // Verifica se plano existe
-  $sqlExiste = "SELECT nome,ref,preco_mensal,cobranca,limite_usuarios,limite_profissionais,limite_servicos,limite_agendamentos,destaque,status,descricao,observacao FROM plano WHERE id_plano = ? LIMIT 1";
+  $sqlExiste = "SELECT nome,ref,preco_mensal,cobranca,limite_usuarios,limite_proprietarios,limite_profissionais,limite_recepcionistas,limite_servicos,limite_agendamentos,destaque,status,descricao,observacao FROM plano WHERE id_plano = ? LIMIT 1";
   $st = $conexao->prepare($sqlExiste);
   if (!$st) throw new Exception('Prepare check plano falhou.');
 
@@ -240,7 +247,9 @@ try {
            preco_mensal = ?,
            cobranca = ?,
            limite_usuarios = ?,
+           limite_proprietarios = ?,
            limite_profissionais = ?,
+           limite_recepcionistas = ?,
            limite_servicos = ?,
            limite_agendamentos = ?,
            destaque = ?,
@@ -255,13 +264,15 @@ try {
   if (!$stmt) throw new Exception('Prepare update falhou.');
 
   $stmt->bind_param(
-    'ssdsiiiiisssi',
+    'ssdsiiiiiiisssi',
     $nome,
     $ref,
     $preco,
     $cobranca,
     $limite_usuarios,
+    $limite_proprietarios,
     $limite_profissionais,
+    $limite_recepcionistas,
     $limite_servicos,
     $limite_agendamentos,
     $destaque,
@@ -295,8 +306,8 @@ try {
 
   $stmt->close();
 
-  $depois = ['nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,'limite_usuarios'=>$limite_usuarios,'limite_profissionais'=>$limite_profissionais,'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs];
-  $antes = ['nome'=>$planoAnterior['nome'],'ref'=>$planoAnterior['ref'],'preco_mensal'=>number_format((float)$planoAnterior['preco_mensal'],2,'.',''),'cobranca'=>$planoAnterior['cobranca'],'limite_usuarios'=>(int)$planoAnterior['limite_usuarios'],'limite_profissionais'=>(int)$planoAnterior['limite_profissionais'],'limite_servicos'=>(int)$planoAnterior['limite_servicos'],'limite_agendamentos'=>(int)$planoAnterior['limite_agendamentos'],'destaque'=>(int)$planoAnterior['destaque'],'status'=>$planoAnterior['status'],'descricao'=>$planoAnterior['descricao'],'observacao'=>$planoAnterior['observacao']];
+  $depois = ['nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,'limite_usuarios'=>$limite_usuarios,'limite_proprietarios'=>$limite_proprietarios,'limite_profissionais'=>$limite_profissionais,'limite_recepcionistas'=>$limite_recepcionistas,'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs];
+  $antes = ['nome'=>$planoAnterior['nome'],'ref'=>$planoAnterior['ref'],'preco_mensal'=>number_format((float)$planoAnterior['preco_mensal'],2,'.',''),'cobranca'=>$planoAnterior['cobranca'],'limite_usuarios'=>(int)$planoAnterior['limite_usuarios'],'limite_proprietarios'=>(int)($planoAnterior['limite_proprietarios'] ?? 0),'limite_profissionais'=>(int)$planoAnterior['limite_profissionais'],'limite_recepcionistas'=>(int)($planoAnterior['limite_recepcionistas'] ?? 0),'limite_servicos'=>(int)$planoAnterior['limite_servicos'],'limite_agendamentos'=>(int)$planoAnterior['limite_agendamentos'],'destaque'=>(int)$planoAnterior['destaque'],'status'=>$planoAnterior['status'],'descricao'=>$planoAnterior['descricao'],'observacao'=>$planoAnterior['observacao']];
   $alteracoes = [];
   foreach ($depois as $campo=>$valor) if (!auditoriaValoresIguais($antes[$campo] ?? null,$valor)) $alteracoes[$campo]=['antes'=>$antes[$campo] ?? null,'depois'=>$valor];
   if ($alteracoes !== []) auditoriaRegistrar($conexao, 'plano.editado', [
@@ -317,7 +328,9 @@ try {
       'preco_mensal' => number_format($preco, 2, '.', ''),
       'cobranca' => $cobranca,
       'limite_usuarios' => $limite_usuarios,
+      'limite_proprietarios' => $limite_proprietarios,
       'limite_profissionais' => $limite_profissionais,
+      'limite_recepcionistas' => $limite_recepcionistas,
       'limite_servicos' => $limite_servicos,
       'limite_agendamentos' => $limite_agendamentos,
       'destaque' => $destaque,

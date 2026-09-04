@@ -6,16 +6,17 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 /**
  * ==========================================================
- * ALTERAR STATUS USUÁRIO (toggle ativo/inativo)
+ * ALTERAR STATUS USUÁRIO / REATIVAR PELO PLANO
  * ----------------------------------------------------------
  * Recebe:
  *   - id_usuario (POST)
- *   - id_empresa (POST) [opcional por enquanto]
+ *   - acao=reativar_plano + id_empresa_usuario (POST), quando aplicável
  *
  * Regras:
  *   - altera o status do vínculo na tabela empresa_usuario
  *   - ativo <-> inativo
  *   - bloqueado NÃO altera
+ *   - reativação pelo plano preserva o status e altera somente a flag do vínculo
  *
  * Retorno:
  *   JSON padrão
@@ -88,6 +89,52 @@ $conexao->set_charset('utf8mb4');
    VALIDAÇÃO DE ENTRADA
 ========================================================== */
 $idUsuario = filter_input(INPUT_POST, 'id_usuario', FILTER_VALIDATE_INT);
+$idEmpresaUsuario = filter_input(INPUT_POST, 'id_empresa_usuario', FILTER_VALIDATE_INT);
+$acao = mb_strtolower(trim((string)($_POST['acao'] ?? 'alterar_status')), 'UTF-8');
+
+if ($acao === 'reativar_plano') {
+    if (!$idEmpresaUsuario || $idEmpresaUsuario <= 0) {
+        out(['ok' => false, 'code' => 'INVALID_LINK_ID', 'user_msg' => 'Vínculo inválido para reativação.'], 400);
+    }
+
+    try {
+        $conexao->begin_transaction();
+        $resultado = limitesPlanoReativarVinculo($conexao, $idEmpresaSessao, (int)$idEmpresaUsuario);
+        limitesPlanoAbortarSeNegado($conexao, $resultado);
+
+        $dados = $resultado['data'];
+        auditoriaRegistrar($conexao, 'usuario.reativado_plano', [
+            'entidade_id' => (int)$dados['id_usuario'],
+            'entidade_rotulo' => (string)$dados['nome'],
+            'descricao' => 'Reativou pelo plano o usuário ' . (string)$dados['nome'] . '.',
+            'alteracoes' => [
+                'bloqueado_plano' => [
+                    'antes' => (int)$dados['bloqueado_plano_anterior'],
+                    'depois' => (int)$dados['bloqueado_plano_novo'],
+                ],
+            ],
+            'contexto' => [
+                'origem' => 'painel_administrativo',
+                'perfil' => (string)$dados['perfil'],
+            ],
+        ]);
+        $conexao->commit();
+
+        out([
+            'ok' => true,
+            'code' => 'PLAN_USER_REACTIVATED',
+            'user_msg' => 'Usuário reativado pelo plano com sucesso.',
+            'data' => $dados,
+        ]);
+    } catch (Throwable $e) {
+        try {
+            $conexao->rollback();
+        } catch (Throwable $ignorado) {
+        }
+        error_log('[painel/usuario/reativar-plano] ' . $e->getMessage());
+        out(['ok' => false, 'code' => 'SERVER_ERROR', 'user_msg' => 'Não foi possível reativar o usuário pelo plano.'], 500);
+    }
+}
 
 if (!$idUsuario || $idUsuario <= 0) {
     out([

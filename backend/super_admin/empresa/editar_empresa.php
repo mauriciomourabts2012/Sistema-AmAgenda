@@ -147,6 +147,13 @@ if ($observacao === '') {
 }
 
 $planoId = intOrNull('plano_id');
+$idsPermanentesPlano = null;
+$selecaoPlanoRaw = $_POST['plano_usuarios_permanentes'] ?? null;
+if ($selecaoPlanoRaw !== null) {
+    $idsPermanentesPlano = is_array($selecaoPlanoRaw)
+        ? $selecaoPlanoRaw
+        : json_decode((string)$selecaoPlanoRaw, true);
+}
 
 /* ==========================================================
    VALIDAÇÕES
@@ -198,6 +205,9 @@ if ($telefone === '') {
 if ($planoId === null) {
     $erros['plano_id'] = 'Selecione o plano.';
 }
+if ($selecaoPlanoRaw !== null && !is_array($idsPermanentesPlano)) {
+    $erros['plano_usuarios_permanentes'] = 'A seleção de usuários é inválida.';
+}
 
 // status obrigatório
 $allowedStatus = ['ativo', 'inativo', 'bloqueado'];
@@ -221,6 +231,7 @@ if (!empty($erros)) {
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
+require_once __DIR__ . '/../../_regras/limites_plano.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -369,6 +380,8 @@ try {
     }
 
     $conexao->begin_transaction();
+    $resultadoTrocaPlano = limitesPlanoPrepararTrocaEmpresa($conexao, $idEmpresa, $planoId, $idsPermanentesPlano);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoTrocaPlano);
 
     $sql = "
         UPDATE empresa
@@ -460,6 +473,7 @@ try {
             'status' => $status,
             'endereco' => $endereco,
             'observacao' => $observacao,
+            'quantidade_usuarios_bloqueados_plano' => (int)($resultadoTrocaPlano['data']['quantidade_bloqueada'] ?? 0),
         ],
     ], 200);
 

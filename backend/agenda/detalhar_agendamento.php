@@ -13,11 +13,17 @@ try {
     if ($idUsuario <= 0) out(['ok'=>false,'code'=>'NOT_AUTHENTICATED','user_msg'=>'Sessão expirada. Faça login novamente.'], 401);
     if ($idEmpresa <= 0 || $id <= 0) out(['ok'=>false,'code'=>'INVALID_PARAMETERS','user_msg'=>'Agendamento inválido.'], 422);
     require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_regras/permissoes_usuario.php';
     $conexao->set_charset('utf8mb4');
-    $sql = "SELECT a.*,c.nome_completo AS cliente_nome,c.whatsapp_celular AS cliente_telefone FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN empresa_usuario eu ON eu.id_empresa=a.id_empresa AND eu.id_usuario=? AND eu.status='ativo' LEFT JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE a.id_agendamento=? AND a.id_empresa=? AND (LOWER(COALESCE(pf.nome,'')) NOT IN ('profissional','profissionais') OR p.id_profissional=a.id_profissional) LIMIT 1";
-    $stmt = $conexao->prepare($sql); $stmt->bind_param('iii', $idUsuario, $id, $idEmpresa); $stmt->execute();
+    $contexto = permissoesContexto($conexao);
+    if (!($contexto['valido'] ?? false)) out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Acesso à empresa não autorizado.'],403);
+    $sql = "SELECT a.*,c.nome_completo AS cliente_nome,c.whatsapp_celular AS cliente_telefone FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa WHERE a.id_agendamento=? AND a.id_empresa=? LIMIT 1";
+    $stmt = $conexao->prepare($sql); $stmt->bind_param('ii', $id, $idEmpresa); $stmt->execute();
     $r = $stmt->get_result()->fetch_assoc(); $stmt->close();
     if (!$r) out(['ok'=>false,'code'=>'APPOINTMENT_NOT_FOUND','user_msg'=>'Agendamento não encontrado ou sem permissão para editar.'], 404);
+    if (!($contexto['super_admin_suporte'] ?? false) && ($contexto['perfil'] ?? '') === 'profissional' && (int)($contexto['id_profissional'] ?? 0) !== (int)$r['id_profissional']) {
+        out(['ok'=>false,'code'=>'APPOINTMENT_NOT_FOUND','user_msg'=>'Agendamento não encontrado ou sem permissão para editar.'], 404);
+    }
     foreach (['hora_inicio','hora_fim'] as $campo) $r[$campo] = substr((string)$r[$campo], 0, 5);
     out(['ok'=>true,'data'=>$r]);
 } catch (Throwable $e) { error_log('[detalhar_agendamento] '.$e->getMessage()); out(['ok'=>false,'code'=>'INTERNAL_ERROR','user_msg'=>'Não foi possível carregar o agendamento.'], 500); }

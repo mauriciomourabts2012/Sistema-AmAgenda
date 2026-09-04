@@ -151,6 +151,34 @@ function detectarRedirectLogout(array $session): string
 // ✅ Descobre a URL ANTES de destruir a sessão
 $redirectUrl = detectarRedirectLogout($_SESSION);
 
+$authLogout = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+$finalizandoSuporte = mb_strtolower(trim((string)($authLogout['tipo_usuario'] ?? '')), 'UTF-8') === 'super_admin'
+    && (bool)($authLogout['modo_suporte'] ?? false)
+    && getEmpresaId($_SESSION) > 0;
+
+if ($finalizandoSuporte) {
+    try {
+        require_once __DIR__ . '/../_config/conexao.php';
+        require_once __DIR__ . '/../_servicos/auditoria.php';
+        if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
+            throw new RuntimeException('Conexão indisponível para auditoria.');
+        }
+        $conexao->set_charset('utf8mb4');
+        auditoriaRegistrar($conexao, 'suporte.finalizado', [
+            'entidade_rotulo' => 'Modo suporte',
+            'descricao' => 'Finalizou o modo suporte.',
+            'contexto' => ['origem' => 'logout'],
+        ]);
+    } catch (Throwable $e) {
+        error_log('[auditoria_suporte] Não foi possível registrar a finalização do modo suporte.');
+        out([
+            'ok' => false,
+            'code' => 'SUPPORT_AUDIT_ERROR',
+            'user_msg' => 'Não foi possível finalizar o modo suporte.',
+        ], 500);
+    }
+}
+
 // Limpa dados da sessão
 $_SESSION = [];
 

@@ -34,6 +34,7 @@
 
   const CFG = {
     ENDPOINT: "/public/api/api_central.php?path=painel/usuario/listar",
+    ENDPOINT_ALTERAR_STATUS: "/public/api/api_central.php?path=painel/usuario/alterar-status",
     itensPorPagina: 20,
 
     ABA_ID: "usuarios",
@@ -102,6 +103,7 @@
   const vcTelefone = document.getElementById("vc_usr_telefone");
   const vcChipPerfil = document.getElementById("vc_usr_chip_perfil");
   const vcChipStatus = document.getElementById("vc_usr_chip_status");
+  const vcChipPlano = document.getElementById("vc_usr_chip_plano");
   const vcBtnWhats = document.getElementById("vc_usr_btn_whats");
   const vcBtnCopiarTel = document.getElementById("vc_usr_btn_copiar_tel");
   const vcEmail = document.getElementById("vc_usr_email");
@@ -263,6 +265,54 @@
     return `<span class="agenda-status ${cls}">${C.escapeHtml(st)}</span>`;
   }
 
+  function estaBloqueadoPeloPlano(usuario) {
+    return Number(usuario?.bloqueado_plano || 0) === 1;
+  }
+
+  function avisoAgendamentosFuturos(usuario) {
+    if (!estaBloqueadoPeloPlano(usuario)) return "";
+
+    const quantidade = Math.max(0, Number(usuario?.agendamentos_futuros || 0));
+    if (quantidade === 0) return "";
+
+    const rotulo = quantidade === 1 ? "agendamento futuro permanece" : "agendamentos futuros permanecem";
+    return `
+      <div class="usuario-plano-aviso">
+        <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+        <span><strong>${C.escapeHtml(quantidade)}</strong> ${rotulo} vinculado${quantidade === 1 ? "" : "s"}.</span>
+      </div>
+    `;
+  }
+
+  function avisoReativacaoPlano(usuario) {
+    if (!estaBloqueadoPeloPlano(usuario)) return "";
+
+    const podeReativar = usuario?.pode_reativar_plano === true;
+    const vagas = usuario?.vagas_plano || {};
+    const motivo = String(usuario?.motivo_reativacao_plano || "").trim();
+
+    if (podeReativar) {
+      const vagaTotal = Math.max(0, Number(vagas.total || 0));
+      const vagaPerfil = vagas.perfil === null || vagas.perfil === undefined
+        ? null
+        : Math.max(0, Number(vagas.perfil || 0));
+      const detalhePerfil = vagaPerfil === null ? "" : ` e ${vagaPerfil} para este perfil`;
+      return `
+        <div class="usuario-plano-reativacao is-disponivel">
+          <i class="fa-solid fa-unlock-keyhole" aria-hidden="true"></i>
+          <span><strong>Reativação disponível:</strong> ${vagaTotal} vaga(s) no total${detalhePerfil}.</span>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="usuario-plano-reativacao">
+        <i class="fa-solid fa-lock" aria-hidden="true"></i>
+        <span>${C.escapeHtml(motivo || "Sem vaga disponível no plano atual.")}</span>
+      </div>
+    `;
+  }
+
   function formatarDataCadastro(valor) {
     const texto = String(valor || "").trim();
     const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -280,6 +330,7 @@
   function buildMenuAcoes(u) {
     const st = normalizeStatus(u.status);
     const ativo = st === "Ativo";
+    const podeReativarPlano = estaBloqueadoPeloPlano(u) && u?.pode_reativar_plano === true;
 
     return `
       <div class="agenda-menu" role="menu">
@@ -294,6 +345,12 @@
         <button class="agenda-menu-item" type="button" data-acao="permissoes">
           <i class="fa-solid fa-shield-halved"></i> Permissões
         </button>
+
+        ${podeReativarPlano ? `
+          <button class="agenda-menu-item usuario-acao-reativar-plano" type="button" data-acao="reativar-plano">
+            <i class="fa-solid fa-unlock-keyhole"></i> Reativar pelo plano
+          </button>
+        ` : ""}
 
         <button
           class="agenda-menu-item danger"
@@ -362,6 +419,7 @@
     const perfil = normalizePerfil(u.perfil_nome || u.perfil || "Perfil");
     const email = u.email ?? "";
     const status = normalizeStatus(u.status);
+    const bloqueadoPlano = estaBloqueadoPeloPlano(u);
     const dataCadastro = formatarDataCadastro(u.criado_em);
     const telRaw = String(u.telefone || "");
     const temTel = onlyDigits(telRaw).length >= 10;
@@ -369,7 +427,9 @@
     return `
       <article class="agenda-card usuario-lista-card"
         data-id="${C.escapeHtml(id)}"
+        data-vinculo="${C.escapeHtml(u.id_empresa_usuario || "")}"
         data-status="${C.escapeHtml(status)}"
+        data-bloqueado-plano="${bloqueadoPlano ? "1" : "0"}"
         data-perfil="${C.escapeHtml(perfil)}"
         data-created="${C.escapeHtml(u.criado_em || "")}">
 
@@ -394,7 +454,11 @@
           <div class="usuario-card-chips">
             <span class="usuario-chip usuario-chip-perfil">${C.escapeHtml(perfil)}</span>
             ${badgeStatus(status)}
+            ${bloqueadoPlano ? '<span class="usuario-chip usuario-chip-plano">Bloqueado pelo plano</span>' : ""}
           </div>
+
+          ${avisoAgendamentosFuturos(u)}
+          ${avisoReativacaoPlano(u)}
         </div>
 
         <div class="agenda-acoes" aria-haspopup="menu">
@@ -611,6 +675,10 @@
       if (status === "Ativo") vcChipStatus.classList.add("st-confirmado");
       else if (status === "Inativo") vcChipStatus.classList.add("st-cancelado");
       else vcChipStatus.classList.add("st-pendente");
+    }
+
+    if (vcChipPlano) {
+      vcChipPlano.hidden = !estaBloqueadoPeloPlano(usuario);
     }
 
     if (vcEmail) vcEmail.textContent = email;
@@ -1110,8 +1178,53 @@
     try { menuCtrl.fechar(); } catch (_) {}
   }
 
+  async function reativarUsuarioPeloPlano(card) {
+    const idVinculo = Number(card?.dataset?.vinculo || 0);
+    const usuario = BASE_LISTA.find((item) => Number(item.id_empresa_usuario) === idVinculo);
+    if (!idVinculo || !usuario) {
+      toastMsg("warning", "Não foi possível identificar o vínculo selecionado.", "Atenção");
+      return;
+    }
+
+    const mensagem = `Deseja reativar ${usuario.nome || "este usuário"} usando uma vaga do plano atual?`;
+    const confirmado = window.MensagemSistema?.confirmar
+      ? await window.MensagemSistema.confirmar(mensagem, {
+          titulo: "Reativar usuário pelo plano",
+          textoConfirmar: "Reativar",
+        })
+      : window.confirm(mensagem);
+    if (!confirmado) return;
+
+    const corpo = new URLSearchParams({
+      acao: "reativar_plano",
+      id_empresa_usuario: String(idVinculo),
+    });
+
+    try {
+      const resposta = await fetch(CFG.ENDPOINT_ALTERAR_STATUS, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: corpo,
+      });
+      const json = await resposta.json().catch(() => null);
+      if (!resposta.ok || !json?.ok) {
+        throw new Error(json?.user_msg || "Não foi possível reativar o usuário.");
+      }
+
+      toastMsg("success", json.user_msg || "Usuário reativado pelo plano.", "Sucesso");
+      await carregar();
+    } catch (erro) {
+      toastMsg("danger", erro?.message || "Não foi possível reativar o usuário.", "Erro");
+    }
+  }
+
   function bindEventosGlobais() {
-    document.addEventListener("click", (ev) => {
+    document.addEventListener("click", async (ev) => {
       const btnFecharModal = ev.target.closest("[data-fechar-modal]");
       if (btnFecharModal) {
         const modalPai = getModalPai(btnFecharModal);
@@ -1194,6 +1307,11 @@
 
         if (acao === "permissoes") {
           abrirModalPermissoesUsuario(id);
+          return;
+        }
+
+        if (acao === "reativar-plano") {
+          await reativarUsuarioPeloPlano(cardDono);
           return;
         }
 

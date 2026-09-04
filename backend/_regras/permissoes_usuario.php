@@ -71,7 +71,7 @@ function permissoesContexto(mysqli $conexao, ?int $idUsuario = null, ?int $idEmp
         return $contextosSuporte[$chaveSuporte] = $ok ? ['valido'=>true,'id_usuario'=>$usuario,'id_empresa'=>$empresa,'perfil'=>'super_admin','super_admin_suporte'=>true,'id_profissional'=>0] : ['valido'=>false,'super_admin_suporte'=>false];
     }
 
-    $stmt = $conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa AND e.status='ativo' INNER JOIN usuario u ON u.id_usuario=eu.id_usuario AND u.status='ativo' INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil AND pf.status='ativo' LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' LIMIT 1");
+    $stmt = $conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa AND e.status='ativo' INNER JOIN usuario u ON u.id_usuario=eu.id_usuario AND u.status='ativo' INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil AND pf.status='ativo' LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND eu.bloqueado_plano=0 LIMIT 1");
     if (!$stmt) throw new RuntimeException('Falha ao preparar contexto de autorização.');
     $stmt->bind_param('ii',$empresa,$usuario); $stmt->execute(); $stmt->bind_result($perfil,$idProfissional); $ok=$stmt->fetch(); $stmt->close();
     return $ok ? ['valido'=>true,'id_usuario'=>$usuario,'id_empresa'=>$empresa,'perfil'=>permissoesNormalizarPerfil($perfil),'super_admin_suporte'=>false,'id_profissional'=>(int)$idProfissional] : ['valido'=>false,'super_admin_suporte'=>false];

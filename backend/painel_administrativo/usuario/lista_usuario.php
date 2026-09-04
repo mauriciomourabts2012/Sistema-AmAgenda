@@ -92,6 +92,7 @@ try {
        CONEXÃO
     ========================================================== */
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_regras/limites_plano.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -202,9 +203,17 @@ try {
        VALIDAR EMPRESA DA SESSÃO
     ========================================================== */
     $sqlEmpresa = "
-        SELECT id_empresa, nome, status
-        FROM empresa
-        WHERE id_empresa = ?
+        SELECT
+            e.id_empresa,
+            e.nome,
+            e.status,
+            p.limite_usuarios,
+            p.limite_proprietarios,
+            p.limite_profissionais,
+            p.limite_recepcionistas
+        FROM empresa e
+        INNER JOIN plano p ON p.id_plano = e.plano_id
+        WHERE e.id_empresa = ?
         LIMIT 1
     ";
 
@@ -238,6 +247,21 @@ try {
             'user_msg' => 'A empresa vinculada à sessão está inativa.'
         ], 403);
     }
+
+    // Indicadores de interface. A reativação continua sendo recalculada e
+    // autorizada dentro da transação do endpoint de alteração de status.
+    $consumoPlano = [
+        'usuarios' => limitesPlanoContarConsumo($conexao, $idEmpresaSessao, 'usuarios'),
+        'proprietarios' => limitesPlanoContarConsumo($conexao, $idEmpresaSessao, 'proprietarios'),
+        'profissionais' => limitesPlanoContarConsumo($conexao, $idEmpresaSessao, 'profissionais'),
+        'recepcionistas' => limitesPlanoContarConsumo($conexao, $idEmpresaSessao, 'recepcionistas'),
+    ];
+    $limitesInterface = [
+        'usuarios' => (int)($empresa['limite_usuarios'] ?? 0),
+        'proprietarios' => (int)($empresa['limite_proprietarios'] ?? 0),
+        'profissionais' => (int)($empresa['limite_profissionais'] ?? 0),
+        'recepcionistas' => (int)($empresa['limite_recepcionistas'] ?? 0),
+    ];
 
     /* ==========================================================
        EXPRESSÃO DE STATUS EFETIVO
@@ -384,6 +408,7 @@ try {
             eu.id_usuario,
             eu.id_perfil,
             eu.status AS status_vinculo,
+            eu.bloqueado_plano,
 
             u.nome,
             u.email,
@@ -400,6 +425,24 @@ try {
 
             pr.id_profissional,
             pr.especialidade,
+
+            CASE
+                WHEN pr.id_profissional IS NULL THEN 0
+                ELSE (
+                    SELECT COUNT(*)
+                    FROM agendamento ag_futuro
+                    WHERE ag_futuro.id_empresa = eu.id_empresa
+                      AND ag_futuro.id_profissional = pr.id_profissional
+                      AND ag_futuro.status IN ('pendente', 'confirmado')
+                      AND (
+                            ag_futuro.data_agendamento > CURDATE()
+                            OR (
+                                ag_futuro.data_agendamento = CURDATE()
+                                AND ag_futuro.hora_inicio >= CURTIME()
+                            )
+                          )
+                )
+            END AS agendamentos_futuros,
 
             {$statusEfetivoSql} AS status
         FROM empresa_usuario eu
@@ -456,6 +499,30 @@ try {
             $perfilSlug = 'super_admin';
         }
 
+        $bloqueadoPlano = (int)($row['bloqueado_plano'] ?? 0) === 1;
+        $statusVinculoAtivo = mb_strtolower(trim((string)($row['status_vinculo'] ?? '')), 'UTF-8') === 'ativo';
+        $statusUsuarioAtivo = mb_strtolower(trim((string)($row['status_usuario'] ?? '')), 'UTF-8') === 'ativo';
+        $recursoPerfil = limitesPlanoNormalizarPerfil($perfilNome);
+        $vagaTotal = max(0, $limitesInterface['usuarios'] - $consumoPlano['usuarios']);
+        $vagaPerfil = isset($limitesInterface[$recursoPerfil])
+            ? max(0, $limitesInterface[$recursoPerfil] - $consumoPlano[$recursoPerfil])
+            : null;
+        $podeReativarPlano = $bloqueadoPlano
+            && $statusVinculoAtivo
+            && $statusUsuarioAtivo
+            && $vagaTotal > 0
+            && ($vagaPerfil === null || $vagaPerfil > 0);
+        $motivoReativacao = null;
+        if ($bloqueadoPlano && !$statusVinculoAtivo) {
+            $motivoReativacao = 'O status manual do vínculo não está ativo.';
+        } elseif ($bloqueadoPlano && !$statusUsuarioAtivo) {
+            $motivoReativacao = 'O status manual do usuário não está ativo.';
+        } elseif ($bloqueadoPlano && $vagaTotal <= 0) {
+            $motivoReativacao = 'Não há vaga no limite total de usuários.';
+        } elseif ($bloqueadoPlano && $vagaPerfil !== null && $vagaPerfil <= 0) {
+            $motivoReativacao = 'Não há vaga para este perfil no plano atual.';
+        }
+
         $items[] = [
             'id_empresa_usuario' => (int)$row['id_empresa_usuario'],
             'id_empresa'         => (int)$row['id_empresa'],
@@ -479,6 +546,14 @@ try {
             'status'             => (string)$row['status'],
             'status_usuario'     => (string)$row['status_usuario'],
             'status_vinculo'     => (string)$row['status_vinculo'],
+            'bloqueado_plano'    => (int)$row['bloqueado_plano'],
+            'agendamentos_futuros' => (int)$row['agendamentos_futuros'],
+            'pode_reativar_plano' => $podeReativarPlano,
+            'motivo_reativacao_plano' => $motivoReativacao,
+            'vagas_plano' => [
+                'total' => $vagaTotal,
+                'perfil' => $vagaPerfil,
+            ],
 
             'ultimo_login_em'    => $row['ultimo_login_em'] !== null ? (string)$row['ultimo_login_em'] : null,
             'criado_em'          => $row['criado_em'] !== null ? (string)$row['criado_em'] : null,

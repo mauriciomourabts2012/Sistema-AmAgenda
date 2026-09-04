@@ -75,6 +75,15 @@ try {
         out(['ok'=>false,'code'=>'DB_CONN_ERROR','user_msg'=>'Falha ao conectar no banco.'], 500);
     }
     $conexao->set_charset('utf8mb4');
+    $stmtSuperAdmin = $conexao->prepare("SELECT 1 FROM usuario WHERE id_usuario=? AND status='ativo' AND tipo_usuario='super_admin' LIMIT 1");
+    if (!$stmtSuperAdmin) throw new RuntimeException('Falha ao preparar revalidação do Super Admin.');
+    $stmtSuperAdmin->bind_param('i', $idUsuarioSuperAdmin);
+    $stmtSuperAdmin->execute();
+    $stmtSuperAdmin->store_result();
+    $superAdminValido = $stmtSuperAdmin->num_rows === 1;
+    $stmtSuperAdmin->close();
+    if (!$superAdminValido) out(['ok'=>false,'code'=>'PERMISSION_DENIED','user_msg'=>'Você não possui permissão para acessar este recurso.'], 403);
+
     $hoje = new DateTimeImmutable('today');
     $inicioRaw = trim((string)($_GET['inicio'] ?? $hoje->modify('-' . (AUDITORIA_GLOBAL_PERIODO_PADRAO_DIAS - 1) . ' days')->format('Y-m-d')));
     $fimRaw = trim((string)($_GET['fim'] ?? $hoje->format('Y-m-d')));
@@ -100,7 +109,7 @@ try {
     if ($empresaRaw !== '' && $empresaId === false) out(['ok'=>false,'code'=>'INVALID_COMPANY','user_msg'=>'Empresa inválida.'], 422);
     if ($modulo !== '' && !isset($modulos[$modulo])) out(['ok'=>false,'code'=>'INVALID_MODULE','user_msg'=>'Módulo inválido.'], 422);
     if ($evento !== '' && !isset($catalogo[$evento])) out(['ok'=>false,'code'=>'INVALID_EVENT','user_msg'=>'Evento inválido.'], 422);
-    if (!in_array($origem, ['', 'empresa', 'plataforma', 'modo_suporte', 'autenticacao'], true)) out(['ok'=>false,'code'=>'INVALID_ORIGIN','user_msg'=>'Origem inválida.'], 422);
+    if (!in_array($origem, ['', 'plataforma', 'modo_suporte', 'autenticacao'], true)) out(['ok'=>false,'code'=>'INVALID_ORIGIN','user_msg'=>'Origem inválida.'], 422);
     if (!in_array($ordem, ['recentes','antigos'], true)) out(['ok'=>false,'code'=>'INVALID_ORDER','user_msg'=>'Ordenação inválida.'], 422);
     if ($limiteRaw !== '20') out(['ok'=>false,'code'=>'INVALID_LIMIT','user_msg'=>'A auditoria exibe 20 registros por página.'], 422);
     if (mb_strlen($busca, 'UTF-8') > AUDITORIA_GLOBAL_BUSCA_MAX) out(['ok'=>false,'code'=>'SEARCH_TOO_LONG','user_msg'=>'A pesquisa deve ter no máximo 100 caracteres.'], 422);
@@ -108,7 +117,7 @@ try {
     $cursor = $cursorRaw === '' ? null : auditoriaGlobalLerCursor($cursorRaw);
     if ($cursorRaw !== '' && $cursor === null) out(['ok'=>false,'code'=>'INVALID_CURSOR','user_msg'=>'Cursor inválido.'], 422);
 
-    $where = ['a.ocorrido_em >= ?', 'a.ocorrido_em <= ?'];
+    $where = ["a.origem IN ('plataforma','autenticacao','modo_suporte')", 'a.ocorrido_em >= ?', 'a.ocorrido_em <= ?'];
     $tipos = 'ss';
     $parametros = [$inicio->format('Y-m-d H:i:s.u'), $fim->format('Y-m-d H:i:s.u')];
     if ($empresaId !== null) { $where[]='a.id_empresa=?'; $tipos.='i'; $parametros[]=(int)$empresaId; }

@@ -47,7 +47,7 @@ $idEmpresa = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? 0);
 if ($tipoUsuario !== 'super_admin' && $idUsuario > 0 && $idEmpresa > 0) {
   require __DIR__ . '/../_config/conexao.php';
 
-  $stmt = $conexao->prepare("SELECT eu.id_perfil, p.nome FROM empresa_usuario eu INNER JOIN perfil p ON p.id_perfil = eu.id_perfil INNER JOIN empresa e ON e.id_empresa = eu.id_empresa WHERE eu.id_usuario = ? AND eu.id_empresa = ? AND eu.status = 'ativo' AND p.status = 'ativo' AND e.status = 'ativo' LIMIT 1");
+  $stmt = $conexao->prepare("SELECT eu.id_perfil, p.nome, eu.bloqueado_plano FROM empresa_usuario eu INNER JOIN perfil p ON p.id_perfil = eu.id_perfil INNER JOIN empresa e ON e.id_empresa = eu.id_empresa WHERE eu.id_usuario = ? AND eu.id_empresa = ? AND eu.status = 'ativo' AND p.status = 'ativo' AND e.status = 'ativo' LIMIT 1");
   if (!$stmt) {
     out(['ok' => false, 'code' => 'SESSION_PROFILE_CHECK_ERROR', 'user_msg' => 'Não foi possível validar o perfil da sessão.'], 500);
   }
@@ -60,6 +60,11 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0 && $idEmpresa > 0) {
 
   if (!$vinculo) {
     out(['ok' => false, 'code' => 'SESSION_COMPANY_LINK_INVALID', 'user_msg' => 'Seu vínculo com a empresa não está ativo. Faça login novamente.'], 403);
+  }
+
+  // Permissões não podem manter ativa uma sessão bloqueada pelo plano.
+  if ((int)($vinculo['bloqueado_plano'] ?? 0) === 1) {
+    out(['ok' => false, 'code' => 'SESSION_ACCESS_DENIED', 'user_msg' => 'Acesso indisponível para o plano atual.'], 403);
   }
 
   $perfilNomeDb = mb_strtolower(trim((string)$vinculo['nome']), 'UTF-8');
@@ -78,6 +83,38 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0 && $idEmpresa > 0) {
 }
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) require __DIR__ . '/../_config/conexao.php';
+
+$stmt = $conexao->prepare(
+  "SELECT deve_alterar_senha,
+          (deve_alterar_senha = 1
+           AND data_senha_temporaria IS NOT NULL
+           AND CURRENT_TIMESTAMP >= DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR)) AS senha_temporaria_vencida
+     FROM usuario
+    WHERE id_usuario = ? AND status = 'ativo'
+    LIMIT 1"
+);
+if (!$stmt) {
+  out(['ok' => false, 'code' => 'SESSION_USER_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+}
+$stmt->bind_param('i', $idUsuario);
+if (!$stmt->execute()) {
+  $stmt->close();
+  out(['ok' => false, 'code' => 'SESSION_USER_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+}
+$resultadoUsuario = $stmt->get_result();
+$usuarioAtual = $resultadoUsuario ? ($resultadoUsuario->fetch_assoc() ?: null) : null;
+$stmt->close();
+
+if (!$usuarioAtual) {
+  out(['ok' => false, 'code' => 'SESSION_USER_INACTIVE', 'user_msg' => 'Seu usuário não está ativo. Faça login novamente.'], 403);
+}
+
+$deveAlterarSenha = (int)($usuarioAtual['deve_alterar_senha'] ?? 0) === 1;
+$senhaTemporariaVencida = (int)($usuarioAtual['senha_temporaria_vencida'] ?? 0) === 1;
+$_SESSION['auth']['deve_alterar_senha'] = $deveAlterarSenha;
+$_SESSION['auth']['senha_temporaria_vencida'] = $senhaTemporariaVencida;
+$auth = $_SESSION['auth'];
+
 require_once __DIR__ . '/../_regras/permissoes_usuario.php';
 $permissoesEfetivas = obterPermissoesEfetivas($conexao);
 
@@ -100,6 +137,8 @@ out([
       'modo_suporte'  => (bool)($auth['modo_suporte'] ?? false),
       'status'        => (string)($auth['status'] ?? ''),
       'login_em'      => (string)($auth['login_em'] ?? ''),
+      'deve_alterar_senha' => $deveAlterarSenha,
+      'senha_temporaria_vencida' => $senhaTemporariaVencida,
       'permissoes'    => $permissoesEfetivas,
     ]
   ]

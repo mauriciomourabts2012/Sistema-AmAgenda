@@ -63,6 +63,14 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/_auth/logout.php',
     ],
 
+    // Centro de notificações do destinatário autenticado
+    'notificacoes/listar' => [
+        'GET' => '@notificacoes_listar',
+    ],
+    'notificacoes/marcar-lida' => [
+        'POST' => '@notificacoes_marcar_lida',
+    ],
+
 
     /*
     |----------------------
@@ -399,12 +407,116 @@ if (!isset($routes[$rota][$verbo])) {
 
 $handler = $routes[$rota][$verbo];
 
+if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
+    require_once __DIR__ . '/../../backend/_auth/require_auth.php';
+    require_once __DIR__ . '/../../backend/_regras/permissoes_usuario.php';
+    require_once __DIR__ . '/../../backend/_servicos/notificacao.php';
+
+    $authNotificacoes = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+    $idDestinatario = (int)($authNotificacoes['id_usuario'] ?? 0);
+    $tipoUsuarioNotificacoes = mb_strtolower(trim((string)($authNotificacoes['tipo_usuario'] ?? '')), 'UTF-8');
+    $modoSuporteNotificacoes = (bool)($authNotificacoes['modo_suporte'] ?? false);
+    if ($idDestinatario <= 0) {
+        out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
+    }
+
+    $destinatarioTipo = $tipoUsuarioNotificacoes === 'super_admin' ? 'super_admin' : 'usuario';
+    $idEmpresaNotificacoes = null;
+    if ($destinatarioTipo === 'usuario' || $modoSuporteNotificacoes) {
+        $contextoNotificacoes = permissoesContexto($conexao);
+        if (!($contextoNotificacoes['valido'] ?? false)) {
+            out(['ok' => false, 'code' => 'NOTIFICATION_CONTEXT_INVALID', 'user_msg' => 'Não foi possível validar o contexto das notificações.'], 403);
+        }
+        $idEmpresaNotificacoes = (int)($contextoNotificacoes['id_empresa'] ?? 0);
+        if ($idEmpresaNotificacoes <= 0) {
+            out(['ok' => false, 'code' => 'NOTIFICATION_CONTEXT_INVALID', 'user_msg' => 'Não foi possível validar o contexto das notificações.'], 403);
+        }
+    }
+
+    if ($handler === '@notificacoes_listar') {
+        $pendentes = notificacaoListarPendentes(
+            $conexao,
+            $destinatarioTipo,
+            $idDestinatario,
+            $idEmpresaNotificacoes,
+            100
+        );
+        $itens = array_map(static fn(array $item): array => [
+            'id_notificacao' => (int)$item['id_notificacao'],
+            'codigo' => (string)$item['codigo'],
+            'categoria' => (string)$item['categoria'],
+            'titulo' => (string)$item['titulo'],
+            'mensagem' => (string)$item['mensagem'],
+            'prioridade' => (string)$item['prioridade'],
+            'obrigatoria' => (bool)$item['obrigatoria'],
+            'acao_codigo' => $item['acao_codigo'] === null ? null : (string)$item['acao_codigo'],
+            'prazo_em' => $item['prazo_em'] === null ? null : (string)$item['prazo_em'],
+            'lida' => $item['lida_em'] !== null,
+            'criada_em' => (string)$item['criado_em'],
+        ], $pendentes);
+
+        out([
+            'ok' => true,
+            'code' => 'NOTIFICATIONS_LISTED',
+            'data' => ['quantidade' => count($itens), 'itens' => $itens],
+        ]);
+    }
+
+    $idNotificacaoRaw = $_POST['id_notificacao'] ?? null;
+    if (!is_scalar($idNotificacaoRaw) || !preg_match('/^[1-9]\d*$/', trim((string)$idNotificacaoRaw))) {
+        out(['ok' => false, 'code' => 'NOTIFICATION_ID_INVALID', 'user_msg' => 'Notificação inválida.'], 422);
+    }
+
+    $resultadoLeitura = notificacaoMarcarComoLida(
+        $conexao,
+        (int)$idNotificacaoRaw,
+        $destinatarioTipo,
+        $idDestinatario,
+        $idEmpresaNotificacoes
+    );
+    if (!($resultadoLeitura['encontrada'] ?? false)) {
+        out(['ok' => false, 'code' => 'NOTIFICATION_NOT_FOUND', 'user_msg' => 'Notificação não encontrada.'], 404);
+    }
+
+    out([
+        'ok' => true,
+        'code' => 'NOTIFICATION_READ',
+        'data' => [
+            'id_notificacao' => (int)$idNotificacaoRaw,
+            'lida' => true,
+            'alterada' => (bool)($resultadoLeitura['alterada'] ?? false),
+        ],
+    ]);
+}
+
 if (!is_file($handler)) {
     out([
         'ok' => false,
         'code' => 'HANDLER_NOT_FOUND',
         'user_msg' => 'Handler não encontrado.'
     ], 500);
+}
+
+/* A rota já foi validada pelo mapa interno antes desta whitelist. Para uma
+   sessão autenticada, toda outra API passa pela revalidação autoritativa. */
+$rotasPermitidasComSenhaTemporariaVencida = [
+    '_auth/login',
+    '_auth/session',
+    '_auth/logout',
+    'perfil/alterar-senha',
+];
+
+if ($rota === 'perfil/alterar-senha') {
+    define('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA', true);
+}
+
+if (!in_array($rota, $rotasPermitidasComSenhaTemporariaVencida, true)) {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+    if ((int)($_SESSION['auth']['id_usuario'] ?? 0) > 0) {
+        require_once __DIR__ . '/../../backend/_auth/require_auth.php';
+    }
 }
 
 /* Autorização central das áreas administrativas e da agenda. O backend

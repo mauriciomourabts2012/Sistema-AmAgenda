@@ -115,6 +115,104 @@
    FIM
 ========================= */
 
+/* Seleção de vínculos ao reduzir os limites do plano da empresa. */
+.plano-selecao-usuarios {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #c8d9ec;
+  border-radius: 14px;
+  background: #f7fbff;
+}
+
+.plano-selecao-cabecalho {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: #173b63;
+}
+
+.plano-selecao-cabecalho > i {
+  margin-top: 2px;
+  font-size: 20px;
+  color: #006ae4;
+}
+
+.plano-selecao-cabecalho strong { display: block; font-size: 15px; }
+.plano-selecao-cabecalho p { margin: 4px 0 0; color: #526a84; font-size: 13px; }
+
+.plano-selecao-excessos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.plano-selecao-excesso {
+  padding: 10px 12px;
+  border: 1px solid #d9e5f2;
+  border-radius: 10px;
+  background: #fff;
+  color: #344d68;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.plano-selecao-excesso strong { display: block; color: #173b63; font-size: 13px; }
+
+.plano-selecao-lista {
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #d9e5f2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.plano-selecao-lista legend { padding: 0 6px; color: #526a84; font-size: 12px; font-weight: 700; }
+.plano-selecao-lista > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+.plano-selecao-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e0e8f1;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #fbfdff;
+}
+
+.plano-selecao-item:has(input:checked) { border-color: #63a2e8; background: #eef6ff; }
+.plano-selecao-item input { width: 18px; height: 18px; margin: 0; accent-color: #006ae4; }
+.plano-selecao-item span { min-width: 0; }
+.plano-selecao-item strong { display: block; overflow-wrap: anywhere; color: #253f5b; font-size: 13px; }
+.plano-selecao-item small { display: block; margin-top: 2px; color: #6c8096; font-size: 11px; }
+
+.plano-selecao-contador { margin: 10px 0 0; color: #27496d; font-size: 13px; font-weight: 700; }
+.plano-selecao-erro { min-height: 18px; margin: 4px 0 10px; color: #b42318; font-size: 12px; }
+.plano-selecao-usuarios > .botao-geral { min-height: 38px; }
+
+.plano-vagas-administrativas {
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #d9e5f2;
+  border-radius: 10px;
+  background: #f7fbff;
+  color: #344d68;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.plano-vagas-administrativas strong {
+  color: #173b63;
+  font-weight: 700;
+}
+
 /* =========================
    DESTAQUE NA MENSAEM DE LISTA VAZIA DOS PLANOS
 ========================= */

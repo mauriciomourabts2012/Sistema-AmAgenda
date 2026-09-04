@@ -48,13 +48,13 @@ try {
     if ($erros) out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Revise os dados do agendamento.','fields'=>$erros],422);
 
     require __DIR__ . '/../_config/conexao.php';
+    require_once __DIR__ . '/../_regras/permissoes_usuario.php';
     require_once __DIR__ . '/../_regras/limites_plano.php';
     require_once __DIR__ . '/../_servicos/auditoria.php';
     $conexao->set_charset('utf8mb4');
-    $stmt=$conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND e.status='ativo' LIMIT 1");
-    $stmt->bind_param('ii',$idEmpresa,$idUsuario); $stmt->execute(); $stmt->bind_result($perfil,$profSessao); $vinculo=$stmt->fetch(); $stmt->close();
-    if (!$vinculo) out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Acesso à empresa não autorizado.'],403);
-    if (in_array(mb_strtolower((string)$perfil),['profissional','profissionais'],true) && (int)$profSessao!==$idProfissional) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode editar os próprios agendamentos.'],403);
+    $contexto=permissoesContexto($conexao);
+    if (!($contexto['valido'] ?? false)) out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Acesso à empresa não autorizado.'],403);
+    if (!($contexto['super_admin_suporte'] ?? false) && ($contexto['perfil'] ?? '') === 'profissional' && (int)($contexto['id_profissional'] ?? 0)!==$idProfissional) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode editar os próprios agendamentos.'],403);
 
     // Snapshot mínimo com rótulos históricos, sempre limitado à empresa da sessão.
     $stmt=$conexao->prepare("SELECT a.id_agendamento,a.id_cliente,c.nome_completo,a.id_profissional,up.nome,a.id_servico,s.nome,a.data_agendamento,a.hora_inicio,a.hora_fim,a.duracao_min_aplicada,a.valor_aplicado,a.status,a.repetir_semanalmente,a.recorrencia_data_fim,a.grupo_recorrencia FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario up ON up.id_usuario=p.id_usuario INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_empresa=a.id_empresa WHERE a.id_agendamento=? AND a.id_empresa=? LIMIT 1");

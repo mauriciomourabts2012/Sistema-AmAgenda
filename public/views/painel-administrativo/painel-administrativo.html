@@ -11,14 +11,14 @@
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
   <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260828_2"/>
-  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
   <!--CSS MOBILE-->
   <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260818_1"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
   <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260828_1"/>
-  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260817_3"/>
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
 
@@ -947,6 +947,7 @@
                 <!-- chips -->
                 <span class="vc-chip" id="vc_usr_chip_perfil">—</span>
                 <span class="vc-chip" id="vc_usr_chip_status">—</span>
+                <span class="vc-chip usuario-chip-plano" id="vc_usr_chip_plano" hidden>Bloqueado pelo plano</span>
               </div>
             </div>
 
@@ -1329,15 +1330,18 @@
   </div><!-- /.agenda-app-shell -->
   
   <script src="../../js/core/lista-core.js?v=20260820_2" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
-  <script src="../../js/menu-lateral/menu-lateral.js?v=20260827_1"></script>
+  <script src="../../js/menu-lateral/menu-lateral.js?v=20260903_1"></script>
   <script src="../../js/identidade-visual/identidade-visual.js?v=20260822_1"></script>
+
+  <!--Cabeçallho-->
+  <script src="../../js/notificacoes/notificacoes.js?v=20260903_1"></script> <!--Notificações do cabeçalho-->
 
 
   <!--Modal Perfil-->
   <script src="/public/_auth/deslogar.js" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
   <script src="../../js/perfil-usuario/alterar_perfil_foto.js" ></script> <!--Alterar Foto de perfil do modal perfil-->
   <script src="../../js/perfil-usuario/buscar_foto_perfil.js" ></script> <!--Buscar Foto de perfil do usuario logado-->
-  <script src="../../js/perfil-usuario/alterar_senha_perfil.js" ></script> <!--Alterar senha perfil-->
+  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=20260903_1" ></script> <!--Alterar senha perfil-->
 
   <!--Modal Configuração Geral-->
   <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->

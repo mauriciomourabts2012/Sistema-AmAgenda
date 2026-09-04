@@ -149,7 +149,13 @@ $sqlUsuario = "
         telefone,
         senha_hash,
         status,
-        tipo_usuario
+        tipo_usuario,
+        deve_alterar_senha,
+        (
+            deve_alterar_senha = 1
+            AND data_senha_temporaria IS NOT NULL
+            AND CURRENT_TIMESTAMP >= DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR)
+        ) AS senha_temporaria_vencida
     FROM usuario
     WHERE LOWER(email) = LOWER(?)
     LIMIT 1
@@ -233,6 +239,8 @@ if (!password_verify($senha, $hash)) {
 }
 
 $tipoUsuario = mb_strtolower(trim((string)($user['tipo_usuario'] ?? 'usuario')), 'UTF-8');
+$deveAlterarSenha = (int)($user['deve_alterar_senha'] ?? 0) === 1;
+$senhaTemporariaVencida = (int)($user['senha_temporaria_vencida'] ?? 0) === 1;
 
 /**
  * ==========================================================
@@ -316,6 +324,8 @@ if ($tipoUsuario === 'super_admin') {
         'perfil_id'    => (int)($_SESSION['perfil_id'] ?? 0),
         'perfil_nome'  => (string)($_SESSION['perfil_nome'] ?? ''),
         'modo_suporte' => (bool)($_SESSION['modo_suporte'] ?? false),
+        'deve_alterar_senha' => $deveAlterarSenha,
+        'senha_temporaria_vencida' => $senhaTemporariaVencida,
     ];
 
     $_SESSION['usuario_id']    = (int)$user['id_usuario'];
@@ -327,6 +337,25 @@ if ($tipoUsuario === 'super_admin') {
     $_SESSION['superadmin_nome']  = (string)$user['nome'];
     $_SESSION['superadmin_email'] = (string)$user['email'];
     $_SESSION['super']            = true;
+
+    if ((bool)($_SESSION['auth']['modo_suporte'] ?? false)) {
+        try {
+            auditoriaRegistrar($conexao, 'suporte.iniciado', [
+                'entidade_rotulo' => 'Modo suporte',
+                'descricao' => 'Iniciou o modo suporte.',
+                'contexto' => ['origem' => 'login'],
+            ]);
+        } catch (Throwable $e) {
+            $_SESSION = [];
+            error_log('[auditoria_suporte] Não foi possível registrar o início do modo suporte.');
+            out([
+                'ok' => false,
+                'step' => 'audit',
+                'code' => 'SUPPORT_AUDIT_ERROR',
+                'user_msg' => 'Não foi possível iniciar o modo suporte.',
+            ], 500);
+        }
+    }
 
     out([
         'ok' => true,
@@ -340,6 +369,8 @@ if ($tipoUsuario === 'super_admin') {
             'perfil_id'    => (int)($_SESSION['perfil_id'] ?? 0),
             'perfil_nome'  => (string)($_SESSION['perfil_nome'] ?? ''),
             'modo_suporte' => (bool)($_SESSION['modo_suporte'] ?? false),
+            'deve_alterar_senha' => $deveAlterarSenha,
+            'senha_temporaria_vencida' => $senhaTemporariaVencida,
         ]
     ], 200);
 }
@@ -371,6 +402,7 @@ $sqlEmpresaUsuario = "
         p.nome AS perfil_nome,
         p.status AS perfil_status,
         eu.status AS status_vinculo,
+        eu.bloqueado_plano,
         e.nome AS empresa_nome,
         e.status AS empresa_status
     FROM empresa_usuario eu
@@ -427,6 +459,7 @@ $perfilId      = (int)($empresaRow['id_perfil'] ?? 0);
 $perfilNomeDb  = trim((string)($empresaRow['perfil_nome'] ?? ''));
 $perfilStatus  = mb_strtolower(trim((string)($empresaRow['perfil_status'] ?? '')), 'UTF-8');
 $statusVinculo = mb_strtolower(trim((string)($empresaRow['status_vinculo'] ?? '')), 'UTF-8');
+$bloqueadoPlano = (int)($empresaRow['bloqueado_plano'] ?? 0) === 1;
 $statusEmpresa = mb_strtolower(trim((string)($empresaRow['empresa_status'] ?? '')), 'UTF-8');
 $empresaNomeBd = trim((string)($empresaRow['empresa_nome'] ?? ''));
 
@@ -447,6 +480,17 @@ if ($statusVinculo !== 'ativo') {
         'step' => 'empresa_status',
         'code' => 'LOGIN_ACCESS_DENIED',
         'user_msg' => 'Não foi possível realizar o acesso.'
+    ], 403);
+}
+
+// O bloqueio do plano é independente do status manual do vínculo.
+if ($bloqueadoPlano) {
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'acesso_indisponivel_plano', $empresaId);
+    out([
+        'ok' => false,
+        'step' => 'empresa_status',
+        'code' => 'LOGIN_PLAN_UNAVAILABLE',
+        'user_msg' => 'Acesso indisponível para o plano atual.'
     ], 403);
 }
 
@@ -564,6 +608,8 @@ $_SESSION['auth'] = [
     'empresa_nome' => $empresaNomeBd,
     'perfil_id'    => $perfilId,
     'modo_suporte' => false,
+    'deve_alterar_senha' => $deveAlterarSenha,
+    'senha_temporaria_vencida' => $senhaTemporariaVencida,
 ];
 
 $_SESSION['usuario_id']    = (int)$user['id_usuario'];
@@ -629,6 +675,8 @@ out([
         'empresa_id'   => $empresaId,
         'empresa_nome' => $empresaNomeBd,
         'perfil_id'    => $perfilId,
-        'perfil_nome'  => $perfilNome
+        'perfil_nome'  => $perfilNome,
+        'deve_alterar_senha' => $deveAlterarSenha,
+        'senha_temporaria_vencida' => $senhaTemporariaVencida
     ]
 ], 200);

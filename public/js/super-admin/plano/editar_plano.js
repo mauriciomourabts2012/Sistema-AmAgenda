@@ -36,6 +36,7 @@
   const modal = document.getElementById("modalEditarPlano");
   const form = document.getElementById("formEditarPlano");
   const btnSalvar = document.getElementById("btnSalvarPlanoEdit");
+  const vagasAdministrativas = document.getElementById("e_vagas_administrativas");
 
   if (!modal || !form || !btnSalvar) {
     console.warn("[EditarPlano] Elementos do modal não encontrados.");
@@ -49,7 +50,9 @@
     preco: document.getElementById("e_preco"),
     cobranca: document.getElementById("e_cobranca"),
     limite_usuarios: document.getElementById("e_limite_usuarios"),
+    limite_proprietarios: document.getElementById("e_limite_proprietarios"),
     limite_profissionais: document.getElementById("e_limite_profissionais"),
+    limite_recepcionistas: document.getElementById("e_limite_recepcionistas"),
     limite_servicos: document.getElementById("e_limite_servicos"),
     limite_agendamentos: document.getElementById("e_limite_agendamentos"),
     destaque: document.getElementById("e_destaque"),
@@ -186,7 +189,9 @@
       preco_mensal: "e_preco",
       cobranca: "e_cobranca",
       limite_usuarios: "e_limite_usuarios",
+      limite_proprietarios: "e_limite_proprietarios",
       limite_profissionais: "e_limite_profissionais",
+      limite_recepcionistas: "e_limite_recepcionistas",
       limite_servicos: "e_limite_servicos",
       limite_agendamentos: "e_limite_agendamentos",
       destaque: "e_destaque",
@@ -243,6 +248,20 @@
     return String(v || "").replace(/\D+/g, "");
   }
 
+  function atualizarVagasAdministrativas() {
+    if (!vagasAdministrativas) return;
+
+    const proprietarios = Number.parseInt(campos.limite_proprietarios?.value || "0", 10);
+    const profissionais = Number.parseInt(campos.limite_profissionais?.value || "0", 10);
+    const recepcionistas = Number.parseInt(campos.limite_recepcionistas?.value || "0", 10);
+
+    const propVal = Number.isFinite(proprietarios) && proprietarios >= 0 ? proprietarios : 0;
+    const profVal = Number.isFinite(profissionais) && profissionais >= 0 ? profissionais : 0;
+    const recepVal = Number.isFinite(recepcionistas) && recepcionistas >= 0 ? recepcionistas : 0;
+
+    vagasAdministrativas.textContent = `${propVal} Proprietários · ${profVal} Profissionais · ${recepVal} Recepcionistas`;
+  }
+
   function normalizeMoney(value) {
     if (value == null) return "";
     let v = String(value).trim();
@@ -281,7 +300,9 @@
       preco: normalizarTexto(campos.preco?.value),
       cobranca: normalizarTexto(campos.cobranca?.value).toLowerCase(),
       limite_usuarios: normalizarTexto(campos.limite_usuarios?.value),
+      limite_proprietarios: normalizarTexto(campos.limite_proprietarios?.value),
       limite_profissionais: normalizarTexto(campos.limite_profissionais?.value),
+      limite_recepcionistas: normalizarTexto(campos.limite_recepcionistas?.value),
       limite_servicos: normalizarTexto(campos.limite_servicos?.value),
       limite_agendamentos: normalizarTexto(campos.limite_agendamentos?.value),
       destaque: normalizarTexto(campos.destaque?.value),
@@ -341,7 +362,9 @@
     }
 
     const limiteUsuarios = parseInt(dados.limite_usuarios || "0", 10);
+    const limiteProprietarios = parseInt(dados.limite_proprietarios || "0", 10);
     const limiteProfissionais = parseInt(dados.limite_profissionais || "0", 10);
+    const limiteRecepcionistas = parseInt(dados.limite_recepcionistas || "0", 10);
     const limiteServicos = parseInt(dados.limite_servicos || "0", 10);
     const limiteAgendamentos = parseInt(dados.limite_agendamentos || "0", 10);
 
@@ -350,8 +373,27 @@
       ok = false;
     }
 
+    if (Number.isNaN(limiteProprietarios) || limiteProprietarios < 0) {
+      setFieldError("limite_proprietarios", "Não pode ser negativo.");
+      ok = false;
+    } else if (limiteProprietarios > limiteUsuarios) {
+      setFieldError("limite_proprietarios", "Não pode superar o limite total de usuários.");
+      ok = false;
+    }
+
     if (Number.isNaN(limiteProfissionais) || limiteProfissionais < 0) {
       setFieldError("limite_profissionais", "Não pode ser negativo.");
+      ok = false;
+    } else if (limiteProfissionais > limiteUsuarios) {
+      setFieldError("limite_profissionais", "Não pode superar o limite total de usuários.");
+      ok = false;
+    }
+
+    if (Number.isNaN(limiteRecepcionistas) || limiteRecepcionistas < 0) {
+      setFieldError("limite_recepcionistas", "Não pode ser negativo.");
+      ok = false;
+    } else if (limiteRecepcionistas > limiteUsuarios) {
+      setFieldError("limite_recepcionistas", "Não pode superar o limite total de usuários.");
       ok = false;
     }
 
@@ -421,6 +463,7 @@
     if (campos.cobranca) campos.cobranca.value = "mensal";
     if (campos.destaque) campos.destaque.value = "0";
     if (campos.status) campos.status.value = "ativo";
+    atualizarVagasAdministrativas();
   }
 
   // ==========================================================
@@ -442,6 +485,15 @@
       campos.preco.value = formatMoneyBR(normalizado);
     });
   }
+
+  campos.limite_usuarios?.addEventListener("input", atualizarVagasAdministrativas);
+  campos.limite_usuarios?.addEventListener("change", atualizarVagasAdministrativas);
+  campos.limite_proprietarios?.addEventListener("input", atualizarVagasAdministrativas);
+  campos.limite_proprietarios?.addEventListener("change", atualizarVagasAdministrativas);
+  campos.limite_profissionais?.addEventListener("input", atualizarVagasAdministrativas);
+  campos.limite_profissionais?.addEventListener("change", atualizarVagasAdministrativas);
+  campos.limite_recepcionistas?.addEventListener("input", atualizarVagasAdministrativas);
+  campos.limite_recepcionistas?.addEventListener("change", atualizarVagasAdministrativas);
 
   // ==========================================================
   // Recarregar lista
@@ -496,7 +548,9 @@
     fd.append("preco", normalizeMoney(dados.preco));
     fd.append("cobranca", dados.cobranca);
     fd.append("limite_usuarios", apenasDigitos(dados.limite_usuarios || "0"));
+    fd.append("limite_proprietarios", apenasDigitos(dados.limite_proprietarios || "0"));
     fd.append("limite_profissionais", apenasDigitos(dados.limite_profissionais || "0"));
+    fd.append("limite_recepcionistas", apenasDigitos(dados.limite_recepcionistas || "0"));
     fd.append("limite_servicos", apenasDigitos(dados.limite_servicos || "0"));
     fd.append("limite_agendamentos", apenasDigitos(dados.limite_agendamentos || "0"));
     fd.append("destaque", dados.destaque);
@@ -613,13 +667,16 @@
       if (campos.preco) campos.preco.value = formatMoneyBR(dados.preco_mensal ?? dados.preco ?? "");
       if (campos.cobranca) campos.cobranca.value = dados.cobranca ?? "mensal";
       if (campos.limite_usuarios) campos.limite_usuarios.value = dados.limite_usuarios ?? 1;
+      if (campos.limite_proprietarios) campos.limite_proprietarios.value = dados.limite_proprietarios ?? 0;
       if (campos.limite_profissionais) campos.limite_profissionais.value = dados.limite_profissionais ?? 0;
+      if (campos.limite_recepcionistas) campos.limite_recepcionistas.value = dados.limite_recepcionistas ?? 0;
       if (campos.limite_servicos) campos.limite_servicos.value = dados.limite_servicos ?? 0;
       if (campos.limite_agendamentos) campos.limite_agendamentos.value = dados.limite_agendamentos ?? 0;
       if (campos.destaque) campos.destaque.value = String(dados.destaque ?? 0);
       if (campos.status) campos.status.value = dados.status ?? "ativo";
       if (campos.descricao) campos.descricao.value = dados.descricao ?? "";
       if (campos.obs) campos.obs.value = dados.observacao ?? dados.obs ?? "";
+      atualizarVagasAdministrativas();
 
       abrirModal();
     },

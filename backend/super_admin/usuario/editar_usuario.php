@@ -187,6 +187,7 @@ if (!empty($erros)) {
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/limites_plano.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -213,7 +214,7 @@ try {
     /* ==========================================================
        VALIDA SE USUÁRIO EXISTE
     ========================================================== */
-    $sqlUsuario = "SELECT id_usuario, tipo_usuario, status FROM usuario WHERE id_usuario = ? LIMIT 1";
+    $sqlUsuario = "SELECT id_usuario, nome, email, telefone, tipo_usuario, status FROM usuario WHERE id_usuario = ? LIMIT 1";
     $st = $conexao->prepare($sqlUsuario);
 
     if (!$st) {
@@ -490,6 +491,50 @@ try {
 
     $affectedStatus = (int)$stmtStatus->affected_rows;
     $stmtStatus->close();
+
+    if ($tipoUsuario !== 'super_admin') {
+        $antes = [
+            'nome' => (string)($usuario['nome'] ?? ''),
+            'email' => (string)($usuario['email'] ?? ''),
+            'telefone' => $usuario['telefone'] ?? null,
+            'status_vinculo' => (string)($vinculo['status'] ?? ''),
+        ];
+        $depois = [
+            'nome' => $nome,
+            'email' => $email,
+            'telefone' => $telefone,
+            'status_vinculo' => $status,
+        ];
+        $alteracoes = [];
+        foreach ($depois as $campo => $valor) {
+            if (!auditoriaValoresIguais($antes[$campo] ?? null, $valor)) {
+                $alteracoes[$campo] = ['antes' => $antes[$campo] ?? null, 'depois' => $valor];
+            }
+        }
+
+        $atorAuditoria = auditoriaResolverAtorSuperAdmin($conexao, (int)$idEmpresaVinculo);
+        if ($alteracoes !== []) {
+            auditoriaRegistrar($conexao, 'usuario.editado', [
+                'ator' => $atorAuditoria,
+                'entidade_id' => (int)$idUsuario,
+                'entidade_rotulo' => $nome,
+                'descricao' => 'Alterou o usuário ' . $nome . '.',
+                'alteracoes' => $alteracoes,
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
+        }
+
+        if ($alterarSenha) {
+            auditoriaRegistrar($conexao, 'usuario.senha_redefinida', [
+                'ator' => $atorAuditoria,
+                'entidade_id' => (int)$idUsuario,
+                'entidade_rotulo' => $nome,
+                'descricao' => 'Redefiniu a senha do usuário ' . $nome . '.',
+                'alteracoes' => ['senha_alterada' => ['antes' => false, 'depois' => true]],
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
+        }
+    }
 
     $conexao->commit();
 

@@ -138,6 +138,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    window.CentroNotificacoes?.inicializar?.();
     const contexto = document.body.dataset.menuContexto || "agenda";
     renderizarMenu(contexto);
     document.addEventListener("amagenda:sessao-carregada", () => renderizarMenu(contexto));
@@ -146,12 +147,46 @@
     const abrir = document.getElementById("abrirSidebarAgenda");
     const fechar = document.getElementById("fecharSidebarAgenda");
     const overlay = document.getElementById("overlaySidebarAgenda");
+    const ajuda = sidebar?.querySelector(".sidebar-ajuda");
     const mediaDesktop = window.matchMedia(BREAKPOINT_DESKTOP);
 
     if (!sidebar || !abrir || !fechar || !overlay) return;
 
     let temporizadorAbrir = 0;
     let temporizadorFechar = 0;
+    let alertaAjuda = null;
+
+    function abrirAjuda() {
+      if (alertaAjuda?.isConnected) {
+        alertaAjuda.querySelector(".ui-alert-ajuda-email")?.focus({ preventScroll: true });
+        return;
+      }
+
+      const mensagens = window.MensagemSistema;
+      if (!mensagens?.info) return;
+
+      alertaAjuda = mensagens.info("Precisa de ajuda com o AmAgenda?", {
+        titulo: "Ajuda e Suporte",
+        persistente: true,
+        textoBotao: "Fechar",
+        aoFechar: () => { alertaAjuda = null; }
+      });
+      alertaAjuda.classList.add("ui-alert--ajuda");
+
+      const mensagem = alertaAjuda.querySelector(".ui-alert__msg");
+      if (!mensagem) return;
+
+      const contato = document.createElement("div");
+      contato.className = "ui-alert-ajuda-contato";
+      contato.append("Contato: ");
+
+      const email = document.createElement("a");
+      email.className = "ui-alert-ajuda-email";
+      email.href = "mailto:suporteamagenda@gmail.com";
+      email.textContent = "suporteamagenda@gmail.com";
+      contato.append(email);
+      mensagem.append(contato);
+    }
 
     function limparTemporizadores() {
       window.clearTimeout(temporizadorAbrir);
@@ -207,6 +242,7 @@
     abrir.addEventListener("click", abrirDrawer);
     fechar.addEventListener("click", () => fecharDrawer(true));
     overlay.addEventListener("click", () => fecharDrawer(true));
+    ajuda?.addEventListener("click", abrirAjuda);
 
     sidebar.addEventListener("click", (evento) => {
       const itemAba = evento.target.closest("[data-menu-aba]");

@@ -545,6 +545,59 @@
   text-align: center;
 }
 
+#usuarios .usuario-chip-plano,
+#modalVisualizarUsuario .usuario-chip-plano {
+  min-width: 0;
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+#modalVisualizarUsuario .usuario-chip-plano[hidden] { display: none; }
+
+#usuarios .usuario-plano-aviso {
+  display: flex;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  background: #fffaf5;
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#usuarios .usuario-plano-aviso i { margin-top: 1px; }
+#usuarios .usuario-plano-aviso span { min-width: 0; }
+
+#usuarios .usuario-plano-reativacao {
+  display: flex;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#usuarios .usuario-plano-reativacao.is-disponivel {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+#usuarios .usuario-plano-reativacao i { margin-top: 1px; }
+#usuarios .usuario-plano-reativacao span { min-width: 0; }
+#usuarios .usuario-acao-reativar-plano { color: #047857; }
+
 #usuarios .usuario-lista-card .agenda-acoes,
 #clientes .cliente-lista-card .agenda-acoes { align-self: center; }
 #usuarios .usuario-lista-card .agenda-btn-acoes,

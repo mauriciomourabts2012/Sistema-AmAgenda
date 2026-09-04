@@ -142,6 +142,15 @@
     width: 100%;
     height: 100%;
   }
+
+  .notificacoes-dropdown {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: auto;
+    width: min(390px, calc(100vw - 24px));
+    max-height: calc(100dvh - 86px);
+  }
 }
 
 @media (max-width: 450px) {
@@ -182,7 +191,17 @@
 }
 
 @media (max-width: 360px) {
-  .cabecalho-notificacoes { display: none; }
+  .cabecalho-notificacoes { display: inline-flex; }
   .cabecalho-dia { font-size: 18px; }
   .cabecalho-data { font-size: 10px; }
+
+  .notificacoes-dropdown {
+    top: 66px;
+    right: 8px;
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 74px);
+    border-radius: 15px;
+  }
+
+  .notificacao-item { padding: 13px 14px; }
 }

@@ -54,6 +54,15 @@
   const elStatus = document.getElementById("emp_edit_status");
   const elEndereco = document.getElementById("emp_edit_endereco");
   const elObservacao = document.getElementById("emp_edit_obs");
+  const selecaoPlanoEl = document.getElementById("emp_edit_selecao_plano");
+  const selecaoResumoEl = document.getElementById("emp_edit_selecao_resumo");
+  const selecaoExcessosEl = document.getElementById("emp_edit_selecao_excessos");
+  const selecaoUsuariosEl = document.getElementById("emp_edit_selecao_usuarios");
+  const selecaoContadorEl = document.getElementById("emp_edit_selecao_contador");
+  const selecaoErroEl = document.getElementById("emp_edit_selecao_erro");
+  const btnCancelarSelecao = document.getElementById("emp_edit_cancelar_selecao");
+  let selecaoPlano = null;
+  let selecaoPlanoValida = true;
 
   // ==========================================================
   // Toast Universal
@@ -207,10 +216,12 @@
   // Loading
   // ==========================================================
   function setLoading(loading) {
-    btnSalvar.disabled = !!loading;
+    btnSalvar.disabled = !!loading || !selecaoPlanoValida;
     form.dataset.loading = loading ? "1" : "0";
     btnSalvar.classList.toggle("is-loading", !!loading);
-    btnSalvar.textContent = loading ? "Salvando..." : "Salvar";
+    btnSalvar.textContent = loading
+      ? "Salvando..."
+      : (selecaoPlano ? "Confirmar downgrade" : "Salvar");
   }
 
   // ==========================================================
@@ -299,6 +310,17 @@
     elObservacao,
   ].forEach(bindClearOnInput);
 
+  elPlanoId?.addEventListener("focus", () => {
+    if (!form.dataset.planoOriginal) form.dataset.planoOriginal = String(elPlanoId.value || "");
+  });
+  elPlanoId?.addEventListener("change", () => {
+    if (selecaoPlano) limparSelecaoPlano();
+  });
+  btnCancelarSelecao?.addEventListener("click", () => {
+    limparSelecaoPlano({ restaurarPlano: true });
+    toastMsg("neutral", "Seleção cancelada. Nenhuma alteração foi realizada.");
+  });
+
   // ==========================================================
   // Helpers
   // ==========================================================
@@ -306,6 +328,138 @@
 
   function normalizarTexto(v) {
     return String(v || "").trim();
+  }
+
+  function rotuloRecurso(recurso) {
+    return ({
+      usuarios: "Usuários (total)",
+      proprietarios: "Proprietários",
+      profissionais: "Profissionais",
+      recepcionistas: "Recepcionistas",
+      administrativos: "Proprietários/Recepção",
+    })[recurso] || recurso;
+  }
+
+  function idsSelecionadosPlano() {
+    if (!selecaoUsuariosEl) return [];
+    return Array.from(selecaoUsuariosEl.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((input) => Number(input.value))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  function validarSelecaoPlano() {
+    if (!selecaoPlano) return { ok: true, mensagem: "" };
+
+    const selecionados = new Set(idsSelecionadosPlano());
+    const necessaria = Number(selecaoPlano.quantidade_selecao_necessaria || 0);
+    if (selecionados.size !== necessaria) {
+      return {
+        ok: false,
+        mensagem: `Selecione exatamente ${necessaria} ${necessaria === 1 ? "usuário" : "usuários"}.`,
+      };
+    }
+
+    const candidatos = Array.isArray(selecaoPlano.usuarios_para_selecao)
+      ? selecaoPlano.usuarios_para_selecao
+      : [];
+    const limites = selecaoPlano.limites || {};
+    const excessos = Array.isArray(selecaoPlano.excessos) ? selecaoPlano.excessos : [];
+    const temExcessoTotal = excessos.some((item) => item?.recurso === "usuarios");
+    const contagem = {};
+    candidatos.forEach((usuario) => {
+      if (!selecionados.has(Number(usuario.id_empresa_usuario))) return;
+      const recurso = String(usuario.recurso_limite || usuario.perfil || "");
+      contagem[recurso] = (contagem[recurso] || 0) + 1;
+    });
+
+    const recursos = temExcessoTotal
+      ? ["profissionais", "administrativos"]
+      : excessos.map((item) => String(item?.recurso || "")).filter((item) => item !== "usuarios");
+
+    for (const recurso of recursos) {
+      const quantidade = Number(contagem[recurso] || 0);
+      const limite = Number(limites[recurso] || 0);
+      if (quantidade > limite || (!temExcessoTotal && quantidade !== limite)) {
+        return {
+          ok: false,
+          mensagem: `A seleção de ${rotuloRecurso(recurso).toLowerCase()} deve respeitar o limite de ${limite}.`,
+        };
+      }
+    }
+
+    return { ok: true, mensagem: "" };
+  }
+
+  function atualizarEstadoSelecaoPlano() {
+    const resultado = validarSelecaoPlano();
+    selecaoPlanoValida = resultado.ok;
+    const quantidade = idsSelecionadosPlano().length;
+    const necessaria = Number(selecaoPlano?.quantidade_selecao_necessaria || 0);
+    if (selecaoContadorEl) {
+      selecaoContadorEl.textContent = `${quantidade} de ${necessaria} selecionado${necessaria === 1 ? "" : "s"}`;
+    }
+    if (selecaoErroEl) selecaoErroEl.textContent = resultado.mensagem;
+    setLoading(form.dataset.loading === "1");
+  }
+
+  function limparSelecaoPlano({ restaurarPlano = false } = {}) {
+    selecaoPlano = null;
+    selecaoPlanoValida = true;
+    if (selecaoPlanoEl) selecaoPlanoEl.hidden = true;
+    if (selecaoResumoEl) selecaoResumoEl.textContent = "";
+    if (selecaoExcessosEl) selecaoExcessosEl.replaceChildren();
+    if (selecaoUsuariosEl) selecaoUsuariosEl.replaceChildren();
+    if (selecaoContadorEl) selecaoContadorEl.textContent = "";
+    if (selecaoErroEl) selecaoErroEl.textContent = "";
+    if (restaurarPlano && elPlanoId && form.dataset.planoOriginal) {
+      elPlanoId.value = form.dataset.planoOriginal;
+    }
+    setLoading(false);
+  }
+
+  function renderizarSelecaoPlano(data) {
+    if (!selecaoPlanoEl || !selecaoUsuariosEl || !data) return;
+    selecaoPlano = data;
+    selecaoPlanoValida = false;
+    selecaoPlanoEl.hidden = false;
+    selecaoExcessosEl?.replaceChildren();
+    selecaoUsuariosEl.replaceChildren();
+
+    const necessaria = Number(data.quantidade_selecao_necessaria || 0);
+    if (selecaoResumoEl) {
+      selecaoResumoEl.textContent = `Selecione exatamente ${necessaria} ${necessaria === 1 ? "vínculo" : "vínculos"} para permanecer com acesso no novo plano.`;
+    }
+
+    (Array.isArray(data.excessos) ? data.excessos : []).forEach((excesso) => {
+      const card = document.createElement("div");
+      card.className = "plano-selecao-excesso";
+      const titulo = document.createElement("strong");
+      titulo.textContent = rotuloRecurso(String(excesso?.recurso || ""));
+      const texto = document.createElement("span");
+      texto.textContent = `Atual: ${Number(excesso?.consumo_atual || 0)} · Limite: ${Number(excesso?.limite || 0)} · Excesso: ${Number(excesso?.excedente || 0)}`;
+      card.append(titulo, texto);
+      selecaoExcessosEl?.appendChild(card);
+    });
+
+    (Array.isArray(data.usuarios_para_selecao) ? data.usuarios_para_selecao : []).forEach((usuario) => {
+      const label = document.createElement("label");
+      label.className = "plano-selecao-item";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = String(usuario.id_empresa_usuario || "");
+      checkbox.addEventListener("change", atualizarEstadoSelecaoPlano);
+      const textos = document.createElement("span");
+      const nome = document.createElement("strong");
+      nome.textContent = String(usuario.nome || "Usuário");
+      const perfil = document.createElement("small");
+      perfil.textContent = rotuloRecurso(String(usuario.perfil || ""));
+      textos.append(nome, perfil);
+      label.append(checkbox, textos);
+      selecaoUsuariosEl.appendChild(label);
+    });
+
+    atualizarEstadoSelecaoPlano();
+    selecaoPlanoEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function validarEmail(email) {
@@ -495,8 +649,10 @@
   }
 
   function resetForm() {
+    limparSelecaoPlano();
     form.reset();
     clearErrors();
+    delete form.dataset.planoOriginal;
 
     if (elId) elId.value = "";
     if (elStatus) elStatus.value = "ativo";
@@ -557,6 +713,13 @@
       return;
     }
 
+    const validacaoSelecao = validarSelecaoPlano();
+    if (!validacaoSelecao.ok) {
+      atualizarEstadoSelecaoPlano();
+      toastMsg("warning", validacaoSelecao.mensagem);
+      return;
+    }
+
     const dados = coletarDados();
 
     const fd = new FormData();
@@ -569,6 +732,9 @@
     fd.append("status", dados.status);
     fd.append("endereco", dados.endereco || "");
     fd.append("obs", dados.obs || "");
+    if (selecaoPlano) {
+      fd.append("plano_usuarios_permanentes", JSON.stringify(idsSelecionadosPlano()));
+    }
 
     setLoading(true);
 
@@ -602,6 +768,21 @@
       }
 
       if (!resp.ok || json.ok !== true) {
+        if (
+          ["PLAN_USER_SELECTION_REQUIRED", "PLAN_USER_SELECTION_INVALID"].includes(json.code) &&
+          json.data?.usuarios_para_selecao
+        ) {
+          renderizarSelecaoPlano(json.data);
+          toastMsg("warning", json.user_msg || "Revise a seleção de usuários.");
+          return;
+        }
+
+        if (json.code === "PLAN_USER_SELECTION_STALE") {
+          limparSelecaoPlano();
+          toastMsg("warning", json.user_msg || "Os limites mudaram. Revise novamente a troca de plano.");
+          return;
+        }
+
         if (json.fields && typeof json.fields === "object") {
           applyApiFieldErrors(json.fields);
         }

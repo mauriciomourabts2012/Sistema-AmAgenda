@@ -31,8 +31,10 @@ function auditoriaCatalogo(): array
         'cliente.status_alterado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'alta', 'Alterou o status de um cliente.', ['status']),
 
         'usuario.criado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'alta', 'Cadastrou um usuário.', ['nome', 'email', 'telefone', 'perfil', 'status', 'status_vinculo', 'especialidade', 'depois']),
+        'usuario.vinculado_empresa' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'alta', 'Vinculou um usuário a uma empresa.', ['perfil', 'status_vinculo']),
         'usuario.editado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'alta', 'Alterou um usuário.', ['nome', 'email', 'telefone', 'perfil', 'status', 'status_vinculo', 'especialidade']),
         'usuario.status_alterado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Alterou o status de um usuário.', ['status', 'status_vinculo']),
+        'usuario.reativado_plano' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Reativou um usuário bloqueado pelo plano.', ['bloqueado_plano']),
         'usuario.senha_redefinida' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Redefiniu a senha de um usuário.', ['senha_alterada']),
         'usuario.permissoes_alteradas' => auditoriaDefinicaoEvento('permissoes', 'usuario', 'critica', 'Alterou permissões de um usuário.', ['permissoes']),
         'usuario.permissoes_restauradas' => auditoriaDefinicaoEvento('permissoes', 'usuario', 'critica', 'Restaurou as permissões padrão de um usuário.', ['permissoes', 'antes']),
@@ -75,6 +77,8 @@ function auditoriaCatalogo(): array
         'autenticacao.empresa_inativa' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por empresa indisponível.', []),
         'autenticacao.vinculo_inativo' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por vínculo indisponível.', []),
         'autenticacao.acesso_negado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Acesso negado por regra de autenticação.', []),
+        'suporte.iniciado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'alta', 'Iniciou o modo suporte.', []),
+        'suporte.finalizado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'alta', 'Finalizou o modo suporte.', []),
     ];
 }
 

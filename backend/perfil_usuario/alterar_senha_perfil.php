@@ -111,6 +111,7 @@ if ($senhaAtual === $novaSenha) {
 ========================================================== */
 require_once __DIR__ . '/../_config/conexao.php';
 require_once __DIR__ . '/../_servicos/auditoria.php';
+require_once __DIR__ . '/../_servicos/notificacao.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -179,7 +180,7 @@ try {
 
     // A atualização da senha e o registro do fato passam a ser atômicos.
     $conexao->begin_transaction();
-    $sqlUpdate = "UPDATE usuario SET senha_hash = ? WHERE id_usuario = ? LIMIT 1";
+    $sqlUpdate = "UPDATE usuario SET senha_hash = ?, deve_alterar_senha = 0, data_senha_temporaria = NULL WHERE id_usuario = ? LIMIT 1";
     $stmtUpdate = $conexao->prepare($sqlUpdate);
 
     if (!$stmtUpdate) {
@@ -202,17 +203,79 @@ try {
     // Nenhuma senha, hash, tamanho ou característica é enviada ao serviço central.
     $tipoAtor = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8');
     $superAdminSemEmpresa = $tipoAtor === 'super_admin' && !((bool)($auth['modo_suporte'] ?? false));
-    // Super Admin fora de suporte não possui empresa para a tabela empresarial de auditoria; o fluxo legado é preservado.
-    if (!$superAdminSemEmpresa) {
-        auditoriaRegistrar($conexao, 'perfil.senha_alterada', [
-            'entidade_id' => $idUsuario,
-            'entidade_rotulo' => (string)($usuario['nome'] ?? 'Usuário'),
-            'descricao' => 'Alterou a própria senha.',
-            'alteracoes' => ['senha_alterada' => ['antes' => false, 'depois' => true]],
-            'contexto' => ['origem' => 'perfil_usuario'],
-        ]);
+    $atorAuditoria = $superAdminSemEmpresa
+        ? auditoriaResolverAtorSuperAdmin($conexao)
+        : auditoriaResolverAtorSessao($conexao);
+    auditoriaRegistrar($conexao, 'perfil.senha_alterada', [
+        'ator' => $atorAuditoria,
+        'entidade_id' => $idUsuario,
+        'entidade_rotulo' => (string)($usuario['nome'] ?? 'Usuário'),
+        'descricao' => 'Alterou a própria senha.',
+        'alteracoes' => ['senha_alterada' => ['antes' => false, 'depois' => true]],
+        'contexto' => ['origem' => 'perfil_usuario'],
+    ]);
+
+    $idEmpresaNotificacao = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? 0);
+    $destinatarioTipo = $tipoAtor === 'super_admin' ? 'super_admin' : 'usuario';
+    if ($idEmpresaNotificacao > 0) {
+        $stmtNotificacoes = $conexao->prepare(
+            "SELECT id_notificacao
+               FROM notificacao
+              WHERE destinatario_tipo = ?
+                AND destinatario_id = ?
+                AND id_empresa = ?
+                AND codigo = 'seguranca.senha_temporaria'
+                AND concluida_em IS NULL
+                AND cancelada_em IS NULL
+              FOR UPDATE"
+        );
+        if (!$stmtNotificacoes) {
+            throw new Exception('Prepare localização da notificação falhou.');
+        }
+        $stmtNotificacoes->bind_param('sii', $destinatarioTipo, $idUsuario, $idEmpresaNotificacao);
+    } else {
+        $stmtNotificacoes = $conexao->prepare(
+            "SELECT id_notificacao
+               FROM notificacao
+              WHERE destinatario_tipo = ?
+                AND destinatario_id = ?
+                AND id_empresa IS NULL
+                AND codigo = 'seguranca.senha_temporaria'
+                AND concluida_em IS NULL
+                AND cancelada_em IS NULL
+              FOR UPDATE"
+        );
+        if (!$stmtNotificacoes) {
+            throw new Exception('Prepare localização da notificação falhou.');
+        }
+        $stmtNotificacoes->bind_param('si', $destinatarioTipo, $idUsuario);
     }
+
+    if (!$stmtNotificacoes->execute()) {
+        $stmtNotificacoes->close();
+        throw new Exception('Consulta da notificação de senha temporária falhou.');
+    }
+    $resultadoNotificacoes = $stmtNotificacoes->get_result();
+    $idsNotificacoes = [];
+    while ($resultadoNotificacoes && ($notificacao = $resultadoNotificacoes->fetch_assoc())) {
+        $idsNotificacoes[] = (int)$notificacao['id_notificacao'];
+    }
+    $stmtNotificacoes->close();
+
+    foreach ($idsNotificacoes as $idNotificacao) {
+        notificacaoConcluir(
+            $conexao,
+            $idNotificacao,
+            $destinatarioTipo,
+            $idUsuario,
+            $idEmpresaNotificacao > 0 ? $idEmpresaNotificacao : null
+        );
+    }
+
     $conexao->commit();
+
+    $_SESSION['auth']['deve_alterar_senha'] = false;
+    $_SESSION['auth']['senha_temporaria_vencida'] = false;
 
     out([
         'ok'       => true,

@@ -833,7 +833,25 @@
 
               </div>
 
-              <br>
+              <section id="emp_edit_selecao_plano" class="plano-selecao-usuarios" hidden aria-live="polite">
+                <div class="plano-selecao-cabecalho">
+                  <i class="fa-solid fa-users-gear" aria-hidden="true"></i>
+                  <div>
+                    <strong>Escolha quem permanecerá com acesso</strong>
+                    <p id="emp_edit_selecao_resumo"></p>
+                  </div>
+                </div>
+                <div id="emp_edit_selecao_excessos" class="plano-selecao-excessos"></div>
+                <fieldset class="plano-selecao-lista">
+                  <legend>Usuários elegíveis</legend>
+                  <div id="emp_edit_selecao_usuarios"></div>
+                </fieldset>
+                <p id="emp_edit_selecao_contador" class="plano-selecao-contador"></p>
+                <p id="emp_edit_selecao_erro" class="plano-selecao-erro" role="alert"></p>
+                <button id="emp_edit_cancelar_selecao" class="botao-geral" type="button">
+                  Cancelar seleção
+                </button>
+              </section>
 
               <div class="modal-acoes">
                 <button id="btnEmpAtualizar" class="botao-geral destaque" type="submit">
@@ -1092,7 +1110,9 @@
               <div class="vc-card">
                 <div class="vc-titulo">Limites</div>
                 <div class="vc-linha"><strong>Usuários:</strong> <span id="vp_limite_usuarios">—</span></div>
+                <div class="vc-linha"><strong>Proprietários:</strong> <span id="vp_limite_proprietarios">—</span></div>
                 <div class="vc-linha"><strong>Profissionais:</strong> <span id="vp_limite_profissionais">—</span></div>
+                <div class="vc-linha"><strong>Recepcionistas:</strong> <span id="vp_limite_recepcionistas">—</span></div>
                 <div class="vc-linha"><strong>Serviços:</strong> <span id="vp_limite_servicos">—</span></div>
                 <div class="vc-linha"><strong>Agendamentos/mês:</strong> <span id="vp_limite_agendamentos">—</span></div>
               </div>
@@ -1306,11 +1326,30 @@
                   <small class="msg-erro" data-erro-for="e_limite_usuarios"></small>
                 </div>
 
+                <!-- Limite de Proprietários -->
+                <div class="modal-campo">
+                  <input id="e_limite_proprietarios" name="limite_proprietarios" type="number" placeholder=" " min="0" step="1">
+                  <label for="e_limite_proprietarios">Proprietários</label>
+                  <small class="msg-erro" data-erro-for="e_limite_proprietarios"></small>
+                </div>
+
                 <!-- Limite de Profissionais -->
                 <div class="modal-campo">
                   <input id="e_limite_profissionais" name="limite_profissionais" type="number" placeholder=" " min="0" step="1">
                   <label for="e_limite_profissionais">Limite de profissionais</label>
                   <small class="msg-erro" data-erro-for="e_limite_profissionais"></small>
+                </div>
+
+                <!-- Limite de Recepcionistas -->
+                <div class="modal-campo">
+                  <input id="e_limite_recepcionistas" name="limite_recepcionistas" type="number" placeholder=" " min="0" step="1">
+                  <label for="e_limite_recepcionistas">Limite de recepcionistas</label>
+                  <small class="msg-erro" data-erro-for="e_limite_recepcionistas"></small>
+                </div>
+
+                <!-- Faixa informativa compacta -->
+                <div class="plano-vagas-administrativas" aria-live="polite">
+                  Distribuição: <strong id="e_vagas_administrativas">0 Proprietários · 0 Profissionais · 0 Recepcionistas</strong>
                 </div>
 
                 <!-- Limite de Serviços -->
@@ -1349,14 +1388,14 @@
                 </div>
 
                 <!-- Descrição -->
-                <div class="modal-campo" style="grid-column: 1 / -1;">
+                <div class="modal-campo modal-campo-full" style="grid-column: 1 / -1;">
                   <textarea id="e_descricao" name="descricao" placeholder=" " rows="3" maxlength="300"></textarea>
                   <label for="e_descricao">Descrição (opcional)</label>
                   <small class="msg-erro" data-erro-for="e_descricao"></small>
                 </div>
 
                 <!-- Observação -->
-                <div class="modal-campo" style="grid-column: 1 / -1;">
+                <div class="modal-campo modal-campo-full" style="grid-column: 1 / -1;">
                   <textarea id="e_obs" name="obs" placeholder=" " rows="2" maxlength="300"></textarea>
                   <label for="e_obs">Observação interna (opcional)</label>
                   <small class="msg-erro" data-erro-for="e_obs"></small>
@@ -1640,6 +1679,7 @@
     <!--lista Core-->
     <script src="../../js/core/lista-core.js?v=20260820_2" ></script>
     <script src="../../js/menu-lateral/menu-lateral.js?v=20260817_3"></script>
+    <script src="../../js/notificacoes/notificacoes.js?v=20260903_1"></script>
 
 
     <!--Modal Perfil-->
@@ -1666,9 +1706,9 @@
     <script src="../../js/super-admin/usuario-super/editar_usuario_super.js" ></script>
 
     <!--ABA PLANOS-->
-    <script src="../../js/super-admin/plano/lista-plano.js?v=20260820_2" ></script>
+    <script src="../../js/super-admin/plano/lista-plano.js?v=20260903_3" ></script>
     <script src="../../js/super-admin/plano/cadastrar-plano.js" ></script> <!--Cadastrar Planos-->
-    <script src="../../js/super-admin/plano/editar_plano.js" ></script> <!--Editar dados do modal-->
+    <script src="../../js/super-admin/plano/editar_plano.js?v=20260903_2" ></script> <!--Editar dados do modal-->
 
     <!--ABA AUDITORIA-->
     <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260828_5"></script>

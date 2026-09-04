@@ -120,6 +120,7 @@ try {
     require __DIR__ . '/../../_config/conexao.php';
     require_once __DIR__ . '/../../_regras/limites_plano.php';
     require_once __DIR__ . '/../../_servicos/auditoria.php';
+    require_once __DIR__ . '/../../_servicos/notificacao.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -482,9 +483,9 @@ try {
 
             $stmt = $conexao->prepare("
                 INSERT INTO usuario
-                    (nome, email, telefone, senha_hash, status, tipo_usuario)
+                    (nome, email, telefone, senha_hash, status, tipo_usuario, deve_alterar_senha, data_senha_temporaria)
                 VALUES
-                    (?, ?, ?, ?, ?, ?)
+                    (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
             ");
 
             if (!$stmt) {
@@ -654,7 +655,68 @@ try {
             ],
             'contexto' => ['origem' => 'painel_administrativo'],
         ]);
-        // Cadastro/vínculo e auditoria são confirmados na mesma transação.
+
+        if ($usuarioFoiCriadoAgora) {
+            $stmt = $conexao->prepare('SELECT data_senha_temporaria, DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR), foto_perfil FROM usuario WHERE id_usuario = ? LIMIT 1 FOR UPDATE');
+            if (!$stmt) {
+                throw new RuntimeException('Erro ao preparar os dados iniciais do usuário.');
+            }
+            $stmt->bind_param('i', $idUsuario);
+            if (!$stmt->execute()) {
+                $stmt->close();
+                throw new RuntimeException('Erro ao consultar os dados iniciais do usuário.');
+            }
+            $stmt->bind_result($dataSenhaTemporaria, $prazoSenhaTemporaria, $fotoPerfilInicial);
+            $dadosIniciaisEncontrados = $stmt->fetch();
+            $stmt->close();
+
+            if (!$dadosIniciaisEncontrados || trim((string)$dataSenhaTemporaria) === '' || trim((string)$prazoSenhaTemporaria) === '') {
+                throw new RuntimeException('Os dados da senha temporária não foram gravados corretamente.');
+            }
+
+            $ocorrenciaNotificacao = bin2hex(random_bytes(16));
+            $prefixoDeduplicacao = 'empresa:' . $idEmpresaSessao . ':usuario:' . $idUsuario . ':ocorrencia:' . $ocorrenciaNotificacao;
+
+            notificacaoCriar($conexao, [
+                'id_empresa' => $idEmpresaSessao,
+                'destinatario_tipo' => 'usuario',
+                'destinatario_id' => $idUsuario,
+                'origem_tipo' => 'sistema',
+                'origem_id' => null,
+                'codigo' => 'seguranca.senha_temporaria',
+                'categoria' => 'seguranca',
+                'titulo' => 'Altere sua senha temporária',
+                'mensagem' => 'Sua senha atual é temporária. Altere-a dentro de 24 horas.',
+                'prioridade' => 'alta',
+                'obrigatoria' => true,
+                'acao_codigo' => 'perfil.alterar_senha',
+                'contexto' => null,
+                'prazo_em' => (string)$prazoSenhaTemporaria,
+                'chave_deduplicacao' => 'seguranca.senha_temporaria:' . $prefixoDeduplicacao,
+            ]);
+
+            if (trim((string)$fotoPerfilInicial) === '') {
+                notificacaoCriar($conexao, [
+                    'id_empresa' => $idEmpresaSessao,
+                    'destinatario_tipo' => 'usuario',
+                    'destinatario_id' => $idUsuario,
+                    'origem_tipo' => 'sistema',
+                    'origem_id' => null,
+                    'codigo' => 'perfil.foto_pendente',
+                    'categoria' => 'perfil',
+                    'titulo' => 'Adicione sua foto de perfil',
+                    'mensagem' => 'Adicione uma foto ao seu perfil para facilitar sua identificação no AmAgenda.',
+                    'prioridade' => 'normal',
+                    'obrigatoria' => false,
+                    'acao_codigo' => 'perfil.alterar_foto',
+                    'contexto' => null,
+                    'prazo_em' => null,
+                    'chave_deduplicacao' => 'perfil.foto_pendente:' . $prefixoDeduplicacao,
+                ]);
+            }
+        }
+
+        // Cadastro, vínculo, auditoria e notificações são confirmados na mesma transação.
         $conexao->commit();
     } catch (Throwable $e) {
         $conexao->rollback();

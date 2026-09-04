@@ -231,6 +231,7 @@ if ($idUsuarioSessao > 0) {
         WHERE eu.id_empresa = ?
           AND eu.id_usuario = ?
           AND eu.status = 'ativo'
+          AND eu.bloqueado_plano = 0
         LIMIT 1
     ");
 
@@ -331,6 +332,12 @@ $sql = "
 
 $tipos = 'is';
 $params = [$idEmpresa, $status];
+
+// A configuração administrativa continua enxergando o cadastro. Somente a
+// seleção operacional de profissionais exclui vínculos bloqueados pelo plano.
+if (!$contextoAdministrativo) {
+    $sql .= " AND eu.bloqueado_plano = 0 ";
+}
 
 /*
 |----------------------------------------------------------------------

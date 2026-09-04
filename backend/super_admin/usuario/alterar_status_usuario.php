@@ -48,6 +48,7 @@ require __DIR__ . '/../../_auth/bloquear.php';
 ========================================================== */
 require_once __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/limites_plano.php';
+require_once __DIR__ . '/../../_servicos/auditoria.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -245,6 +246,16 @@ try {
     }
 
     $stmtUpdate->close();
+
+    auditoriaRegistrar($conexao, 'usuario.status_alterado', [
+        'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresaVinculo),
+        'entidade_id' => (int)$idUsuario,
+        'entidade_rotulo' => $nomeUsuario,
+        'descricao' => 'Alterou o status do usuário ' . $nomeUsuario . '.',
+        'alteracoes' => ['status_vinculo' => ['antes' => $statusAtual, 'depois' => $novoStatus]],
+        'contexto' => ['origem' => 'painel_super_admin'],
+    ]);
+
     $conexao->commit();
 
     /* ==========================================================

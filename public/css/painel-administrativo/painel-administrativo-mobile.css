@@ -169,6 +169,15 @@
   #clientes .cliente-card-identidade .agenda-nome { font-size: 14px; }
   #usuarios .usuario-card-email,
   #clientes .cliente-card-email { max-width: 220px; }
+  #usuarios .usuario-chip-plano { white-space: normal; }
+  #usuarios .usuario-plano-aviso {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  #usuarios .usuario-plano-reativacao {
+    width: 100%;
+    box-sizing: border-box;
+  }
   #usuarios .usuario-lista-card .agenda-acoes,
   #clientes .cliente-lista-card .agenda-acoes {
     flex-direction: column;

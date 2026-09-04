@@ -155,6 +155,7 @@ function limitesPlanoContarConsumo(mysqli $conexao, int $idEmpresa, string $recu
             INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
             WHERE eu.id_empresa = ?
               AND eu.status IN ('ativo', 'bloqueado')
+              AND eu.bloqueado_plano = 0
               AND u.status IN ('ativo', 'bloqueado')
               AND u.tipo_usuario <> 'super_admin'
         ";
@@ -167,8 +168,22 @@ function limitesPlanoContarConsumo(mysqli $conexao, int $idEmpresa, string $recu
             INNER JOIN profissional pr ON pr.id_usuario = eu.id_usuario
             WHERE eu.id_empresa = ?
               AND eu.status IN ('ativo', 'bloqueado')
+              AND eu.bloqueado_plano = 0
               AND u.status IN ('ativo', 'bloqueado')
               AND LOWER(pf.nome) IN ('profissional', 'profissionais')
+        ";
+    } elseif ($recurso === 'administrativos') {
+        $sql = "
+            SELECT COUNT(DISTINCT eu.id_usuario)
+            FROM empresa_usuario eu
+            INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+            INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+            WHERE eu.id_empresa = ?
+              AND eu.status IN ('ativo', 'bloqueado')
+              AND eu.bloqueado_plano = 0
+              AND u.status IN ('ativo', 'bloqueado')
+              AND u.tipo_usuario <> 'super_admin'
+              AND LOWER(pf.nome) IN ('proprietário', 'proprietario', 'recepção', 'recepcao', 'recepcionista', 'recepcionistas')
         ";
     } elseif ($recurso === 'proprietarios') {
         $sql = "
@@ -178,6 +193,7 @@ function limitesPlanoContarConsumo(mysqli $conexao, int $idEmpresa, string $recu
             INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
             WHERE eu.id_empresa = ?
               AND eu.status IN ('ativo', 'bloqueado')
+              AND eu.bloqueado_plano = 0
               AND u.status IN ('ativo', 'bloqueado')
               AND LOWER(pf.nome) IN ('proprietário', 'proprietario')
         ";
@@ -189,6 +205,7 @@ function limitesPlanoContarConsumo(mysqli $conexao, int $idEmpresa, string $recu
             INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
             WHERE eu.id_empresa = ?
               AND eu.status IN ('ativo', 'bloqueado')
+              AND eu.bloqueado_plano = 0
               AND u.status IN ('ativo', 'bloqueado')
               AND LOWER(pf.nome) IN ('recepção', 'recepcao', 'recepcionista', 'recepcionistas')
         ";
@@ -237,11 +254,14 @@ function limitesPlanoVerificarRecurso(
         'servicos' => 'limite_servicos',
     ];
 
-    if (!isset($campos[$recurso])) {
+    if ($recurso === 'administrativos') {
+        $limite = max(0, (int)($plano['limite_usuarios'] ?? 0) - (int)($plano['limite_profissionais'] ?? 0));
+    } elseif (isset($campos[$recurso])) {
+        $limite = (int)($plano[$campos[$recurso]] ?? 0);
+    } else {
         throw new InvalidArgumentException('Limite não configurado para o recurso: ' . $recurso);
     }
 
-    $limite = (int)($plano[$campos[$recurso]] ?? 0);
     $consumo = limitesPlanoContarConsumo($conexao, $idEmpresa, $recurso);
 
     if (($consumo + $quantidadeSolicitada) <= $limite) {
@@ -253,6 +273,7 @@ function limitesPlanoVerificarRecurso(
         'proprietarios' => 'proprietários',
         'profissionais' => 'profissionais',
         'recepcionistas' => 'recepcionistas',
+        'administrativos' => 'usuários entre Proprietários e Recepção',
         'servicos' => 'serviços',
     ];
     $rotulo = $rotulos[$recurso];
@@ -312,6 +333,132 @@ function limitesPlanoVerificarTransicaoPerfil(
     }
 
     return ['ok' => true];
+}
+
+/**
+ * Reativa um único vínculo bloqueado pelo plano. O chamador deve abrir a
+ * transação; o bloqueio da empresa serializa todas as operações consumidoras
+ * e as contagens são refeitas antes da alteração.
+ */
+function limitesPlanoReativarVinculo(
+    mysqli $conexao,
+    int $idEmpresa,
+    int $idEmpresaUsuario
+): array {
+    $resultadoEmpresa = limitesPlanoBloquearEmpresa($conexao, $idEmpresa);
+    if (($resultadoEmpresa['ok'] ?? false) !== true) {
+        return $resultadoEmpresa;
+    }
+
+    $sql = "
+        SELECT
+            eu.id_empresa_usuario,
+            eu.id_usuario,
+            eu.status AS status_vinculo,
+            eu.bloqueado_plano,
+            u.nome,
+            u.status AS status_usuario,
+            pf.nome AS perfil_nome
+        FROM empresa_usuario eu
+        INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+        INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+        WHERE eu.id_empresa_usuario = ?
+          AND eu.id_empresa = ?
+        LIMIT 1
+        FOR UPDATE
+    ";
+    $stmt = $conexao->prepare($sql);
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar vínculo para reativação pelo plano.');
+    }
+    $stmt->bind_param('ii', $idEmpresaUsuario, $idEmpresa);
+    if (!$stmt->execute()) {
+        $erro = $stmt->error;
+        $stmt->close();
+        throw new RuntimeException('Falha ao carregar vínculo para reativação: ' . $erro);
+    }
+    $res = $stmt->get_result();
+    $vinculo = $res ? ($res->fetch_assoc() ?: null) : null;
+    $stmt->close();
+
+    if (!$vinculo) {
+        return [
+            'ok' => false,
+            'http_status' => 404,
+            'code' => 'PLAN_LINK_NOT_FOUND',
+            'user_msg' => 'Vínculo não encontrado para esta empresa.',
+        ];
+    }
+
+    if ((int)($vinculo['bloqueado_plano'] ?? 0) !== 1) {
+        return [
+            'ok' => false,
+            'http_status' => 409,
+            'code' => 'PLAN_LINK_ALREADY_ACTIVE',
+            'user_msg' => 'Este usuário não está bloqueado pelo plano.',
+        ];
+    }
+
+    $statusVinculo = mb_strtolower(trim((string)($vinculo['status_vinculo'] ?? '')), 'UTF-8');
+    $statusUsuario = mb_strtolower(trim((string)($vinculo['status_usuario'] ?? '')), 'UTF-8');
+    if ($statusVinculo !== 'ativo' || $statusUsuario !== 'ativo') {
+        return [
+            'ok' => false,
+            'http_status' => 409,
+            'code' => 'PLAN_LINK_MANUAL_STATUS_INACTIVE',
+            'user_msg' => 'O usuário precisa estar com o status manual ativo para ser reativado pelo plano.',
+        ];
+    }
+
+    $plano = $resultadoEmpresa['plano'];
+    $resultadoTotal = limitesPlanoVerificarRecurso($conexao, $plano, $idEmpresa, 'usuarios', 1);
+    if (($resultadoTotal['ok'] ?? false) !== true) {
+        return $resultadoTotal;
+    }
+
+    $recursoPerfil = limitesPlanoNormalizarPerfil((string)($vinculo['perfil_nome'] ?? ''));
+    if (in_array($recursoPerfil, ['proprietarios', 'recepcionistas'], true)) {
+        $recursoPerfil = 'administrativos';
+    }
+    if (in_array($recursoPerfil, ['administrativos', 'profissionais'], true)) {
+        $resultadoPerfil = limitesPlanoVerificarRecurso($conexao, $plano, $idEmpresa, $recursoPerfil, 1);
+        if (($resultadoPerfil['ok'] ?? false) !== true) {
+            return $resultadoPerfil;
+        }
+    }
+
+    $stmt = $conexao->prepare("UPDATE empresa_usuario SET bloqueado_plano = 0 WHERE id_empresa_usuario = ? AND id_empresa = ? AND bloqueado_plano = 1 AND status = 'ativo' LIMIT 1");
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar reativação do vínculo pelo plano.');
+    }
+    $stmt->bind_param('ii', $idEmpresaUsuario, $idEmpresa);
+    if (!$stmt->execute()) {
+        $erro = $stmt->error;
+        $stmt->close();
+        throw new RuntimeException('Falha ao reativar vínculo pelo plano: ' . $erro);
+    }
+    $alterados = $stmt->affected_rows;
+    $stmt->close();
+    if ($alterados !== 1) {
+        return [
+            'ok' => false,
+            'http_status' => 409,
+            'code' => 'PLAN_REACTIVATION_STALE',
+            'user_msg' => 'O vínculo foi alterado. Atualize a lista e tente novamente.',
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'data' => [
+            'id_empresa_usuario' => (int)$vinculo['id_empresa_usuario'],
+            'id_usuario' => (int)$vinculo['id_usuario'],
+            'nome' => (string)$vinculo['nome'],
+            'perfil' => (string)$vinculo['perfil_nome'],
+            'bloqueado_plano_anterior' => 1,
+            'bloqueado_plano_novo' => 0,
+        ],
+    ];
 }
 
 function limitesPlanoVerificarServico(
@@ -418,6 +565,397 @@ function limitesPlanoVerificarAgendamentosPorMes(
 
     $stmt->close();
     return ['ok' => true, 'avisos' => $avisos];
+}
+
+/**
+ * Planeja o downgrade sem escolher automaticamente entre usuários quando o
+ * novo limite continua maior que zero. A função não altera dados.
+ */
+function limitesPlanoPlanejarDowngradeUsuarios(array $usuarios, array $plano): array
+{
+    $limites = [
+        'usuarios' => max(0, (int)($plano['limite_usuarios'] ?? 0)),
+        'profissionais' => max(0, (int)($plano['limite_profissionais'] ?? 0)),
+        'administrativos' => max(0, (int)($plano['limite_usuarios'] ?? 0) - (int)($plano['limite_profissionais'] ?? 0)),
+    ];
+    $porPerfil = [
+        'profissionais' => [],
+        'administrativos' => [],
+    ];
+    $usuariosNormalizados = [];
+
+    foreach ($usuarios as $usuario) {
+        $idVinculo = (int)($usuario['id_empresa_usuario'] ?? 0);
+        if ($idVinculo <= 0) {
+            continue;
+        }
+
+        $perfil = limitesPlanoNormalizarPerfil((string)($usuario['perfil_nome'] ?? ''));
+        $recursoLimite = in_array($perfil, ['proprietarios', 'recepcionistas'], true)
+            ? 'administrativos'
+            : $perfil;
+        $item = [
+            'id_empresa_usuario' => $idVinculo,
+            'id_usuario' => (int)($usuario['id_usuario'] ?? 0),
+            'nome' => trim((string)($usuario['nome'] ?? '')),
+            'perfil' => $perfil,
+            'recurso_limite' => $recursoLimite,
+        ];
+        $usuariosNormalizados[] = $item;
+        if (isset($porPerfil[$recursoLimite])) {
+            $porPerfil[$recursoLimite][] = $item;
+        }
+    }
+
+    $consumo = [
+        'usuarios' => count($usuariosNormalizados),
+        'profissionais' => count($porPerfil['profissionais']),
+        'administrativos' => count($porPerfil['administrativos']),
+    ];
+    $bloquear = [];
+    $excessosSelecao = [];
+
+    foreach (['profissionais', 'administrativos'] as $recurso) {
+        $limite = $limites[$recurso];
+        $total = $consumo[$recurso];
+        if ($total <= $limite) {
+            continue;
+        }
+
+        if ($limite === 0) {
+            foreach ($porPerfil[$recurso] as $usuario) {
+                $bloquear[$usuario['id_empresa_usuario']] = true;
+            }
+            continue;
+        }
+
+        $excessosSelecao[$recurso] = [
+            'recurso' => $recurso,
+            'limite' => $limite,
+            'consumo_atual' => $total,
+            'excedente' => $total - $limite,
+        ];
+    }
+
+    if ($limites['usuarios'] === 0 && $consumo['usuarios'] > 0) {
+        foreach ($usuariosNormalizados as $usuario) {
+            $bloquear[$usuario['id_empresa_usuario']] = true;
+        }
+        // Não existe escolha quando o plano não permite nenhum usuário.
+        $excessosSelecao = [];
+    } else {
+        $totalAposBloqueiosDeterministicos = 0;
+        foreach ($usuariosNormalizados as $usuario) {
+            if (!isset($bloquear[$usuario['id_empresa_usuario']])) {
+                $totalAposBloqueiosDeterministicos++;
+            }
+        }
+        if ($totalAposBloqueiosDeterministicos > $limites['usuarios']) {
+            $excessosSelecao['usuarios'] = [
+                'recurso' => 'usuarios',
+                'limite' => $limites['usuarios'],
+                'consumo_atual' => $totalAposBloqueiosDeterministicos,
+                'excedente' => $totalAposBloqueiosDeterministicos - $limites['usuarios'],
+            ];
+        }
+    }
+
+    if ($excessosSelecao !== []) {
+        $candidatos = array_values(array_filter(
+            $usuariosNormalizados,
+            static function (array $usuario) use ($bloquear, $excessosSelecao): bool {
+                if (isset($bloquear[$usuario['id_empresa_usuario']])) {
+                    return false;
+                }
+                return isset($excessosSelecao['usuarios']) || isset($excessosSelecao[$usuario['recurso_limite']]);
+            }
+        ));
+        if (isset($excessosSelecao['usuarios'])) {
+            $capacidadePorPerfil = [
+                'profissionais' => 0,
+                'administrativos' => 0,
+            ];
+            $capacidadeSemLimiteEspecifico = 0;
+            foreach ($candidatos as $usuario) {
+                if (isset($capacidadePorPerfil[$usuario['recurso_limite']])) {
+                    $capacidadePorPerfil[$usuario['recurso_limite']]++;
+                } else {
+                    $capacidadeSemLimiteEspecifico++;
+                }
+            }
+            $capacidade = $capacidadeSemLimiteEspecifico;
+            foreach ($capacidadePorPerfil as $recurso => $quantidade) {
+                $capacidade += min($quantidade, $limites[$recurso]);
+            }
+            $quantidadeSelecao = min($limites['usuarios'], $capacidade);
+        } else {
+            $quantidadeSelecao = 0;
+            foreach ($excessosSelecao as $recurso => $excesso) {
+                $quantidadeSelecao += $limites[$recurso];
+            }
+        }
+
+        return [
+            'ok' => false,
+            'http_status' => 409,
+            'code' => 'PLAN_USER_SELECTION_REQUIRED',
+            'user_msg' => 'O novo plano exige selecionar quais usuários permanecerão com acesso.',
+            'data' => [
+                'limites' => $limites,
+                'consumo_atual' => $consumo,
+                'excessos' => array_values($excessosSelecao),
+                'usuarios_para_selecao' => $candidatos,
+                'quantidade_selecao_necessaria' => $quantidadeSelecao,
+                'bloqueios_deterministicos' => array_map('intval', array_keys($bloquear)),
+            ],
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'bloquear_ids' => array_map('intval', array_keys($bloquear)),
+        'data' => [
+            'limites' => $limites,
+            'consumo_atual' => $consumo,
+            'quantidade_bloqueada' => count($bloquear),
+        ],
+    ];
+}
+
+/** Valida a proposta do navegador contra o planejamento recalculado. */
+function limitesPlanoValidarSelecaoDowngradeUsuarios(array $usuarios, array $plano, array $idsPermanentes): array
+{
+    $planejamento = limitesPlanoPlanejarDowngradeUsuarios($usuarios, $plano);
+    if (($planejamento['code'] ?? '') !== 'PLAN_USER_SELECTION_REQUIRED') {
+        return [
+            'ok' => false,
+            'http_status' => 409,
+            'code' => 'PLAN_USER_SELECTION_STALE',
+            'user_msg' => 'Os limites mudaram. Revise novamente a troca de plano.',
+        ];
+    }
+
+    $dados = $planejamento['data'];
+    $candidatos = [];
+    foreach ($dados['usuarios_para_selecao'] as $usuario) {
+        $candidatos[(int)$usuario['id_empresa_usuario']] = $usuario;
+    }
+
+    $selecionados = [];
+    foreach ($idsPermanentes as $idVinculo) {
+        if (!(is_int($idVinculo) || (is_string($idVinculo) && preg_match('/^\d+$/', $idVinculo)))) {
+            return [
+                'ok' => false,
+                'http_status' => 422,
+                'code' => 'PLAN_USER_SELECTION_INVALID',
+                'user_msg' => 'A seleção de usuários é inválida.',
+                'data' => $dados,
+            ];
+        }
+        $idVinculo = (int)$idVinculo;
+        if ($idVinculo <= 0 || isset($selecionados[$idVinculo]) || !isset($candidatos[$idVinculo])) {
+            return [
+                'ok' => false,
+                'http_status' => 422,
+                'code' => 'PLAN_USER_SELECTION_INVALID',
+                'user_msg' => 'A seleção contém um vínculo inválido ou não elegível.',
+                'data' => $dados,
+            ];
+        }
+        $selecionados[$idVinculo] = true;
+    }
+
+    $quantidadeNecessaria = (int)($dados['quantidade_selecao_necessaria'] ?? 0);
+    if (count($selecionados) !== $quantidadeNecessaria) {
+        return [
+            'ok' => false,
+            'http_status' => 422,
+            'code' => 'PLAN_USER_SELECTION_INVALID',
+            'user_msg' => "Selecione exatamente {$quantidadeNecessaria} usuários para permanecer com acesso.",
+            'data' => $dados,
+        ];
+    }
+
+    $deterministicos = array_fill_keys(array_map('intval', $dados['bloqueios_deterministicos'] ?? []), true);
+    $contagemFinal = [
+        'usuarios' => 0,
+        'profissionais' => 0,
+        'administrativos' => 0,
+    ];
+    foreach ($usuarios as $usuario) {
+        $idVinculo = (int)($usuario['id_empresa_usuario'] ?? 0);
+        if ($idVinculo <= 0 || isset($deterministicos[$idVinculo])) {
+            continue;
+        }
+        if (isset($candidatos[$idVinculo]) && !isset($selecionados[$idVinculo])) {
+            continue;
+        }
+        $contagemFinal['usuarios']++;
+        $perfil = limitesPlanoNormalizarPerfil((string)($usuario['perfil_nome'] ?? ''));
+        $recursoLimite = in_array($perfil, ['proprietarios', 'recepcionistas'], true)
+            ? 'administrativos'
+            : $perfil;
+        if (isset($contagemFinal[$recursoLimite])) {
+            $contagemFinal[$recursoLimite]++;
+        }
+    }
+
+    foreach ($contagemFinal as $recurso => $quantidade) {
+        if ($quantidade > (int)($dados['limites'][$recurso] ?? 0)) {
+            return [
+                'ok' => false,
+                'http_status' => 422,
+                'code' => 'PLAN_USER_SELECTION_INVALID',
+                'user_msg' => 'A seleção não respeita todos os limites do novo plano.',
+                'data' => $dados,
+            ];
+        }
+    }
+
+    $bloquear = $deterministicos;
+    foreach ($candidatos as $idVinculo => $usuario) {
+        if (!isset($selecionados[$idVinculo])) {
+            $bloquear[$idVinculo] = true;
+        }
+    }
+
+    return [
+        'ok' => true,
+        'bloquear_ids' => array_map('intval', array_keys($bloquear)),
+        'data' => [
+            'limites' => $dados['limites'],
+            'consumo_atual' => $dados['consumo_atual'],
+            'quantidade_bloqueada' => count($bloquear),
+            'quantidade_permanente' => count($selecionados),
+        ],
+    ];
+}
+
+/**
+ * Revalida e bloqueia empresa, plano e vínculos dentro da transação aberta
+ * pelo chamador. Somente bloqueios determinísticos são persistidos.
+ */
+function limitesPlanoPrepararTrocaEmpresa(mysqli $conexao, int $idEmpresa, int $idPlanoNovo, ?array $idsPermanentes = null): array
+{
+    $stmt = $conexao->prepare('SELECT plano_id FROM empresa WHERE id_empresa = ? LIMIT 1 FOR UPDATE');
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar revalidação da empresa.');
+    }
+    $stmt->bind_param('i', $idEmpresa);
+    if (!$stmt->execute()) {
+        $erro = $stmt->error;
+        $stmt->close();
+        throw new RuntimeException('Falha ao revalidar empresa: ' . $erro);
+    }
+    $stmt->bind_result($idPlanoAtual);
+    $empresaEncontrada = $stmt->fetch();
+    $stmt->close();
+    if (!$empresaEncontrada) {
+        return [
+            'ok' => false,
+            'http_status' => 404,
+            'code' => 'EMPRESA_NAO_ENCONTRADA',
+            'user_msg' => 'Empresa não encontrada.',
+        ];
+    }
+
+    $stmt = $conexao->prepare("SELECT id_plano, nome AS plano_nome, status AS plano_status, limite_usuarios, limite_proprietarios, limite_profissionais, limite_recepcionistas FROM plano WHERE id_plano = ? LIMIT 1 FOR UPDATE");
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar revalidação do novo plano.');
+    }
+    $stmt->bind_param('i', $idPlanoNovo);
+    if (!$stmt->execute()) {
+        $erro = $stmt->error;
+        $stmt->close();
+        throw new RuntimeException('Falha ao revalidar novo plano: ' . $erro);
+    }
+    $res = $stmt->get_result();
+    $plano = $res ? ($res->fetch_assoc() ?: null) : null;
+    $stmt->close();
+    if (!$plano) {
+        return [
+            'ok' => false,
+            'http_status' => 404,
+            'code' => 'PLANO_NAO_ENCONTRADO',
+            'user_msg' => 'Plano não encontrado.',
+        ];
+    }
+    if (($plano['plano_status'] ?? '') !== 'ativo') {
+        return [
+            'ok' => false,
+            'http_status' => 422,
+            'code' => 'PLANO_INATIVO',
+            'user_msg' => 'O plano informado não está ativo.',
+        ];
+    }
+
+    if ((int)$idPlanoAtual === $idPlanoNovo) {
+        return ['ok' => true, 'data' => ['quantidade_bloqueada' => 0]];
+    }
+
+    $sqlUsuarios = "
+        SELECT eu.id_empresa_usuario, eu.id_usuario, u.nome, pf.nome AS perfil_nome
+        FROM empresa_usuario eu
+        INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+        INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+        WHERE eu.id_empresa = ?
+          AND eu.status IN ('ativo', 'bloqueado')
+          AND eu.bloqueado_plano = 0
+          AND u.status IN ('ativo', 'bloqueado')
+          AND u.tipo_usuario <> 'super_admin'
+        FOR UPDATE
+    ";
+    $stmt = $conexao->prepare($sqlUsuarios);
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar vínculos para o downgrade.');
+    }
+    $stmt->bind_param('i', $idEmpresa);
+    if (!$stmt->execute()) {
+        $erro = $stmt->error;
+        $stmt->close();
+        throw new RuntimeException('Falha ao carregar vínculos para o downgrade: ' . $erro);
+    }
+    $res = $stmt->get_result();
+    $usuarios = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
+    $stmt->close();
+
+    $resultado = limitesPlanoPlanejarDowngradeUsuarios($usuarios, $plano);
+    if (($resultado['ok'] ?? false) !== true) {
+        if ($idsPermanentes === null) {
+            return $resultado;
+        }
+        $resultado = limitesPlanoValidarSelecaoDowngradeUsuarios($usuarios, $plano, $idsPermanentes);
+        if (($resultado['ok'] ?? false) !== true) {
+            return $resultado;
+        }
+    } elseif ($idsPermanentes !== null) {
+        return [
+            'ok' => false,
+            'http_status' => 409,
+            'code' => 'PLAN_USER_SELECTION_STALE',
+            'user_msg' => 'Os limites mudaram. Revise novamente a troca de plano.',
+        ];
+    }
+
+    $idsBloquear = $resultado['bloquear_ids'] ?? [];
+    if ($idsBloquear !== []) {
+        $stmt = $conexao->prepare('UPDATE empresa_usuario SET bloqueado_plano = 1 WHERE id_empresa = ? AND id_empresa_usuario = ? AND bloqueado_plano = 0');
+        if (!$stmt) {
+            throw new RuntimeException('Falha ao preparar bloqueio de vínculos excedentes.');
+        }
+        foreach ($idsBloquear as $idVinculo) {
+            $idVinculo = (int)$idVinculo;
+            $stmt->bind_param('ii', $idEmpresa, $idVinculo);
+            if (!$stmt->execute()) {
+                $erro = $stmt->error;
+                $stmt->close();
+                throw new RuntimeException('Falha ao bloquear vínculo excedente: ' . $erro);
+            }
+        }
+        $stmt->close();
+    }
+
+    return $resultado;
 }
 
 /**

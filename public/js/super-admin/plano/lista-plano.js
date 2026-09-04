@@ -399,7 +399,9 @@
         data-preco_label="${C.escapeHtml(p.valor || "")}"
         data-limite_label="${C.escapeHtml(p.limite || "")}"
         data-limite_usuarios="${C.escapeHtml(String(p.limite_usuarios ?? ""))}"
+        data-limite_proprietarios="${C.escapeHtml(String(p.limite_proprietarios ?? ""))}"
         data-limite_profissionais="${C.escapeHtml(String(p.limite_profissionais ?? ""))}"
+        data-limite_recepcionistas="${C.escapeHtml(String(p.limite_recepcionistas ?? ""))}"
         data-limite_servicos="${C.escapeHtml(String(p.limite_servicos ?? ""))}"
         data-limite_agendamentos="${C.escapeHtml(String(p.limite_agendamentos ?? ""))}"
         data-preco_mensal="${C.escapeHtml(String(p.preco_mensal ?? ""))}">
@@ -455,7 +457,9 @@
     setVal("#e_ref", card.dataset.ref || "");
     setVal("#e_cobranca", card.dataset.cobranca || "");
     setVal("#e_limite_usuarios", card.dataset.limite_usuarios || "");
+    setVal("#e_limite_proprietarios", card.dataset.limite_proprietarios || "");
     setVal("#e_limite_profissionais", card.dataset.limite_profissionais || "");
+    setVal("#e_limite_recepcionistas", card.dataset.limite_recepcionistas || "");
     setVal("#e_limite_servicos", card.dataset.limite_servicos || "");
     setVal("#e_limite_agendamentos", card.dataset.limite_agendamentos || "");
     setVal("#e_status", statusFiltroNorm(card.dataset.status || "") || "ativo");
@@ -468,6 +472,8 @@
       const bruto = String(card.dataset.preco_mensal || "").replace(",", ".").trim();
       precoInput.value = bruto || "";
     }
+
+    modalEditarPlano.querySelector("#e_limite_usuarios")?.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   function preencherModalVisualizarPlano(card) {
@@ -482,7 +488,9 @@
     const observacao = card.dataset.observacao || "—";
     const preco = card.dataset.preco_label || "—";
     const limiteUsuarios = card.dataset.limite_usuarios || "—";
+    const limiteProprietarios = card.dataset.limite_proprietarios || "—";
     const limiteProfissionais = card.dataset.limite_profissionais || "—";
+    const limiteRecepcionistas = card.dataset.limite_recepcionistas || "—";
     const limiteServicos = card.dataset.limite_servicos || "—";
     const limiteAgendamentos = card.dataset.limite_agendamentos || "—";
 
@@ -503,7 +511,9 @@
     setText("#vp_cobranca", cobranca || "—");
 
     setText("#vp_limite_usuarios", limiteUsuarios);
+    setText("#vp_limite_proprietarios", limiteProprietarios);
     setText("#vp_limite_profissionais", limiteProfissionais);
+    setText("#vp_limite_recepcionistas", limiteRecepcionistas);
     setText("#vp_limite_servicos", limiteServicos);
     setText("#vp_limite_agendamentos", limiteAgendamentos);
 
@@ -1048,18 +1058,16 @@
   }
 
   function montaLimites(p) {
-    const u = Number(p.limite_usuarios ?? 0);
-    const pr = Number(p.limite_profissionais ?? 0);
-    const sv = Number(p.limite_servicos ?? 0);
-    const ag = Number(p.limite_agendamentos ?? 0);
+    const valor = (limite) => limite ?? "—";
 
-    const parts = [];
-    if (u > 0) parts.push(`Usuários: ${u}`);
-    if (pr > 0) parts.push(`Prof.: ${pr}`);
-    if (sv > 0) parts.push(`Serviços: ${sv}`);
-    if (ag > 0) parts.push(`Agend.: ${ag}`);
-
-    return parts.length ? parts.join(" • ") : "—";
+    return [
+      `Usuários: ${valor(p.limite_usuarios)}`,
+      `Proprietários: ${valor(p.limite_proprietarios)}`,
+      `Profissionais: ${valor(p.limite_profissionais)}`,
+      `Recepcionistas: ${valor(p.limite_recepcionistas)}`,
+      `Serviços: ${valor(p.limite_servicos)}`,
+      `Agendamentos/mês: ${valor(p.limite_agendamentos)}`,
+    ].join(" • ");
   }
 
   async function obterDados() {
@@ -1100,7 +1108,9 @@
         observacao: p.observacao ?? "",
 
         limite_usuarios: p.limite_usuarios ?? "",
+        limite_proprietarios: p.limite_proprietarios ?? "",
         limite_profissionais: p.limite_profissionais ?? "",
+        limite_recepcionistas: p.limite_recepcionistas ?? "",
         limite_servicos: p.limite_servicos ?? "",
         limite_agendamentos: p.limite_agendamentos ?? "",
         preco_mensal: p.preco_mensal ?? "",

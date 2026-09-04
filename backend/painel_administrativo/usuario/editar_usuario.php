@@ -245,6 +245,7 @@ if (!empty($erros)) {
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/limites_plano.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
+require_once __DIR__ . '/../../_servicos/notificacao.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -488,7 +489,9 @@ try {
                SET nome = ?,
                    email = ?,
                    telefone = ?,
-                   senha_hash = ?
+                   senha_hash = ?,
+                   deve_alterar_senha = 1,
+                   data_senha_temporaria = CURRENT_TIMESTAMP
              WHERE id_usuario = ?
              LIMIT 1
         ";
@@ -664,6 +667,87 @@ try {
 
         $affectedProfissional = (int)$stmt->affected_rows;
         $stmt->close();
+    }
+
+    if ($alterarSenha) {
+        // Resolve novamente o executor pelo contexto autenticado e validado do backend.
+        $atorOperacao = auditoriaResolverAtorSessao($conexao);
+        $origemTipoNotificacao = (string)$atorOperacao['ator_tipo'];
+        $origemIdNotificacao = (int)$atorOperacao['id_ator'];
+
+        $stmt = $conexao->prepare(
+            "SELECT id_notificacao
+               FROM notificacao
+              WHERE destinatario_tipo = 'usuario'
+                AND destinatario_id = ?
+                AND id_empresa = ?
+                AND codigo = 'seguranca.senha_temporaria'
+                AND concluida_em IS NULL
+                AND cancelada_em IS NULL
+              FOR UPDATE"
+        );
+        if (!$stmt) {
+            throw new Exception('Falha ao preparar busca da notificação de senha anterior.');
+        }
+        $stmt->bind_param('ii', $idUsuario, $idEmpresaSessao);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            throw new Exception('Falha ao buscar a notificação de senha anterior.');
+        }
+        $resNotificacoes = $stmt->get_result();
+        $notificacoesAnteriores = [];
+        while ($resNotificacoes && ($notificacaoAnterior = $resNotificacoes->fetch_assoc())) {
+            $notificacoesAnteriores[] = (int)$notificacaoAnterior['id_notificacao'];
+        }
+        $stmt->close();
+
+        foreach ($notificacoesAnteriores as $idNotificacaoAnterior) {
+            notificacaoCancelar(
+                $conexao,
+                $idNotificacaoAnterior,
+                'usuario',
+                $idUsuario,
+                $idEmpresaSessao
+            );
+        }
+
+        $stmt = $conexao->prepare(
+            'SELECT data_senha_temporaria, DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR) AS prazo_em FROM usuario WHERE id_usuario = ? LIMIT 1 FOR UPDATE'
+        );
+        if (!$stmt) {
+            throw new Exception('Falha ao preparar o prazo da nova senha temporária.');
+        }
+        $stmt->bind_param('i', $idUsuario);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            throw new Exception('Falha ao calcular o prazo da nova senha temporária.');
+        }
+        $resPrazo = $stmt->get_result();
+        $prazoSenha = $resPrazo ? ($resPrazo->fetch_assoc() ?: null) : null;
+        $stmt->close();
+        if (!$prazoSenha || trim((string)($prazoSenha['prazo_em'] ?? '')) === '') {
+            throw new Exception('Prazo da nova senha temporária indisponível.');
+        }
+
+        $chaveOcorrencia = 'seguranca.senha_temporaria:redefinicao:'
+            . $idEmpresaSessao . ':' . $idUsuario . ':' . bin2hex(random_bytes(16));
+        notificacaoCriar($conexao, [
+            'id_empresa' => $idEmpresaSessao,
+            'destinatario_tipo' => 'usuario',
+            'destinatario_id' => $idUsuario,
+            'origem_tipo' => $origemTipoNotificacao,
+            'origem_id' => $origemIdNotificacao,
+            'codigo' => 'seguranca.senha_temporaria',
+            'categoria' => 'seguranca',
+            'titulo' => 'Altere sua senha temporária',
+            'mensagem' => 'Sua senha atual é temporária. Altere-a dentro de 24 horas.',
+            'prioridade' => 'alta',
+            'obrigatoria' => true,
+            'acao_codigo' => 'perfil.alterar_senha',
+            'contexto' => null,
+            'prazo_em' => (string)$prazoSenha['prazo_em'],
+            'chave_deduplicacao' => $chaveOcorrencia,
+        ]);
     }
 
     // Monta diferenças a partir do snapshot empresarial carregado antes da operação.

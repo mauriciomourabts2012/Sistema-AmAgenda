@@ -165,6 +165,7 @@ if (!is_writable($uploadDir)) {
    BANCO
 ========================================================== */
 require_once __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_servicos/notificacao.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -183,6 +184,13 @@ if ($conexao->connect_errno) {
 }
 
 $conexao->set_charset('utf8mb4');
+
+$tipoUsuario = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8');
+$destinatarioTipo = $tipoUsuario === 'super_admin' ? 'super_admin' : 'usuario';
+$idEmpresaNotificacao = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? $_SESSION['empresa_id'] ?? 0);
+$destinoFisico = null;
+$arquivoNovoMovido = false;
+$transacaoAtiva = false;
 
 try {
     $sqlUser = "SELECT id_usuario, foto_perfil FROM usuario WHERE id_usuario = ? LIMIT 1";
@@ -227,14 +235,18 @@ try {
         ], 500);
     }
 
+    $arquivoNovoMovido = true;
+
     @chmod($destinoFisico, 0644);
     clearstatcache(true, $destinoFisico);
+
+    $conexao->begin_transaction();
+    $transacaoAtiva = true;
 
     $sqlUpdate = "UPDATE usuario SET foto_perfil = ? WHERE id_usuario = ? LIMIT 1";
     $stmtUpdate = $conexao->prepare($sqlUpdate);
 
     if (!$stmtUpdate) {
-        @unlink($destinoFisico);
         throw new Exception('Prepare update foto_perfil falhou.');
     }
 
@@ -243,16 +255,70 @@ try {
 
     if (!$ok) {
         $stmtUpdate->close();
-        @unlink($destinoFisico);
-
-        out([
-            'ok' => false,
-            'code' => 'DB_UPDATE_ERROR',
-            'user_msg' => 'Não foi possível atualizar a foto do perfil.',
-        ], 500);
+        throw new Exception('Update foto_perfil falhou.');
     }
 
     $stmtUpdate->close();
+
+    if ($idEmpresaNotificacao > 0) {
+        $stmtNotificacoes = $conexao->prepare(
+            "SELECT id_notificacao
+               FROM notificacao
+              WHERE destinatario_tipo = ?
+                AND destinatario_id = ?
+                AND id_empresa = ?
+                AND codigo = 'perfil.foto_pendente'
+                AND concluida_em IS NULL
+                AND cancelada_em IS NULL
+              FOR UPDATE"
+        );
+        if (!$stmtNotificacoes) {
+            throw new Exception('Prepare localização da notificação de foto falhou.');
+        }
+        $stmtNotificacoes->bind_param('sii', $destinatarioTipo, $idUsuario, $idEmpresaNotificacao);
+    } else {
+        $stmtNotificacoes = $conexao->prepare(
+            "SELECT id_notificacao
+               FROM notificacao
+              WHERE destinatario_tipo = ?
+                AND destinatario_id = ?
+                AND id_empresa IS NULL
+                AND codigo = 'perfil.foto_pendente'
+                AND concluida_em IS NULL
+                AND cancelada_em IS NULL
+              FOR UPDATE"
+        );
+        if (!$stmtNotificacoes) {
+            throw new Exception('Prepare localização da notificação de foto falhou.');
+        }
+        $stmtNotificacoes->bind_param('si', $destinatarioTipo, $idUsuario);
+    }
+
+    if (!$stmtNotificacoes->execute()) {
+        $stmtNotificacoes->close();
+        throw new Exception('Consulta da notificação de foto falhou.');
+    }
+
+    $resultadoNotificacoes = $stmtNotificacoes->get_result();
+    $idsNotificacoes = [];
+    while ($resultadoNotificacoes && ($notificacao = $resultadoNotificacoes->fetch_assoc())) {
+        $idsNotificacoes[] = (int)$notificacao['id_notificacao'];
+    }
+    $stmtNotificacoes->close();
+
+    foreach ($idsNotificacoes as $idNotificacao) {
+        notificacaoConcluir(
+            $conexao,
+            $idNotificacao,
+            $destinatarioTipo,
+            $idUsuario,
+            $idEmpresaNotificacao > 0 ? $idEmpresaNotificacao : null
+        );
+    }
+
+    $conexao->commit();
+    $transacaoAtiva = false;
+    $arquivoNovoMovido = false;
 
     if (!isset($_SESSION['auth']) || !is_array($_SESSION['auth'])) {
         $_SESSION['auth'] = [];
@@ -283,6 +349,17 @@ try {
     ], 200);
 
 } catch (Throwable $e) {
+    if ($transacaoAtiva) {
+        try {
+            $conexao->rollback();
+        } catch (Throwable) {
+        }
+    }
+
+    if ($arquivoNovoMovido && is_string($destinoFisico) && is_file($destinoFisico)) {
+        @unlink($destinoFisico);
+    }
+
     out([
         'ok' => false,
         'code' => 'SERVER_ERROR',
