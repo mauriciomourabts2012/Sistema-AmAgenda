@@ -4,6 +4,8 @@
 !.env.example
 /backend/_config/conexao.php
 /backend/_config/conexao.local.php
+/backend/_config/twilio.php
+
 
 # Logs e arquivos de diagnostico
 *.log
@@ -50,4 +52,3 @@ php_errors
 .DS_Store
 Thumbs.db
 Desktop.ini
-

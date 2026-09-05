@@ -35,6 +35,11 @@
       { tipo: "aba", aba: "usuarios-super", texto: "Usuário Super", icone: "fa-solid fa-user-shield" },
       { tipo: "aba", aba: "planos", texto: "Planos", icone: "fa-solid fa-layer-group" },
       { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" }
+    ],
+    cliente: [
+      { tipo: "link", texto: "Agendar", icone: "fa-solid fa-calendar-check", href: "/public/views/cliente-agendamento.html", titulo: "Agendar um horário" },
+      { tipo: "button", texto: "Meus agendamentos", icone: "fa-solid fa-calendar-days", modal: "modalMeusAgendamentos", titulo: "Consultar meus agendamentos" },
+      { tipo: "link", texto: "Perfil", icone: "fa-solid fa-user", href: "/public/views/cliente-perfil.html", titulo: "Meu perfil" }
     ]
   };
 
@@ -102,7 +107,20 @@
     if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
       itens = itens.filter(item => !item.permissao || window.usuarioPode?.(item.permissao));
     }
-    if (navegacao) navegacao.innerHTML = itens.map(htmlItem).join("");
+    if (navegacao) {
+      navegacao.innerHTML = itens.map(htmlItem).join("");
+
+      if (contexto === "cliente") {
+        const caminhoAtual = window.location.pathname.replace(/\/+$/, "").toLowerCase();
+        navegacao.querySelectorAll("a.sidebar-item[href]").forEach(link => {
+          const caminhoLink = new URL(link.href, window.location.href).pathname.replace(/\/+$/, "").toLowerCase();
+          const ativo = caminhoLink === caminhoAtual;
+          link.classList.toggle("ativo", ativo);
+          if (ativo) link.setAttribute("aria-current", "page");
+          else link.removeAttribute("aria-current");
+        });
+      }
+    }
     if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
       const abaAtiva = document.querySelector(".conteudo-aba.ativa")?.id;
       const abasPermitidas = itens.filter(item => item.aba).map(item => item.aba);

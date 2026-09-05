@@ -58,6 +58,11 @@ $routes = [
         'GET' => __DIR__ . '/../../backend/_auth/sessao.php',
     ],
 
+    // Login temporário do cliente (modo de visualização)
+    '_auth/cliente-login' => [
+        'POST' => __DIR__ . '/../../backend/_auth/cliente_login.php',
+    ],
+
     // Logout (deslogar)
     '_auth/logout' => [
         'POST' => __DIR__ . '/../../backend/_auth/logout.php',
@@ -501,6 +506,7 @@ if (!is_file($handler)) {
    sessão autenticada, toda outra API passa pela revalidação autoritativa. */
 $rotasPermitidasComSenhaTemporariaVencida = [
     '_auth/login',
+    '_auth/cliente-login',
     '_auth/session',
     '_auth/logout',
     'perfil/alterar-senha',

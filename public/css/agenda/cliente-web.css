@@ -1,279 +1,208 @@
-
 /* ==========================================================
-   ABAS CSS ClientePerfil.hrml e ClienteAgendamento.html
+   PÁGINAS DO CLIENTE — AJUSTES ESPECÍFICOS
+   O shell, o cabeçalho, o menu lateral, os botões e os modais
+   são fornecidos pelos componentes globais do AmAgenda.
    ========================================================== */
 
-:root{
-  --bg:#f4f5f7;
-  --card:#ffffff;
-  --text:#111;
-  --muted:#6b7280;
-  --border:rgba(0,0,0,.10);
-
-  --primary:#264cf7; /* ✅ sua cor padrão de destaque conex */
-
-  --danger:#dc2626;
-  --ok:#16a34a;
-  --shadow:0 10px 22px rgba(0,0,0,.10);
-  --radius:14px;
+body[data-menu-contexto="cliente"] {
+  --primary: #1163dd;
+  --primary-soft: rgba(17, 99, 221, .14);
+  --primary-border: #b9d3f3;
+  --primary-focus: rgba(17, 99, 221, .25);
+  padding-bottom: 0;
+  overflow-x: hidden;
 }
 
-
-*{ box-sizing:border-box; }
-
-body{
-  margin:0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+.cliente-app-shell {
+  display: flex;
+  flex-direction: column;
 }
 
-.cadastro-cliente{
-  min-height: 100vh;
-  display:flex;
-  flex-direction:column;
-  gap: 14px;
-  padding: 16px;
-  max-width: 980px;
-  margin: 0 auto;
+.cliente-app-shell > main {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.cadastro-topo{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap: 12px;
+.cliente-conteudo-global {
+  padding: 18px 22px 32px;
 }
 
-.cadastro-titulo{
-  margin:0;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.cadastro-sub{
-  margin:0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.tabs{
-  display:flex;
-  gap: 8px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px;
-  box-shadow: var(--shadow);
-}
-
-.tab-btn{
-  flex: 1;
-  border: 0;
-  background: transparent;
-  padding: 10px 12px;
-  border-radius: 12px;
-  font-weight: 900;
-  cursor: pointer;
-  color: var(--text);
-}
-
-.tab-btn.active{
-  background: var(--primary);
-  color: #fff;
-}
-
-.tabs-content{
-  flex: 1;
-}
-
-.tab-pane{ display:none; }
-.tab-pane.active{ display:block; }
-
-.card{
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-}
-
-
-
-.card-sub{
-  margin:0 0 14px 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.grid{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.campo{
-  display:flex;
-  flex-direction:column;
-  gap: 6px;
-}
-
-.campo-full{
-  grid-column: 1 / -1;
-}
-
-label{
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.req{
-  color: var(--danger);
-}
-
-input{
+.cadastro-cliente {
   width: 100%;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Abas internas dos fluxos do cliente. */
+.cadastro-cliente .tabs {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.cadastro-cliente .tab-btn {
+  min-width: 0;
+  flex: 1 1 0;
+  padding: 11px 12px;
+  border: 0;
   border-radius: 12px;
-  padding: 10px 12px;
-  font-weight: 700;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  transition: color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.cadastro-cliente .tab-btn:hover,
+.cadastro-cliente .tab-btn:focus-visible {
+  background: #eef5ff;
   outline: none;
 }
 
-input:focus{
-  border-color: rgba(0,0,0,.25);
+.cadastro-cliente .tab-btn:focus-visible {
+  box-shadow: 0 0 0 3px var(--primary-focus);
 }
 
-
-.acoes{
-  margin-top: 14px;
-  display:flex;
-  justify-content:flex-end;
+.cadastro-cliente .tab-btn.active {
+  color: #fff;
+  background: linear-gradient(180deg, #1972ea 0%, #1163dd 100%);
+  box-shadow: 0 8px 18px rgba(17, 99, 221, .22);
 }
 
-.btn{
-  border: 0;
-  border-radius: 12px;
-  padding: 11px 14px;
-  font-weight: 900;
-  cursor: pointer;
+.cadastro-cliente .tabs-content {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.btn-primario{
-  background: var(--primary);
-  color:#fff;
+.cadastro-cliente .tab-pane { display: none; }
+.cadastro-cliente .tab-pane.active { display: block; }
+
+.cadastro-cliente .card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
 }
 
-.status{
-  margin-top: 10px;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.status.ok{ color: var(--ok); }
-.status.err{ color: var(--danger); }
-
-.placeholder{
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px dashed var(--border);
+.cadastro-cliente .card-sub {
+  margin: 0 0 16px;
   color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.cadastro-cliente .grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cadastro-cliente .campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cadastro-cliente .campo-full { grid-column: 1 / -1; }
+.cadastro-cliente .req { color: #dc2626; }
+
+.cadastro-cliente .acoes {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Identificação do usuário dentro do modal de perfil global. */
+.perfil-nome-usuario {
+  color: var(--text);
+  font-size: 16px;
   font-weight: 800;
+  text-align: center;
 }
 
-@media (max-width: 720px){
-  .modal-grid{
-    grid-template-columns: 1fr;
-  }
-}
-
-
-/* ==========================================================
-   FIM
-   ========================================================== */
-/* ==========================================================
-   MODAL MEUS AGENDAMENTOS USUARIO (BASE)
-   ========================================================== */
-
-/* Badge de status */
-.badge-status{
+/* Lista visual existente de agendamentos do cliente. */
+.badge-status {
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: .75rem;
   font-weight: 600;
   letter-spacing: .2px;
   white-space: nowrap;
 }
 
-/* CONFIRMADO */
-.badge-status.confirmado{
-  background: #e6f7ec;
+.badge-status.confirmado {
+  border-color: #bfe8cf;
   color: #1e7f43;
-  border: 1px solid #bfe8cf;
+  background: #e6f7ec;
 }
 
-/* PENDENTE */
-.badge-status.pendente{
-  background: #fff7e6;
+.badge-status.pendente {
+  border-color: #ffe0a3;
   color: #9a6700;
-  border: 1px solid #ffe0a3;
+  background: #fff7e6;
 }
 
-/* CANCELADO */
-.badge-status.cancelado{
-  background: #fdeaea;
+.badge-status.cancelado {
+  border-color: #f5b5b0;
   color: #b3261e;
-  border: 1px solid #f5b5b0;
+  background: #fdeaea;
 }
 
-/* CONCLUÍDO */
-.badge-status.concluido{
-  background: #e8f1ff;
+.badge-status.concluido {
+  border-color: #c7dbff;
   color: #1d4ed8;
-  border: 1px solid #c7dbff;
+  background: #e8f1ff;
 }
 
-.ma-lista{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  margin-top:10px;
+.ma-lista {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.ma-item{
-  border:1px solid rgba(0,0,0,.12);
-  border-radius:14px;
-  padding:12px;
-  background:#fff;
+.ma-item {
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 14px;
+  background: #fff;
 }
 
-.ma-top{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:10px;
+.ma-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.ma-titulo{
-  font-weight:800;
-  font-size:.98rem;
+.ma-titulo {
+  font-size: .98rem;
+  font-weight: 800;
 }
 
-.ma-sub{
-  margin-top:6px;
-  font-size:.95rem;
-  opacity:.9;
+.ma-sub {
+  margin-top: 6px;
+  font-size: .95rem;
+  line-height: 1.45;
+  opacity: .9;
 }
 
-.ma-acoes{
-  margin-top:10px;
-}
-
-/* ==========================================================
-   FIM 
-   ========================================================== */
+.ma-acoes { margin-top: 10px; }

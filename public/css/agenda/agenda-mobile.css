@@ -1,33 +1,33 @@
 
 @media (max-width: 960px){
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-agenda{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-agenda{
     padding: 9px 12px;
     margin-bottom: 6px;
   }
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-esquerda,
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-data-grupo{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-esquerda,
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-data-grupo{
     min-width: 0;
     gap: 2px;
   }
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-dia{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-dia{
     font-size: 19px;
     line-height: 1.12;
   }
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-data{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-data{
     font-size: 12px;
     line-height: 1.2;
   }
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-notificacoes{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-notificacoes{
     width: 40px;
     height: 40px;
   }
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-perfil{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-perfil{
     width: 42px;
     height: 42px;
   }

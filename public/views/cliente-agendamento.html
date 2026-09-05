@@ -1,45 +1,97 @@
 <!doctype html>
 <html lang="pt-br">
-    <head>
+  <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agenda • Agendamento</title>
-    
-    <link rel="stylesheet" href="../css/agenda/agenda-web.css"/>
+    <title>AmAgenda • Agendamento</title>
+    <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
+
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20260818_2"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=20260818_1"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
+    <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
     <link rel="stylesheet" href="../css/agenda/cliente-web.css"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-mobile.css"/>
     <link rel="stylesheet" href="../css/agenda/cliente-agendamento-web.css"/>
     <link rel="stylesheet" href="../css/agenda/cliente-agendamento-mobile.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
-    
-    <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
-    <script src="/public/_auth/sessao.js" ></script> 
-    </head>
 
-    <body>
-        
-        <!-- Informações Superiores -->
-        <header class="Cabecalho cabecalho-agenda">
+    <!--Verifica se usuario esta logado se não redireciona para tela de login-->
+    <script src="/public/_auth/sessao.js" ></script>
+  </head>
 
-            <!-- Lado esquerdo -->
-            <div class="cabecalho-esquerda">
-                <span class="badge-hoje">Hoje</span>
-                <h1 class="cabecalho-dia">Segunda-feira</h1>
-                <span class="cabecalho-data">10 de Janeiro de 2026</span>
-            </div>
+  <body data-menu-contexto="cliente">
+    <!-- ======================================================
+         COMPONENTE: MENU LATERAL
+         Estrutura HTML: esta seção até "FIM: MENU LATERAL".
+         Estilos: public/css/menu-lateral/menu-lateral-web.css
+                  public/css/menu-lateral/menu-lateral-mobile.css
+         Comportamento: public/js/menu-lateral/menu-lateral.js
+         ====================================================== -->
+    <aside id="sidebarAgenda" class="sidebar-agenda" aria-label="Navegação principal">
+      <!-- Marca da empresa e botão de fechamento no mobile. -->
+      <div class="sidebar-marca" data-identidade-abrir>
+        <span class="sidebar-marca-icone" aria-hidden="true">
+          <img src="../imagens/logo-menu.png" alt="Logo AmAgenda" class="sidebar-marca-logo" data-identidade-logo/>
+        </span>
+        <span class="sidebar-texto sidebar-marca-texto" data-identidade-nome>AmAgenda</span>
+        <button id="fecharSidebarAgenda" class="sidebar-fechar" type="button" aria-label="Fechar menu">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </div>
 
-            <!-- Lado direito -->
-            <div class="cabecalho-direita">
-                <!-- PÁGINA INICIAL -->
-                <a href="../views/cliente-perfil.html" class="botao-geral destaque" title="Página inicial">
-                    <i class="fa-solid fa-house"></i>
-                    <span class="btn-texto">Início</span>
-                </a>
-            </div>
+      <!-- Itens inseridos dinamicamente por menu-lateral.js conforme o contexto da página. -->
+      <nav class="sidebar-navegacao" aria-label="Ações do cliente" data-menu-navegacao></nav>
+
+      <!-- Estrutura visual reservada para a futura central de ajuda. -->
+      <button class="sidebar-item sidebar-ajuda" type="button" title="Ajuda" aria-label="Ajuda">
+        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+        <span class="sidebar-texto">Ajuda</span>
+        <i class="fa-solid fa-chevron-right sidebar-ajuda-seta" aria-hidden="true"></i>
+      </button>
+    </aside>
+
+    <!-- Fundo clicável exibido atrás do menu lateral no mobile/tablet. -->
+    <button id="overlaySidebarAgenda" class="sidebar-overlay" type="button" aria-label="Fechar menu" tabindex="-1"></button>
+    <!-- ==================== FIM: MENU LATERAL ==================== -->
+
+    <div class="agenda-app-shell cliente-app-shell">
+    <!-- Informações Superiores -->
+    <header class="cabecalho-agenda">
+
+      <!-- Lado esquerdo -->
+      <div class="cabecalho-esquerda">
+        <button id="abrirSidebarAgenda" class="sidebar-abrir" type="button" aria-label="Abrir menu" aria-controls="sidebarAgenda" aria-expanded="false">
+          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <div class="cabecalho-data-grupo">
+          <h1 class="cabecalho-dia">Agendamento</h1>
+          <span class="cabecalho-data">Agende seu horário</span>
+        </div>
+      </div>
+
+      <!-- Lado direito -->
+      <div class="cabecalho-direita">
+        <!-- Estrutura visual; notificações ainda não possuem suporte para o contexto do cliente. -->
+        <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
+          <i class="fa-regular fa-bell" aria-hidden="true"></i>
+        </button>
+
+        <!-- A foto conserva exatamente a ação do antigo botão Perfil. -->
+        <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
+          <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
+          <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
+        </button>
+      </div>
     </header>
 
-    <main class="cadastro-cliente">
+    <main>
 
-        <nav class="tabs">
+    <section class="layout-controle cliente-conteudo-global cadastro-cliente">
+
+
+        <nav class="tabs tabs-agendamento">
 
             <button class="tab-btn active" data-tab="profissional" type="button">
                 <span class="tab-step"></span>
@@ -201,59 +253,52 @@
 
         <section> <!--Todos os Modals-->
 
+            <!-- MODAL: Meus Agendamentos (reaproveita a mesma implementação de cliente-perfil.html) -->
+            <div id="modalMeusAgendamentos" class="modal-geral" aria-hidden="true">
+            <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloMeusAgendamentos">
+
+                <div class="modal-topo">
+                <h2 id="tituloMeusAgendamentos">Meus Agendamentos</h2>
+                <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+                </div>
+
+                <div class="modal-corpo">
+
+                <!-- Estado -->
+                <small class="msg-ajuda" id="ma_estado">ℹ️ Carregando agendamentos...</small>
+
+                <!-- Lista -->
+                <div id="ma_lista" class="ma-lista" aria-live="polite"></div> <br>
+
+                <div class="modal-acoes">
+                    <button class="botao-geral destaque" type="button" data-fechar-modal>
+                    <i class="fa-solid fa-arrow-left"></i>
+                    Voltar
+                    </button>
+                </div>
+
+                </div>
+            </div>
+            </div>
+
         </section>
 
 
+    </section>
+
     </main>
 
+    </div><!-- /.cliente-app-shell -->
+
+
+    <script src="../js/menu-lateral/menu-lateral.js?v=20260903_1"></script> <!--Componente universal do menu lateral responsivo-->
+    <script src="../js/identidade-visual/identidade-visual.js?v=20260822_1"></script> <!--Aplica a marca da empresa no menu lateral-->
+
+    <script src="../js/cliente-perfil/lista-meus-agendamentos.js" ></script> <!--Reaproveita a lista de Meus Agendamentos já usada em cliente-perfil.html-->
     <script src="../js/cliente-agendamento/lista-profissionais.js" ></script> <!--Lista de Profissionais para o cliente selecionar o da sua necessidade-->
     <script src="../js/cliente-agendamento/Llista-servicos.js" ></script> <!--Lista de serviços para o cliente escolher-->
     <script src="../js/cliente-agendamento/selecionar-horario.js" ></script> <!--Selecionar Horarios dos clientes-->
     <script src="../js/cliente-agendamento/confirmar-agendamento.js" ></script> <!--Confirmar o agendamento selecionado pelo cliente-->
-
-        <script> // scrit do cabeçalho para informar o dia atual sempre
-            document.addEventListener('DOMContentLoaded', () => {
-
-            const elDia = document.querySelector('.cabecalho-dia');
-            const elData = document.querySelector('.cabecalho-data');
-
-            const hoje = new Date();
-
-            const diasSemana = [
-                'Domingo',
-                'Segunda-feira',
-                'Terça-feira',
-                'Quarta-feira',
-                'Quinta-feira',
-                'Sexta-feira',
-                'Sábado'
-            ];
-
-            const meses = [
-                'Janeiro',
-                'Fevereiro',
-                'Março',
-                'Abril',
-                'Maio',
-                'Junho',
-                'Julho',
-                'Agosto',
-                'Setembro',
-                'Outubro',
-                'Novembro',
-                'Dezembro'
-            ];
-
-            const diaSemana = diasSemana[hoje.getDay()];
-            const dia = hoje.getDate();
-            const mes = meses[hoje.getMonth()];
-            const ano = hoje.getFullYear();
-
-            elDia.textContent = diaSemana;
-            elData.textContent = `${dia} de ${mes} de ${ano}`;
-
-            });
-        </script>
 
         <script> //Abrir e fechar todos os modals da pagina
             /* ============================

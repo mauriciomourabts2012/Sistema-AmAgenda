@@ -16,6 +16,60 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
   session_start();
 }
 
+$clienteAuth = is_array($_SESSION['cliente_auth'] ?? null)
+  ? $_SESSION['cliente_auth']
+  : [];
+
+if ($clienteAuth) {
+  $clienteIdRaw = $clienteAuth['id_cliente'] ?? null;
+  $clienteId = is_numeric($clienteIdRaw) && (int)$clienteIdRaw > 0
+    ? (int)$clienteIdRaw
+    : null;
+  $clienteEmpresaId = (int)($clienteAuth['id_empresa'] ?? 0);
+  $empresaSessaoId = (int)($_SESSION['empresa_id'] ?? 0);
+  $clienteTelefone = (string)($clienteAuth['telefone'] ?? '');
+  $clienteTipo = (string)($clienteAuth['tipo_usuario'] ?? $clienteAuth['tipo'] ?? '');
+  $clienteStatus = (string)($clienteAuth['status'] ?? '');
+  $modoVisualizacao = ($clienteAuth['modo_visualizacao'] ?? false) === true;
+  $telefoneVerificado = ($clienteAuth['telefone_verificado'] ?? false) === true;
+  $cadastroCompleto = ($clienteAuth['cadastro_completo'] ?? false) === true;
+  $nomeCompleto = (string)($clienteAuth['nome_completo'] ?? '');
+
+  if (
+    $clienteEmpresaId > 0
+    && $clienteEmpresaId === $empresaSessaoId
+    && preg_match('/^\+55\d{11}$/', $clienteTelefone) === 1
+    && $telefoneVerificado
+    && (!$cadastroCompleto || $clienteId !== null)
+    && $clienteTipo === 'cliente'
+    && $clienteStatus === 'ativo'
+    && $modoVisualizacao
+  ) {
+    out([
+      'ok' => true,
+      'code' => 'CLIENT_AUTHENTICATED',
+      'data' => [
+        'user' => [
+          'id_cliente' => $clienteId,
+          'id_empresa' => $clienteEmpresaId,
+          'empresa_id' => $clienteEmpresaId,
+          'telefone' => $clienteTelefone,
+          'telefone_verificado' => true,
+          'cadastro_completo' => $cadastroCompleto,
+          'nome_completo' => $nomeCompleto,
+          'perfil' => 'cliente',
+          'perfil_nome' => 'cliente',
+          'tipo_usuario' => 'cliente',
+          'status' => 'ativo',
+          'modo_visualizacao' => true,
+        ]
+      ]
+    ]);
+  }
+
+  unset($_SESSION['cliente_auth']);
+}
+
 $auth = $_SESSION['auth'] ?? null;
 
 if (!$auth || empty($auth['id_usuario'])) {
