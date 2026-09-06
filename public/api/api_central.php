@@ -76,10 +76,38 @@ $routes = [
         'POST' => '@notificacoes_marcar_lida',
     ],
 
+    // Portal do cliente autenticado
+    'cliente/perfil' => [
+        'GET' => __DIR__ . '/../../backend/cliente/buscar_dados_cadastrais.php',
+    ],
+    'cliente/perfil/salvar' => [
+        'POST' => __DIR__ . '/../../backend/cliente/salvar_dados_cadastrais.php',
+    ],
+    'cliente/agendamentos/listar' => [
+        'GET' => __DIR__ . '/../../backend/cliente/listar_agendamentos.php',
+    ],
+
+    // MODAL PERFIL DO CLIENTE
+
+    //Buscar Foto
+    'cliente/perfil/buscar-foto' => [
+        'GET' => __DIR__ . '/../../backend/cliente_perfil/buscar_foto_perfil.php',
+    ],
+
+    //Alterar Foto
+    'cliente/perfil/alterar-foto' => [
+        'POST' => __DIR__ . '/../../backend/cliente_perfil/alterar_foto_perfil.php',
+    ],
+
+    //Alterar Senha
+    'cliente/perfil/alterar-senha' => [
+        'POST' => __DIR__ . '/../../backend/cliente_perfil/alterar_senha_perfil.php',
+    ],
+
 
     /*
     |----------------------
-    | SUPER ADMIN 
+    | SUPER ADMIN
     |----------------------
     */
 

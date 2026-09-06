@@ -41,6 +41,37 @@
   .cadastro-cliente .acoes .botao-geral {
     width: 100%;
   }
+
+  .cliente-painel { padding: 12px; }
+
+  .cliente-painel-topo {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cliente-painel-topo .botao-geral {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .cliente-agendamentos-card { padding: 14px; }
+
+  .ma-ferramentas,
+  .ma-pesquisa {
+    width: 100%;
+    max-width: none;
+  }
+
+  .ma-paginacao {
+    gap: 10px;
+  }
+
+  .ma-paginacao > .botao-geral {
+    min-height: 44px;
+  }
+
+  .ma-sub { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) {
@@ -76,10 +107,74 @@
     width: 100%;
     justify-content: center;
   }
+
+  .ma-pesquisa #ma_pesquisa {
+    height: 48px;
+    font-size: 16px;
+  }
+
+  .ma-limpar-pesquisa {
+    width: 38px;
+    height: 38px;
+  }
+
+  .ma-paginacao {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 8px;
+  }
+
+  .ma-pagina-info {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ma-paginacao > .botao-geral {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 12px;
+    gap: 8px;
+  }
+
+  .ma-paginacao > .botao-geral:first-child { grid-column: 1; }
+  .ma-paginacao > .botao-geral:last-child { grid-column: 2; }
+
+  .modal-cadastro-cliente {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-cadastro-cliente .modal-conteudo {
+    width: 100%;
+    max-height: 96dvh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .cadastro-modal-tabs .tab-btn { font-size: 13px; }
+
+  .cadastro-modal-acoes {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .cadastro-modal-acoes .botao-geral { width: 100%; }
 }
 
 @media (max-width: 450px) {
   .cliente-conteudo-global { padding: 10px; }
+
+  .ma-paginacao { grid-template-columns: minmax(0, 1fr); }
+
+  .ma-paginacao > .botao-geral:first-child {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .ma-paginacao > .botao-geral:last-child {
+    grid-column: 1;
+    grid-row: 3;
+  }
 
   .cadastro-cliente .tabs:not(.tabs-agendamento) { padding: 8px; }
 

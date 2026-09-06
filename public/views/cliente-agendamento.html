@@ -16,9 +16,11 @@
     <link rel="stylesheet" href="../css/agenda/cliente-agendamento-web.css"/>
     <link rel="stylesheet" href="../css/agenda/cliente-agendamento-mobile.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
+    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=20260821_2">
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
     <script src="/public/_auth/sessao.js" ></script>
+    <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
   </head>
 
   <body data-menu-contexto="cliente">
@@ -253,6 +255,199 @@
 
         <section> <!--Todos os Modals-->
 
+            <!-- MODAL: PERFIL DO CLIENTE -->
+            <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
+            <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloPerfilUsuario">
+
+                <div class="modal-topo">
+                <h2 id="tituloPerfilUsuario">Meu Perfil</h2>
+                <button class="modal-fechar" data-fechar-modal type="button">×</button>
+                </div>
+
+                <div class="modal-corpo">
+
+                <!-- FOTO DO PERFIL -->
+                <div class="perfil-foto-box">
+                    <img src="/public/imagens/avatar-default.png" alt="Foto do usuário" class="perfil-foto" data-avatar-usuario>
+
+                    <div class="perfil-nome-usuario" id="perfilNomeUsuario">Carregando...</div>
+
+                    <label class="botao-geral pequeno" for="perfil_foto">
+                    <i class="fa-solid fa-camera"></i>
+                    Alterar foto
+                    </label>
+
+                    <input
+                    type="file"
+                    id="perfil_foto"
+                    name="perfil_foto"
+                    accept="image/jpeg,image/png,image/webp"
+                    hidden
+                    >
+                </div>
+
+                <hr class="divisor">
+
+                <!-- ALTERAR SENHA -->
+                <form id="formAlterarSenha" novalidate>
+
+                    <div class="modal-campo">
+                    <input type="password" id="senha_atual" name="senha_atual">
+                    <label for="senha_atual">Senha atual</label>
+                    </div>
+
+                    <div class="modal-campo">
+                    <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                    <label for="nova_senha">Nova senha</label>
+                    </div>
+
+                    <div class="modal-campo">
+                    <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                    <label for="confirmar_senha">Confirmar nova senha</label>
+                    </div> <br>
+
+                    <button type="submit" class="botao-geral">
+                    <i class="fa-solid fa-key"></i>
+                    Salvar
+                    </button>
+
+                    <button class="botao-geral destaque" type="button" title="Sair do sistema" id="btnSair">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    Sair
+                    </button>
+                </form>
+                </div>
+            </div>
+            </div>
+
+            <!-- MODAL: DADOS CADASTRAIS DO CLIENTE -->
+            <div id="modalDadosCadastraisCliente" class="modal-geral modal-cadastro-cliente" aria-hidden="true">
+              <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloDadosCadastraisCliente">
+                <div class="modal-topo">
+                  <h2 id="tituloDadosCadastraisCliente">Dados cadastrais</h2>
+                  <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">&times;</button>
+                </div>
+
+                <form id="formPerfilCliente" novalidate>
+                  <div class="modal-corpo cadastro-modal-corpo">
+                    <p id="cadastroAvisoObrigatorio" class="cadastro-aviso" role="alert" hidden>
+                      <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                      Somente Nome e WhatsApp/Celular são obrigatórios. Preencha para continuar.
+                    </p>
+
+                    <nav class="tabs cadastro-modal-tabs" aria-label="Seções dos dados cadastrais">
+                      <button id="tab-perfil-btn" class="tab-btn active" data-tab="perfil" type="button" role="tab" aria-controls="tab-perfil" aria-selected="true">
+                        Informações
+                      </button>
+                      <button id="tab-endereco-btn" class="tab-btn" data-tab="endereco" type="button" role="tab" aria-controls="tab-endereco" aria-selected="false">
+                        Endereço
+                      </button>
+                    </nav>
+
+                    <div class="tabs-content">
+                      <!-- INFORMAÇÕES PESSOAIS -->
+                      <section class="tab-pane active" id="tab-perfil" role="tabpanel" aria-labelledby="tab-perfil-btn">
+                        <p class="card-sub">Somente Nome e WhatsApp/Celular são obrigatórios.</p>
+                        <div class="modal-grid">
+                          <div class="modal-campo">
+                            <input id="cli_nome" name="nome" type="text" maxlength="140" autocomplete="name" placeholder=" " required>
+                            <label for="cli_nome">Nome completo <span class="req">*</span></label>
+                            <small class="msg-erro" data-erro-for="cli_nome"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="cli_whats" name="whats" type="tel" maxlength="20" autocomplete="tel" placeholder=" " required readonly aria-readonly="true">
+                            <label for="cli_whats">WhatsApp/Celular <span class="req">*</span></label>
+                            <small class="msg-erro" data-erro-for="cli_whats"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="cli_email" name="email" type="email" maxlength="160" autocomplete="email" placeholder=" ">
+                            <label for="cli_email">E-mail (opcional)</label>
+                            <small class="msg-erro" data-erro-for="cli_email"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="cli_cpf" name="cpf" type="text" maxlength="14" inputmode="numeric" placeholder=" ">
+                            <label for="cli_cpf">CPF (opcional)</label>
+                            <small class="msg-erro" data-erro-for="cli_cpf"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="cli_nasc" name="nascimento" type="date" placeholder=" ">
+                            <label for="cli_nasc">Data de nascimento (opcional)</label>
+                            <small class="msg-erro" data-erro-for="cli_nasc"></small>
+                          </div>
+                        </div>
+                      </section>
+
+                      <!-- ENDEREÇO -->
+                      <section class="tab-pane" id="tab-endereco" role="tabpanel" aria-labelledby="tab-endereco-btn" hidden>
+                        <p class="card-sub">Todos os campos de endereço são opcionais.</p>
+                        <div class="modal-grid">
+                          <div class="modal-campo">
+                            <input id="end_cep" name="cep" type="text" maxlength="9" inputmode="numeric" autocomplete="postal-code" placeholder=" ">
+                            <label for="end_cep">CEP (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_cep"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="end_logradouro" name="logradouro" type="text" maxlength="160" autocomplete="address-line1" placeholder=" ">
+                            <label for="end_logradouro">Rua / Avenida (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_logradouro"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="end_numero" name="numero" type="text" maxlength="20" placeholder=" ">
+                            <label for="end_numero">Número (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_numero"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="end_bairro" name="bairro" type="text" maxlength="100" placeholder=" ">
+                            <label for="end_bairro">Bairro (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_bairro"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="end_cidade" name="cidade" type="text" maxlength="100" autocomplete="address-level2" placeholder=" ">
+                            <label for="end_cidade">Cidade (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_cidade"></small>
+                          </div>
+
+                          <div class="modal-campo">
+                            <input id="end_uf" name="uf" type="text" maxlength="2" autocomplete="address-level1" placeholder=" ">
+                            <label for="end_uf">UF (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_uf"></small>
+                          </div>
+
+                          <div class="modal-campo linha">
+                            <input id="end_complemento" name="complemento" type="text" maxlength="160" autocomplete="address-line2" placeholder=" ">
+                            <label for="end_complemento">Complemento (opcional)</label>
+                            <small class="msg-erro" data-erro-for="end_complemento"></small>
+                          </div>
+                        </div>
+                      </section>
+
+                      <p id="perfilMensagem" class="cadastro-mensagem" role="status" aria-live="polite"></p>
+                    </div>
+                  </div>
+
+                  <!-- AÇÕES DO CADASTRO -->
+                  <div class="modal-acoes cadastro-modal-acoes">
+                    <button class="botao-geral" id="btnVoltarInformacoes" type="button" hidden>
+                      <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                      Voltar
+                    </button>
+                    <button class="botao-geral destaque" id="btnSalvarPerfil" type="submit">
+                      <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                      Salvar dados
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
             <!-- MODAL: Meus Agendamentos (reaproveita a mesma implementação de cliente-perfil.html) -->
             <div id="modalMeusAgendamentos" class="modal-geral" aria-hidden="true">
             <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloMeusAgendamentos">
@@ -291,8 +486,9 @@
     </div><!-- /.cliente-app-shell -->
 
 
-    <script src="../js/menu-lateral/menu-lateral.js?v=20260903_1"></script> <!--Componente universal do menu lateral responsivo-->
+    <script src="../js/menu-lateral/menu-lateral.js?v=20260906_1"></script> <!--Componente universal do menu lateral responsivo-->
     <script src="../js/identidade-visual/identidade-visual.js?v=20260822_1"></script> <!--Aplica a marca da empresa no menu lateral-->
+    <script src="../js/cliente/salvar-dados-cadastrais.js?v=20260905_3"></script>
 
     <script src="../js/cliente-perfil/lista-meus-agendamentos.js" ></script> <!--Reaproveita a lista de Meus Agendamentos já usada em cliente-perfil.html-->
     <script src="../js/cliente-agendamento/lista-profissionais.js" ></script> <!--Lista de Profissionais para o cliente selecionar o da sua necessidade-->
@@ -300,122 +496,153 @@
     <script src="../js/cliente-agendamento/selecionar-horario.js" ></script> <!--Selecionar Horarios dos clientes-->
     <script src="../js/cliente-agendamento/confirmar-agendamento.js" ></script> <!--Confirmar o agendamento selecionado pelo cliente-->
 
-        <script> //Abrir e fechar todos os modals da pagina
-            /* ============================
-            CONFIGURAÇÃO DE CLASSES
-            ============================ */
-            const MODAL_CLASSES = ['modal-geral', 'modal-cards'];
 
-            /* ============================
-            FUNÇÕES
-            ============================ */
-            function abrirModal(id){
-            const modal = document.getElementById(id);
-            if(!modal){
-                console.warn('Modal não encontrado:', id);
-                return;
-            }
-            modal.classList.add('ativo');
-            }
 
-            function fecharModal(modal){
-            modal.classList.remove('ativo');
-            }
+    <!-- PERFIL DO CLIENTE -->
+    <script src="/public/js/cliente_perfil/buscar_foto_perfil.js?v=20260905_1"></script>
+    <script src="/public/js/cliente_perfil/alterar_foto_perfil.js?v=20260905_1"></script>
+    <script src="/public/js/cliente_perfil/alterar_senha_perfil.js?v=20260905_1"></script>
 
-            function getModalPai(element){
-            return element.closest(
-                MODAL_CLASSES.map(c => '.' + c).join(',')
-            );
-            }
+    <!-- LOGOUT -->
+    <script src="/public/_auth/deslogar.js"></script>
 
-            /* ============================
-            EVENTOS DE CLICK
-            ============================ */
-            document.addEventListener('click', (e) => {
-
-            /* ABRIR */
-            const abrir = e.target.closest('[data-abrir-modal]');
-            if(abrir){
-                abrirModal(abrir.getAttribute('data-abrir-modal'));
-                return;
-            }
-
-            /* FECHAR (BOTÃO) */
-            if(e.target.closest('[data-fechar-modal]')){
-                const modal = getModalPai(e.target);
-                if(modal) fecharModal(modal);
-                return;
-            }
-
-            /* FECHAR (CLIQUE FORA) */
-            MODAL_CLASSES.forEach(classe => {
-                if(e.target.classList.contains(classe)){
-                fecharModal(e.target);
-                }
-            });
-
-            });
-
-            /* ============================
-            TECLA ESC
-            ============================ */
-            document.addEventListener('keydown', (e) => {
-            if(e.key === 'Escape'){
-                MODAL_CLASSES.forEach(classe => {
-                document
-                    .querySelectorAll(`.${classe}.ativo`)
-                    .forEach(m => fecharModal(m));
-                });
-            }
-            });
-        </script>
-
-        <script> //script para navegação em Abas
-        (() => {
+    <script> // Abrir e fechar todos os modais da página
+      (() => {
         "use strict";
 
-        function TabsUniversal(root = document) {
-            const buttons = Array.from(root.querySelectorAll(".tab-btn"));
-            const panes   = Array.from(root.querySelectorAll(".tab-pane"));
-            if (!panes.length) return null;
+        const MODAL_CLASSES = [
+          "modal-geral",
+          "modal-cards"
+        ];
 
-            function activate(tabName) {
-            const pane = root.querySelector(`#tab-${tabName}`);
-            if (!pane) return;
+        function abrirModal(id) {
+          const modal = document.getElementById(id);
 
-            panes.forEach(p => p.classList.remove("active"));
-            pane.classList.add("active");
+          if (!modal) {
+            console.warn("Modal não encontrado:", id);
+            return;
+          }
 
-            // se existir barra de tabs, marca ativo nela também
-            if (buttons.length) {
-                buttons.forEach(b => {
-                b.classList.remove("active");
-                b.setAttribute("aria-selected", "false");
-                });
-
-                const btn = buttons.find(b => b.dataset.tab === tabName);
-                if (btn) {
-                btn.classList.add("active");
-                btn.setAttribute("aria-selected", "true");
-                }
-            }
-            }
-
-            return { go: activate };
+          modal.classList.add("ativo");
+          modal.setAttribute("aria-hidden", "false");
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
-            window.Tabs = TabsUniversal(document);
+        function fecharModal(modal) {
+          if (!modal) {
+            return;
+          }
 
-            // garante que inicia na primeira aba visível (se já tiver active, mantém)
-            if (window.Tabs && typeof window.Tabs.go === "function") {
-            const activePane = document.querySelector(".tab-pane.active");
-            if (!activePane) window.Tabs.go("profissional");
+          if (modal.classList.contains("cadastro-bloqueado")) {
+            return;
+          }
+
+          modal.classList.remove("ativo");
+          modal.setAttribute("aria-hidden", "true");
+        }
+
+        function getModalPai(elemento) {
+          if (!elemento) {
+            return null;
+          }
+
+          return elemento.closest(
+            MODAL_CLASSES
+              .map(classe => `.${classe}`)
+              .join(",")
+          );
+        }
+
+        document.addEventListener("click", evento => {
+          const botaoAbrir = evento.target.closest(
+            "[data-abrir-modal]"
+          );
+
+          if (botaoAbrir) {
+            const idModal = botaoAbrir.getAttribute(
+              "data-abrir-modal"
+            );
+
+            abrirModal(idModal);
+            return;
+          }
+
+          const botaoFechar = evento.target.closest(
+            "[data-fechar-modal]"
+          );
+
+          if (botaoFechar) {
+            const modal = getModalPai(botaoFechar);
+
+            if (modal) {
+              fecharModal(modal);
             }
+          }
         });
-        })();
-        </script>
+
+        document.addEventListener("keydown", evento => {
+          if (evento.key !== "Escape") {
+            return;
+          }
+
+          MODAL_CLASSES.forEach(classe => {
+            document
+              .querySelectorAll(`.${classe}.ativo`)
+              .forEach(modal => {
+                fecharModal(modal);
+              });
+          });
+        });
+
+        window.abrirModal = abrirModal;
+        window.fecharModal = fecharModal;
+      })();
+    </script>
+
+    <script> //script para navegação em Abas
+    (() => {
+    "use strict";
+
+    function TabsUniversal(root = document) {
+        const buttons = Array.from(root.querySelectorAll(".tab-btn"));
+        const panes   = Array.from(root.querySelectorAll(".tab-pane"));
+        if (!panes.length) return null;
+
+        function activate(tabName) {
+        const pane = root.querySelector(`#tab-${tabName}`);
+        if (!pane) return;
+
+        panes.forEach(p => p.classList.remove("active"));
+        pane.classList.add("active");
+
+        // se existir barra de tabs, marca ativo nela também
+        if (buttons.length) {
+            buttons.forEach(b => {
+            b.classList.remove("active");
+            b.setAttribute("aria-selected", "false");
+            });
+
+            const btn = buttons.find(b => b.dataset.tab === tabName);
+            if (btn) {
+            btn.classList.add("active");
+            btn.setAttribute("aria-selected", "true");
+            }
+        }
+        }
+
+        return { go: activate };
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        window.Tabs = TabsUniversal(document);
+
+        // garante que inicia na primeira aba visível (se já tiver active, mantém)
+        if (window.Tabs && typeof window.Tabs.go === "function") {
+        const activePane = document.querySelector(".tab-pane.active");
+        if (!activePane) window.Tabs.go("profissional");
+        }
+    });
+    })();
+    </script>
 
     </body>
 </html>
-

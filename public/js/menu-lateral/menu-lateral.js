@@ -37,9 +37,7 @@
       { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" }
     ],
     cliente: [
-      { tipo: "link", texto: "Agendar", icone: "fa-solid fa-calendar-check", href: "/public/views/cliente-agendamento.html", titulo: "Agendar um horário" },
-      { tipo: "button", texto: "Meus agendamentos", icone: "fa-solid fa-calendar-days", modal: "modalMeusAgendamentos", titulo: "Consultar meus agendamentos" },
-      { tipo: "link", texto: "Perfil", icone: "fa-solid fa-user", href: "/public/views/cliente-perfil.html", titulo: "Meu perfil" }
+      { tipo: "button", texto: "Dados cadastrais", icone: "fa-solid fa-address-card", modal: "modalDadosCadastraisCliente", titulo: "Meus dados cadastrais" }
     ]
   };
 
@@ -88,6 +86,12 @@
   function renderizarMenu(contexto) {
     const navegacao = document.querySelector("[data-menu-navegacao]");
     let itens = MENUS[contexto] || [];
+    const caminhoAtual = window.location.pathname.replace(/\/+$/, "").toLowerCase();
+    if (contexto === "cliente" && caminhoAtual.endsWith("/cliente-agendamento.html")) {
+      itens = [
+        { tipo: "link", texto: "Página Inicial", icone: "fa-solid fa-house", href: "/public/views/cliente-perfil.html", titulo: "Voltar à página inicial" }
+      ];
+    }
     if (contexto === "agenda") {
       const auth = window.__AUTH__ || {};
       const perfil = String(auth.perfil_nome || auth.perfil || "")
@@ -111,7 +115,6 @@
       navegacao.innerHTML = itens.map(htmlItem).join("");
 
       if (contexto === "cliente") {
-        const caminhoAtual = window.location.pathname.replace(/\/+$/, "").toLowerCase();
         navegacao.querySelectorAll("a.sidebar-item[href]").forEach(link => {
           const caminhoLink = new URL(link.href, window.location.href).pathname.replace(/\/+$/, "").toLowerCase();
           const ativo = caminhoLink === caminhoAtual;

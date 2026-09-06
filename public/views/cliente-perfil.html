@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AmAgenda • Meu Perfil</title>
+    <title>AmAgenda • Meus Agendamentos</title>
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
 
     <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20260818_2"/>
@@ -11,24 +11,18 @@
     <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
     <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
     <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
-    <link rel="stylesheet" href="../css/agenda/cliente-web.css"/>
-    <link rel="stylesheet" href="../css/agenda/cliente-mobile.css"/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
+    <link rel="stylesheet" href="../css/agenda/cliente-web.css?v=20260905_1"/>
+    <link rel="stylesheet" href="../css/agenda/cliente-mobile.css?v=20260905_1"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=20260821_2">
 
-    <!--Verifica se usuario esta logado se não redireciona para tela de login-->
-    <script src="/public/_auth/sessao.js" ></script>
+    <script src="/public/_auth/sessao.js"></script>
+    <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
   </head>
 
   <body data-menu-contexto="cliente">
-    <!-- ======================================================
-         COMPONENTE: MENU LATERAL
-         Estrutura HTML: esta seção até "FIM: MENU LATERAL".
-         Estilos: public/css/menu-lateral/menu-lateral-web.css
-                  public/css/menu-lateral/menu-lateral-mobile.css
-         Comportamento: public/js/menu-lateral/menu-lateral.js
-         ====================================================== -->
+    <!-- MENU LATERAL -->
     <aside id="sidebarAgenda" class="sidebar-agenda" aria-label="Navegação principal">
-      <!-- Marca da empresa e botão de fechamento no mobile. -->
       <div class="sidebar-marca" data-identidade-abrir>
         <span class="sidebar-marca-icone" aria-hidden="true">
           <img src="../imagens/logo-menu.png" alt="Logo AmAgenda" class="sidebar-marca-logo" data-identidade-logo/>
@@ -39,10 +33,8 @@
         </button>
       </div>
 
-      <!-- Itens inseridos dinamicamente por menu-lateral.js conforme o contexto da página. -->
       <nav class="sidebar-navegacao" aria-label="Ações do cliente" data-menu-navegacao></nav>
 
-      <!-- Estrutura visual reservada para a futura central de ajuda. -->
       <button class="sidebar-item sidebar-ajuda" type="button" title="Ajuda" aria-label="Ajuda">
         <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
         <span class="sidebar-texto">Ajuda</span>
@@ -50,405 +42,495 @@
       </button>
     </aside>
 
-    <!-- Fundo clicável exibido atrás do menu lateral no mobile/tablet. -->
     <button id="overlaySidebarAgenda" class="sidebar-overlay" type="button" aria-label="Fechar menu" tabindex="-1"></button>
-    <!-- ==================== FIM: MENU LATERAL ==================== -->
 
     <div class="agenda-app-shell cliente-app-shell">
-    <!-- Informações Superiores -->
-    <header class="cabecalho-agenda">
+      <!-- CABEÇALHO -->
+      <header class="cabecalho-agenda">
+        <div class="cabecalho-esquerda">
+          <button id="abrirSidebarAgenda" class="sidebar-abrir" type="button" aria-label="Abrir menu" aria-controls="sidebarAgenda" aria-expanded="false">
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+          </button>
+        </div>
 
-      <!-- Lado esquerdo -->
-      <div class="cabecalho-esquerda">
-        <button id="abrirSidebarAgenda" class="sidebar-abrir" type="button" aria-label="Abrir menu" aria-controls="sidebarAgenda" aria-expanded="false">
-          <i class="fa-solid fa-bars" aria-hidden="true"></i>
-        </button>
-        <div class="cabecalho-data-grupo">
-          <h1 class="cabecalho-dia">Meu Perfil</h1>
-          <span class="cabecalho-data">Gerencie seus dados pessoais</span>
+        <div class="cabecalho-direita">
+          <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
+            <i class="fa-regular fa-bell" aria-hidden="true"></i>
+          </button>
+          <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
+            <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
+            <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <!-- LISTA DE AGENDAMENTOS DO CLIENTE -->
+        <section class="layout-controle cliente-conteudo-global cliente-painel" aria-labelledby="tituloListaAgendamentos">
+          <div class="cliente-painel-topo">
+            <div>
+              <h2 id="tituloListaAgendamentos">Seus agendamentos</h2>
+              <p>Consulte aqui os próximos horários e seu histórico.</p>
+            </div>
+            <a class="botao-geral destaque" href="/public/views/cliente-agendamento.html">
+              <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>
+              Novo agendamento
+            </a>
+          </div>
+
+          <div class="card cliente-agendamentos-card">
+
+            <!-- PESQUISA -->
+            <div class="ma-ferramentas">
+              <div class="ma-pesquisa">
+                <i
+                  class="fa-solid fa-magnifying-glass"
+                  aria-hidden="true"
+                ></i>
+
+                <input
+                  type="search"
+                  id="ma_pesquisa"
+                  placeholder="Pesquisar agendamentos..."
+                  aria-label="Pesquisar agendamentos"
+                  autocomplete="off"
+                >
+
+                <button
+                  type="button"
+                  id="ma_limpar_pesquisa"
+                  class="ma-limpar-pesquisa"
+                  title="Limpar pesquisa"
+                  aria-label="Limpar pesquisa"
+                  hidden
+                >
+                  <i
+                    class="fa-solid fa-xmark"
+                    aria-hidden="true"
+                  ></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- ESTADO DA LISTAGEM -->
+            <div
+              id="ma_estado"
+              class="cliente-lista-estado"
+              role="status"
+              aria-live="polite"
+            >
+              <i
+                class="fa-solid fa-spinner fa-spin"
+                aria-hidden="true"
+              ></i>
+              Carregando seus agendamentos...
+            </div>
+
+            <!-- AGENDAMENTOS -->
+            <div
+              id="ma_lista"
+              class="ma-lista"
+              aria-live="polite"
+              hidden
+            ></div>
+
+            <!-- PAGINAÇÃO -->
+            <nav
+              id="ma_paginacao"
+              class="ma-paginacao"
+              aria-label="Paginação dos agendamentos"
+              hidden
+            >
+              <button
+                type="button"
+                id="ma_anterior"
+                class="botao-geral pequeno"
+              >
+                <i
+                  class="fa-solid fa-chevron-left"
+                  aria-hidden="true"
+                ></i>
+                Anterior
+              </button>
+
+              <span
+                id="ma_pagina_info"
+                class="ma-pagina-info"
+                aria-live="polite"
+              >
+                Página 1 de 1
+              </span>
+
+              <button
+                type="button"
+                id="ma_proxima"
+                class="botao-geral pequeno"
+              >
+                Próxima
+                <i
+                  class="fa-solid fa-chevron-right"
+                  aria-hidden="true"
+                ></i>
+              </button>
+            </nav>
+
+          </div>
+
+        </section>
+      </main>
+    </div>
+
+    <section> <!--Todos os modals da pagina-->
+
+      <!-- MODAL: PERFIL DO CLIENTE -->
+      <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloPerfilUsuario">
+
+          <div class="modal-topo">
+            <h2 id="tituloPerfilUsuario">Meu Perfil</h2>
+            <button class="modal-fechar" data-fechar-modal type="button">×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <!-- FOTO DO PERFIL -->
+            <div class="perfil-foto-box">
+              <img src="/public/imagens/avatar-default.png" alt="Foto do usuário" class="perfil-foto" data-avatar-usuario>
+
+              <div class="perfil-nome-usuario" id="perfilNomeUsuario">Carregando...</div>
+
+              <label class="botao-geral pequeno" for="perfil_foto">
+                <i class="fa-solid fa-camera"></i>
+                Alterar foto
+              </label>
+
+              <input
+                type="file"
+                id="perfil_foto"
+                name="perfil_foto"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+              >
+            </div>
+
+            <hr class="divisor">
+
+            <!-- ALTERAR SENHA -->
+            <form id="formAlterarSenha" novalidate>
+
+              <div class="modal-campo">
+                <input type="password" id="senha_atual" name="senha_atual">
+                <label for="senha_atual">Senha atual</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                <label for="nova_senha">Nova senha</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                <label for="confirmar_senha">Confirmar nova senha</label>
+              </div> <br>
+
+              <button type="submit" class="botao-geral">
+                <i class="fa-solid fa-key"></i>
+                Salvar
+              </button>
+
+              <button class="botao-geral destaque" type="button" title="Sair do sistema" id="btnSair">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Sair
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
-      <!-- Lado direito -->
-      <div class="cabecalho-direita">
-        <!-- Estrutura visual; notificações ainda não possuem suporte para o contexto do cliente. -->
-        <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
-          <i class="fa-regular fa-bell" aria-hidden="true"></i>
-        </button>
+    <!-- MODAL: DADOS CADASTRAIS DO CLIENTE -->
+    <div id="modalDadosCadastraisCliente" class="modal-geral modal-cadastro-cliente" aria-hidden="true">
+      <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloDadosCadastraisCliente">
+        <div class="modal-topo">
+          <h2 id="tituloDadosCadastraisCliente">Dados cadastrais</h2>
+          <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">&times;</button>
+        </div>
 
-        <!-- A foto conserva exatamente a ação do antigo botão Perfil. -->
-        <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
-          <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
-          <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
-        </button>
-      </div>
-    </header>
+        <form id="formPerfilCliente" novalidate>
+          <div class="modal-corpo cadastro-modal-corpo">
+            <p id="cadastroAvisoObrigatorio" class="cadastro-aviso" role="alert" hidden>
+              <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+              Somente Nome e WhatsApp/Celular são obrigatórios. Preencha para continuar.
+            </p>
 
-    <main>
-
-    <section class="layout-controle cliente-conteudo-global cadastro-cliente">
-
-
-        <nav class="tabs">
-            <button class="tab-btn active" data-tab="perfil" type="button">
+            <nav class="tabs cadastro-modal-tabs" aria-label="Seções dos dados cadastrais">
+              <button id="tab-perfil-btn" class="tab-btn active" data-tab="perfil" type="button" role="tab" aria-controls="tab-perfil" aria-selected="true">
                 Informações
-            </button>
-            
-            <button class="tab-btn locked" data-tab="endereco" type="button">
+              </button>
+              <button id="tab-endereco-btn" class="tab-btn" data-tab="endereco" type="button" role="tab" aria-controls="tab-endereco" aria-selected="false">
                 Endereço
+              </button>
+            </nav>
+
+            <div class="tabs-content">
+              <!-- INFORMAÇÕES PESSOAIS -->
+              <section class="tab-pane active" id="tab-perfil" role="tabpanel" aria-labelledby="tab-perfil-btn">
+                <p class="card-sub">Somente Nome e WhatsApp/Celular são obrigatórios.</p>
+                <div class="modal-grid">
+                  <div class="modal-campo">
+                    <input id="cli_nome" name="nome" type="text" maxlength="140" autocomplete="name" placeholder=" " required>
+                    <label for="cli_nome">Nome completo <span class="req">*</span></label>
+                    <small class="msg-erro" data-erro-for="cli_nome"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="cli_whats" name="whats" type="tel" maxlength="20" autocomplete="tel" placeholder=" " required readonly aria-readonly="true">
+                    <label for="cli_whats">WhatsApp/Celular <span class="req">*</span></label>
+                    <small class="msg-erro" data-erro-for="cli_whats"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="cli_email" name="email" type="email" maxlength="160" autocomplete="email" placeholder=" ">
+                    <label for="cli_email">E-mail (opcional)</label>
+                    <small class="msg-erro" data-erro-for="cli_email"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="cli_cpf" name="cpf" type="text" maxlength="14" inputmode="numeric" placeholder=" ">
+                    <label for="cli_cpf">CPF (opcional)</label>
+                    <small class="msg-erro" data-erro-for="cli_cpf"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="cli_nasc" name="nascimento" type="date" placeholder=" ">
+                    <label for="cli_nasc">Data de nascimento (opcional)</label>
+                    <small class="msg-erro" data-erro-for="cli_nasc"></small>
+                  </div>
+                </div>
+
+              </section>
+
+              <!-- ENDEREÇO -->
+              <section class="tab-pane" id="tab-endereco" role="tabpanel" aria-labelledby="tab-endereco-btn" hidden>
+                <p class="card-sub">Todos os campos de endereço são opcionais.</p>
+                <div class="modal-grid">
+                  <div class="modal-campo">
+                    <input id="end_cep" name="cep" type="text" maxlength="9" inputmode="numeric" autocomplete="postal-code" placeholder=" ">
+                    <label for="end_cep">CEP (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_cep"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="end_logradouro" name="logradouro" type="text" maxlength="160" autocomplete="address-line1" placeholder=" ">
+                    <label for="end_logradouro">Rua / Avenida (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_logradouro"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="end_numero" name="numero" type="text" maxlength="20" placeholder=" ">
+                    <label for="end_numero">Número (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_numero"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="end_bairro" name="bairro" type="text" maxlength="100" placeholder=" ">
+                    <label for="end_bairro">Bairro (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_bairro"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="end_cidade" name="cidade" type="text" maxlength="100" autocomplete="address-level2" placeholder=" ">
+                    <label for="end_cidade">Cidade (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_cidade"></small>
+                  </div>
+
+                  <div class="modal-campo">
+                    <input id="end_uf" name="uf" type="text" maxlength="2" autocomplete="address-level1" placeholder=" ">
+                    <label for="end_uf">UF (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_uf"></small>
+                  </div>
+
+                  <div class="modal-campo linha">
+                    <input id="end_complemento" name="complemento" type="text" maxlength="160" autocomplete="address-line2" placeholder=" ">
+                    <label for="end_complemento">Complemento (opcional)</label>
+                    <small class="msg-erro" data-erro-for="end_complemento"></small>
+                  </div>
+                </div>
+              </section>
+
+              <p id="perfilMensagem" class="cadastro-mensagem" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <!-- AÇÕES DO CADASTRO -->
+          <div class="modal-acoes cadastro-modal-acoes">
+            <button class="botao-geral" id="btnVoltarInformacoes" type="button" hidden>
+              <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+              Voltar
             </button>
-        </nav>
-
-
-        <!-- Cadastro de dado obrigatorios -->
-        <section class="tabs-content">
-
-            <!-- ABA: PERFIL -->
-            <div class="tab-pane active" id="tab-perfil" aria-labelledby="tab-perfil-btn">
-                <div class="card">
-                    <p class="card-sub">Preencha os dados obrigatórios para continuar.</p>
-                    <form id="formPerfil" novalidate>
-                        <div class="modal-grid">
-
-                            <div class="modal-campo">
-                                <input id="cli_nome" name="nome" type="text" maxlength="120"  placeholder=" " required>
-                                <label for="cli_nome">Nome completo <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="cli_whats" name="whats" type="tel" maxlength="20"  placeholder=" " required>
-                                <label for="cli_whats">WhatsApp/Celular <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="cli_email" name="email" type="email" maxlength="120"  placeholder=" " required >
-                                <label for="cli_email">E-mail <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="cli_cpf" name="cpf" type="text" maxlength="14" placeholder=" ">
-                                <label for="cli_cpf">CPF (opcional)</label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="cli_nasc" name="nascimento" type="date" required>
-                                <label for="cli_nasc">Data de nascimento (opcional)</label>
-                            </div>
-
-                        </div>
-
-                        <div class="acoes">
-                            <button  class="botao-geral destaque" id="btnSalvarContinuar" type="submit"> 
-                            Salvar
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- ABA: ENDEREÇO -->
-            <div class="tab-pane" id="tab-endereco" aria-labelledby="tab-endereco-btn">
-                <div class="card">
-                    <p class="card-sub">Informe seu endereço para completar o cadastro.</p>
-                    <form id="formEndereco" novalidate>
-                        <div class="modal-grid">
-
-                            <div class="modal-campo">
-                                <input id="end_cep" name="cep" type="text" maxlength="9" placeholder=" " required>
-                                <label for="end_cep">CEP <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="end_logradouro" name="logradouro" type="text" maxlength="120" placeholder=" " required>
-                                <label for="end_logradouro">Rua / Avenida <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="end_numero" name="numero" type="text" maxlength="20" placeholder=" " required>
-                                <label for="end_numero">Número <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="end_bairro" name="bairro" type="text" maxlength="80" placeholder=" " required>
-                                <label for="end_bairro">Bairro <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="end_cidade" name="cidade" type="text" maxlength="80" placeholder=" " required>
-                                <label for="end_cidade">Cidade <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo">
-                                <input id="end_uf" name="uf" type="text" maxlength="2" placeholder=" " required>
-                                <label for="end_uf">UF <span class="req">*</span></label>
-                            </div>
-
-                            <div class="modal-campo linha">
-                                <input id="end_complemento" name="complemento" type="text" maxlength="120" placeholder=" ">
-                                <label for="end_complemento">Complemento (opcional)</label>
-                            </div>
-
-                        </div>
-
-                        <div class="acoes">
-                            <button  class="botao-geral destaque" id="btnSalvarEndereco" type="submit">
-                                Salvar
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-        </section>
-
-        <section> <!--Todos os Modals-->
-
-            <!-- MODAL: PERFIL DO USUÁRIO -->
-            <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
-
-            <div class="modal-conteudo" role="dialog" aria-modal="true">
-                
-                <div class="modal-topo">
-                <h2>Meu Perfil</h2>
-                <button class="modal-fechar" data-fechar-modal type="button">×</button>
-                </div>
-
-                <div class="modal-corpo">
-
-                    <form>
-                        <!-- FOTO DO PERFIL -->
-                        <div class="perfil-foto-box"> 
-                            <img src="../assets/img/avatar-default.png" alt="Foto do usuário"  class="perfil-foto">
-
-                            <label class="botao-geral pequeno">
-                                <i class="fa-solid fa-camera"></i>
-                                Alterar foto
-                                <input type="file" id="perfil_foto"accept="image/*"  hidden>
-                            </label>
-                        </div>
-
-                        <hr class="divisor">
-
-                        <!-- ALTERAR SENHA -->
-                        <form id="formAlterarSenha" novalidate>
-
-                            <div class="modal-campo">
-                            <input type="password" id="senha_atual" required>
-                            <label for="senha_atual">Senha atual</label>
-                            </div>
-
-                            <div class="modal-campo">
-                            <input type="password" id="nova_senha" required minlength="6">
-                            <label for="nova_senha">Nova senha</label>
-                            </div>
-
-                            <div class="modal-campo">
-                            <input type="password" id="confirmar_senha" required minlength="6">
-                            <label for="confirmar_senha">Confirmar nova senha</label>
-                            </div>
-
-                            <div class="modal-acoes"><br>
-                                <button type="submit" class="botao-geral">
-                                    <i class="fa-solid fa-key"></i>
-                                    Salvar nova senha
-                                </button> 
-
-                                <button class="botao-geral destaque" type="button"  title="Sair do sistema"  id="btnSair">
-                                    <i class="fa-solid fa-right-from-bracket"></i>
-                                    Sair
-                                </button>
-
-                        </div>
-
-                    </form>
-                </div>
-            </div>
-            </div>
-
-            <!-- MODAL: Meus Agendamentos -->
-            <div id="modalMeusAgendamentos" class="modal-geral" aria-hidden="true">
-            <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloMeusAgendamentos">
-
-                <div class="modal-topo">
-                <h2 id="tituloMeusAgendamentos">Meus Agendamentos</h2>
-                <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
-                </div>
-
-                <div class="modal-corpo">
-
-                <!-- Estado -->
-                <small class="msg-ajuda" id="ma_estado">ℹ️ Carregando agendamentos...</small>
-
-                <!-- Lista -->
-                <div id="ma_lista" class="ma-lista" aria-live="polite"></div> <br>
-
-                <div class="modal-acoes">
-                    <button class="botao-geral destaque" type="button" data-fechar-modal>
-                    <i class="fa-solid fa-arrow-left"></i>
-                    Voltar
-                    </button>
-                </div>
-
-                </div>
-            </div>
-            </div>
-
-        </section>
-
+            <button class="botao-geral destaque" id="btnSalvarPerfil" type="submit">
+              <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+              Salvar dados
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     </section>
 
-    </main>
+    <script src="../js/menu-lateral/menu-lateral.js?v=20260905_2"></script>
+    <script src="../js/identidade-visual/identidade-visual.js?v=20260822_1"></script>
+    <script src="../js/cliente/lista-meus-agendamentos.js?v=20260905_3"></script>
+    <script src="../js/cliente/salvar-dados-cadastrais.js?v=20260905_3"></script>
 
-    </div><!-- /.cliente-app-shell -->
+    
+    <!-- PERFIL DO CLIENTE -->
+    <script src="/public/js/cliente_perfil/buscar_foto_perfil.js?v=20260905_1"></script>
+    <script src="/public/js/cliente_perfil/alterar_foto_perfil.js?v=20260905_1"></script>
+    <script src="/public/js/cliente_perfil/alterar_senha_perfil.js?v=20260905_1"></script>
+
+    <!-- LOGOUT -->
+    <script src="/public/_auth/deslogar.js"></script>
 
 
-    <script src="../js/menu-lateral/menu-lateral.js?v=20260903_1"></script> <!--Componente universal do menu lateral responsivo-->
-    <script src="../js/identidade-visual/identidade-visual.js?v=20260822_1"></script> <!--Aplica a marca da empresa no menu lateral-->
 
-    <script src="../js/cliente-perfil/lista-meus-agendamentos.js" ></script> <!--Lista de Agendamentos do cliente-->
+    <script> // Abrir e fechar todos os modais da página
+      (() => {
+        "use strict";
 
-    <script>
-        document.addEventListener("amagenda:sessao-carregada", (event) => {
-            const auth = event.detail;
-            const campoTelefone = document.getElementById("cli_whats");
+        /*
+        |--------------------------------------------------------------------------
+        | CONFIGURAÇÃO
+        |--------------------------------------------------------------------------
+        */
 
-            if (
-                !auth ||
-                auth.tipo_usuario !== "cliente" ||
-                auth.telefone_verificado !== true ||
-                !campoTelefone
-            ) {
-                return;
+        const MODAL_CLASSES = [
+          "modal-geral",
+          "modal-cards"
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | FUNÇÕES
+        |--------------------------------------------------------------------------
+        */
+
+        function abrirModal(id) {
+          const modal = document.getElementById(id);
+
+          if (!modal) {
+            console.warn("Modal não encontrado:", id);
+            return;
+          }
+
+          modal.classList.add("ativo");
+          modal.setAttribute("aria-hidden", "false");
+        }
+
+        function fecharModal(modal) {
+          if (!modal) {
+            return;
+          }
+
+          /*
+          | Modais obrigatórios não podem ser fechados pelo botão
+          | ou pela tecla Esc enquanto o bloqueio estiver ativo.
+          */
+
+          if (modal.classList.contains("cadastro-bloqueado")) {
+            return;
+          }
+
+          modal.classList.remove("ativo");
+          modal.setAttribute("aria-hidden", "true");
+        }
+
+        function getModalPai(elemento) {
+          if (!elemento) {
+            return null;
+          }
+
+          return elemento.closest(
+            MODAL_CLASSES
+              .map(classe => `.${classe}`)
+              .join(",")
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | CLIQUES
+        |--------------------------------------------------------------------------
+        */
+
+        document.addEventListener("click", evento => {
+          /*
+          | ABRIR MODAL
+          */
+
+          const botaoAbrir = evento.target.closest(
+            "[data-abrir-modal]"
+          );
+
+          if (botaoAbrir) {
+            const idModal = botaoAbrir.getAttribute(
+              "data-abrir-modal"
+            );
+
+            abrirModal(idModal);
+            return;
+          }
+
+          /*
+          | FECHAR SOMENTE PELO BOTÃO
+          */
+
+          const botaoFechar = evento.target.closest(
+            "[data-fechar-modal]"
+          );
+
+          if (botaoFechar) {
+            const modal = getModalPai(botaoFechar);
+
+            if (modal) {
+              fecharModal(modal);
             }
+          }
 
-            campoTelefone.value = String(auth.telefone || "");
-            campoTelefone.readOnly = true;
-            campoTelefone.setAttribute("aria-readonly", "true");
-        });
-    </script>
-
-    <script> //Abrir e fechar todos os modals da pagina
-        /* ============================
-        CONFIGURAÇÃO DE CLASSES
-        ============================ */
-        const MODAL_CLASSES = ['modal-geral', 'modal-cards'];
-
-        /* ============================
-        FUNÇÕES
-        ============================ */
-        function abrirModal(id){
-        const modal = document.getElementById(id);
-        if(!modal){
-            console.warn('Modal não encontrado:', id);
-            return;
-        }
-        modal.classList.add('ativo');
-        }
-
-        function fecharModal(modal){
-        modal.classList.remove('ativo');
-        }
-
-        function getModalPai(element){
-        return element.closest(
-            MODAL_CLASSES.map(c => '.' + c).join(',')
-        );
-        }
-
-        /* ============================
-        EVENTOS DE CLICK
-        ============================ */
-        document.addEventListener('click', (e) => {
-
-        /* ABRIR */
-        const abrir = e.target.closest('[data-abrir-modal]');
-        if(abrir){
-            abrirModal(abrir.getAttribute('data-abrir-modal'));
-            return;
-        }
-
-        /* FECHAR (BOTÃO) */
-        if(e.target.closest('[data-fechar-modal]')){
-            const modal = getModalPai(e.target);
-            if(modal) fecharModal(modal);
-            return;
-        }
-
-        /* FECHAR (CLIQUE FORA) */
-        MODAL_CLASSES.forEach(classe => {
-            if(e.target.classList.contains(classe)){
-            fecharModal(e.target);
-            }
+          /*
+          | O fechamento ao clicar fora foi removido.
+          */
         });
 
-        });
+        /*
+        |--------------------------------------------------------------------------
+        | TECLA ESC
+        |--------------------------------------------------------------------------
+        */
 
-        /* ============================
-        TECLA ESC
-        ============================ */
-        document.addEventListener('keydown', (e) => {
-        if(e.key === 'Escape'){
-            MODAL_CLASSES.forEach(classe => {
+        document.addEventListener("keydown", evento => {
+          if (evento.key !== "Escape") {
+            return;
+          }
+
+          MODAL_CLASSES.forEach(classe => {
             document
-                .querySelectorAll(`.${classe}.ativo`)
-                .forEach(m => fecharModal(m));
-            });
-        }
+              .querySelectorAll(`.${classe}.ativo`)
+              .forEach(modal => {
+                fecharModal(modal);
+              });
+          });
         });
+
+        /*
+        |--------------------------------------------------------------------------
+        | DISPONIBILIZAÇÃO GLOBAL
+        |--------------------------------------------------------------------------
+        */
+
+        window.abrirModal = abrirModal;
+        window.fecharModal = fecharModal;
+      })();
     </script>
-
-    <script> /*  Navegação livre entre abas Pode navegar via clique ou JS Reutilizável em qualquer tela  */
-        (() => {
-    "use strict";
-
-    function TabsUniversal(root = document) {
-        const buttons = Array.from(root.querySelectorAll(".tab-btn"));
-        const panes   = Array.from(root.querySelectorAll(".tab-pane"));
-
-        if (!buttons.length || !panes.length) return;
-
-        function getPane(tabName) {
-        return root.querySelector(`#tab-${tabName}`);
-        }
-
-        function activate(tabName) {
-        const btn = buttons.find(b => b.dataset.tab === tabName);
-        const pane = getPane(tabName);
-
-        if (!btn || !pane) return;
-
-        buttons.forEach(b => b.classList.remove("active"));
-        panes.forEach(p => p.classList.remove("active"));
-
-        btn.classList.add("active");
-        pane.classList.add("active");
-
-        // acessibilidade básica
-        buttons.forEach(b => b.setAttribute("aria-selected", "false"));
-        btn.setAttribute("aria-selected", "true");
-        }
-
-        // clique manual
-        buttons.forEach(btn => {
-        btn.addEventListener("click", () => {
-            activate(btn.dataset.tab);
-        });
-        });
-
-        // API pública
-        return {
-        go: activate
-        };
-    }
-
-    // inicializa global
-    window.Tabs = TabsUniversal();
-
-    })();
-
-    </script>
-
-    </body>
+  </body>
 </html>
-

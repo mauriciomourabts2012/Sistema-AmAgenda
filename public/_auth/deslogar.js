@@ -5,7 +5,8 @@
    - Redirecionamento definido pelo PHP:
        • super admin   -> /public/views/login-super-admin.html
        • demais perfis -> /login.php?empresa=ID&nome=slug-da-empresa
-   - ✅ Usa Alert Universal (Toast) no lugar de confirm()
+   - Confirmação reutiliza o componente central window.MensagemSistema
+     (mesmo padrão visual usado nas demais confirmações do AmAgenda)
 ========================================================== */
 (() => {
   "use strict";
@@ -15,91 +16,6 @@
 
   const btn = document.getElementById("btnSair");
   if (!btn) return;
-
-  // ==========================================================
-  // Toast Universal
-  // ==========================================================
-  function getToastStack() {
-    let el = document.getElementById("toastStack");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "toastStack";
-      el.className = "ui-toast-stack";
-      document.body.appendChild(el);
-    }
-    return el;
-  }
-
-  function toastConfirm({
-    title = "Confirmação",
-    message = "Deseja continuar?",
-    type = "confirm",
-    confirmText = "Confirmar",
-    cancelText = "Cancelar",
-  }) {
-    return new Promise((resolve) => {
-      const stack = getToastStack();
-
-      const wrap = document.createElement("div");
-      wrap.className = `ui-alert ui-alert--${type}`;
-
-      wrap.innerHTML = `
-        <div class="ui-alert__icon">ℹ️</div>
-
-        <div class="ui-alert__content">
-          <p class="ui-alert__title"></p>
-          <p class="ui-alert__msg"></p>
-        </div>
-
-        <div class="ui-alert__actions">
-          <button type="button" class="ui-alert__btn js-cancel">${cancelText}</button>
-          <button type="button" class="ui-alert__btn ui-alert__btn--primary js-ok">${confirmText}</button>
-        </div>
-      `;
-
-      const $title = wrap.querySelector(".ui-alert__title");
-      const $msg = wrap.querySelector(".ui-alert__msg");
-      const $ok = wrap.querySelector(".js-ok");
-      const $cancel = wrap.querySelector(".js-cancel");
-
-      $title.textContent = title;
-      $msg.textContent = message;
-
-      const $icon = wrap.querySelector(".ui-alert__icon");
-      if ($icon) {
-        $icon.textContent =
-          type === "danger" ? "❌" :
-          type === "success" ? "✅" :
-          type === "warning" ? "⚠️" :
-          type === "neutral" ? "💬" :
-          "ℹ️";
-      }
-
-      let closed = false;
-
-      function close(result) {
-        if (closed) return;
-        closed = true;
-
-        document.removeEventListener("keydown", onKey);
-        wrap.classList.add("is-leaving");
-        setTimeout(() => wrap.remove(), 180);
-        resolve(result);
-      }
-
-      $ok.addEventListener("click", () => close(true));
-      $cancel.addEventListener("click", () => close(false));
-
-      function onKey(e) {
-        if (e.key === "Escape") close(false);
-      }
-
-      document.addEventListener("keydown", onKey);
-
-      stack.appendChild(wrap);
-      setTimeout(() => $ok?.focus?.(), 0);
-    });
-  }
 
   // ==========================================================
   // Busy state
@@ -143,18 +59,20 @@
   }
 
   // ==========================================================
-  // Click
+  // Click — confirmação usa o componente central MensagemSistema
   // ==========================================================
   btn.addEventListener("click", async (ev) => {
     ev.preventDefault();
 
-    const ok = await toastConfirm({
-      title: "Sair do sistema",
-      message: "Deseja sair do sistema agora?",
-      type: "confirm",
-      confirmText: "Sair",
-      cancelText: "Cancelar",
-    });
+    const confirmar = window.MensagemSistema?.confirmar;
+
+    const ok = typeof confirmar === "function"
+      ? await confirmar("Deseja realmente sair do sistema?", {
+          titulo: "Sair do sistema",
+          textoConfirmar: "Sair",
+          textoCancelar: "Cancelar",
+        })
+      : true;
 
     if (!ok) return;
     logout();
