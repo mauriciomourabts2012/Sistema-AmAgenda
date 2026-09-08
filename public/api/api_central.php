@@ -86,6 +86,18 @@ $routes = [
     'cliente/agendamentos/listar' => [
         'GET' => __DIR__ . '/../../backend/cliente/listar_agendamentos.php',
     ],
+    'cliente/agendamento/profissionais' => [
+        'GET' => __DIR__ . '/../../backend/cliente_agendamento/lista-profissionais.php',
+    ],
+    'cliente/agendamento/servicos' => [
+        'GET' => __DIR__ . '/../../backend/cliente_agendamento/Llista-servicos.php',
+    ],
+    'cliente/agendamento/disponibilidade' => [
+        'GET' => __DIR__ . '/../../backend/cliente_agendamento/selecionar-horario.php',
+    ],
+    'cliente/agendamento/confirmar' => [
+        'POST' => __DIR__ . '/../../backend/cliente_agendamento/confirmar-agendamento.php',
+    ],
 
     // MODAL PERFIL DO CLIENTE
 

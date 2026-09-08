@@ -1,182 +1,151 @@
-// js/Cliente/Servicos.js
 (() => {
   "use strict";
 
   document.addEventListener("DOMContentLoaded", () => {
+    const app = window.ClienteAgendamento;
     const lista = document.getElementById("listaServicos");
     const btnVoltar = document.getElementById("btnVoltarServico");
     const btnContinuar = document.getElementById("btnContinuarServico");
-
     const inServJson = document.getElementById("ag_servicos_json");
     const inTotal = document.getElementById("ag_servicos_total");
+    if (!app || !lista || !btnVoltar || !btnContinuar || !inServJson || !inTotal) return;
 
-    if (!lista || !btnVoltar || !btnContinuar || !inServJson || !inTotal) return;
+    let servicos = [];
+    let controller = null;
 
-    // 🔁 depois troca por fetch
-    const servicos = [
-      {
-        id: 11,
-        nome: "Avaliação Para Micropigmentação",
-        desc: "Consulta personalizada para analisar o formato ideal e as expectativas.",
-        foto: "/img/servicos/micro.jpg",
-        preco: 0,
-        duracaoMin: 30
-      },
-      {
-        id: 12,
-        nome: "Browlamination",
-        desc: "Alinhamento e fixação dos fios das sobrancelhas.",
-        foto: "/img/servicos/brow.jpg",
-        preco: 95,
-        duracaoMin: 60
-      },
-      {
-        id: 13,
-        nome: "Cílios Efeito Rímel (fio a fio)",
-        desc: "Aplicação de fios sintéticos para efeito natural e alongado.",
-        foto: "/img/servicos/cilios.jpg",
-        preco: 125,
-        duracaoMin: 120
-      }
-    ];
+    const moneyBR = (valor) => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const duracaoLabel = (minutos) => {
+      const total = Number(minutos || 0);
+      if (total < 60) return `${total} min`;
+      const horas = Math.floor(total / 60);
+      const resto = total % 60;
+      return resto ? `${horas}h ${String(resto).padStart(2, "0")}m` : `${horas}h`;
+    };
 
-    // ✅ seleção única
-    let selectedId = null;
-
-    function escapeHtml(s) {
-      return String(s ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+    function estadoLista(texto) {
+      lista.replaceChildren();
+      const item = document.createElement("div");
+      item.className = "u-empty";
+      item.textContent = texto;
+      lista.appendChild(item);
     }
 
-    function moneyBR(v) {
-      const n = Number(v || 0);
-      return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    function limparSelecao(disparar = true) {
+      app.estado.servico = null;
+      app.estado.data = "";
+      app.estado.hora = "";
+      inServJson.value = "[]";
+      inTotal.value = "0";
+      btnContinuar.innerHTML = '<i class="fa-solid fa-arrow-right"></i> Continuar';
+      btnContinuar.disabled = true;
+      btnContinuar.setAttribute("aria-disabled", "true");
+      if (disparar) document.dispatchEvent(new CustomEvent("cliente-agendamento:servico-alterado", { detail: null }));
     }
 
-    function duracaoLabel(min) {
-      const m = Number(min || 0);
-      if (!m) return "";
-      if (m < 60) return `${m} min`;
-      const h = Math.floor(m / 60);
-      const r = m % 60;
-      return r ? `${h}h ${String(r).padStart(2, "0")}m` : `${h}h`;
-    }
-
-    function getSelectedServico() {
-      return servicos.find(x => String(x.id) === String(selectedId)) || null;
-    }
-
-    // ✅ NÃO usa disabled (pra alert funcionar sempre)
-    function updateHiddenAndButtonText() {
-      const s = getSelectedServico();
-
-      if (!s) {
-        inServJson.value = "[]";
-        inTotal.value = "0";
-        btnContinuar.innerHTML = `<i class="fa-solid fa-arrow-right"></i> Continuar`;
+    function selecionar(servico, item) {
+      const mesmo = String(app.estado.servico?.id_servico || "") === String(servico.id_servico);
+      lista.querySelectorAll(".u-item-servico").forEach((botao) => {
+        botao.classList.remove("is-active");
+        botao.setAttribute("aria-pressed", "false");
+        botao.querySelector(".u-badge")?.classList.remove("confirmado");
+      });
+      if (mesmo) {
+        limparSelecao();
         return;
       }
-
-      const payload = [{ id: s.id, nome: s.nome, preco: s.preco, duracaoMin: s.duracaoMin }];
-      inServJson.value = JSON.stringify(payload);
-      inTotal.value = String(Number(s.preco || 0));
-
-      btnContinuar.innerHTML =
-        `<i class="fa-solid fa-arrow-right"></i> Continuar • ${moneyBR(s.preco || 0)}`;
+      app.estado.servico = servico;
+      app.estado.data = "";
+      app.estado.hora = "";
+      item.classList.add("is-active");
+      item.setAttribute("aria-pressed", "true");
+      item.querySelector(".u-badge")?.classList.add("confirmado");
+      inServJson.value = JSON.stringify([{
+        id: servico.id_servico,
+        nome: servico.nome,
+        preco: servico.valor,
+        duracaoMin: servico.duracao_min
+      }]);
+      inTotal.value = String(Number(servico.valor || 0));
+      btnContinuar.innerHTML = `<i class="fa-solid fa-arrow-right"></i> Continuar • ${moneyBR(servico.valor)}`;
+      btnContinuar.disabled = false;
+      btnContinuar.setAttribute("aria-disabled", "false");
+      document.dispatchEvent(new CustomEvent("cliente-agendamento:servico-alterado", { detail: servico }));
     }
 
-    function paintSelection() {
-      [...lista.querySelectorAll(".u-item-servico")].forEach(btn => {
-        const ativo = btn.dataset.id === String(selectedId);
-        btn.classList.toggle("is-active", ativo);
-        btn.setAttribute("aria-pressed", ativo ? "true" : "false");
+    function renderizar() {
+      lista.replaceChildren();
+      servicos.forEach((servico) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "u-item u-item-servico has-badge";
+        item.dataset.id = String(servico.id_servico);
+        item.setAttribute("aria-pressed", "false");
 
-        const badge = btn.querySelector(".u-badge");
-        if (badge) badge.classList.toggle("is-selected", ativo);
+        const avatar = document.createElement("span");
+        avatar.className = "u-avatar is-fallback";
+        const info = document.createElement("span");
+        info.className = "u-info";
+        const nome = document.createElement("span");
+        nome.className = "u-name";
+        nome.textContent = servico.nome;
+        info.appendChild(nome);
+        if (servico.descricao) {
+          const descricao = document.createElement("span");
+          descricao.className = "u-desc";
+          descricao.textContent = servico.descricao;
+          info.appendChild(descricao);
+        }
+        const badge = document.createElement("span");
+        badge.className = "u-badge pendente";
+        badge.setAttribute("aria-hidden", "true");
+        badge.textContent = `${moneyBR(servico.valor)} • ${duracaoLabel(servico.duracao_min)}`;
+        item.append(avatar, info, badge);
+        item.addEventListener("click", () => selecionar(servico, item));
+        lista.appendChild(item);
       });
     }
 
-    function markSelected(id) {
-      if (String(selectedId) === String(id)) selectedId = null;
-      else selectedId = id;
-
-      paintSelection();
-      updateHiddenAndButtonText();
-    }
-
-    function render(items) {
-      if (!items || !items.length) {
-        lista.innerHTML = `
-          <div class="u-empty">
-            ⚠️ Nenhum serviço disponível no momento.
-          </div>
-        `;
-        selectedId = null;
-        updateHiddenAndButtonText();
+    async function carregar(profissional) {
+      controller?.abort();
+      controller = new AbortController();
+      servicos = [];
+      limparSelecao();
+      if (!profissional?.id_profissional) {
+        estadoLista("Selecione um profissional para ver os serviços disponíveis.");
         return;
       }
-
-      lista.innerHTML = items.map(s => {
-        const nome = escapeHtml(s.nome);
-        const desc = escapeHtml(s.desc || "");
-        const foto = escapeHtml(s.foto || "");
-        const precoTxt = moneyBR(Number(s.preco || 0));
-        const durTxt = duracaoLabel(s.duracaoMin);
-
-        const isActive = String(s.id) === String(selectedId);
-        const badgeTxt = `${precoTxt}${durTxt ? ` • ${durTxt}` : ""}`;
-
-        return `
-          <button
-            type="button"
-            class="u-item u-item-servico has-badge ${isActive ? "is-active" : ""}"
-            data-id="${s.id}"
-            aria-pressed="${isActive ? "true" : "false"}"
-          >
-            <span class="u-avatar">
-              <img src="${foto}" alt=""
-                   loading="lazy"
-                   onerror="this.style.display='none'; this.closest('.u-avatar').classList.add('is-fallback')">
-            </span>
-
-            <span class="u-info">
-              <span class="u-name">${nome}</span>
-              ${desc ? `<span class="u-desc">${desc}</span>` : ``}
-            </span>
-
-            <span class="u-badge ${isActive ? "confirmado" : "pendente"}" aria-hidden="true">
-              ${badgeTxt}
-            </span>
-          </button>
-        `;
-      }).join("");
-
-      updateHiddenAndButtonText();
+      estadoLista("Carregando serviços...");
+      try {
+        const query = `&id_profissional=${encodeURIComponent(profissional.id_profissional)}`;
+        const json = await app.api("cliente/agendamento/servicos", { query, signal: controller.signal });
+        servicos = Array.isArray(json.data?.itens) ? json.data.itens : [];
+        if (!servicos.length) {
+          estadoLista("Este profissional não possui serviços disponíveis no momento.");
+          return;
+        }
+        renderizar();
+      } catch (erro) {
+        if (erro.name === "AbortError") return;
+        estadoLista(erro.message || "Não foi possível carregar os serviços.");
+        app.mensagem("erro", erro.message || "Não foi possível carregar os serviços.");
+      }
     }
 
-    // clique = seleciona 1 (toggle)
-    lista.addEventListener("click", (e) => {
-      const item = e.target.closest(".u-item-servico");
-      if (!item) return;
-      markSelected(item.dataset.id);
+    document.addEventListener("cliente-agendamento:profissional-alterado", (evento) => carregar(evento.detail));
+    document.addEventListener("cliente-agendamento:resetar", () => {
+      controller?.abort();
+      servicos = [];
+      limparSelecao();
+      estadoLista("Selecione um profissional para ver os serviços disponíveis.");
     });
-
-    btnVoltar.addEventListener("click", () => {
-      if (window.Tabs && typeof window.Tabs.go === "function") window.Tabs.go("profissional");
-    });
-
+    btnVoltar.addEventListener("click", () => window.Tabs?.go?.("profissional"));
     btnContinuar.addEventListener("click", () => {
-      if (!selectedId) {
-        alert("⚠️ Selecione 1 serviço para continuar.");
+      if (!app.estado.servico) {
+        app.mensagem("aviso", "Selecione um serviço para continuar.");
         return;
       }
-      if (window.Tabs && typeof window.Tabs.go === "function") window.Tabs.go("horario");
+      window.Tabs?.go?.("horario");
     });
-
-    render(servicos);
+    estadoLista("Selecione um profissional para ver os serviços disponíveis.");
   });
 })();

@@ -1,237 +1,203 @@
-// js/Cliente/Horario.js
 (() => {
   "use strict";
 
   document.addEventListener("DOMContentLoaded", () => {
+    const app = window.ClienteAgendamento;
     const listaDias = document.getElementById("listaDias");
     const listaHorarios = document.getElementById("listaHorarios");
     const labelMesAtual = document.getElementById("labelMesAtual");
-
     const btnMesPrev = document.getElementById("btnMesPrev");
     const btnMesNext = document.getElementById("btnMesNext");
-
     const inData = document.getElementById("ag_data_iso");
     const inHora = document.getElementById("ag_hora");
-
     const btnVoltar = document.getElementById("btnVoltarHorario");
     const btnContinuar = document.getElementById("btnContinuarHorario");
+    if (!app || !listaDias || !listaHorarios || !labelMesAtual || !btnMesPrev || !btnMesNext || !inData || !inHora || !btnVoltar || !btnContinuar) return;
 
-    if (
-      !listaDias || !listaHorarios || !labelMesAtual ||
-      !btnMesPrev || !btnMesNext ||
-      !inData || !inHora || !btnVoltar || !btnContinuar
-    ) return;
+    const hoje = new Date();
+    let cursor = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    const mesMinimo = new Date(cursor);
+    let mesMaximo = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 1);
+    let datasDisponiveis = new Set();
+    let controllerDias = null;
+    let controllerHorarios = null;
+    let sequenciaDias = 0;
+    let sequenciaHorarios = 0;
 
-    // mês exibido
-    let cursor = new Date();
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const pad2 = (valor) => String(valor).padStart(2, "0");
+    const toISO = (data) => `${data.getFullYear()}-${pad2(data.getMonth() + 1)}-${pad2(data.getDate())}`;
+    const labelMes = (data) => data.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(/^\w/, (c) => c.toUpperCase());
 
-    const today = new Date();
-    const minMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    let selectedDayIso = "";
-    let selectedHora = "";
-
-    function pad2(n) { return String(n).padStart(2, "0"); }
-
-    function toISO(d) {
-      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    function estado(container, texto) {
+      container.replaceChildren();
+      const item = document.createElement("div");
+      item.className = "u-empty";
+      item.textContent = texto;
+      container.appendChild(item);
     }
 
-    function labelMes(d) {
-      return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
-        .replace(/^\w/, c => c.toUpperCase());
+    function sincronizar() {
+      inData.value = app.estado.data || "";
+      inHora.value = app.estado.hora || "";
+      const valido = Boolean(app.estado.data && app.estado.hora);
+      btnContinuar.disabled = !valido;
+      btnContinuar.setAttribute("aria-disabled", valido ? "false" : "true");
     }
 
-    function startOfDay(d) {
-      const x = new Date(d);
-      x.setHours(0, 0, 0, 0);
-      return x;
+    function limpar() {
+      controllerDias?.abort();
+      controllerHorarios?.abort();
+      app.estado.data = "";
+      app.estado.hora = "";
+      datasDisponiveis = new Set();
+      sincronizar();
+      estado(listaHorarios, "Selecione uma data para ver os horários disponíveis.");
     }
 
-    function getHorariosDisponiveis(isoDate) {
-      return [
-        "07:00", "07:30", "08:00", "08:30",
-        "09:00", "09:30", "10:00", "10:30",
-        "14:00", "14:30", "15:00", "15:30", "16:00", "16:30"
-      ];
-    }
-
-    function buildMonthDays(dateFirstDay) {
-      const y = dateFirstDay.getFullYear();
-      const m = dateFirstDay.getMonth();
-      const last = new Date(y, m + 1, 0).getDate();
-
-      const today0 = startOfDay(new Date());
-      const out = [];
-
-      for (let day = 1; day <= last; day++) {
-        const d = new Date(y, m, day);
-        const d0 = startOfDay(d);
-
-        const iso = toISO(d0);
-        const semana = d0.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
-        const mes = d0.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-
-        out.push({
-          iso,
-          semana,
-          dia: day,
-          mes,
-          disabled: d0 < today0
-        });
-      }
-      return out;
-    }
-
-    function syncHidden() {
-      inData.value = selectedDayIso || "";
-      inHora.value = selectedHora || "";
-    }
-
-    function paintDias() {
-      const days = buildMonthDays(cursor);
+    function pintarDias() {
+      listaDias.replaceChildren();
       labelMesAtual.textContent = labelMes(cursor);
-
-      const selectedIsDisabled = selectedDayIso
-        ? days.some(x => x.iso === selectedDayIso && x.disabled)
-        : false;
-
-      if (selectedIsDisabled) {
-        selectedDayIso = "";
-        selectedHora = "";
-        syncHidden();
+      const ultimo = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+      for (let dia = 1; dia <= ultimo; dia += 1) {
+        const data = new Date(cursor.getFullYear(), cursor.getMonth(), dia);
+        const iso = toISO(data);
+        const disponivel = datasDisponiveis.has(iso);
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.className = `u-dia${iso === app.estado.data ? " is-active" : ""}${disponivel ? "" : " is-disabled"}`;
+        botao.dataset.iso = iso;
+        botao.disabled = !disponivel;
+        const semana = document.createElement("span");
+        semana.className = "u-dia-semana";
+        semana.textContent = data.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+        const numero = document.createElement("span");
+        numero.className = "u-dia-num";
+        numero.textContent = String(dia);
+        const mes = document.createElement("span");
+        mes.className = "u-dia-mes";
+        mes.textContent = data.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+        botao.append(semana, numero, mes);
+        listaDias.appendChild(botao);
       }
-
-      listaDias.innerHTML = days.map(d => `
-        <button type="button"
-          class="u-dia
-            ${d.iso === selectedDayIso ? "is-active" : ""}
-            ${d.disabled ? "is-disabled" : ""}"
-          data-iso="${d.iso}"
-          ${d.disabled ? "disabled" : ""}>
-          <span class="u-dia-semana">${d.semana}</span>
-          <span class="u-dia-num">${d.dia}</span>
-          <span class="u-dia-mes">${d.mes}</span>
-        </button>
-      `).join("");
-
-      const active = listaDias.querySelector(".u-dia.is-active");
-      if (active && typeof active.scrollIntoView === "function") {
-        active.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-      }
-
-      btnMesPrev.disabled = (
-        cursor.getFullYear() === minMonth.getFullYear() &&
-        cursor.getMonth() === minMonth.getMonth()
-      );
-      btnMesPrev.style.opacity = btnMesPrev.disabled ? "0.45" : "";
-      btnMesPrev.style.pointerEvents = btnMesPrev.disabled ? "none" : "";
+      btnMesPrev.disabled = cursor <= mesMinimo;
+      btnMesNext.disabled = cursor >= mesMaximo;
     }
 
-    function paintHorarios() {
-      if (!selectedDayIso) {
-        listaHorarios.innerHTML = `
-          <div class="u-empty" style="opacity:.75;">
-            📅 Selecione uma data para ver os horários disponíveis.
-          </div>
-        `;
-        selectedHora = "";
-        syncHidden();
+    async function carregarDias() {
+      limpar();
+      if (!app.estado.profissional || !app.estado.servico) {
+        estado(listaDias, "Selecione um profissional e um serviço para consultar as datas.");
         return;
       }
-
-      const hs = getHorariosDisponiveis(selectedDayIso);
-
-      if (!hs.length) {
-        listaHorarios.innerHTML = `
-          <div class="u-empty" style="opacity:.7;">
-            ⚠️ Nenhum horário disponível para esta data.
-          </div>
-        `;
-        selectedHora = "";
-        syncHidden();
-        return;
+      controllerDias = new AbortController();
+      const atual = ++sequenciaDias;
+      estado(listaDias, "Consultando datas disponíveis...");
+      labelMesAtual.textContent = labelMes(cursor);
+      try {
+        const query = `&operacao=dias&id_profissional=${encodeURIComponent(app.estado.profissional.id_profissional)}&id_servico=${encodeURIComponent(app.estado.servico.id_servico)}&ano=${cursor.getFullYear()}&mes=${cursor.getMonth() + 1}`;
+        const json = await app.api("cliente/agendamento/disponibilidade", { query, signal: controllerDias.signal });
+        if (atual !== sequenciaDias) return;
+        datasDisponiveis = new Set(Array.isArray(json.data?.datas_disponiveis) ? json.data.datas_disponiveis : []);
+        const limite = String(json.data?.data_maxima || "");
+        if (/^\d{4}-\d{2}-\d{2}$/.test(limite)) {
+          const [ano, mes] = limite.split("-").map(Number);
+          mesMaximo = new Date(ano, mes - 1, 1);
+        }
+        pintarDias();
+        if (!datasDisponiveis.size) estado(listaHorarios, "Não existem horários disponíveis neste mês.");
+      } catch (erro) {
+        if (erro.name === "AbortError") return;
+        estado(listaDias, erro.message || "Não foi possível consultar as datas.");
+        app.mensagem("erro", erro.message || "Não foi possível consultar as datas.");
       }
-
-      listaHorarios.innerHTML = hs.map(h => `
-        <button type="button"
-          class="u-hora ${h === selectedHora ? "is-active" : ""}"
-          data-hora="${h}">
-          ${h}
-        </button>
-      `).join("");
-
-      syncHidden();
     }
 
-    function selectDay(iso) {
-      selectedDayIso = String(iso || "");
-      selectedHora = "";
-      syncHidden();
-      paintDias();
-      paintHorarios();
+    async function selecionarData(iso) {
+      if (!datasDisponiveis.has(iso) || !app.estado.profissional || !app.estado.servico) return;
+      controllerHorarios?.abort();
+      controllerHorarios = new AbortController();
+      const atual = ++sequenciaHorarios;
+      app.estado.data = iso;
+      app.estado.hora = "";
+      sincronizar();
+      pintarDias();
+      estado(listaHorarios, "Consultando horários disponíveis...");
+      try {
+        const query = `&operacao=horarios&id_profissional=${encodeURIComponent(app.estado.profissional.id_profissional)}&id_servico=${encodeURIComponent(app.estado.servico.id_servico)}&data=${encodeURIComponent(iso)}`;
+        const json = await app.api("cliente/agendamento/disponibilidade", { query, signal: controllerHorarios.signal });
+        if (atual !== sequenciaHorarios || app.estado.data !== iso) return;
+        const horarios = Array.isArray(json.data?.horarios) ? json.data.horarios : [];
+        listaHorarios.replaceChildren();
+        if (!horarios.length) {
+          estado(listaHorarios, "Nenhum horário disponível para esta data.");
+          return;
+        }
+        horarios.forEach((horario) => {
+          const botao = document.createElement("button");
+          botao.type = "button";
+          botao.className = "u-hora";
+          botao.dataset.hora = horario.hora_inicio;
+          botao.textContent = horario.hora_inicio;
+          listaHorarios.appendChild(botao);
+        });
+      } catch (erro) {
+        if (erro.name === "AbortError") return;
+        estado(listaHorarios, erro.message || "Não foi possível consultar os horários.");
+        app.mensagem("erro", erro.message || "Não foi possível consultar os horários.");
+      }
     }
 
-    function selectHora(h) {
-      if (!selectedDayIso) return;
-
-      selectedHora = String(h || "");
-
-      listaHorarios.querySelectorAll(".u-hora").forEach(el => {
-        el.classList.toggle("is-active", el.dataset.hora === selectedHora);
-      });
-
-      syncHidden();
-    }
-
-    function changeMonth(delta) {
-      const y = cursor.getFullYear();
-      const m = cursor.getMonth();
-      const next = new Date(y, m + delta, 1);
-
-      if (next < minMonth) return;
-
-      cursor = next;
-      selectedDayIso = "";
-      selectedHora = "";
-      syncHidden();
-
-      paintDias();
-      paintHorarios();
-    }
-
-    listaDias.addEventListener("click", (e) => {
-      const b = e.target.closest(".u-dia");
-      if (!b) return;
-      if (b.disabled) return;
-      selectDay(b.dataset.iso);
+    listaDias.addEventListener("click", (evento) => {
+      const botao = evento.target.closest(".u-dia");
+      if (botao && !botao.disabled) selecionarData(botao.dataset.iso);
     });
-
-    listaHorarios.addEventListener("click", (e) => {
-      const b = e.target.closest(".u-hora");
-      if (!b) return;
-      selectHora(b.dataset.hora);
+    listaHorarios.addEventListener("click", (evento) => {
+      const botao = evento.target.closest(".u-hora");
+      if (!botao || !app.estado.data) return;
+      app.estado.hora = botao.dataset.hora || "";
+      listaHorarios.querySelectorAll(".u-hora").forEach((item) => item.classList.toggle("is-active", item === botao));
+      sincronizar();
     });
-
-    btnMesPrev.addEventListener("click", () => changeMonth(-1));
-    btnMesNext.addEventListener("click", () => changeMonth(+1));
-
-    btnVoltar.addEventListener("click", () => {
-      if (window.Tabs && typeof window.Tabs.go === "function") window.Tabs.go("servico");
+    btnMesPrev.addEventListener("click", () => {
+      if (cursor <= mesMinimo) return;
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+      carregarDias();
     });
-
+    btnMesNext.addEventListener("click", () => {
+      if (cursor >= mesMaximo) return;
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      carregarDias();
+    });
+    btnVoltar.addEventListener("click", () => window.Tabs?.go?.("servico"));
     btnContinuar.addEventListener("click", () => {
-      if (!inData.value || !inHora.value) {
-        alert("⚠️ Selecione uma data e um horário para continuar.");
+      if (!app.estado.data || !app.estado.hora) {
+        app.mensagem("aviso", "Selecione uma data e um horário para continuar.");
         return;
       }
-      if (window.Tabs && typeof window.Tabs.go === "function") window.Tabs.go("confirmar");
+      document.dispatchEvent(new CustomEvent("cliente-agendamento:revisar"));
+      window.Tabs?.go?.("confirmar");
+    });
+    document.addEventListener("cliente-agendamento:profissional-alterado", () => {
+      limpar();
+      estado(listaDias, "Selecione um serviço para consultar as datas.");
+    });
+    document.addEventListener("cliente-agendamento:servico-alterado", () => {
+      cursor = new Date(mesMinimo);
+      carregarDias();
+    });
+    document.addEventListener("cliente-agendamento:atualizar-horarios", (evento) => {
+      const data = String(evento.detail?.data || "");
+      if (data && datasDisponiveis.has(data)) selecionarData(data);
+      else carregarDias();
+    });
+    document.addEventListener("cliente-agendamento:resetar", () => {
+      cursor = new Date(mesMinimo);
+      limpar();
+      estado(listaDias, "Selecione um profissional e um serviço para consultar as datas.");
     });
 
-    // init
-    syncHidden();
-    paintDias();
-    paintHorarios();
+    sincronizar();
+    estado(listaDias, "Selecione um profissional e um serviço para consultar as datas.");
+    estado(listaHorarios, "Selecione uma data para ver os horários disponíveis.");
   });
 })();

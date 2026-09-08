@@ -1,97 +1,124 @@
-// js/Cliente/Confirmar.js
 (() => {
   "use strict";
 
-  const box = document.getElementById("boxResumoAgendamento");
-  const btnVoltar = document.getElementById("btnVoltarConfirmar");
-  const btnAgendar = document.getElementById("btnAgendarFinal");
+  document.addEventListener("DOMContentLoaded", () => {
+    const app = window.ClienteAgendamento;
+    const box = document.getElementById("boxResumoAgendamento");
+    const btnVoltar = document.getElementById("btnVoltarConfirmar");
+    const btnAgendar = document.getElementById("btnAgendarFinal");
+    const inObs = document.getElementById("ag_obs");
+    if (!app || !box || !btnVoltar || !btnAgendar || !inObs) return;
 
-  const inServJson = document.getElementById("ag_servicos_json");
-  const inTotal = document.getElementById("ag_servicos_total");
+    let enviando = false;
+    const moneyBR = (valor) => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const inData = document.getElementById("ag_data_iso");
-  const inHora = document.getElementById("ag_hora");
+    function formatarDataHora(iso, hora) {
+      if (!iso || !hora) return "—";
+      const [ano, mes, dia] = iso.split("-").map(Number);
+      const data = new Date(ano, mes - 1, dia);
+      const semana = data.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+      return `${semana}, ${String(dia).padStart(2, "0")}/${String(mes).padStart(2, "0")}/${ano} às ${hora}`;
+    }
 
-  const inObs = document.getElementById("ag_obs");
+    function linha(rotulo, valor, preco = "") {
+      const container = document.createElement("div");
+      container.className = "u-resumo-linha";
+      const label = document.createElement("div");
+      label.className = "u-resumo-label";
+      label.textContent = rotulo;
+      const row = document.createElement("div");
+      row.className = preco ? "u-resumo-row" : "u-resumo-valor";
+      if (preco) {
+        const texto = document.createElement("div");
+        texto.className = "u-resumo-valor";
+        texto.textContent = valor;
+        const total = document.createElement("div");
+        total.className = "u-resumo-preco";
+        total.textContent = preco;
+        row.append(texto, total);
+      } else {
+        row.textContent = valor;
+      }
+      container.append(label, row);
+      return container;
+    }
 
-  if (!box || !btnVoltar || !btnAgendar || !inServJson || !inTotal || !inData || !inHora || !inObs) return;
+    function renderizar() {
+      const profissional = app.estado.profissional;
+      const servico = app.estado.servico;
+      box.replaceChildren(
+        linha("Profissional:", profissional?.nome || "—"),
+        linha("Data e Hora:", formatarDataHora(app.estado.data, app.estado.hora)),
+        linha("Serviço:", servico?.nome || "—", moneyBR(servico?.valor || 0))
+      );
+      const valido = Boolean(profissional && servico && app.estado.data && app.estado.hora);
+      btnAgendar.disabled = !valido;
+      btnAgendar.setAttribute("aria-disabled", valido ? "false" : "true");
+    }
 
-  // ✅ depois você liga no profissional selecionado (hidden vindo da aba profissional)
-  // Por enquanto mock:
-  const profissionalNome = "Profissional selecionado";
+    function setEnviando(ativo) {
+      enviando = ativo;
+      btnAgendar.disabled = ativo || !(app.estado.profissional && app.estado.servico && app.estado.data && app.estado.hora);
+      btnAgendar.dataset.textoOriginal ||= btnAgendar.innerHTML;
+      btnAgendar.innerHTML = ativo
+        ? '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Agendando...'
+        : btnAgendar.dataset.textoOriginal;
+    }
 
-  function moneyBR(v) {
-    const n = Number(v || 0);
-    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  }
+    function atualizarAposConflito() {
+      const dataSelecionada = app.estado.data;
+      app.estado.hora = "";
+      document.getElementById("ag_hora").value = "";
+      document.dispatchEvent(new CustomEvent("cliente-agendamento:atualizar-horarios", { detail: { data: dataSelecionada } }));
+      window.Tabs?.go?.("horario");
+    }
 
-  function formatDataHora(iso, hora) {
-    if (!iso || !hora) return "—";
-    const [y,m,d] = String(iso).split("-").map(Number);
-    const dt = new Date(y, (m||1)-1, d||1);
-    const sem = dt.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
-    return `${sem}, ${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y} às ${hora}`;
-  }
+    btnVoltar.addEventListener("click", () => window.Tabs?.go?.("horario"));
+    btnAgendar.addEventListener("click", async () => {
+      if (enviando) return;
+      const { profissional, servico, data, hora, csrfToken } = app.estado;
+      if (!profissional || !servico || !data || !hora) {
+        app.mensagem("aviso", "Revise profissional, serviço, data e horário antes de agendar.");
+        return;
+      }
+      if (!csrfToken) {
+        app.mensagem("erro", "Sua sessão de agendamento expirou. Atualize a página e tente novamente.");
+        return;
+      }
+      const body = new FormData();
+      body.append("id_profissional", String(profissional.id_profissional));
+      body.append("id_servico", String(servico.id_servico));
+      body.append("data", data);
+      body.append("hora", hora);
+      body.append("observacao", String(inObs.value || "").trim());
+      setEnviando(true);
+      try {
+        const json = await app.api("cliente/agendamento/confirmar", {
+          method: "POST",
+          body,
+          headers: { "X-CSRF-Token": csrfToken }
+        });
+        app.mensagem("sucesso", json.user_msg || "Solicitação enviada. O agendamento aguarda confirmação do profissional.");
+        inObs.value = "";
+        document.dispatchEvent(new CustomEvent("cliente-agendamento:resetar"));
+        renderizar();
+        window.Tabs?.go?.("profissional");
+      } catch (erro) {
+        if (erro.status === 409 && ["SCHEDULE_CONFLICT", "SCHEDULE_BUSY"].includes(erro.code)) {
+          app.mensagem("aviso", erro.message || "O horário acabou de ser ocupado.");
+          atualizarAposConflito();
+          return;
+        }
+        app.mensagem("erro", erro.message || "Não foi possível concluir o agendamento.");
+      } finally {
+        setEnviando(false);
+      }
+    });
 
-  function getServicoResumo() {
-    let arr = [];
-    try { arr = JSON.parse(inServJson.value || "[]"); } catch { arr = []; }
-    const s = arr[0] || null;
-    return s;
-  }
-
-  function renderResumo() {
-    const s = getServicoResumo();
-    const total = Number(inTotal.value || 0);
-
-    const dataHoraTxt = formatDataHora(inData.value, inHora.value);
-
-    box.innerHTML = `
-      <div class="u-resumo-linha">
-        <div class="u-resumo-label">Profissional:</div>
-        <div class="u-resumo-valor">${profissionalNome}</div>
-      </div>
-
-      <div class="u-resumo-linha">
-        <div class="u-resumo-label">Data e Hora:</div>
-        <div class="u-resumo-valor">${dataHoraTxt}</div>
-      </div>
-
-      <div class="u-resumo-linha">
-        <div class="u-resumo-label">Serviço:</div>
-        <div class="u-resumo-row">
-          <div class="u-resumo-valor">${s ? (s.nome || "—") : "—"}</div>
-          <div class="u-resumo-preco">${moneyBR(total)}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Importante: renderizar sempre que entrar na aba
-  // (assumindo que seu Tabs.go() dispara algum evento; se não tiver, deixo fallback)
-  document.addEventListener("click", (e) => {
-    const isTabBtn = e.target.closest("[data-tab='confirmar'], #tab-confirmar-btn");
-    if (isTabBtn) renderResumo();
+    document.addEventListener("cliente-agendamento:revisar", renderizar);
+    document.addEventListener("cliente-agendamento:profissional-alterado", renderizar);
+    document.addEventListener("cliente-agendamento:servico-alterado", renderizar);
+    document.addEventListener("cliente-agendamento:resetar", renderizar);
+    renderizar();
   });
-
-  btnVoltar.addEventListener("click", () => Tabs.go("horario"));
-
-  btnAgendar.addEventListener("click", () => {
-    // aqui você vai fazer o POST final
-    // payload sugerido:
-    const payload = {
-      profissional: profissionalNome,
-      data: inData.value,
-      hora: inHora.value,
-      servicos: inServJson.value,
-      total: inTotal.value,
-      obs: String(inObs.value || "").trim()
-    };
-
-    console.log("AGENDAR payload:", payload);
-    window.alert("✅ (mock) Agendamento pronto para enviar!");
-  });
-
-  // primeira renderização
-  renderResumo();
 })();
