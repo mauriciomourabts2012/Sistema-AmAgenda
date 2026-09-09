@@ -456,6 +456,20 @@
         form.dataset.somenteLeitura = podeEditar ? "0" : "1";
         form.querySelectorAll("input, select, textarea").forEach((campo) => { campo.disabled = !podeEditar; });
         form.querySelectorAll('button[type="submit"], #btnResetarConfigAgenda').forEach((botao) => { botao.hidden = !podeEditar; botao.disabled = !podeEditar; });
+
+        const profissionalLogado = usuarioLogadoEhProfissional();
+        const gerenciaPropriosServicos = profissionalLogado && contextoProfissional.proprio;
+        const podeCadastrarServicos = profissionalLogado
+          ? gerenciaPropriosServicos
+          : window.usuarioPode?.("servicos.cadastrar") === true;
+        const painelServicos = $("cfg-servicos");
+        if (painelServicos) {
+          painelServicos.querySelectorAll("input, select, textarea").forEach((campo) => {
+            campo.disabled = !podeCadastrarServicos;
+          });
+          const botaoAdicionarServico = $("cfg_btn_add_servico");
+          if (botaoAdicionarServico) botaoAdicionarServico.disabled = !podeCadastrarServicos;
+        }
       }
       const tituloNome = $("cfg_profissional_nome_titulo");
       if (tituloNome) tituloNome.textContent = nomeValidado ? `— ${nomeValidado}` : "";

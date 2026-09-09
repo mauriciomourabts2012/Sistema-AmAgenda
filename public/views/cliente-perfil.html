@@ -58,8 +58,7 @@
             <i class="fa-regular fa-bell" aria-hidden="true"></i>
           </button>
           <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
-            <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
-            <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
+            <img src="/public/imagens/avatar-default.png" alt="Foto do cliente" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho>
           </button>
         </div>
       </header>
@@ -218,7 +217,7 @@
             <!-- ALTERAR SENHA -->
             <form id="formAlterarSenha" novalidate>
 
-              <div class="modal-campo">
+              <div class="modal-campo" id="campoSenhaAtual">
                 <input type="password" id="senha_atual" name="senha_atual">
                 <label for="senha_atual">Senha atual</label>
               </div>
@@ -385,9 +384,9 @@
 
     
     <!-- PERFIL DO CLIENTE -->
-    <script src="/public/js/cliente_perfil/buscar_foto_perfil.js?v=20260905_1"></script>
-    <script src="/public/js/cliente_perfil/alterar_foto_perfil.js?v=20260905_1"></script>
-    <script src="/public/js/cliente_perfil/alterar_senha_perfil.js?v=20260905_1"></script>
+    <script src="/public/js/cliente_perfil/buscar_foto_perfil.js?v=20260909_1"></script>
+    <script src="/public/js/cliente_perfil/alterar_foto_perfil.js?v=20260909_1"></script>
+    <script src="/public/js/cliente_perfil/alterar_senha_perfil.js?v=20260909_1"></script>
 
     <!-- LOGOUT -->
     <script src="/public/_auth/deslogar.js"></script>

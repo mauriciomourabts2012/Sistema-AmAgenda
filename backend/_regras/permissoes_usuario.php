@@ -95,6 +95,26 @@ function usuarioTemPermissao(mysqli $conexao, string $codigo, array $contexto = 
     return permissoesCalcularResultado($regra, (string)$ctx['perfil'], $tem ? (string)$estado : null);
 }
 
+/**
+ * Autoriza a administração de serviços sem ampliar o alcance do perfil Profissional.
+ * Profissionais administram exclusivamente o próprio vínculo; os demais perfis
+ * continuam sujeitos à permissão administrativa efetiva do sistema.
+ */
+function usuarioPodeGerenciarServicosDoProfissional(mysqli $conexao, int $idProfissionalAlvo, string $codigo): bool
+{
+    if ($idProfissionalAlvo <= 0) return false;
+
+    $ctx = permissoesContexto($conexao);
+    if (!($ctx['valido'] ?? false)) return false;
+
+    if (($ctx['perfil'] ?? '') === 'profissional') {
+        $idProfissionalProprio = (int)($ctx['id_profissional'] ?? 0);
+        return $idProfissionalProprio > 0 && $idProfissionalProprio === $idProfissionalAlvo;
+    }
+
+    return usuarioTemPermissao($conexao, $codigo);
+}
+
 /** Mantém em um único ponto o cálculo Padrão/Permitir/Bloquear usado pelas exceções por empresa. */
 function permissoesCalcularResultado(array $regra, string $perfil, ?string $estado): bool
 {

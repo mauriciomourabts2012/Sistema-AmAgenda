@@ -38,6 +38,20 @@ try {
     $idCliente = (int)$clienteSessao['id_cliente'];
     $idEmpresa = (int)$sessao['id_empresa'];
 
+    $recuperacao = $_SESSION['cliente_recuperacao_senha'] ?? null;
+    $recuperacaoAutorizada = is_array($recuperacao)
+        && (int)($recuperacao['id_empresa'] ?? 0) === $idEmpresa
+        && (int)($recuperacao['id_cliente'] ?? 0) === $idCliente
+        && hash_equals(
+            (string)($sessao['telefone'] ?? ''),
+            (string)($recuperacao['telefone'] ?? '')
+        )
+        && (int)($recuperacao['expira_em'] ?? 0) > time();
+
+    if (!$recuperacaoAutorizada && is_array($recuperacao)) {
+        unset($_SESSION['cliente_recuperacao_senha']);
+    }
+
     $stmt = $conexao->prepare(
         "SELECT
             nome_completo,
@@ -101,6 +115,7 @@ try {
             'nome' => $nome,
             'foto_url' => $foto,
             'tem_senha' => $senhaHash !== '',
+            'recuperacao_senha_autorizada' => $recuperacaoAutorizada,
         ],
     ]);
 

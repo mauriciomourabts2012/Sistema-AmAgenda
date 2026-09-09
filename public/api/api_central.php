@@ -582,10 +582,9 @@ $permissoesPorRota = [
     'painel/usuario/editar' => 'usuarios.editar',
     'painel/usuario/alterar-status' => 'usuarios.alterar_status',
     'painel/auditoria/listar' => 'auditoria.visualizar',
-    'agenda/servico-profissional/listar' => 'servicos.visualizar',
-    'agenda/servico-profissional/cadastrar' => 'servicos.cadastrar',
+    // As três rotas de configuração de serviços validam permissão e propriedade no handler,
+    // pois a decisão depende do id_profissional alvo. O cadastro pelo agendamento não depende disso.
     'agenda/servico-profissional/cadastrar-agendamento' => 'servicos.cadastrar',
-    'agenda/servico-profissional/excluir' => 'servicos.excluir',
     'agenda/agendamento/listar' => 'agenda.visualizar',
     'agenda/agendamento/pesquisar' => 'agenda.visualizar',
     'agenda/agendamento/detalhar' => 'agenda.visualizar',

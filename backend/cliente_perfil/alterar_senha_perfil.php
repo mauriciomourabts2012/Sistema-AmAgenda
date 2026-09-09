@@ -9,9 +9,10 @@ declare(strict_types=1);
 | Permite:
 | - definir a senha definitiva no primeiro acesso;
 | - alterar posteriormente a senha mediante validação da senha atual.
+| - redefinir a senha após OTP de recuperação autorizado na sessão.
 |
 | No primeiro acesso:
-| - primeiro_acesso_em está NULL;
+| - senha_hash está NULL ou vazia;
 | - senha_atual não é obrigatória;
 | - o cliente já comprovou sua identidade ao autenticar-se;
 | - após a troca, primeiro_acesso_em recebe a data/hora atual.
@@ -59,6 +60,20 @@ try {
     $idCliente = (int)$clienteSessao['id_cliente'];
     $idEmpresa = (int)$sessao['id_empresa'];
 
+    $recuperacao = $_SESSION['cliente_recuperacao_senha'] ?? null;
+    $recuperacaoAutorizada = is_array($recuperacao)
+        && (int)($recuperacao['id_empresa'] ?? 0) === $idEmpresa
+        && (int)($recuperacao['id_cliente'] ?? 0) === $idCliente
+        && hash_equals(
+            (string)($sessao['telefone'] ?? ''),
+            (string)($recuperacao['telefone'] ?? '')
+        )
+        && (int)($recuperacao['expira_em'] ?? 0) > time();
+
+    if (!$recuperacaoAutorizada && is_array($recuperacao)) {
+        unset($_SESSION['cliente_recuperacao_senha']);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | PAYLOAD
@@ -86,8 +101,7 @@ try {
 
     $stmt = $conexao->prepare(
         "SELECT
-            senha_hash,
-            primeiro_acesso_em
+            senha_hash
          FROM cliente
          WHERE id_cliente = ?
            AND id_empresa = ?
@@ -135,19 +149,16 @@ try {
         (string)($registro['senha_hash'] ?? '')
     );
 
-    $primeiroAcessoEm = $registro['primeiro_acesso_em'] ?? null;
-
     $temSenha = $hashAtual !== '';
 
-    $primeiroAcesso = $primeiroAcessoEm === null
-        || trim((string)$primeiroAcessoEm) === '';
+    $primeiroAcesso = !$temSenha;
 
     /*
-    | A senha atual somente é exigida depois que o primeiro acesso
-    | já tiver sido concluído.
+    | Uma credencial existente só dispensa a senha atual quando a sessão
+    | possui autorização de recuperação OTP válida para este cliente.
     */
 
-    $exigirSenhaAtual = $temSenha && !$primeiroAcesso;
+    $exigirSenhaAtual = $temSenha && !$recuperacaoAutorizada;
 
     /*
     |--------------------------------------------------------------------------
@@ -227,22 +238,15 @@ try {
         }
     }
 
-    /*
-    | Mesmo no primeiro acesso, impede que a senha definitiva seja igual
-    | à senha temporária usada para entrar no sistema.
-    */
+    /* Impede reutilizar a credencial definitiva existente. */
 
     if ($temSenha && password_verify($novaSenha, $hashAtual)) {
         out([
             'ok' => false,
             'code' => 'CLIENT_PASSWORD_UNCHANGED',
-            'user_msg' => $primeiroAcesso
-                ? 'A nova senha deve ser diferente da senha temporária.'
-                : 'A nova senha deve ser diferente da senha atual.',
+            'user_msg' => 'A nova senha deve ser diferente da senha atual.',
             'fields' => [
-                'nova_senha' => $primeiroAcesso
-                    ? 'Escolha uma senha diferente da senha temporária.'
-                    : 'Escolha uma senha diferente da senha atual.',
+                'nova_senha' => 'Escolha uma senha diferente da senha atual.',
             ],
         ], 422);
     }
@@ -316,6 +320,10 @@ try {
 
     $stmtAtualizar->close();
 
+    if ($recuperacaoAutorizada) {
+        unset($_SESSION['cliente_recuperacao_senha']);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | RESPOSTA
@@ -324,12 +332,16 @@ try {
 
     out([
         'ok' => true,
-        'code' => $primeiroAcesso
-            ? 'CLIENT_FIRST_PASSWORD_DEFINED'
-            : 'CLIENT_PASSWORD_UPDATED',
-        'user_msg' => $primeiroAcesso
-            ? 'Sua nova senha foi definida com sucesso.'
-            : 'Senha alterada com sucesso.',
+        'code' => $recuperacaoAutorizada
+            ? 'CLIENT_PASSWORD_RECOVERED'
+            : ($primeiroAcesso
+                ? 'CLIENT_FIRST_PASSWORD_DEFINED'
+                : 'CLIENT_PASSWORD_UPDATED'),
+        'user_msg' => $recuperacaoAutorizada
+            ? 'Sua senha foi redefinida com sucesso.'
+            : ($primeiroAcesso
+                ? 'Sua nova senha foi definida com sucesso.'
+                : 'Senha alterada com sucesso.'),
         'data' => [
             'tem_senha' => true,
             'primeiro_acesso_concluido' => true,

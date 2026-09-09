@@ -392,8 +392,7 @@ $empresaId = (int)$_SESSION['empresa_id'];
             </div>
 
             <p class="cliente-info">
-              Informe seu telefone e clique em verificar.
-              Será enviado um SMS com um código para validar seu número.
+              Informe seu telefone para continuar com segurança.
             </p>
 
             <button
@@ -408,6 +407,68 @@ $empresaId = (int)$_SESSION['empresa_id'];
             <p
               class="mensagem"
               id="msgStep2"
+              role="alert"
+              aria-live="polite"
+            ></p>
+
+          </section>
+
+          <!-- ====================================================
+               STEP 4 - SENHA
+          ===================================================== -->
+
+          <section
+            class="step"
+            data-step="4"
+          >
+
+            <button
+              class="cliente-voltar"
+              id="btnVoltarStepSenha"
+              type="button"
+              aria-label="Voltar"
+            >
+              ←
+            </button>
+
+            <h3 class="cliente-titulo">
+              Informe sua senha
+            </h3>
+
+            <p
+              class="cliente-info"
+              id="infoTelefoneSenha"
+            ></p>
+
+            <input
+              type="password"
+              id="senhaCliente"
+              class="cliente-input"
+              placeholder="Senha"
+              autocomplete="current-password"
+              maxlength="72"
+            />
+
+            <button
+              class="botao-entrar"
+              id="btnEntrarSenha"
+              type="button"
+              disabled
+            >
+              Entrar
+            </button>
+
+            <button
+              class="cliente-link"
+              id="btnEsqueciSenha"
+              type="button"
+            >
+              Esqueci minha senha?
+            </button>
+
+            <p
+              class="mensagem"
+              id="msgStep4"
               role="alert"
               aria-live="polite"
             ></p>
@@ -522,6 +583,21 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   const btnVoltarStep3 =
     $("#btnVoltarStep3");
 
+  const btnVoltarStepSenha =
+    $("#btnVoltarStepSenha");
+
+  const inSenha =
+    $("#senhaCliente");
+
+  const btnEntrarSenha =
+    $("#btnEntrarSenha");
+
+  const btnEsqueciSenha =
+    $("#btnEsqueciSenha");
+
+  const infoTelefoneSenha =
+    $("#infoTelefoneSenha");
+
   const inCodigo =
     $("#codigo");
 
@@ -543,6 +619,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   const msg3 =
     $("#msgStep3");
 
+  const msg4 =
+    $("#msgStep4");
+
   if (
     !steps.length ||
     !btnContinuarTelefone ||
@@ -555,6 +634,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   let telefoneE164 = "";
   let expiresAt = null;
   let timerId = null;
+  let acaoOtpAtual = "enviar_codigo";
 
   function safeOn(element, eventName, handler) {
 
@@ -628,6 +708,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
     if (msg3) {
       msg3.textContent = "";
+    }
+
+    if (msg4) {
+      msg4.textContent = "";
     }
   }
 
@@ -811,6 +895,45 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       );
   }
 
+  async function iniciarFluxoOtp(
+    acao,
+    elementoMensagem
+  ) {
+
+    if (elementoMensagem) {
+      elementoMensagem.textContent =
+        "Enviando código...";
+    }
+
+    const json =
+      await requisitarAutenticacao(acao);
+
+    acaoOtpAtual = acao;
+
+    const expiresIn =
+      Number(
+        json?.data?.expires_in
+      ) || 300;
+
+    expiresAt =
+      new Date(
+        Date.now() +
+        expiresIn * 1000
+      );
+
+    showStep(3);
+    startTimer();
+
+    inCodigo.value = "";
+
+    setButtonEnabled(
+      btnValidarCodigo,
+      false
+    );
+
+    inCodigo.focus();
+  }
+
   safeOn(
     btnContinuarTelefone,
     "click",
@@ -842,7 +965,38 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       stopTimer();
 
+      showStep(
+        acaoOtpAtual === "iniciar_recuperacao"
+          ? 4
+          : 2
+      );
+
+      if (acaoOtpAtual !== "iniciar_recuperacao") {
+        setButtonEnabled(
+          btnEnviarCodigo,
+          isValidBRPhone(inTelefone.value)
+        );
+      }
+    }
+  );
+
+  safeOn(
+    btnVoltarStepSenha,
+    "click",
+    (event) => {
+
+      event.preventDefault();
+
+      if (inSenha) {
+        inSenha.value = "";
+      }
+
       showStep(2);
+
+      setButtonEnabled(
+        btnEnviarCodigo,
+        isValidBRPhone(inTelefone.value)
+      );
     }
   );
 
@@ -892,39 +1046,52 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       if (msg2) {
         msg2.textContent =
-          "Enviando código...";
+          "Verificando...";
       }
 
       try {
 
         const json =
           await requisitarAutenticacao(
-            "enviar_codigo"
+            "verificar_telefone"
           );
 
-        const expiresIn =
-          Number(
-            json?.data?.expires_in
-          ) || 300;
+        const proximoPasso =
+          json?.data?.proximo_passo;
 
-        expiresAt =
-          new Date(
-            Date.now() +
-            expiresIn * 1000
+        if (proximoPasso === "senha") {
+          acaoOtpAtual = "enviar_codigo";
+
+          if (infoTelefoneSenha) {
+            infoTelefoneSenha.textContent =
+              `Telefone identificado: ${telefoneE164}`;
+          }
+
+          if (inSenha) {
+            inSenha.value = "";
+          }
+
+          setButtonEnabled(
+            btnEntrarSenha,
+            false
           );
 
-        showStep(3);
+          showStep(4);
+          inSenha?.focus();
+          return;
+        }
 
-        startTimer();
+        if (proximoPasso === "otp") {
+          await iniciarFluxoOtp(
+            "enviar_codigo",
+            msg2
+          );
+          return;
+        }
 
-        inCodigo.value = "";
-
-        setButtonEnabled(
-          btnValidarCodigo,
-          false
+        throw new Error(
+          "Não foi possível determinar a forma de acesso."
         );
-
-        inCodigo.focus();
 
       } catch (error) {
 
@@ -932,7 +1099,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
           msg2.textContent =
             `❌ ${
               error.message ||
-              "Não foi possível enviar o código."
+              "Não foi possível continuar."
             }`;
         }
 
@@ -940,6 +1107,82 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
           btnEnviarCodigo,
           true
         );
+      }
+    }
+  );
+
+  safeOn(
+    inSenha,
+    "input",
+    () => {
+      setButtonEnabled(
+        btnEntrarSenha,
+        String(inSenha.value || "").length > 0
+      );
+    }
+  );
+
+  safeOn(
+    btnEntrarSenha,
+    "click",
+    async () => {
+      const senha = String(inSenha?.value || "");
+
+      if (!senha) {
+        if (msg4) {
+          msg4.textContent = "⚠️ Informe sua senha.";
+        }
+        return;
+      }
+
+      setButtonEnabled(btnEntrarSenha, false);
+
+      if (msg4) {
+        msg4.textContent = "Entrando...";
+      }
+
+      try {
+        const json = await requisitarAutenticacao(
+          "login_senha",
+          { senha }
+        );
+
+        if (msg4) {
+          msg4.textContent = "✅ Acesso autorizado! Entrando...";
+        }
+
+        window.location.href =
+          json?.data?.redirect ||
+          "/public/views/cliente-perfil.html";
+      } catch (error) {
+        if (msg4) {
+          msg4.textContent =
+            `❌ ${error.message || "Telefone ou senha inválidos."}`;
+        }
+
+        setButtonEnabled(btnEntrarSenha, true);
+      }
+    }
+  );
+
+  safeOn(
+    btnEsqueciSenha,
+    "click",
+    async () => {
+      setButtonEnabled(btnEsqueciSenha, false);
+
+      try {
+        await iniciarFluxoOtp(
+          "iniciar_recuperacao",
+          msg4
+        );
+      } catch (error) {
+        if (msg4) {
+          msg4.textContent =
+            `❌ ${error.message || "Não foi possível iniciar a recuperação."}`;
+        }
+      } finally {
+        setButtonEnabled(btnEsqueciSenha, true);
       }
     }
   );
@@ -1089,7 +1332,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
         const json =
           await requisitarAutenticacao(
-            "enviar_codigo"
+            acaoOtpAtual
           );
 
         const expiresIn =

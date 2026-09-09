@@ -6,25 +6,55 @@
   const AVATAR_PADRAO = "/public/imagens/avatar-default.png";
 
   const nomePerfil = document.getElementById("perfilNomeUsuario");
-  const avatares = document.querySelectorAll("[data-avatar-usuario]");
 
   window.ClientePerfilEstado = window.ClientePerfilEstado || {
     tem_senha: null,
+    recuperacao_senha_autorizada: false,
     nome: "",
     foto_url: AVATAR_PADRAO
   };
 
-  function urlComCache(url) {
+  function normalizarUrlAvatar(url) {
     const valor = String(url || "").trim();
 
     if (!valor) {
       return AVATAR_PADRAO;
     }
 
+    if (valor.startsWith("blob:")) {
+      return valor;
+    }
+
+    let urlNormalizada;
+
+    try {
+      urlNormalizada = new URL(
+        valor,
+        window.location.origin
+      );
+    } catch (_) {
+      return AVATAR_PADRAO;
+    }
+
     if (
-      valor.startsWith("blob:") ||
-      valor.startsWith("data:")
+      urlNormalizada.origin !== window.location.origin ||
+      (
+        urlNormalizada.pathname !== AVATAR_PADRAO &&
+        !urlNormalizada.pathname.startsWith(
+          "/public/imagens/clientes/"
+        )
+      )
     ) {
+      return AVATAR_PADRAO;
+    }
+
+    return `${urlNormalizada.pathname}${urlNormalizada.search}`;
+  }
+
+  function urlComCache(url, aplicarCacheBusting = false) {
+    const valor = normalizarUrlAvatar(url);
+
+    if (!aplicarCacheBusting || valor === AVATAR_PADRAO) {
       return valor;
     }
 
@@ -33,17 +63,22 @@
     return `${valor}${separador}_t=${Date.now()}`;
   }
 
-  function atualizarAvatares(url) {
-    const foto = urlComCache(url || AVATAR_PADRAO);
+  function atualizarAvatares(url, opcoes = {}) {
+    const foto = urlComCache(
+      url,
+      opcoes.cacheBust === true
+    );
 
-    avatares.forEach(img => {
-      img.src = foto;
+    document
+      .querySelectorAll("[data-avatar-usuario]")
+      .forEach(img => {
+        img.src = foto;
 
-      img.onerror = () => {
-        img.onerror = null;
-        img.src = AVATAR_PADRAO;
-      };
-    });
+        img.onerror = () => {
+          img.onerror = null;
+          img.src = AVATAR_PADRAO;
+        };
+      });
   }
 
   async function requisitar(caminho) {
@@ -92,10 +127,16 @@
         dados.foto_url || AVATAR_PADRAO
       ).trim();
 
-      const temSenha = dados.tem_senha === true;
+      const temSenha = typeof dados.tem_senha === "boolean"
+        ? dados.tem_senha
+        : null;
+      const recuperacaoSenhaAutorizada =
+        dados.recuperacao_senha_autorizada === true;
 
       window.ClientePerfilEstado = {
         tem_senha: temSenha,
+        recuperacao_senha_autorizada:
+          recuperacaoSenhaAutorizada,
         nome,
         foto_url: foto
       };

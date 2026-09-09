@@ -29,20 +29,8 @@
     }
   }
 
-  function atualizarAvatares(url) {
-    if (
-      window.ClientePerfil &&
-      typeof window.ClientePerfil.atualizarAvatares === "function"
-    ) {
-      window.ClientePerfil.atualizarAvatares(url);
-      return;
-    }
-
-    document
-      .querySelectorAll("[data-avatar-usuario]")
-      .forEach(img => {
-        img.src = url;
-      });
+  function atualizarAvatares(url, opcoes = {}) {
+    window.ClientePerfil.atualizarAvatares(url, opcoes);
   }
 
   function limparPreview() {
@@ -147,7 +135,9 @@
       limparPreview();
 
       if (fotoPersistida) {
-        atualizarAvatares(fotoPersistida);
+        atualizarAvatares(fotoPersistida, {
+          cacheBust: true
+        });
 
         if (window.ClientePerfilEstado) {
           window.ClientePerfilEstado.foto_url =

@@ -70,6 +70,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -158,12 +159,6 @@ try {
         if (!$empresaEncontrada || lower($empresaStatusDb) !== 'ativo') out(['ok'=>false,'code'=>'EMPRESA_INACTIVE','user_msg'=>'A empresa acessada não está ativa.'],403);
     }
 
-    if ($contextoAdministrativo && $tipoUsuario !== 'super_admin') {
-        $stmt = $conexao->prepare("SELECT pf.nome FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' LIMIT 1");
-        $stmt->bind_param('ii',$idEmpresaSessao,$idUsuarioSessao); $stmt->execute(); $stmt->bind_result($perfilSessao); $perfilOk=$stmt->fetch(); $stmt->close();
-        if (!$perfilOk || !in_array(lower($perfilSessao), ['proprietário','proprietario'], true)) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para administrar os serviços deste profissional.'],403);
-    }
-
     $idProfissionalSelecionado = intParam('id_profissional');
     if ($idProfissionalSelecionado <= 0) {
         $idProfissionalSelecionado = intParam('profissional_id');
@@ -172,19 +167,11 @@ try {
         out(['ok'=>false,'code'=>'PROFESSIONAL_REQUIRED','user_msg'=>'Selecione um profissional para continuar.'],422);
     }
 
-    $idProfissionalSessao = 0;
-
-    if (isset($auth['id_profissional'])) {
-        $idProfissionalSessao = (int)$auth['id_profissional'];
-    } elseif (isset($_SESSION['id_profissional'])) {
-        $idProfissionalSessao = (int)$_SESSION['id_profissional'];
-    } elseif (isset($_SESSION['profissional_id'])) {
-        $idProfissionalSessao = (int)$_SESSION['profissional_id'];
-    } elseif (isset($_SESSION['profissional']['id_profissional'])) {
-        $idProfissionalSessao = (int)$_SESSION['profissional']['id_profissional'];
-    }
+    $contextoPermissoes = permissoesContexto($conexao);
+    $idProfissionalSessao = (int)($contextoPermissoes['id_profissional'] ?? 0);
 
     if ($idProfissionalSelecionado > 0) {
+        $idProfissionalSessao = 0;
         $stmt = $conexao->prepare("
             SELECT p.id_profissional
             FROM profissional p
@@ -281,6 +268,10 @@ try {
         $whereStatus = " AND status = ? ";
         $typesServico .= 's';
         $paramsServico[] = $statusFiltro;
+    }
+
+    if (!usuarioPodeGerenciarServicosDoProfissional($conexao, $idProfissionalSessao, 'servicos.visualizar')) {
+        out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para administrar os serviços deste profissional.'],403);
     }
 
     $stmt = $conexao->prepare("

@@ -78,6 +78,7 @@ try {
     }
 
     require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
     require_once __DIR__ . '/../../_servicos/auditoria.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
@@ -90,16 +91,9 @@ try {
 
     $conexao->set_charset('utf8mb4');
 
-    $normalizar=static fn(mixed $v):string=>mb_strtolower(trim((string)$v),'UTF-8');
-    $tipoUsuario=$normalizar($auth['tipo_usuario']??'');
+    $tipoUsuario=mb_strtolower(trim((string)($auth['tipo_usuario']??'')),'UTF-8');
     $modoSuporte=($auth['modo_suporte']??false)===true||(int)($auth['modo_suporte']??0)===1;
-    if($tipoUsuario==='super_admin'){
-        if(!$modoSuporte) out(['ok'=>false,'code'=>'SUPPORT_COMPANY_REQUIRED','user_msg'=>'Acesse uma empresa em modo suporte antes de administrar os serviços.'],403);
-    }else{
-        $stmt=$conexao->prepare("SELECT pf.nome FROM empresa_usuario eu INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil INNER JOIN empresa e ON e.id_empresa=eu.id_empresa WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND pf.status='ativo' AND e.status='ativo' LIMIT 1");
-        $stmt->bind_param('ii',$idEmpresaSessao,$idUsuarioSessao);$stmt->execute();$stmt->bind_result($perfilSessao);$vinculoOk=$stmt->fetch();$stmt->close();
-        if(!$vinculoOk||!in_array($normalizar($perfilSessao),['proprietário','proprietario'],true)) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para excluir serviços deste profissional.'],403);
-    }
+    if($tipoUsuario==='super_admin'&&!$modoSuporte) out(['ok'=>false,'code'=>'SUPPORT_COMPANY_REQUIRED','user_msg'=>'Acesse uma empresa em modo suporte antes de administrar os serviços.'],403);
 
     $idProfissionalSessao=filter_input(INPUT_POST,'id_profissional',FILTER_VALIDATE_INT)
         ?: (is_numeric($_POST['id_profissional'] ?? null) ? (int)$_POST['id_profissional'] : 0);
@@ -107,6 +101,7 @@ try {
     $stmt=$conexao->prepare("SELECT p.id_profissional FROM profissional p INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario WHERE p.id_profissional=? AND eu.id_empresa=? AND u.status='ativo' AND eu.status='ativo' LIMIT 1");
     $stmt->bind_param('ii',$idProfissionalSessao,$idEmpresaSessao);$stmt->execute();$stmt->store_result();$profissionalOk=$stmt->num_rows===1;$stmt->close();
     if(!$profissionalOk) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional selecionado não está ativo ou não pertence à empresa acessada.'],403);
+    if(!usuarioPodeGerenciarServicosDoProfissional($conexao,$idProfissionalSessao,'servicos.excluir')) out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Você não possui permissão para excluir serviços deste profissional.'],403);
 
     $conexao->begin_transaction();
     // Snapshot mínimo anterior à exclusão, isolado por empresa e profissional.

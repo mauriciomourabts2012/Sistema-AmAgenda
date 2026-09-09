@@ -6,17 +6,22 @@
   | PERFIL DO CLIENTE - ALTERAR SENHA
   |--------------------------------------------------------------------------
   |
-  | Regras:
-  | - primeiro acesso: não exige senha atual;
-  | - alteração posterior: exige senha atual;
-  | - senha temporária existente não significa primeiro acesso concluído;
-  | - primeiro_acesso_em preenchido significa primeiro acesso concluído.
+  | Modos de apresentação:
+  | - primeira senha: não exibe senha atual e bloqueia o modal;
+  | - alteração normal: exige senha atual e permite fechar o modal;
+  | - recuperação por SMS: não exibe senha atual e bloqueia o modal.
+  |
+  | A autorização para dispensar a senha atual pertence ao backend.
   |
   */
 
   const API = "/public/api/api_central.php";
   const LOGIN = "/public/views/login-cliente.php";
 
+  const modal = document.getElementById("modalPerfilUsuario");
+  const tituloModal = document.getElementById(
+    "tituloPerfilUsuario"
+  );
   const form = document.getElementById("formAlterarSenha");
   const senhaAtual = document.getElementById("senha_atual");
   const novaSenha = document.getElementById("nova_senha");
@@ -33,15 +38,50 @@
     return;
   }
 
-  const blocoSenhaAtual = senhaAtual.closest(".modal-campo");
+  const blocoSenhaAtual =
+    document.getElementById("campoSenhaAtual") ||
+    senhaAtual.closest(".modal-campo");
+
+  const blocoNovaSenha = novaSenha.closest(".modal-campo");
+  const blocoConfirmarSenha = confirmarSenha.closest(
+    ".modal-campo"
+  );
 
   const botaoSalvar = form.querySelector(
     'button[type="submit"]'
   );
 
-  let temSenha = false;
-  let primeiroAcessoConcluido = false;
-  let exigirSenhaAtual = false;
+  const MODOS_SENHA = Object.freeze({
+    PRIMEIRA_SENHA: "primeira_senha",
+    ALTERACAO: "alteracao",
+    RECUPERACAO: "recuperacao"
+  });
+
+  const CONFIGURACOES_MODO = Object.freeze({
+    [MODOS_SENHA.PRIMEIRA_SENHA]: {
+      titulo: "Crie sua senha de acesso",
+      textoBotao: "Criar senha",
+      exigirSenhaAtual: false,
+      bloquearModal: true,
+      abrirModal: true
+    },
+    [MODOS_SENHA.ALTERACAO]: {
+      titulo: "Meu Perfil",
+      textoBotao: "Salvar nova senha",
+      exigirSenhaAtual: true,
+      bloquearModal: false,
+      abrirModal: false
+    },
+    [MODOS_SENHA.RECUPERACAO]: {
+      titulo: "Criar nova senha",
+      textoBotao: "Criar nova senha",
+      exigirSenhaAtual: false,
+      bloquearModal: true,
+      abrirModal: true
+    }
+  });
+
+  let exigirSenhaAtual = true;
   let enviando = false;
 
   /*
@@ -93,82 +133,20 @@
     return estado;
   }
 
-  function identificarPrimeiroAcessoConcluido(dados) {
-    /*
-    | Resposta explícita preferencial.
-    */
-
-    if (
-      typeof dados.primeiro_acesso_concluido ===
-      "boolean"
-    ) {
-      return dados.primeiro_acesso_concluido;
-    }
-
-    /*
-    | Compatibilidade caso o backend envie:
-    | primeiro_acesso: true/false
-    */
-
-    if (typeof dados.primeiro_acesso === "boolean") {
-      return dados.primeiro_acesso === false;
-    }
-
-    /*
-    | Compatibilidade com o valor direto do banco.
-    |
-    | NULL ou vazio:
-    | primeiro acesso ainda não foi concluído.
-    |
-    | Data preenchida:
-    | primeiro acesso já foi concluído.
-    */
-
-    if (
-      Object.prototype.hasOwnProperty.call(
-        dados,
-        "primeiro_acesso_em"
-      )
-    ) {
-      const valor = dados.primeiro_acesso_em;
-
-      return (
-        valor !== null &&
-        String(valor).trim() !== ""
-      );
-    }
-
-    /*
-    | Enquanto o perfil não informar o estado, considera
-    | primeiro acesso pendente. O backend continuará sendo
-    | a autoridade final de segurança.
-    */
-
-    return false;
-  }
-
   /*
   |--------------------------------------------------------------------------
-  | APLICAÇÃO DO ESTADO
+  | CONFIGURAÇÃO DO MODO
   |--------------------------------------------------------------------------
   */
 
-  function aplicarEstadoSenha(estado) {
-    const dados = normalizarDadosEstado(estado);
+  function configurarModoSenha(modo) {
+    const configuracao = CONFIGURACOES_MODO[modo];
 
-    temSenha = dados.tem_senha === true;
+    if (!configuracao) {
+      return false;
+    }
 
-    primeiroAcessoConcluido =
-      identificarPrimeiroAcessoConcluido(dados);
-
-    /*
-    | Somente exige senha atual quando:
-    | - existe uma senha;
-    | - o primeiro acesso já foi concluído.
-    */
-
-    exigirSenhaAtual =
-      temSenha && primeiroAcessoConcluido;
+    exigirSenhaAtual = configuracao.exigirSenhaAtual;
 
     senhaAtual.required = exigirSenhaAtual;
     senhaAtual.disabled = !exigirSenhaAtual;
@@ -181,11 +159,61 @@
       blocoSenhaAtual.hidden = !exigirSenhaAtual;
     }
 
-    if (botaoSalvar) {
-      botaoSalvar.innerHTML = exigirSenhaAtual
-        ? '<i class="fa-solid fa-key"></i> Salvar nova senha'
-        : '<i class="fa-solid fa-key"></i> Definir nova senha';
+    if (blocoNovaSenha) {
+      blocoNovaSenha.hidden = false;
     }
+
+    if (blocoConfirmarSenha) {
+      blocoConfirmarSenha.hidden = false;
+    }
+
+    novaSenha.required = true;
+    confirmarSenha.required = true;
+
+    if (tituloModal) {
+      tituloModal.textContent = configuracao.titulo;
+    }
+
+    if (botaoSalvar) {
+      botaoSalvar.innerHTML =
+        `<i class="fa-solid fa-key"></i> ${configuracao.textoBotao}`;
+    }
+
+    if (modal) {
+      modal.classList.toggle(
+        "cadastro-bloqueado",
+        configuracao.bloquearModal
+      );
+    }
+
+    if (
+      configuracao.abrirModal &&
+      typeof window.abrirModal === "function"
+    ) {
+      window.abrirModal("modalPerfilUsuario");
+    }
+
+    return true;
+  }
+
+  function aplicarEstadoSeguroDoPerfil(estado) {
+    const dados = normalizarDadosEstado(estado);
+
+    if (dados.recuperacao_senha_autorizada === true) {
+      configurarModoSenha(
+        MODOS_SENHA.RECUPERACAO
+      );
+      return;
+    }
+
+    if (dados.tem_senha === false) {
+      configurarModoSenha(
+        MODOS_SENHA.PRIMEIRA_SENHA
+      );
+      return;
+    }
+
+    configurarModoSenha(MODOS_SENHA.ALTERACAO);
   }
 
   /*
@@ -304,31 +332,13 @@
       novaSenha.value = "";
       confirmarSenha.value = "";
 
-      temSenha = true;
-      primeiroAcessoConcluido = true;
-      exigirSenhaAtual = true;
-
       if (window.ClientePerfilEstado) {
         window.ClientePerfilEstado.tem_senha = true;
-
         window.ClientePerfilEstado
-          .primeiro_acesso_concluido = true;
-
-        if (
-          Object.prototype.hasOwnProperty.call(
-            window.ClientePerfilEstado,
-            "primeiro_acesso_em"
-          )
-        ) {
-          window.ClientePerfilEstado.primeiro_acesso_em =
-            new Date().toISOString();
-        }
+          .recuperacao_senha_autorizada = false;
       }
 
-      aplicarEstadoSenha({
-        tem_senha: true,
-        primeiro_acesso_concluido: true
-      });
+      configurarModoSenha(MODOS_SENHA.ALTERACAO);
 
       mensagem(
         "sucesso",
@@ -361,10 +371,7 @@
           "CLIENT_PASSWORD_FIELDS_REQUIRED" &&
         erro?.fields?.senha_atual
       ) {
-        aplicarEstadoSenha({
-          tem_senha: true,
-          primeiro_acesso_concluido: true
-        });
+        configurarModoSenha(MODOS_SENHA.ALTERACAO);
 
         senhaAtual.focus();
       }
@@ -393,7 +400,7 @@
   document.addEventListener(
     "amagenda:cliente-perfil-carregado",
     evento => {
-      aplicarEstadoSenha(
+      aplicarEstadoSeguroDoPerfil(
         evento.detail || {}
       );
     }
@@ -405,17 +412,11 @@
   |--------------------------------------------------------------------------
   */
 
-  if (
-    window.ClientePerfilEstado &&
-    typeof window.ClientePerfilEstado === "object"
-  ) {
-    aplicarEstadoSenha(
-      window.ClientePerfilEstado
-    );
-  } else {
-    aplicarEstadoSenha({
-      tem_senha: false,
-      primeiro_acesso_concluido: false
-    });
-  }
+  window.ClientePerfil = window.ClientePerfil || {};
+  window.ClientePerfil.configurarModoSenha =
+    configurarModoSenha;
+
+  aplicarEstadoSeguroDoPerfil(
+    window.ClientePerfilEstado || {}
+  );
 })();

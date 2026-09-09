@@ -3,11 +3,13 @@ declare(strict_types=1);
 
 /*
 |--------------------------------------------------------------------------
-| LOGIN DO CLIENTE - TELEFONE + OTP
+| LOGIN DO CLIENTE - TELEFONE + SENHA OU OTP
 |--------------------------------------------------------------------------
 |
 | Responsabilidades:
-| - receber enviar_codigo / validar_codigo;
+| - decidir entre senha e OTP sem enviar SMS antecipadamente;
+| - autenticar por senha quando já houver credencial definitiva;
+| - receber enviar_codigo / iniciar_recuperacao / validar_codigo;
 | - obter id_empresa exclusivamente da sessão;
 | - localizar cliente por id_empresa + whatsapp_celular;
 | - coordenar cliente_auth_desafio;
@@ -199,7 +201,10 @@ if (
     !in_array(
         $acao,
         [
+            'verificar_telefone',
+            'login_senha',
             'enviar_codigo',
+            'iniciar_recuperacao',
             'validar_codigo'
         ],
         true
@@ -335,6 +340,7 @@ function clienteLoginBuscarCliente(
             nome_completo,
             whatsapp_celular,
             cadastro_completo,
+            senha_hash,
             status
         FROM cliente
         WHERE id_empresa = ?
@@ -472,13 +478,225 @@ function clienteLoginRespostaEnvioGenerica(
 }
 
 
+/**
+ * Confirma que um cliente localizado pode autenticar-se.
+ */
+function clienteLoginClienteAtivo(?array $cliente): bool
+{
+    return is_array($cliente)
+        && strtolower(trim((string)($cliente['status'] ?? ''))) === 'ativo';
+}
+
+
+/**
+ * Cria cliente_auth no mesmo formato para senha e OTP.
+ * Uma autorização de recuperação nunca é criada a partir do navegador:
+ * ela depende de um desafio OTP de recuperação aprovado neste handler.
+ */
+function clienteLoginCriarSessao(
+    mysqli $conexao,
+    int $idEmpresa,
+    string $telefoneE164,
+    ?array $cliente,
+    bool $autorizarRecuperacao = false
+): void {
+    $clienteExistente = is_array($cliente);
+    $idCliente = $clienteExistente
+        ? (int)($cliente['id_cliente'] ?? 0)
+        : null;
+
+    if ($idCliente !== null && $idCliente <= 0) {
+        throw new RuntimeException('Cliente inválido para autenticação.');
+    }
+
+    $cadastroCompleto = $clienteExistente
+        && (int)($cliente['cadastro_completo'] ?? 0) === 1;
+
+    session_regenerate_id(true);
+
+    $_SESSION['cliente_auth'] = [
+        'id_cliente' => $idCliente,
+        'id_empresa' => $idEmpresa,
+        'telefone' => $telefoneE164,
+        'nome_completo' => $clienteExistente
+            ? (string)($cliente['nome_completo'] ?? '')
+            : '',
+        'telefone_verificado' => true,
+        'cadastro_completo' => $cadastroCompleto,
+        'status' => 'ativo',
+        'tipo' => 'cliente',
+        'tipo_usuario' => 'cliente',
+        'modo_visualizacao' => true,
+        'login_em' => date('Y-m-d H:i:s'),
+    ];
+
+    unset($_SESSION['cliente_auth_desafio']);
+
+    if ($autorizarRecuperacao && $idCliente !== null) {
+        $_SESSION['cliente_recuperacao_senha'] = [
+            'id_empresa' => $idEmpresa,
+            'id_cliente' => $idCliente,
+            'telefone' => $telefoneE164,
+            'autorizado_em' => time(),
+            'expira_em' => time() + 600,
+        ];
+    } else {
+        unset($_SESSION['cliente_recuperacao_senha']);
+    }
+
+    if ($idCliente !== null) {
+        $stmt = $conexao->prepare(
+            "UPDATE cliente
+             SET ultimo_login_em = CURRENT_TIMESTAMP
+             WHERE id_cliente = ?
+               AND id_empresa = ?"
+        );
+
+        if ($stmt) {
+            $stmt->bind_param('ii', $idCliente, $idEmpresa);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+
+    out([
+        'ok' => true,
+        'code' => $autorizarRecuperacao
+            ? 'CLIENT_PASSWORD_RECOVERY_AUTHORIZED'
+            : 'CLIENT_AUTHENTICATED',
+        'data' => [
+            'cadastro_completo' => $cadastroCompleto,
+            'redirect' => '/public/views/cliente-perfil.html',
+        ],
+    ]);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| VERIFICAR TELEFONE / DECIDIR PRÓXIMO PASSO
+|--------------------------------------------------------------------------
+*/
+
+if ($acao === 'verificar_telefone') {
+    $telefoneE164 = clienteLoginNormalizarTelefone(
+        (string)($_POST['telefone'] ?? '')
+    );
+
+    if ($telefoneE164 === null) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_PHONE_INVALID',
+            'user_msg' => 'Informe um telefone válido.',
+        ], 422);
+    }
+
+    try {
+        $cliente = clienteLoginBuscarCliente(
+            $conexao,
+            $idEmpresa,
+            $telefoneE164
+        );
+    } catch (Throwable $e) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_LOOKUP_UNAVAILABLE',
+            'user_msg' => 'Não foi possível continuar agora.',
+        ], 503);
+    }
+
+    if (is_array($cliente) && !clienteLoginClienteAtivo($cliente)) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_NOT_AVAILABLE',
+            'user_msg' => 'Não foi possível concluir o acesso.',
+        ], 403);
+    }
+
+    unset(
+        $_SESSION['cliente_auth_desafio'],
+        $_SESSION['cliente_recuperacao_senha']
+    );
+
+    $temSenha = is_array($cliente)
+        && trim((string)($cliente['senha_hash'] ?? '')) !== '';
+
+    out([
+        'ok' => true,
+        'code' => 'CLIENT_LOGIN_NEXT_STEP',
+        'data' => [
+            'proximo_passo' => $temSenha ? 'senha' : 'otp',
+        ],
+    ]);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| LOGIN POR SENHA
+|--------------------------------------------------------------------------
+*/
+
+if ($acao === 'login_senha') {
+    $telefoneE164 = clienteLoginNormalizarTelefone(
+        (string)($_POST['telefone'] ?? '')
+    );
+    $senha = (string)($_POST['senha'] ?? '');
+
+    if ($telefoneE164 === null || $senha === '') {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_CREDENTIALS_INVALID',
+            'user_msg' => 'Telefone ou senha inválidos.',
+        ], 401);
+    }
+
+    try {
+        $cliente = clienteLoginBuscarCliente(
+            $conexao,
+            $idEmpresa,
+            $telefoneE164
+        );
+    } catch (Throwable $e) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_LOGIN_UNAVAILABLE',
+            'user_msg' => 'Não foi possível concluir o acesso agora.',
+        ], 503);
+    }
+
+    $hash = is_array($cliente)
+        ? trim((string)($cliente['senha_hash'] ?? ''))
+        : '';
+
+    if (
+        !clienteLoginClienteAtivo($cliente)
+        || $hash === ''
+        || !password_verify($senha, $hash)
+    ) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_CREDENTIALS_INVALID',
+            'user_msg' => 'Telefone ou senha inválidos.',
+        ], 401);
+    }
+
+    clienteLoginCriarSessao(
+        $conexao,
+        $idEmpresa,
+        $telefoneE164,
+        $cliente
+    );
+}
+
+
 /*
 |--------------------------------------------------------------------------
 | ENVIAR CÓDIGO
 |--------------------------------------------------------------------------
 */
 
-if ($acao === 'enviar_codigo') {
+if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
 
     $telefoneInformado =
         (string)(
@@ -499,6 +717,52 @@ if ($acao === 'enviar_codigo') {
             'user_msg' =>
                 'Informe um telefone válido.'
         ], 422);
+    }
+
+    try {
+        $clienteOtp = clienteLoginBuscarCliente(
+            $conexao,
+            $idEmpresa,
+            $telefoneE164
+        );
+    } catch (Throwable $e) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_LOOKUP_UNAVAILABLE',
+            'user_msg' => 'Não foi possível continuar agora.',
+        ], 503);
+    }
+
+    if (is_array($clienteOtp) && !clienteLoginClienteAtivo($clienteOtp)) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_NOT_AVAILABLE',
+            'user_msg' => 'Não foi possível concluir o acesso.',
+        ], 403);
+    }
+
+    $hashClienteOtp = is_array($clienteOtp)
+        ? trim((string)($clienteOtp['senha_hash'] ?? ''))
+        : '';
+
+    $finalidadeOtp = $acao === 'iniciar_recuperacao'
+        ? 'recuperacao_senha'
+        : 'acesso';
+
+    if ($finalidadeOtp === 'recuperacao_senha') {
+        if (!clienteLoginClienteAtivo($clienteOtp) || $hashClienteOtp === '') {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_PASSWORD_RECOVERY_UNAVAILABLE',
+                'user_msg' => 'Não foi possível iniciar a recuperação.',
+            ], 422);
+        }
+    } elseif ($hashClienteOtp !== '') {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_PASSWORD_REQUIRED',
+            'user_msg' => 'Informe sua senha para continuar.',
+        ], 409);
     }
 
 
@@ -759,6 +1023,14 @@ if ($acao === 'enviar_codigo') {
         'telefone' =>
             $telefoneE164,
 
+        'finalidade' =>
+            $finalidadeOtp,
+
+        'id_cliente' =>
+            is_array($clienteOtp)
+                ? (int)$clienteOtp['id_cliente']
+                : null,
+
         'modo' =>
             $modoOtp,
 
@@ -833,6 +1105,17 @@ $desafioTelefone =
         ] ?? ''
     );
 
+$desafioFinalidade =
+    (string)(
+        $desafio[
+            'finalidade'
+        ] ?? 'acesso'
+    );
+
+$desafioIdCliente = isset($desafio['id_cliente'])
+    ? (int)$desafio['id_cliente']
+    : null;
+
 $desafioModo =
     (string)(
         $desafio[
@@ -879,6 +1162,12 @@ if (
     $desafioEmpresa !== $idEmpresa
     ||
     $desafioTelefone === ''
+    ||
+    !in_array(
+        $desafioFinalidade,
+        ['acesso', 'recuperacao_senha'],
+        true
+    )
 ) {
     unset(
         $_SESSION[
@@ -1210,18 +1499,7 @@ try {
 $clienteExistente =
     is_array($clienteAtual);
 
-if (
-    $clienteExistente
-    &&
-    strtolower(
-        trim(
-            (string)(
-                $clienteAtual['status']
-                ?? ''
-            )
-        )
-    ) !== 'ativo'
-) {
+if ($clienteExistente && !clienteLoginClienteAtivo($clienteAtual)) {
     unset(
         $_SESSION[
             'cliente_auth_desafio'
@@ -1238,125 +1516,48 @@ if (
     ], 403);
 }
 
-$idCliente =
-    $clienteExistente
-        ? (int)$clienteAtual['id_cliente']
-        : null;
+$autorizarRecuperacao =
+    $desafioFinalidade === 'recuperacao_senha';
 
-$cadastroCompleto =
-    $clienteExistente
-    &&
-    (int)(
-        $clienteAtual['cadastro_completo']
-        ?? 0
-    ) === 1;
+if ($autorizarRecuperacao) {
+    $idClienteAtual = $clienteExistente
+        ? (int)($clienteAtual['id_cliente'] ?? 0)
+        : 0;
+    $hashClienteAtual = $clienteExistente
+        ? trim((string)($clienteAtual['senha_hash'] ?? ''))
+        : '';
 
+    if (
+        !$clienteExistente
+        || $idClienteAtual <= 0
+        || $desafioIdCliente !== $idClienteAtual
+        || $hashClienteAtual === ''
+    ) {
+        unset($_SESSION['cliente_auth_desafio']);
 
-/*
-|--------------------------------------------------------------------------
-| CRIAR SESSÃO AUTENTICADA
-|--------------------------------------------------------------------------
-*/
-
-session_regenerate_id(true);
-
-
-$_SESSION['cliente_auth'] = [
-
-    'id_cliente' =>
-        $idCliente,
-
-    'id_empresa' =>
-        $idEmpresa,
-
-    'telefone' =>
-        $desafioTelefone,
-
-    'nome_completo' =>
-        $clienteExistente
-            ? (string)(
-                $clienteAtual[
-                    'nome_completo'
-                ] ?? ''
-            )
-            : '',
-
-    'telefone_verificado' =>
-        true,
-
-    'cadastro_completo' =>
-        $cadastroCompleto,
-
-    'status' =>
-        'ativo',
-
-    'tipo' =>
-        'cliente',
-
-    'tipo_usuario' =>
-        'cliente',
-
-    'modo_visualizacao' =>
-        true,
-
-    'login_em' =>
-        date('Y-m-d H:i:s')
-];
-
-
-unset(
-    $_SESSION[
-        'cliente_auth_desafio'
-    ]
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| ÚLTIMO LOGIN
-|--------------------------------------------------------------------------
-*/
-
-if ($idCliente !== null) {
-    $stmt =
-        $conexao->prepare("
-            UPDATE cliente
-            SET ultimo_login_em =
-                CURRENT_TIMESTAMP
-            WHERE id_cliente = ?
-              AND id_empresa = ?
-        ");
-
-    if ($stmt) {
-        $stmt->bind_param(
-            'ii',
-            $idCliente,
-            $idEmpresa
-        );
-
-        $stmt->execute();
-
-        $stmt->close();
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_PASSWORD_RECOVERY_INVALID',
+            'user_msg' => 'Solicite um novo código para continuar.',
+        ], 422);
     }
+} elseif (
+    $clienteExistente
+    && trim((string)($clienteAtual['senha_hash'] ?? '')) !== ''
+) {
+    unset($_SESSION['cliente_auth_desafio']);
+
+    out([
+        'ok' => false,
+        'code' => 'CLIENT_PASSWORD_REQUIRED',
+        'user_msg' => 'Informe sua senha para continuar.',
+    ], 409);
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| SUCESSO
-|--------------------------------------------------------------------------
-*/
-
-out([
-    'ok' => true,
-    'code' =>
-        'CLIENT_AUTHENTICATED',
-
-    'data' => [
-        'cadastro_completo' =>
-            $cadastroCompleto,
-
-        'redirect' =>
-            '/public/views/cliente-perfil.html'
-    ]
-]);
+clienteLoginCriarSessao(
+    $conexao,
+    $idEmpresa,
+    $desafioTelefone,
+    $clienteAtual,
+    $autorizarRecuperacao
+);
