@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Documentos pendentes | AmAgenda</title>
+  <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
+  <link rel="stylesheet" href="../../css/documentos-legais/documentos-legais.css">
+  <script src="../../js/documentos-legais/aceite.js" defer></script>
+</head>
+<body data-pagina-aceite data-api="../../api/api_central.php">
+  <header class="am-topbar">
+    <div class="am-topbar__inner">
+      <span class="am-brand"><img src="/public/imagens/logo-menu.png" alt="" class="am-brand__logo">AmAgenda</span>
+      <span class="am-secure-label">Ambiente seguro</span>
+    </div>
+  </header>
+
+  <main class="am-shell">
+    <section class="am-hero">
+      <span class="am-eyebrow">Ação necessária</span>
+      <h1 class="am-title">Documentos legais</h1>
+      <p class="am-subtitle">Leia integralmente os documentos aplicáveis antes de continuar utilizando o AmAgenda.</p>
+    </section>
+
+    <section class="am-card">
+      <div id="estadoCarregando" class="am-state" aria-live="polite">
+        <div class="am-state__content"><div class="am-spinner"></div><h2>Verificando documentos</h2><p>Aguarde enquanto consultamos sua situação.</p></div>
+      </div>
+      <div id="estadoSemPendencias" class="am-state" aria-live="polite" hidden>
+        <div class="am-state__content"><div class="am-state__icon">✓</div><h2>Nenhum documento pendente</h2><p>Você será encaminhado para sua página inicial.</p></div>
+      </div>
+      <div id="conteudoAceite" class="am-card__body" hidden>
+        <div id="mensagemErro" class="am-alert" role="alert" hidden></div>
+        <form id="formAceite" novalidate>
+          <div id="listaDocumentos" class="am-legal-list"></div>
+          <fieldset class="am-confirmations">
+            <legend>Confirmações obrigatórias</legend>
+            <label class="am-check"><input id="confirmarTermos" type="checkbox"><span>Li integralmente e aceito os Termos aplicáveis ao meu acesso.</span></label>
+            <label class="am-check"><input id="confirmarPrivacidade" type="checkbox"><span>Li integralmente e estou ciente da Política de Privacidade do AmAgenda.</span></label>
+            <label id="blocoMaioridade" class="am-check" hidden><input id="confirmarMaioridade" type="checkbox"><span>Declaro que possuo 18 anos de idade ou mais.</span></label>
+          </fieldset>
+          <div class="am-actions">
+            <button id="btnRecusar" class="am-btn am-btn--danger" type="button">Não aceitar e sair</button>
+            <button id="btnAceitar" class="am-btn am-btn--primary" type="submit" disabled>Aceitar e continuar</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="am-footer">Em caso de dúvida: <a href="mailto:suporteamagenda@gmail.com">suporteamagenda@gmail.com</a></footer>
+</body>
+</html>

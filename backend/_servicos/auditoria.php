@@ -22,7 +22,7 @@ function auditoriaChaveSensivel(string $chave): bool
 {
     $normalizada = auditoriaChaveNormalizada($chave);
     // Marcador booleano previsto no catálogo; não transporta valor nem característica da senha.
-    if ($normalizada === 'senha_alterada') return false;
+    if (in_array($normalizada, ['senha_alterada', 'documento_hash'], true)) return false;
     $padroes = [
         'senha', 'password', 'passwd', 'hash', 'salt', 'token', 'cookie', 'session', 'sessao',
         'secret', 'segredo', 'credential', 'credencial', 'authorization', 'private_key',
@@ -105,7 +105,11 @@ function auditoriaSanitizarAlteracoes(string $eventoCodigo, array $alteracoes): 
 function auditoriaSanitizarContexto(array $contexto): array
 {
     auditoriaValidarAusenciaDadosSensiveis($contexto);
-    $permitidos = ['origem', 'aba', 'recorrencia', 'quantidade_afetada', 'escopo', 'grupo_recorrencia', 'data_referencia', 'motivo', 'versao'];
+    $permitidos = [
+        'origem', 'aba', 'recorrencia', 'quantidade_afetada', 'escopo', 'grupo_recorrencia',
+        'data_referencia', 'motivo', 'versao', 'documento_codigo', 'documento_versao',
+        'documento_hash', 'tipo_manifestacao', 'tipo_manifestante',
+    ];
     $resultado = [];
     foreach ($permitidos as $campo) {
         if (array_key_exists($campo, $contexto)) $resultado[$campo] = auditoriaNormalizarValor($contexto[$campo]);
@@ -228,7 +232,9 @@ function auditoriaValidarAtor(array $ator): void
     if (trim((string)$ator['ator_nome']) === '') throw new InvalidArgumentException('Ator sem nome válido.');
 
     $valido = ($origem === 'empresa' && $idEmpresa !== null && $idEmpresa > 0 && !$suporte
-            && (($tipo === 'usuario' && (int)$id > 0) || ($tipo === 'sistema' && $id === null && $perfil === 'sistema')))
+            && (($tipo === 'usuario' && (int)$id > 0)
+                || ($tipo === 'cliente' && (int)$id > 0 && $perfil === 'cliente')
+                || ($tipo === 'sistema' && $id === null && $perfil === 'sistema')))
         || ($origem === 'modo_suporte' && $idEmpresa !== null && $idEmpresa > 0
             && $tipo === 'super_admin' && (int)$id > 0 && $perfil === 'super_admin' && $suporte)
         || ($origem === 'plataforma' && $tipo === 'super_admin' && (int)$id > 0 && $perfil === 'super_admin' && !$suporte)

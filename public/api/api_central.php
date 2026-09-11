@@ -68,6 +68,23 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/_auth/logout.php',
     ],
 
+    // Documentos legais e manifestações obrigatórias
+    'documentos-legais/publico' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/publico.php',
+    ],
+    'documentos-legais/preview' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/preview.php',
+    ],
+    'documentos-legais/pendencias' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/pendencias.php',
+    ],
+    'documentos-legais/conteudo' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/conteudo.php',
+    ],
+    'documentos-legais/manifestar' => [
+        'POST' => __DIR__ . '/../../backend/documentos_legais/manifestar.php',
+    ],
+
     // Centro de notificações do destinatário autenticado
     'notificacoes/listar' => [
         'GET' => '@notificacoes_listar',
@@ -452,6 +469,56 @@ if (!isset($routes[$rota][$verbo])) {
 
 $handler = $routes[$rota][$verbo];
 
+/* O bloqueio jurídico fica na fronteira central, antes inclusive dos handlers
+   especiais, para não poder ser contornado por chamada direta à API. */
+$rotasPublicasSemBloqueioJuridico = [
+    '_auth/login',
+    '_auth/cliente-login',
+    'documentos-legais/publico',
+    'empresa/identidade-visual/publica',
+];
+$rotasResolucaoPendenciaJuridica = [
+    '_auth/session',
+    '_auth/logout',
+    'documentos-legais/pendencias',
+    'documentos-legais/conteudo',
+    'documentos-legais/manifestar',
+];
+
+if (!in_array($rota, $rotasPublicasSemBloqueioJuridico, true)
+    && !in_array($rota, $rotasResolucaoPendenciaJuridica, true)) {
+    if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+    $temIdentidadeNaSessao = (int)($_SESSION['auth']['id_usuario'] ?? 0) > 0
+        || (int)($_SESSION['cliente_auth']['id_cliente'] ?? 0) > 0;
+    if ($temIdentidadeNaSessao) {
+        try {
+            require_once __DIR__ . '/../../backend/_config/conexao.php';
+            require_once __DIR__ . '/../../backend/documentos_legais/_comum.php';
+            if (documentosLegaisTemPendencias($conexao)) {
+                out([
+                    'ok' => false,
+                    'code' => 'LEGAL_MANIFESTATION_REQUIRED',
+                    'user_msg' => 'Revise e manifeste os documentos legais para continuar.',
+                    'data' => ['pendencias_url' => '?path=documentos-legais/pendencias'],
+                ], 428);
+            }
+        } catch (UnexpectedValueException) {
+            out([
+                'ok' => false,
+                'code' => 'DOCUMENT_INTEGRITY_ERROR',
+                'user_msg' => 'Não foi possível validar os documentos legais.',
+            ], 503);
+        } catch (Throwable $e) {
+            error_log('[documentos_legais] Falha ao verificar pendências: ' . $e->getMessage());
+            out([
+                'ok' => false,
+                'code' => 'LEGAL_PENDING_CHECK_ERROR',
+                'user_msg' => 'Não foi possível validar as pendências legais.',
+            ], 500);
+        }
+    }
+}
+
 if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
     require_once __DIR__ . '/../../backend/_auth/require_auth.php';
     require_once __DIR__ . '/../../backend/_regras/permissoes_usuario.php';
@@ -550,6 +617,9 @@ $rotasPermitidasComSenhaTemporariaVencida = [
     '_auth/session',
     '_auth/logout',
     'perfil/alterar-senha',
+    'documentos-legais/pendencias',
+    'documentos-legais/conteudo',
+    'documentos-legais/manifestar',
 ];
 
 if ($rota === 'perfil/alterar-senha') {

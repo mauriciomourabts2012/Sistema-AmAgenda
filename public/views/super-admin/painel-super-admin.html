@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
     <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2"/>
     <link rel="stylesheet" href="../../css/perfil.css">
+    <link rel="stylesheet" href="../../css/documentos-legais/documentos-legais.css">
 
     <!--CSS MOBILE-->
     <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260817_2"/>
@@ -605,6 +606,42 @@
           <div id="estadoAuditoria" class="auditoria-estado" role="status" aria-live="polite"></div>
           <div id="listaAuditoria" class="auditoria-timeline" aria-live="polite"></div>
           <div class="section-paginacao"><div id="paginacaoAuditoria" class="paginacao-div" aria-label="Paginação da auditoria"></div></div>
+        </div>
+      </div>
+
+      <!-- ABA: DOCUMENTOS LEGAIS -->
+      <div id="documentos-legais" class="conteudo-aba">
+        <div class="conteudo-agenda am-legal-admin-tab">
+          <section class="am-hero">
+            <span class="am-eyebrow">Área restrita · Super Admin</span>
+            <h2 class="am-title">Preview dos documentos</h2>
+            <p class="am-subtitle">Visualização somente para conferência. Esta tela não edita, publica, arquiva, exclui ou registra manifestações.</p>
+            <div class="am-meta">
+              <span id="previewStatus" class="am-badge am-badge--draft">RASCUNHO</span>
+              <span id="previewCodigo" class="am-badge">—</span>
+              <span id="previewVersao" class="am-badge">Versão 1.0</span>
+            </div>
+          </section>
+
+          <div class="am-preview-tools">
+            <label class="am-select-label" for="documentoSelecionado">Documento para visualização</label>
+            <select id="documentoSelecionado" class="am-select">
+              <option value="termos_empresa">Termos da Empresa</option>
+              <option value="termos_usuario">Termos do Usuário</option>
+              <option value="termos_cliente">Termos do Cliente</option>
+              <option value="termo_super_admin">Termo de Responsabilidade do Super Admin</option>
+              <option value="politica_privacidade">Política de Privacidade</option>
+            </select>
+            <button id="btnCarregarPreview" class="am-btn am-btn--primary" type="button">Carregar rascunho</button>
+          </div>
+
+          <div id="mensagemErroDocumentosLegais" class="am-alert" role="alert" hidden></div>
+          <section class="am-card">
+            <div class="am-card__body">
+              <h2 id="previewTitulo" class="am-document-title">Documento legal</h2>
+              <article id="previewConteudo" class="am-document"><p class="am-document-placeholder">Selecione a aba para carregar o rascunho.</p></article>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -1712,6 +1749,9 @@
 
     <!--ABA AUDITORIA-->
     <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260828_5"></script>
+
+    <!--ABA DOCUMENTOS LEGAIS-->
+    <script src="../../js/documentos-legais/preview.js"></script>
 
 
     <!--Universal-->

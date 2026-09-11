@@ -16,6 +16,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
   session_start();
 }
 
+require_once __DIR__ . '/csrf.php';
+
 $clienteAuth = is_array($_SESSION['cliente_auth'] ?? null)
   ? $_SESSION['cliente_auth']
   : [];
@@ -62,6 +64,7 @@ if ($clienteAuth) {
           'tipo_usuario' => 'cliente',
           'status' => 'ativo',
           'modo_visualizacao' => true,
+          'csrf_token' => csrfTokenSessao(),
         ]
       ]
     ]);
@@ -194,6 +197,7 @@ out([
       'deve_alterar_senha' => $deveAlterarSenha,
       'senha_temporaria_vencida' => $senhaTemporariaVencida,
       'permissoes'    => $permissoesEfetivas,
+      'csrf_token'    => csrfTokenSessao(),
     ]
   ]
 ]);

@@ -34,7 +34,8 @@
       { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-users" },
       { tipo: "aba", aba: "usuarios-super", texto: "Usuário Super", icone: "fa-solid fa-user-shield" },
       { tipo: "aba", aba: "planos", texto: "Planos", icone: "fa-solid fa-layer-group" },
-      { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" }
+      { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" },
+      { tipo: "aba", aba: "documentos-legais", texto: "Documentos legais", icone: "fa-solid fa-file-contract" }
     ],
     cliente: [
       { tipo: "button", texto: "Dados cadastrais", icone: "fa-solid fa-address-card", modal: "modalDadosCadastraisCliente", titulo: "Meus dados cadastrais" }
@@ -60,7 +61,8 @@
         usuarios: ["Usuários", "Gerencie os usuários vinculados às empresas"],
         "usuarios-super": ["Usuário Super", "Gerencie os administradores globais"],
         planos: ["Planos", "Gerencie os planos da plataforma"],
-        auditoria: ["Auditoria", "Consulte atividades globais, suporte e autenticação"]
+        auditoria: ["Auditoria", "Consulte atividades globais, suporte e autenticação"],
+        "documentos-legais": ["Documentos legais", "Visualize os rascunhos jurídicos da plataforma"]
       }
     }
   };
@@ -113,6 +115,16 @@
     }
     if (navegacao) {
       navegacao.innerHTML = itens.map(htmlItem).join("");
+
+      if (CONTEXTOS_ABAS[contexto]) {
+        const abaAtiva = document.querySelector(".conteudo-aba.ativa")?.id || "";
+        navegacao.querySelectorAll("[data-menu-aba]").forEach(item => {
+          const ativo = item.dataset.menuAba === abaAtiva;
+          item.classList.toggle("ativo", ativo);
+          if (ativo) item.setAttribute("aria-current", "page");
+          else item.removeAttribute("aria-current");
+        });
+      }
 
       if (contexto === "cliente") {
         navegacao.querySelectorAll("a.sidebar-item[href]").forEach(link => {

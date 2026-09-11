@@ -79,6 +79,12 @@ function auditoriaCatalogo(): array
         'autenticacao.acesso_negado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Acesso negado por regra de autenticação.', []),
         'suporte.iniciado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'alta', 'Iniciou o modo suporte.', []),
         'suporte.finalizado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'alta', 'Finalizou o modo suporte.', []),
+
+        'documentos_legais.termos_aceitos' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_manifestacao', 'critica', 'Registrou o aceite dos termos legais.', []),
+        'documentos_legais.politica_ciencia_registrada' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_manifestacao', 'critica', 'Registrou ciência da Política de Privacidade.', []),
+        'documentos_legais.manifestacao_registrada' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_manifestacao', 'critica', 'Concluiu a manifestação dos documentos legais obrigatórios.', []),
+        'documentos_legais.falha_integridade' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'critica', 'Detectou falha de integridade em documento legal.', []),
+        'documentos_legais.preview_visualizado' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'alta', 'Visualizou o preview de um documento legal.', []),
     ];
 }
 
