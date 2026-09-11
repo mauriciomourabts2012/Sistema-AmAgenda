@@ -1,0 +1,2305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="AmAgenda - Sistema completo para gerenciamento de agenda, clientes, profissionais e serviços."
+  >
+
+  <title>AmAgenda | Organize sua agenda e encante seus clientes</title>
+
+  <link rel="icon" type="image/png" href="/public/imagens/logo-menu.png">
+
+    <link rel="stylesheet" href="/public/css/agenda/site-amagenda.css">
+
+</head>
+
+<body>
+
+  <!-- =======================================================
+       CABEÇALHO
+       ======================================================= -->
+
+  <header class="topo">
+
+    <div class="container topo-conteudo">
+
+      <a
+        href="#inicio"
+        class="marca"
+        aria-label="AmAgenda"
+      >
+
+        <span class="marca-logo">
+          <img
+            src="/public/imagens/logo-menu.png"
+            alt="AmAgenda"
+          >
+        </span>
+
+        <span>AmAgenda</span>
+
+      </a>
+
+
+      <nav class="nav">
+
+        <a href="#recursos">
+          Recursos
+        </a>
+
+        <a href="#painel-administrativo">
+          Painel
+        </a>
+
+        <a href="#como-funciona">
+          Como funciona
+        </a>
+
+        <a href="#planos">
+          Planos
+        </a>
+
+        <a href="#faq">
+          Dúvidas
+        </a>
+
+      </nav>
+
+
+      <div class="topo-acoes">
+
+        <button
+          class="btn btn-secundario"
+          type="button"
+          data-futuro="login"
+        >
+          Entrar
+        </button>
+
+        <a
+          href="#planos"
+          class="btn btn-primary"
+        >
+          Começar agora
+        </a>
+
+        <button
+          class="btn-menu-mobile"
+          id="botaoMenuMobile"
+          aria-label="Abrir menu"
+        >
+          ☰
+        </button>
+
+      </div>
+
+    </div>
+
+  </header>
+
+
+  <!-- =======================================================
+       HERO
+       ======================================================= -->
+
+  <main>
+
+    <section
+      class="hero"
+      id="inicio"
+    >
+
+      <div class="container hero-grid">
+
+        <div class="hero-texto">
+
+          <span class="badge">
+            ✦ Gestão de agenda simples e profissional
+          </span>
+
+          <img
+            class="hero-marca-oficial"
+            src="/public/imagens/logo.png"
+            alt="Mascote oficial do AmAgenda"
+          >
+
+          <h1>
+            Organize sua agenda,
+            <span class="destaque-azul">
+              encante
+            </span>
+            seus clientes.
+          </h1>
+
+          <p>
+            Controle profissionais, serviços,
+            horários e clientes em um só lugar.
+            Deixe seus clientes agendarem online
+            e mantenha sua rotina organizada
+            com o AmAgenda.
+          </p>
+
+          <div class="hero-acoes">
+
+            <a
+              href="#planos"
+              class="btn btn-primary"
+            >
+              Criar minha conta
+              <span>→</span>
+            </a>
+
+            <a
+              href="#como-funciona"
+              class="btn btn-secundario"
+            >
+              Ver como funciona
+            </a>
+
+          </div>
+
+          <div class="hero-mini-info">
+
+            <div class="mini-info">
+
+              <span class="check">✓</span>
+
+              Cadastro simples
+
+            </div>
+
+            <div class="mini-info">
+
+              <span class="check">✓</span>
+
+              Agenda online
+
+            </div>
+
+            <div class="mini-info">
+
+              <span class="check">✓</span>
+
+              Gestão multiusuário
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- MOCKUP DO SISTEMA -->
+
+        <div class="hero-painel">
+
+          <div class="janela">
+
+            <div class="janela-topo">
+
+              <div class="janela-titulo">
+
+                <span>📅</span>
+
+                <span>Agenda</span>
+
+              </div>
+
+              <span class="janela-status">
+                Online
+              </span>
+
+            </div>
+
+
+            <div class="painel-corpo">
+
+              <aside class="sidebar-demo">
+
+                <div class="ativo">⌂</div>
+
+                <div>👤</div>
+
+                <div>＋</div>
+
+                <div>⚙</div>
+
+              </aside>
+
+
+              <div class="agenda-demo">
+
+                <div class="agenda-cabecalho">
+
+                  <div>
+
+                    <h3>
+                      Quinta-feira
+                    </h3>
+
+                    <span>
+                      10 de Setembro de 2026
+                    </span>
+
+                  </div>
+
+                  <span>
+                    🔍 Pesquisar agenda
+                  </span>
+
+                </div>
+
+
+                <div class="dias-demo">
+
+                  <div class="dia-demo">
+                    SEG<br>07/09
+                  </div>
+
+                  <div class="dia-demo">
+                    TER<br>08/09
+                  </div>
+
+                  <div class="dia-demo">
+                    QUA<br>09/09
+                  </div>
+
+                  <div class="dia-demo ativo">
+                    QUI<br>10/09
+                  </div>
+
+                  <div class="dia-demo">
+                    SEX<br>11/09
+                  </div>
+
+                </div>
+
+
+                <div class="agendamento-demo">
+
+                  <div class="hora-demo">
+
+                    <strong>
+                      08:00
+                    </strong>
+
+                    <small>
+                      11/09/2026
+                    </small>
+
+                  </div>
+
+
+                  <div class="cliente-demo">
+
+                    <strong>
+                      Cliente agendado
+                    </strong>
+
+                    <span>
+                      Limpeza Facial · 60 min
+                    </span>
+
+                  </div>
+
+
+                  <div class="status-demo">
+                    Confirmado
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div class="mockup-flutuante">
+
+            <strong>
+              Sua agenda organizada
+            </strong>
+
+            <p>
+              Visualize os atendimentos
+              e acompanhe sua rotina.
+            </p>
+
+            <div class="barra-mini">
+              <span></span>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         INDICADORES
+         ===================================================== -->
+
+    <section class="indicadores">
+
+      <div class="container indicadores-grid">
+
+        <div class="indicador">
+
+          <strong>
+            24h
+          </strong>
+
+          <span>
+            agendamento disponível
+          </span>
+
+        </div>
+
+        <div class="indicador">
+
+          <strong>
+            100%
+          </strong>
+
+          <span>
+            online
+          </span>
+
+        </div>
+
+        <div class="indicador">
+
+          <strong>
+            1 só
+          </strong>
+
+          <span>
+            lugar para sua gestão
+          </span>
+
+        </div>
+
+        <div class="indicador">
+
+          <strong>
+            Fácil
+          </strong>
+
+          <span>
+            para empresa e cliente
+          </span>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         RECURSOS
+         ===================================================== -->
+
+    <section
+      class="secao"
+      id="recursos"
+    >
+
+      <div class="container">
+
+        <span class="badge badge-centralizada">
+          Recursos do AmAgenda
+        </span>
+
+        <h2 class="titulo-secao">
+          Tudo o que você precisa para
+          <span class="destaque-azul">
+            organizar seus atendimentos
+          </span>
+        </h2>
+
+        <p class="descricao-secao">
+          Uma solução criada para simplificar
+          a rotina da sua empresa e facilitar
+          a vida dos seus clientes.
+        </p>
+
+
+        <div class="recursos-grid">
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              📅
+            </div>
+
+            <h3>
+              Agenda inteligente
+            </h3>
+
+            <p>
+              Organize todos os atendimentos
+              por dia, horário e profissional
+              em uma agenda clara e simples.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              👤
+            </div>
+
+            <h3>
+              Gestão de clientes
+            </h3>
+
+            <p>
+              Centralize dados cadastrais,
+              histórico de agendamentos
+              e informações importantes
+              dos seus clientes.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              👥
+            </div>
+
+            <h3>
+              Profissionais
+            </h3>
+
+            <p>
+              Defina profissionais,
+              horários individuais,
+              serviços e disponibilidade
+              de atendimento.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              ✂
+            </div>
+
+            <h3>
+              Serviços
+            </h3>
+
+            <p>
+              Cadastre serviços com
+              duração, valor e profissional
+              responsável.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              ⏰
+            </div>
+
+            <h3>
+              Horários personalizados
+            </h3>
+
+            <p>
+              Configure expediente,
+              intervalo de almoço e
+              disponibilidade individual
+              de cada profissional.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              🎨
+            </div>
+
+            <h3>
+              Identidade visual
+            </h3>
+
+            <p>
+              Personalize nome,
+              logo e apresentação
+              da empresa para oferecer
+              uma experiência própria.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              💬
+            </div>
+
+            <h3>
+              Integração com WhatsApp
+            </h3>
+
+            <p>
+              Centralize ações relacionadas
+              ao atendimento e facilite
+              a comunicação com o cliente.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              🔐
+            </div>
+
+            <h3>
+              Usuários e permissões
+            </h3>
+
+            <p>
+              Controle quem pode acessar
+              cada parte do sistema,
+              mantendo a gestão organizada.
+            </p>
+
+          </article>
+
+
+          <article class="recurso-card">
+
+            <div class="recurso-icone">
+              📊
+            </div>
+
+            <h3>
+              Gestão centralizada
+            </h3>
+
+            <p>
+              Tenha uma visão simples
+              da operação e acompanhe
+              tudo em um único sistema.
+            </p>
+
+          </article>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+
+
+    <!-- =====================================================
+         PAINEL ADMINISTRATIVO
+         ===================================================== -->
+
+    <section
+      class="secao secao-painel-admin"
+      id="painel-administrativo"
+    >
+
+      <div class="container">
+
+        <span class="badge badge-centralizada">
+          Painel administrativo
+        </span>
+
+        <h2 class="titulo-secao">
+          Controle sua operação em um
+          <span class="destaque-azul">
+            painel simples e completo
+          </span>
+        </h2>
+
+        <p class="descricao-secao">
+          Acompanhe o resumo do dia, consulte clientes,
+          visualize a agenda e tenha uma trilha de auditoria
+          das principais ações realizadas na empresa.
+        </p>
+
+        <div class="admin-destaques">
+
+          <div class="admin-destaque-item">
+            <span class="admin-destaque-icone">▥</span>
+            <div>
+              <strong>Resumo do dia</strong>
+              <span>Indicadores rápidos da operação</span>
+            </div>
+          </div>
+
+          <div class="admin-destaque-item">
+            <span class="admin-destaque-icone">👥</span>
+            <div>
+              <strong>Clientes centralizados</strong>
+              <span>Busca, status e ações em um só lugar</span>
+            </div>
+          </div>
+
+          <div class="admin-destaque-item">
+            <span class="admin-destaque-icone">↶</span>
+            <div>
+              <strong>Auditoria detalhada</strong>
+              <span>Histórico das ações importantes</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- MOCKUP PRINCIPAL: RESUMO DO DIA -->
+
+        <div class="admin-browser admin-browser-principal">
+
+          <aside class="admin-sidebar">
+
+            <div class="admin-sidebar-marca">
+              <span class="admin-mini-logo">▦</span>
+              <strong>AmAgenda</strong>
+            </div>
+
+            <div class="admin-menu-item ativo">
+              <span>⌁</span>
+              <strong>Resumo do dia</strong>
+            </div>
+
+            <div class="admin-menu-item">
+              <span>▦</span>
+              <strong>Agenda</strong>
+            </div>
+
+            <div class="admin-menu-item">
+              <span>👥</span>
+              <strong>Clientes</strong>
+            </div>
+
+            <div class="admin-menu-item">
+              <span>👤</span>
+              <strong>Usuários</strong>
+            </div>
+
+            <div class="admin-menu-item">
+              <span>↶</span>
+              <strong>Auditoria</strong>
+            </div>
+
+            <div class="admin-menu-item">
+              <span>⚙</span>
+              <strong>Configurações</strong>
+            </div>
+
+            <div class="admin-menu-ajuda">
+              <span>?</span>
+              <strong>Ajuda</strong>
+            </div>
+
+          </aside>
+
+          <div class="admin-conteudo">
+
+            <div class="admin-topbar">
+
+              <div>
+                <strong>Resumo do dia</strong>
+                <span>Acompanhe as principais informações de hoje</span>
+              </div>
+
+              <div class="admin-topbar-acoes">
+                <span>♧</span>
+                <span class="admin-avatar-topo">●</span>
+              </div>
+
+            </div>
+
+            <div class="admin-area">
+
+              <div class="admin-kpis">
+
+                <div class="admin-kpi">
+                  <div class="admin-kpi-topo">
+                    <strong>Agendamentos</strong>
+                    <span>▦</span>
+                  </div>
+                  <b>8</b>
+                  <small>Hoje · 10/09/2026</small>
+                </div>
+
+                <div class="admin-kpi">
+                  <div class="admin-kpi-topo">
+                    <strong>Confirmados</strong>
+                    <span>✓</span>
+                  </div>
+                  <b>6</b>
+                  <small>Inclui quem está em atendimento</small>
+                </div>
+
+                <div class="admin-kpi">
+                  <div class="admin-kpi-topo">
+                    <strong>Pendentes</strong>
+                    <span>◷</span>
+                  </div>
+                  <b>1</b>
+                  <small>Aguardando confirmação</small>
+                </div>
+
+                <div class="admin-kpi">
+                  <div class="admin-kpi-topo">
+                    <strong>Cancelados</strong>
+                    <span>⊗</span>
+                  </div>
+                  <b>1</b>
+                  <small>Cancelamentos no dia</small>
+                </div>
+
+                <div class="admin-kpi admin-kpi-secundario">
+                  <div class="admin-kpi-topo">
+                    <strong>Faturamento (dia)</strong>
+                    <span>◆</span>
+                  </div>
+                  <b>R$ 1.280</b>
+                  <small>Visão financeira do dia</small>
+                </div>
+
+                <div class="admin-kpi admin-kpi-secundario">
+                  <div class="admin-kpi-topo">
+                    <strong>Ocupação semanal</strong>
+                    <span>▥</span>
+                  </div>
+                  <b>68%</b>
+                  <small>Agenda preenchida nesta semana</small>
+                </div>
+
+              </div>
+
+              <div class="admin-profissionais-box">
+
+                <div class="admin-box-titulo">
+                  <strong>Por profissional</strong>
+                  <span>Atualizado pelo horário do servidor</span>
+                </div>
+
+                <div class="admin-profissional-row">
+
+                  <div>
+                    <strong>Luana Santos</strong>
+                    <span class="admin-status-livre">● Livre neste momento</span>
+                    <small>3 agendamento(s) hoje</small>
+                  </div>
+
+                  <div class="admin-chips">
+                    <span>3 total</span>
+                    <span class="verde">2 conf.</span>
+                    <span class="amarelo">1 pend.</span>
+                    <span class="vermelho">0 canc.</span>
+                  </div>
+
+                  <div class="admin-profissional-avatar">LS</div>
+
+                </div>
+
+              </div>
+
+              <div class="admin-proximos-box">
+                <strong>Próximos atendimentos</strong>
+                <span>08:00 · Limpeza Facial · Luana Santos</span>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- MOCKUPS SECUNDÁRIOS -->
+
+        <div class="admin-galeria">
+
+          <!-- CLIENTES -->
+
+          <article class="admin-mini-tela">
+
+            <div class="admin-mini-tela-topo">
+              <div>
+                <strong>Clientes</strong>
+                <span>Gerencie os clientes da sua empresa</span>
+              </div>
+              <span class="admin-mini-icone">👥</span>
+            </div>
+
+            <div class="admin-mini-toolbar">
+              <button type="button">＋ Novo Cliente</button>
+              <div>⌕ Pesquisar cliente</div>
+              <span>▽ Ativo</span>
+            </div>
+
+            <div class="admin-cliente-card">
+
+              <div class="admin-cliente-avatar">AM</div>
+
+              <div class="admin-cliente-dados">
+                <strong>Antonio Mauricio De Moura Magalhães</strong>
+                <span>E-mail não informado</span>
+                <small>ID: 1 · Telefone: +55 38 99896-9407 · Status: Ativo</small>
+                <div class="admin-cliente-badges">
+                  <span>Cliente</span>
+                  <span>Ativo</span>
+                </div>
+              </div>
+
+              <div class="admin-cliente-acoes">
+                <span class="whatsapp">◉</span>
+                <span>⋮</span>
+              </div>
+
+            </div>
+
+          </article>
+
+          <!-- AUDITORIA -->
+
+          <article class="admin-mini-tela">
+
+            <div class="admin-mini-tela-topo">
+              <div>
+                <strong>Auditoria</strong>
+                <span>Histórico de atividades e alterações</span>
+              </div>
+              <span class="admin-mini-icone">↶</span>
+            </div>
+
+            <div class="admin-auditoria-toolbar">
+              <div>⌕ Ator, entidade, descrição ou evento</div>
+              <span>▽ 04/09/2026 - 10/09/2026</span>
+            </div>
+
+            <div class="admin-timeline">
+
+              <div class="admin-timeline-item">
+                <span class="admin-timeline-ponto"></span>
+                <div>
+                  <strong>Administrador AmAgenda</strong>
+                  <small>Perfil: super_admin</small>
+                  <div class="admin-eventos-tags">
+                    <span>Autenticação</span>
+                    <span>Suporte · iniciado</span>
+                  </div>
+                  <p>Iniciou o modo suporte.</p>
+                </div>
+                <time>10/09/2026 · 21:28</time>
+              </div>
+
+              <div class="admin-timeline-item">
+                <span class="admin-timeline-ponto"></span>
+                <div>
+                  <strong>TecCom</strong>
+                  <small>Perfil: proprietário</small>
+                  <div class="admin-eventos-tags">
+                    <span>Agenda</span>
+                    <span>Agendamento · criado</span>
+                  </div>
+                  <p>Criou um novo agendamento para o cliente.</p>
+                </div>
+                <time>10/09/2026 · 21:09</time>
+              </div>
+
+            </div>
+
+          </article>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         SISTEMA PARA A EMPRESA
+         ===================================================== -->
+
+    <section
+      class="secao secao-cinza"
+      id="como-funciona"
+    >
+
+      <div class="container">
+
+        <div class="demonstracao-grid">
+
+          <div class="demonstracao-texto">
+
+            <span class="badge">
+              Para sua empresa
+            </span>
+
+            <h3>
+              Configure sua agenda
+              do seu jeito.
+            </h3>
+
+            <p>
+              Defina horários de atendimento,
+              profissionais, serviços,
+              intervalos e regras específicas.
+              O AmAgenda centraliza essas
+              configurações para que sua equipe
+              trabalhe de forma organizada.
+            </p>
+
+            <ul class="lista-check">
+
+              <li>
+                <span class="check">✓</span>
+                Horários por profissional
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Intervalos de almoço
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Serviços personalizados
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Controle de disponibilidade
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Exceções, folgas e bloqueios
+              </li>
+
+            </ul>
+
+          </div>
+
+
+          <div class="painel-config">
+
+            <div class="modal-demo">
+
+              <div class="modal-topo-demo">
+
+                <span>
+                  Configurações Agenda Profissional
+                </span>
+
+                <span>×</span>
+
+              </div>
+
+
+              <div class="tabs-demo">
+
+                <span class="tab-demo">
+                  Geral
+                </span>
+
+                <span class="tab-demo ativo">
+                  Horários
+                </span>
+
+                <span class="tab-demo">
+                  Serviços
+                </span>
+
+                <span class="tab-demo">
+                  WhatsApp
+                </span>
+
+              </div>
+
+
+              <div class="horarios-demo">
+
+                <div class="linha-horario">
+
+                  <strong>
+                    Segunda
+                  </strong>
+
+                  <span>✓</span>
+
+                  <div class="campo-hora">
+                    08:00
+                  </div>
+
+                  <div class="campo-hora">
+                    18:00
+                  </div>
+
+                </div>
+
+
+                <div class="linha-horario">
+
+                  <strong>
+                    Terça
+                  </strong>
+
+                  <span>✓</span>
+
+                  <div class="campo-hora">
+                    08:00
+                  </div>
+
+                  <div class="campo-hora">
+                    18:00
+                  </div>
+
+                </div>
+
+
+                <div class="linha-horario">
+
+                  <strong>
+                    Quarta
+                  </strong>
+
+                  <span>✓</span>
+
+                  <div class="campo-hora">
+                    08:00
+                  </div>
+
+                  <div class="campo-hora">
+                    18:00
+                  </div>
+
+                </div>
+
+
+                <div class="linha-horario">
+
+                  <strong>
+                    Quinta
+                  </strong>
+
+                  <span>✓</span>
+
+                  <div class="campo-hora">
+                    08:00
+                  </div>
+
+                  <div class="campo-hora">
+                    18:00
+                  </div>
+
+                </div>
+
+
+                <div class="linha-horario">
+
+                  <strong>
+                    Sexta
+                  </strong>
+
+                  <span>✓</span>
+
+                  <div class="campo-hora">
+                    08:00
+                  </div>
+
+                  <div class="campo-hora">
+                    18:00
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         CLIENTE FAZENDO AGENDAMENTO
+         ===================================================== -->
+
+    <section class="secao">
+
+      <div class="container">
+
+        <span class="badge badge-centralizada">
+          Para seus clientes
+        </span>
+
+        <h2 class="titulo-secao">
+          Agendar um horário fica
+          <span class="destaque-azul">
+            simples e rápido
+          </span>
+        </h2>
+
+        <p class="descricao-secao">
+          O cliente escolhe o profissional,
+          o serviço, o horário e confirma
+          o agendamento em poucos passos.
+        </p>
+
+
+        <div class="fluxo-cards">
+
+          <div class="fluxo-card">
+
+            <div class="fluxo-numero">
+              1
+            </div>
+
+            <h3>
+              Escolha o profissional
+            </h3>
+
+            <p>
+              O cliente seleciona
+              o profissional desejado.
+            </p>
+
+          </div>
+
+
+          <div class="fluxo-card">
+
+            <div class="fluxo-numero">
+              2
+            </div>
+
+            <h3>
+              Escolha o serviço
+            </h3>
+
+            <p>
+              Visualize serviços,
+              duração e valores.
+            </p>
+
+          </div>
+
+
+          <div class="fluxo-card">
+
+            <div class="fluxo-numero">
+              3
+            </div>
+
+            <h3>
+              Escolha o horário
+            </h3>
+
+            <p>
+              Apenas horários disponíveis
+              são apresentados.
+            </p>
+
+          </div>
+
+
+          <div class="fluxo-card">
+
+            <div class="fluxo-numero">
+              4
+            </div>
+
+            <h3>
+              Confirme
+            </h3>
+
+            <p>
+              Revise as informações
+              e finalize o agendamento.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div class="mockup-agendamento">
+
+          <div class="passos-demo">
+
+            <div class="passo-demo ativo">
+              👤 Profissional
+            </div>
+
+            <div class="passo-demo">
+              ✂ Serviço
+            </div>
+
+            <div class="passo-demo">
+              ◷ Horário
+            </div>
+
+            <div class="passo-demo">
+              ✓ Confirmar
+            </div>
+
+          </div>
+
+
+          <div class="agendamento-conteudo">
+
+            <div class="profissional-card-demo">
+
+              <div class="avatar-demo">
+                LS
+              </div>
+
+              <div>
+
+                <strong>
+                  Luana Santos
+                </strong>
+
+                <div class="profissional-descricao-demo">
+                  Limpeza facial completa
+                </div>
+
+              </div>
+
+            </div>
+
+
+            <div class="horarios-disponiveis-demo">
+
+              <strong>
+                Horários disponíveis
+              </strong>
+
+              <div class="grade-horarios">
+
+                <div class="horario-item">
+                  08:00
+                </div>
+
+                <div class="horario-item ativo">
+                  08:10
+                </div>
+
+                <div class="horario-item">
+                  08:20
+                </div>
+
+                <div class="horario-item">
+                  08:30
+                </div>
+
+                <div class="horario-item">
+                  08:40
+                </div>
+
+                <div class="horario-item">
+                  08:50
+                </div>
+
+                <div class="horario-item">
+                  09:00
+                </div>
+
+                <div class="horario-item">
+                  09:10
+                </div>
+
+                <div class="horario-item">
+                  09:20
+                </div>
+
+                <div class="horario-item">
+                  09:30
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         BENEFÍCIOS
+         ===================================================== -->
+
+    <section class="secao beneficios">
+
+      <div class="container">
+
+        <h2 class="titulo-secao">
+          Mais organização para sua empresa.
+          Mais facilidade para seus clientes.
+        </h2>
+
+        <p class="descricao-secao">
+          O AmAgenda foi pensado para
+          reduzir tarefas manuais e tornar
+          o agendamento mais simples.
+        </p>
+
+
+        <div class="beneficios-grid">
+
+          <div class="beneficio-card">
+
+            <strong>
+              Menos confusão
+            </strong>
+
+            <p>
+              Centralize sua agenda
+              e reduza conflitos
+              entre horários.
+            </p>
+
+          </div>
+
+
+          <div class="beneficio-card">
+
+            <strong>
+              Mais autonomia
+            </strong>
+
+            <p>
+              O cliente consegue escolher
+              o melhor horário disponível.
+            </p>
+
+          </div>
+
+
+          <div class="beneficio-card">
+
+            <strong>
+              Mais profissionalismo
+            </strong>
+
+            <p>
+              Ofereça uma experiência
+              organizada e moderna.
+            </p>
+
+          </div>
+
+
+          <div class="beneficio-card">
+
+            <strong>
+              Mais controle
+            </strong>
+
+            <p>
+              Gerencie usuários,
+              profissionais e serviços
+              com segurança.
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         PLANOS
+         ===================================================== -->
+
+    <section
+      class="secao"
+      id="planos"
+    >
+
+      <div class="container">
+
+        <span class="badge badge-centralizada">
+          Planos
+        </span>
+
+        <h2 class="titulo-secao">
+          Escolha o plano ideal
+          para seu negócio
+        </h2>
+
+        <p class="descricao-secao">
+          Comece com o que sua empresa precisa
+          hoje e evolua conforme o crescimento
+          do seu negócio.
+        </p>
+
+
+        <div class="planos-grid">
+
+          <!-- ESSENCIAL -->
+
+          <article class="plano">
+
+            <h3>
+              Essencial
+            </h3>
+
+            <p class="plano-descricao">
+              Para profissionais autônomos
+              e pequenos negócios.
+            </p>
+
+            <div class="preco">
+
+              <small>R$</small>
+
+              <strong>
+                24,99
+              </strong>
+
+              <span>
+                /mês
+              </span>
+
+            </div>
+
+            <ul>
+
+              <li>
+                <span class="check">✓</span>
+                1 proprietário
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 2 profissionais
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 20 serviços
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 300 agendamentos/mês
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Gestão de clientes
+              </li>
+
+            </ul>
+
+            <button
+              class="btn btn-secundario"
+              type="button"
+              data-plano="Essencial"
+            >
+              Escolher Essencial
+            </button>
+
+          </article>
+
+
+          <!-- PROFISSIONAL -->
+
+          <article class="plano destaque">
+
+            <span class="plano-selo">
+              MAIS ESCOLHIDO
+            </span>
+
+            <h3>
+              Profissional
+            </h3>
+
+            <p class="plano-descricao">
+              Para empresas em crescimento
+              que trabalham com equipe.
+            </p>
+
+            <div class="preco">
+
+              <small>R$</small>
+
+              <strong>
+                59,99
+              </strong>
+
+              <span>
+                /mês
+              </span>
+
+            </div>
+
+            <ul>
+
+              <li>
+                <span class="check">✓</span>
+                1 proprietário
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 5 profissionais
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                1 recepcionista
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 50 serviços
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 1.000 agendamentos/mês
+              </li>
+
+            </ul>
+
+            <button
+              class="btn btn-primary"
+              type="button"
+              data-plano="Profissional"
+            >
+              Escolher Profissional
+            </button>
+
+          </article>
+
+
+          <!-- PREMIUM -->
+
+          <article class="plano">
+
+            <h3>
+              Premium
+            </h3>
+
+            <p class="plano-descricao">
+              Para empresas maiores
+              e equipes com alto volume.
+            </p>
+
+            <div class="preco">
+
+              <small>R$</small>
+
+              <strong>
+                99,99
+              </strong>
+
+              <span>
+                /mês
+              </span>
+
+            </div>
+
+            <ul>
+
+              <li>
+                <span class="check">✓</span>
+                1 proprietário
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 10 profissionais
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 3 recepcionistas
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 150 serviços
+              </li>
+
+              <li>
+                <span class="check">✓</span>
+                Até 3.000 agendamentos/mês
+              </li>
+
+            </ul>
+
+            <button
+              class="btn btn-secundario"
+              type="button"
+              data-plano="Premium"
+            >
+              Escolher Premium
+            </button>
+
+          </article>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         FAQ
+         ===================================================== -->
+
+    <section
+      class="secao secao-cinza"
+      id="faq"
+    >
+
+      <div class="container">
+
+        <h2 class="titulo-secao">
+          Perguntas frequentes
+        </h2>
+
+        <p class="descricao-secao">
+          Algumas respostas rápidas
+          sobre o AmAgenda.
+        </p>
+
+
+        <div class="faq">
+
+          <div class="faq-item">
+
+            <button
+              type="button"
+              class="faq-pergunta"
+            >
+
+              <span>
+                O cliente consegue agendar sozinho?
+              </span>
+
+              <span class="faq-icone">
+                +
+              </span>
+
+            </button>
+
+            <div class="faq-resposta">
+
+              <p>
+                Sim. O cliente pode acessar
+                a área de agendamento,
+                escolher profissional,
+                serviço e horário disponível
+                e confirmar o atendimento.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="faq-item">
+
+            <button
+              type="button"
+              class="faq-pergunta"
+            >
+
+              <span>
+                Posso definir horários diferentes
+                para cada profissional?
+              </span>
+
+              <span class="faq-icone">
+                +
+              </span>
+
+            </button>
+
+            <div class="faq-resposta">
+
+              <p>
+                Sim. Cada profissional
+                pode ter seus próprios horários,
+                intervalos e disponibilidade.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="faq-item">
+
+            <button
+              type="button"
+              class="faq-pergunta"
+            >
+
+              <span>
+                Posso cadastrar vários serviços?
+              </span>
+
+              <span class="faq-icone">
+                +
+              </span>
+
+            </button>
+
+            <div class="faq-resposta">
+
+              <p>
+                Sim. Os serviços podem ter
+                nome, duração, valor
+                e profissional responsável,
+                respeitando o limite do plano.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="faq-item">
+
+            <button
+              type="button"
+              class="faq-pergunta"
+            >
+
+              <span>
+                O pagamento do plano já funciona?
+              </span>
+
+              <span class="faq-icone">
+                +
+              </span>
+
+            </button>
+
+            <div class="faq-resposta">
+
+              <p>
+                A integração automática
+                de pagamentos será disponibilizada
+                posteriormente. Nesta versão
+                pública, os planos são apresentados
+                apenas para demonstração.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="faq-item">
+
+            <button
+              type="button"
+              class="faq-pergunta"
+            >
+
+              <span>
+                O sistema funciona no celular?
+              </span>
+
+              <span class="faq-icone">
+                +
+              </span>
+
+            </button>
+
+            <div class="faq-resposta">
+
+              <p>
+                O AmAgenda foi pensado
+                para funcionar em computadores,
+                tablets e celulares,
+                oferecendo acesso fácil
+                à agenda e aos principais recursos.
+              </p>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         CTA FINAL
+         ===================================================== -->
+
+    <section class="cta-final">
+
+      <div class="container">
+
+        <div class="cta-box">
+
+          <h2>
+            Sua agenda pode ser mais simples.
+          </h2>
+
+          <p>
+            Organize sua empresa,
+            facilite o atendimento
+            e ofereça uma experiência
+            melhor para seus clientes.
+          </p>
+
+          <div class="cta-acoes">
+
+            <a
+              href="#planos"
+              class="btn btn-secundario"
+            >
+              Conhecer os planos
+            </a>
+
+            <button
+              type="button"
+              class="btn btn-primary"
+              data-futuro="cadastro"
+            >
+              Criar minha conta
+              →
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- =======================================================
+       RODAPÉ
+       ======================================================= -->
+
+  <footer class="rodape">
+
+    <div class="container">
+
+      <div class="rodape-grid">
+
+        <div>
+
+          <a
+            href="#inicio"
+            class="marca"
+          >
+
+            <span class="marca-logo">
+              <img
+                src="/public/imagens/logo-menu.png"
+                alt="AmAgenda"
+              >
+            </span>
+
+            <span>
+              AmAgenda
+            </span>
+
+          </a>
+
+          <p class="rodape-texto">
+            Sistema de gerenciamento
+            de agenda desenvolvido
+            para simplificar a rotina
+            de empresas, profissionais
+            e seus clientes.
+          </p>
+
+        </div>
+
+
+        <div class="rodape-coluna">
+
+          <h4>
+            AmAgenda
+          </h4>
+
+          <a href="#recursos">
+            Recursos
+          </a>
+
+          <a href="#como-funciona">
+            Como funciona
+          </a>
+
+          <a href="#planos">
+            Planos
+          </a>
+
+        </div>
+
+
+        <div class="rodape-coluna">
+
+          <h4>
+            Ajuda
+          </h4>
+
+          <a href="#faq">
+            Perguntas frequentes
+          </a>
+
+          <a href="#">
+            Suporte
+          </a>
+
+          <a href="#">
+            Contato
+          </a>
+
+        </div>
+
+
+        <div class="rodape-coluna">
+
+          <h4>
+            Legal
+          </h4>
+
+          <a href="#">
+            Termos de uso
+          </a>
+
+          <a href="#">
+            Política de privacidade
+          </a>
+
+        </div>
+
+      </div>
+
+
+      <div class="rodape-final">
+
+        <span>
+          © 2026 AmAgenda.
+          Todos os direitos reservados.
+        </span>
+
+        <span>
+          Organize sua agenda.
+          Encante seus clientes.
+        </span>
+
+      </div>
+
+    </div>
+
+  </footer>
+
+
+  <!-- =======================================================
+       TOAST
+       ======================================================= -->
+
+  <div
+    class="toast"
+    id="toastSistema"
+  >
+
+    <strong id="toastTitulo">
+      AmAgenda
+    </strong>
+
+    <span id="toastMensagem">
+      Funcionalidade em desenvolvimento.
+    </span>
+
+  </div>
+
+
+  <!-- =======================================================
+       JAVASCRIPT
+       ======================================================= -->
+
+  <script>
+    (() => {
+      "use strict";
+
+      /*
+      |--------------------------------------------------------------------------
+      | FAQ
+      |--------------------------------------------------------------------------
+      */
+
+      const itensFaq =
+        document.querySelectorAll(
+          ".faq-item"
+        );
+
+      itensFaq.forEach(item => {
+
+        const botao =
+          item.querySelector(
+            ".faq-pergunta"
+          );
+
+        if (!botao) {
+          return;
+        }
+
+        botao.addEventListener(
+          "click",
+          () => {
+
+            const estavaAberto =
+              item.classList.contains(
+                "aberto"
+              );
+
+            itensFaq.forEach(outro => {
+              outro.classList.remove(
+                "aberto"
+              );
+            });
+
+            if (!estavaAberto) {
+              item.classList.add(
+                "aberto"
+              );
+            }
+
+          }
+        );
+
+      });
+
+
+      /*
+      |--------------------------------------------------------------------------
+      | TOAST
+      |--------------------------------------------------------------------------
+      */
+
+      const toast =
+        document.getElementById(
+          "toastSistema"
+        );
+
+      const toastTitulo =
+        document.getElementById(
+          "toastTitulo"
+        );
+
+      const toastMensagem =
+        document.getElementById(
+          "toastMensagem"
+        );
+
+      let temporizadorToast = null;
+
+      function mostrarToast(
+        titulo,
+        mensagem
+      ) {
+
+        if (
+          !toast ||
+          !toastTitulo ||
+          !toastMensagem
+        ) {
+          return;
+        }
+
+        toastTitulo.textContent =
+          titulo;
+
+        toastMensagem.textContent =
+          mensagem;
+
+        toast.classList.add(
+          "ativo"
+        );
+
+        if (temporizadorToast) {
+          clearTimeout(
+            temporizadorToast
+          );
+        }
+
+        temporizadorToast =
+          setTimeout(
+            () => {
+
+              toast.classList.remove(
+                "ativo"
+              );
+
+            },
+            3500
+          );
+
+      }
+
+
+      /*
+      |--------------------------------------------------------------------------
+      | BOTÕES FUTUROS
+      |--------------------------------------------------------------------------
+      |
+      | Enquanto cadastro, login empresarial
+      | e pagamento ainda não estiverem integrados,
+      | os botões apenas informam o usuário.
+      |
+      */
+
+      document
+        .querySelectorAll(
+          "[data-futuro]"
+        )
+        .forEach(botao => {
+
+          botao.addEventListener(
+            "click",
+            () => {
+
+              const acao =
+                botao.dataset.futuro;
+
+              if (acao === "login") {
+
+                mostrarToast(
+                  "Acesso ao AmAgenda",
+                  "O acesso ao sistema será conectado nesta etapa posteriormente."
+                );
+
+                return;
+              }
+
+              if (acao === "cadastro") {
+
+                mostrarToast(
+                  "Cadastro AmAgenda",
+                  "O cadastro automático será conectado quando o fluxo de contratação estiver pronto."
+                );
+
+              }
+
+            }
+          );
+
+        });
+
+
+      /*
+      |--------------------------------------------------------------------------
+      | SELEÇÃO DE PLANOS
+      |--------------------------------------------------------------------------
+      */
+
+      document
+        .querySelectorAll(
+          "[data-plano]"
+        )
+        .forEach(botao => {
+
+          botao.addEventListener(
+            "click",
+            () => {
+
+              const plano =
+                botao.dataset.plano;
+
+              mostrarToast(
+                `Plano ${plano}`,
+                "A contratação e o pagamento serão integrados posteriormente."
+              );
+
+            }
+          );
+
+        });
+
+
+      /*
+      |--------------------------------------------------------------------------
+      | MENU MOBILE
+      |--------------------------------------------------------------------------
+      */
+
+      const botaoMenu =
+        document.getElementById(
+          "botaoMenuMobile"
+        );
+
+      if (botaoMenu) {
+
+        botaoMenu.addEventListener(
+          "click",
+          () => {
+
+            mostrarToast(
+              "Menu AmAgenda",
+              "Recursos • Como funciona • Planos • Dúvidas"
+            );
+
+          }
+        );
+
+      }
+
+    })();
+  </script>
+
+</body>
+</html>
