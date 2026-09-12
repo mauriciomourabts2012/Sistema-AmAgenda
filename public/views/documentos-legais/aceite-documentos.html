@@ -37,13 +37,20 @@
           <div id="listaDocumentos" class="am-legal-list"></div>
           <fieldset class="am-confirmations">
             <legend>Confirmações obrigatórias</legend>
-            <label class="am-check"><input id="confirmarTermos" type="checkbox"><span>Li integralmente e aceito os Termos aplicáveis ao meu acesso.</span></label>
-            <label class="am-check"><input id="confirmarPrivacidade" type="checkbox"><span>Li integralmente e estou ciente da Política de Privacidade do AmAgenda.</span></label>
+            <div id="listaConfirmacoes" class="am-confirmation-list"></div>
             <label id="blocoMaioridade" class="am-check" hidden><input id="confirmarMaioridade" type="checkbox"><span>Declaro que possuo 18 anos de idade ou mais.</span></label>
           </fieldset>
-          <div class="am-actions">
-            <button id="btnRecusar" class="am-btn am-btn--danger" type="button">Não aceitar e sair</button>
-            <button id="btnAceitar" class="am-btn am-btn--primary" type="submit" disabled>Aceitar e continuar</button>
+          <div class="am-consent-bar">
+            <div class="am-consent-bar__inner">
+              <div class="am-consent-bar__status">
+                <strong>Para entrar no AmAgenda, conclua os documentos obrigatórios.</strong>
+                <span id="progressoManifestacoes" aria-live="polite">0 documentos concluídos</span>
+              </div>
+              <div class="am-consent-bar__actions">
+                <button id="btnRecusar" class="am-btn am-btn--danger" type="button">Não aceitar e sair</button>
+                <button id="btnAceitar" class="am-btn am-btn--primary" type="submit" disabled>Aceitar e entrar no AmAgenda</button>
+              </div>
+            </div>
           </div>
         </form>
       </div>

@@ -13,10 +13,11 @@
   const alert = document.getElementById("mensagemErro");
   const accept = document.getElementById("btnAceitar");
   const refuse = document.getElementById("btnRecusar");
-  const checkTerms = document.getElementById("confirmarTermos");
-  const checkPrivacy = document.getElementById("confirmarPrivacidade");
+  const confirmationList = document.getElementById("listaConfirmacoes");
+  const progress = document.getElementById("progressoManifestacoes");
   const majorityWrap = document.getElementById("blocoMaioridade");
   const checkMajority = document.getElementById("confirmarMaioridade");
+  let documentChecks = [];
   let pending = [];
   let applicable = [];
   let actorType = "";
@@ -100,8 +101,35 @@
   }
 
   function updateButton() {
+    const completed = documentChecks.filter((input) => input.checked).length;
+    const total = documentChecks.length;
     const majorityOk = actorType !== "cliente" || checkMajority.checked;
-    accept.disabled = sending || !checkTerms.checked || !checkPrivacy.checked || !majorityOk;
+    const documentsOk = total > 0 && completed === total;
+    progress.textContent = `${completed} de ${total} ${total === 1 ? "documento concluído" : "documentos concluídos"}`;
+    accept.disabled = sending || !documentsOk || !majorityOk;
+  }
+
+  function manifestationText(documento) {
+    const title = String(documento.titulo || "documento obrigatório");
+    if (documento.tipo_manifestacao === "ciencia") return `Li e estou ciente de ${title}`;
+    if (documento.tipo_manifestacao === "consentimento") return `Li e consinto com ${title}`;
+    return `Li e aceito ${title}`;
+  }
+
+  function createConfirmation(documento, index) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    const text = document.createElement("span");
+
+    label.className = "am-check";
+    input.type = "checkbox";
+    input.id = `confirmarDocumento${index + 1}`;
+    input.dataset.codigo = documento.codigo;
+    input.dataset.tipoManifestacao = documento.tipo_manifestacao;
+    text.textContent = manifestationText(documento);
+
+    label.append(input, text);
+    return { label, input };
   }
 
   function createDocumentCard(documento) {
@@ -118,7 +146,11 @@
     article.dataset.codigo = documento.codigo;
     header.className = "am-legal-item__head";
     heading.textContent = documento.titulo;
-    requirement.textContent = documento.tipo_manifestacao === "ciencia" ? "Ciência obrigatória" : "Aceite obrigatório";
+    requirement.textContent = {
+      aceite: "Aceite obrigatório",
+      ciencia: "Ciência obrigatória",
+      consentimento: "Consentimento obrigatório"
+    }[documento.tipo_manifestacao];
     badge.className = "am-badge";
     badge.textContent = `Versão ${documento.versao}`;
     documentContent.className = "am-legal-item__content am-document";
@@ -183,27 +215,26 @@
         return;
       }
 
-      const requiredCodes = {
-        representante_empresa: ["politica_privacidade", "termos_empresa"],
-        usuario_empresa: ["politica_privacidade", "termos_usuario"],
-        cliente: ["politica_privacidade", "termos_cliente"],
-        super_admin: ["politica_privacidade", "termo_super_admin"]
-      }[actorType];
-      const applicableCodes = applicable.map((item) => item?.codigo).sort();
-      if (!requiredCodes || applicableCodes.length !== 2
-        || applicableCodes.some((codigo, index) => codigo !== requiredCodes[index])
-        || applicable.some((item) => typeof item.titulo !== "string"
+      if (applicable.length === 0
+        || applicable.some((item) => typeof item.codigo !== "string"
+          || typeof item.titulo !== "string"
           || typeof item.versao !== "string"
-          || !["aceite", "ciencia"].includes(item.tipo_manifestacao))) {
+          || !["aceite", "ciencia", "consentimento"].includes(item.tipo_manifestacao))) {
         throw apiError("Os documentos obrigatórios ainda não estão disponíveis.");
       }
 
       majorityWrap.hidden = actorType !== "cliente";
       list.textContent = "";
+      confirmationList.textContent = "";
       const cards = applicable.map((documento) => {
         const card = createDocumentCard(documento);
         list.append(card);
         return [documento, card];
+      });
+      documentChecks = applicable.map((documento, index) => {
+        const confirmation = createConfirmation(documento, index);
+        confirmationList.append(confirmation.label);
+        return confirmation.input;
       });
       await Promise.all(cards.map(([documento, card]) => loadDocument(documento, card)));
       loading.hidden = true;
@@ -253,9 +284,8 @@
       }
 
       sending = false;
-      accept.textContent = "Aceitar e continuar";
-      checkTerms.checked = false;
-      checkPrivacy.checked = false;
+      accept.textContent = "Aceitar e entrar no AmAgenda";
+      documentChecks.forEach((input) => { input.checked = false; });
       checkMajority.checked = false;
       screen.hidden = true;
       loading.hidden = false;
@@ -267,7 +297,7 @@
       }
       showError(error.message);
       sending = false;
-      accept.textContent = "Aceitar e continuar";
+      accept.textContent = "Aceitar e entrar no AmAgenda";
       updateButton();
     }
   });
