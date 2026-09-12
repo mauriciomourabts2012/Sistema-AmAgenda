@@ -110,6 +110,11 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
 
               <button class="botao-entrar" id="login" aria-label="Entrar no sistema">Entrar</button>
               <p class="mensagem" id="message" role="alert" aria-live="polite"></p>
+              <nav class="login-links-legais" aria-label="Documentos legais">
+                <a href="/views/termos-de-uso/termos-empresa.html" target="_blank" rel="noopener noreferrer">Termos da Empresa</a>
+                <a href="/views/termos-de-uso/termos-usuario.html" target="_blank" rel="noopener noreferrer">Termos do Usuário</a>
+                <a href="/views/politica-privacidade/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>
+              </nav>
             </div>
 
           </div>

@@ -49,6 +49,9 @@ try {
         if ($documento === null) {
             throw new DomainException('DOCUMENT_NOT_AVAILABLE');
         }
+        if (!documentosLegaisEscopoAplicavel((string)$contexto['tipo_manifestante'], (string)$documento['escopo'])) {
+            throw new DomainException('DOCUMENT_NOT_APPLICABLE');
+        }
         if (!documentosLegaisHashValido($documento)) {
             $documentoComFalha = $documento;
             throw new UnexpectedValueException('DOCUMENT_INTEGRITY_ERROR');
@@ -144,6 +147,9 @@ try {
     }
     if ($e instanceof DomainException && $e->getMessage() === 'DOCUMENT_NOT_AVAILABLE') {
         out(['ok' => false, 'code' => 'DOCUMENT_NOT_AVAILABLE', 'user_msg' => 'Os documentos obrigatórios ainda não estão disponíveis.'], 409);
+    }
+    if ($e instanceof DomainException && $e->getMessage() === 'DOCUMENT_NOT_APPLICABLE') {
+        out(['ok' => false, 'code' => 'DOCUMENT_NOT_APPLICABLE', 'user_msg' => 'Documento não disponível para este acesso.'], 403);
     }
     error_log('[documentos_legais] Falha ao registrar manifestação: ' . $e->getMessage());
     out(['ok' => false, 'code' => 'LEGAL_MANIFESTATION_ERROR', 'user_msg' => 'Não foi possível registrar sua manifestação.'], 500);

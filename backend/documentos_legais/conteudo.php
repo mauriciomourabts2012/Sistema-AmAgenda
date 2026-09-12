@@ -19,6 +19,9 @@ $documento = documentosLegaisBuscarPublicado($conexao, $codigo);
 if ($documento === null) {
     out(['ok' => false, 'code' => 'DOCUMENT_NOT_FOUND', 'user_msg' => 'Documento não encontrado.'], 404);
 }
+if (!documentosLegaisEscopoAplicavel((string)$contexto['tipo_manifestante'], (string)$documento['escopo'])) {
+    out(['ok' => false, 'code' => 'DOCUMENT_NOT_APPLICABLE', 'user_msg' => 'Documento não disponível para este acesso.'], 403);
+}
 if (!documentosLegaisHashValido($documento)) {
     documentosLegaisAuditarIntegridade($conexao, $contexto, $documento);
     out(['ok' => false, 'code' => 'DOCUMENT_INTEGRITY_ERROR', 'user_msg' => 'Não foi possível validar o documento legal.'], 503);

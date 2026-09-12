@@ -2,4 +2,5 @@
 /* Marca Super Admin: destaque maior para o símbolo oficial. */
 .super-brand__logo{width:64px;height:64px;border-radius:17px}
 .super-brand img{width:58px;height:58px}
+.super-legal{display:flex;justify-content:center;margin-top:12px;text-align:center}.super-legal a{color:#68758b;font-size:10px;line-height:1.5;overflow-wrap:anywhere;text-decoration:none}.super-legal a:hover{color:#1675f8;text-decoration:underline}
 @media(max-width:480px){.super-brand__logo{width:56px;height:56px}.super-brand img{width:51px;height:51px}}

@@ -222,6 +222,19 @@ function documentosLegaisObrigatorios(string $tipoManifestante): array
     };
 }
 
+function documentosLegaisEscopoAplicavel(string $tipoManifestante, string $escopo): bool
+{
+    $escopoEsperado = match ($tipoManifestante) {
+        'representante_empresa' => 'empresa',
+        'usuario_empresa' => 'usuario_empresa',
+        'cliente' => 'cliente',
+        'super_admin' => 'super_admin',
+        default => null,
+    };
+
+    return $escopo === 'todos' || ($escopoEsperado !== null && $escopo === $escopoEsperado);
+}
+
 function documentosLegaisBuscarPublicado(mysqli $conexao, string $codigo, bool $bloquear = false): ?array
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
@@ -275,49 +288,42 @@ function documentosLegaisAuditarIntegridade(mysqli $conexao, array $contexto, ar
 
 function documentosLegaisManifestacaoExiste(mysqli $conexao, array $contexto, array $documento, string $tipoManifestacao, bool $bloquear = false): ?int
 {
-    $porVersaoAtual = (int)$documento['exige_nova_manifestacao'] === 1;
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
-    $filtroVersao = $porVersaoAtual ? 'm.id_documento_legal_versao=?' : 'v.id_documento_legal=?';
     $tipoManifestante = (string)$contexto['tipo_manifestante'];
+    $idVersao = (int)$documento['id_documento_legal_versao'];
 
     if ($tipoManifestante === 'cliente') {
         $sql = "SELECT m.id_documento_legal_manifestacao
                   FROM documento_legal_manifestacao m
-                  INNER JOIN documento_legal_versao v ON v.id_documento_legal_versao=m.id_documento_legal_versao
-                 WHERE {$filtroVersao} AND m.tipo_manifestacao=? AND m.tipo_manifestante='cliente'
+                 WHERE m.id_documento_legal_versao=? AND m.tipo_manifestacao=? AND m.tipo_manifestante='cliente'
                    AND m.id_cliente=? AND m.id_empresa=? AND m.revogado_em IS NULL
                  ORDER BY m.id_documento_legal_manifestacao DESC LIMIT 1" . $sufixo;
         $stmt = $conexao->prepare($sql);
         if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta da manifestação.');
-        $idAlvo = $porVersaoAtual ? (int)$documento['id_documento_legal_versao'] : (int)$documento['id_documento_legal'];
         $idCliente = (int)$contexto['id_cliente'];
         $idEmpresa = (int)$contexto['id_empresa'];
-        $stmt->bind_param('isii', $idAlvo, $tipoManifestacao, $idCliente, $idEmpresa);
+        $stmt->bind_param('isii', $idVersao, $tipoManifestacao, $idCliente, $idEmpresa);
     } elseif ($tipoManifestante === 'super_admin') {
         $sql = "SELECT m.id_documento_legal_manifestacao
                   FROM documento_legal_manifestacao m
-                  INNER JOIN documento_legal_versao v ON v.id_documento_legal_versao=m.id_documento_legal_versao
-                 WHERE {$filtroVersao} AND m.tipo_manifestacao=? AND m.tipo_manifestante='super_admin'
+                 WHERE m.id_documento_legal_versao=? AND m.tipo_manifestacao=? AND m.tipo_manifestante='super_admin'
                    AND m.id_usuario=? AND m.id_empresa IS NULL AND m.revogado_em IS NULL
                  ORDER BY m.id_documento_legal_manifestacao DESC LIMIT 1" . $sufixo;
         $stmt = $conexao->prepare($sql);
         if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta da manifestação.');
-        $idAlvo = $porVersaoAtual ? (int)$documento['id_documento_legal_versao'] : (int)$documento['id_documento_legal'];
         $idUsuario = (int)$contexto['id_usuario'];
-        $stmt->bind_param('isi', $idAlvo, $tipoManifestacao, $idUsuario);
+        $stmt->bind_param('isi', $idVersao, $tipoManifestacao, $idUsuario);
     } else {
         $sql = "SELECT m.id_documento_legal_manifestacao
                   FROM documento_legal_manifestacao m
-                  INNER JOIN documento_legal_versao v ON v.id_documento_legal_versao=m.id_documento_legal_versao
-                 WHERE {$filtroVersao} AND m.tipo_manifestacao=? AND m.tipo_manifestante=?
+                 WHERE m.id_documento_legal_versao=? AND m.tipo_manifestacao=? AND m.tipo_manifestante=?
                    AND m.id_usuario=? AND m.id_empresa=? AND m.revogado_em IS NULL
                  ORDER BY m.id_documento_legal_manifestacao DESC LIMIT 1" . $sufixo;
         $stmt = $conexao->prepare($sql);
         if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta da manifestação.');
-        $idAlvo = $porVersaoAtual ? (int)$documento['id_documento_legal_versao'] : (int)$documento['id_documento_legal'];
         $idUsuario = (int)$contexto['id_usuario'];
         $idEmpresa = (int)$contexto['id_empresa'];
-        $stmt->bind_param('issii', $idAlvo, $tipoManifestacao, $tipoManifestante, $idUsuario, $idEmpresa);
+        $stmt->bind_param('issii', $idVersao, $tipoManifestacao, $tipoManifestante, $idUsuario, $idEmpresa);
     }
 
     if (!$stmt->execute()) {
@@ -336,6 +342,7 @@ function documentosLegaisPendencias(mysqli $conexao, array $contexto, bool $incl
     foreach (documentosLegaisObrigatorios((string)$contexto['tipo_manifestante']) as $regra) {
         $documento = documentosLegaisBuscarPublicado($conexao, $regra['codigo']);
         if ($documento === null) continue;
+        if (!documentosLegaisEscopoAplicavel((string)$contexto['tipo_manifestante'], (string)$documento['escopo'])) continue;
         if (!documentosLegaisHashValido($documento)) {
             documentosLegaisAuditarIntegridade($conexao, $contexto, $documento);
             throw new UnexpectedValueException('DOCUMENT_INTEGRITY_ERROR');

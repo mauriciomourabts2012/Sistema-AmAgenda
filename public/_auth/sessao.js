@@ -15,7 +15,7 @@
 
   const API_BASE = "/api/api_central.php";
   const LOGIN_URL = "/public/views/login-cliente.php";
-  const ACEITE_URL = "/public/views/documentos-legais/aceite-documentos.html";
+  const ACEITE_URL = "/views/documentos-legais/aceite-documentos.html";
 
   function caminhoAtual() {
     return String(window.location.pathname || "").toLowerCase();

@@ -43,6 +43,10 @@
       const payload = await response.json().catch(() => null);
 
       if (response.status === 404 && payload?.code === "DOCUMENT_NOT_FOUND") {
+        version.textContent = "Sem versão publicada";
+        effective.textContent = "Aguardando publicação";
+        effective.classList.remove("am-badge--success");
+        effective.classList.add("am-badge--draft");
         show(unavailable);
         return;
       }

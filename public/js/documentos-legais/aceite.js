@@ -241,7 +241,25 @@
         && payload.code !== "LEGAL_MANIFESTATION_ALREADY_REGISTERED") {
         throw apiError("O servidor não confirmou a manifestação.");
       }
-      window.location.replace(homeDestination);
+
+      const pendingPayload = await request("documentos-legais/pendencias");
+      if (pendingPayload.code !== "LEGAL_DOCUMENTS_PENDING_LISTED"
+        || typeof pendingPayload.data?.possui_pendencias !== "boolean") {
+        throw apiError("Não foi possível confirmar a conclusão das manifestações.");
+      }
+      if (pendingPayload.data.possui_pendencias === false) {
+        window.location.replace(homeDestination);
+        return;
+      }
+
+      sending = false;
+      accept.textContent = "Aceitar e continuar";
+      checkTerms.checked = false;
+      checkPrivacy.checked = false;
+      checkMajority.checked = false;
+      screen.hidden = true;
+      loading.hidden = false;
+      await init();
     } catch (error) {
       if (error.sessionExpired) {
         window.location.replace(logoutDestination);

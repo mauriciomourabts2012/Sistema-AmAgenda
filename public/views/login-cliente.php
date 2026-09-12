@@ -548,6 +548,11 @@ $empresaId = (int)$_SESSION['empresa_id'];
 
 </main>
 
+<nav class="login-links-legais login-links-legais--cliente" aria-label="Documentos legais">
+  <a href="/views/termos-de-uso/termos-cliente.html" target="_blank" rel="noopener noreferrer">Termos do Cliente</a>
+  <a href="/views/politica-privacidade/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>
+</nav>
+
 <script>
 window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 </script>
