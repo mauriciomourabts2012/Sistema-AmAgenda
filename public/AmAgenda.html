@@ -1471,219 +1471,23 @@
         </h2>
 
         <p class="descricao-secao">
-          Comece com o que sua empresa precisa
-          hoje e evolua conforme o crescimento
-          do seu negócio.
+          Planos pensados para diferentes tamanhos de equipe e volumes de atendimento.
+          Escolha a opção que melhor atende sua empresa e tenha acesso aos recursos do
+          AmAgenda de acordo com os limites contratados.
         </p>
 
-
-        <div class="planos-grid">
-
-          <!-- ESSENCIAL -->
-
-          <article class="plano">
-
-            <h3>
-              Essencial
-            </h3>
-
-            <p class="plano-descricao">
-              Para profissionais autônomos
-              e pequenos negócios.
-            </p>
-
-            <div class="preco">
-
-              <small>R$</small>
-
-              <strong>
-                24,99
-              </strong>
-
-              <span>
-                /mês
-              </span>
-
-            </div>
-
-            <ul>
-
-              <li>
-                <span class="check">✓</span>
-                1 proprietário
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 2 profissionais
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 20 serviços
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 300 agendamentos/mês
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Gestão de clientes
-              </li>
-
-            </ul>
-
-            <button
-              class="btn btn-secundario"
-              type="button"
-              data-plano="Essencial"
-            >
-              Escolher Essencial
-            </button>
-
-          </article>
-
-
-          <!-- PROFISSIONAL -->
-
-          <article class="plano destaque">
-
-            <span class="plano-selo">
-              MAIS ESCOLHIDO
-            </span>
-
-            <h3>
-              Profissional
-            </h3>
-
-            <p class="plano-descricao">
-              Para empresas em crescimento
-              que trabalham com equipe.
-            </p>
-
-            <div class="preco">
-
-              <small>R$</small>
-
-              <strong>
-                59,99
-              </strong>
-
-              <span>
-                /mês
-              </span>
-
-            </div>
-
-            <ul>
-
-              <li>
-                <span class="check">✓</span>
-                1 proprietário
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 5 profissionais
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                1 recepcionista
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 50 serviços
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 1.000 agendamentos/mês
-              </li>
-
-            </ul>
-
-            <button
-              class="btn btn-primary"
-              type="button"
-              data-plano="Profissional"
-            >
-              Escolher Profissional
-            </button>
-
-          </article>
-
-
-          <!-- PREMIUM -->
-
-          <article class="plano">
-
-            <h3>
-              Premium
-            </h3>
-
-            <p class="plano-descricao">
-              Para empresas maiores
-              e equipes com alto volume.
-            </p>
-
-            <div class="preco">
-
-              <small>R$</small>
-
-              <strong>
-                99,99
-              </strong>
-
-              <span>
-                /mês
-              </span>
-
-            </div>
-
-            <ul>
-
-              <li>
-                <span class="check">✓</span>
-                1 proprietário
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 10 profissionais
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 3 recepcionistas
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 150 serviços
-              </li>
-
-              <li>
-                <span class="check">✓</span>
-                Até 3.000 agendamentos/mês
-              </li>
-
-            </ul>
-
-            <button
-              class="btn btn-secundario"
-              type="button"
-              data-plano="Premium"
-            >
-              Escolher Premium
-            </button>
-
-          </article>
-
+        <div
+          class="planos-grid"
+          id="planosGrid"
+          aria-live="polite"
+        >
+          <p>Carregando planos...</p>
         </div>
+
+        <p class="descricao-secao">
+          Os valores e limites apresentados correspondem aos planos atualmente
+          disponíveis no AmAgenda. Recursos e limites variam conforme o plano contratado.
+        </p>
 
       </div>
 
@@ -1829,9 +1633,7 @@
               <p>
                 A integração automática
                 de pagamentos será disponibilizada
-                posteriormente. Nesta versão
-                pública, os planos são apresentados
-                apenas para demonstração.
+                posteriormente.
               </p>
 
             </div>
@@ -2251,32 +2053,260 @@
 
       /*
       |--------------------------------------------------------------------------
-      | SELEÇÃO DE PLANOS
+      | PLANOS COMERCIAIS
       |--------------------------------------------------------------------------
       */
 
-      document
-        .querySelectorAll(
-          "[data-plano]"
-        )
-        .forEach(botao => {
+      const planosGrid =
+        document.getElementById(
+          "planosGrid"
+        );
 
-          botao.addEventListener(
-            "click",
-            () => {
+      const formatadorMoeda =
+        new Intl.NumberFormat(
+          "pt-BR",
+          {
+            style: "currency",
+            currency: "BRL"
+          }
+        );
 
-              const plano =
-                botao.dataset.plano;
+      const formatadorQuantidade =
+        new Intl.NumberFormat(
+          "pt-BR"
+        );
 
-              mostrarToast(
-                `Plano ${plano}`,
-                "A contratação e o pagamento serão integrados posteriormente."
-              );
+      function criarElemento(
+        tag,
+        classe,
+        texto
+      ) {
 
+        const elemento =
+          document.createElement(tag);
+
+        if (classe) {
+          elemento.className = classe;
+        }
+
+        if (texto !== undefined) {
+          elemento.textContent = texto;
+        }
+
+        return elemento;
+      }
+
+      function formatarPreco(valor) {
+
+        const numero = Number(valor);
+
+        if (!Number.isFinite(numero)) {
+          return {
+            simbolo: "R$",
+            valor: "—"
+          };
+        }
+
+        const partes =
+          formatadorMoeda.formatToParts(numero);
+
+        return {
+          simbolo: partes
+            .filter(parte => parte.type === "currency")
+            .map(parte => parte.value)
+            .join(""),
+          valor: partes
+            .filter(parte => parte.type !== "currency" && parte.type !== "literal")
+            .map(parte => parte.value)
+            .join("")
+        };
+      }
+
+      function textoLimite(
+        valor,
+        singular,
+        plural
+      ) {
+
+        const quantidade = Number(valor);
+        const rotulo = quantidade === 1
+          ? singular
+          : plural;
+
+        return `Até ${formatadorQuantidade.format(quantidade)} ${rotulo}`;
+      }
+
+      function adicionarLimite(
+        lista,
+        texto
+      ) {
+
+        const item = criarElemento("li");
+        item.appendChild(
+          criarElemento(
+            "span",
+            "check",
+            "✓"
+          )
+        );
+        item.appendChild(
+          document.createTextNode(texto)
+        );
+        lista.appendChild(item);
+      }
+
+      function criarCardPlano(plano) {
+
+        const destacado =
+          Number(plano.destaque) === 1;
+
+        const card = criarElemento(
+          "article",
+          destacado
+            ? "plano destaque"
+            : "plano"
+        );
+
+        if (destacado) {
+          card.appendChild(
+            criarElemento(
+              "span",
+              "plano-selo",
+              "MAIS ESCOLHIDO"
+            )
+          );
+        }
+
+        card.appendChild(
+          criarElemento(
+            "h3",
+            "",
+            String(plano.nome ?? "")
+          )
+        );
+
+        card.appendChild(
+          criarElemento(
+            "p",
+            "plano-descricao",
+            String(plano.descricao ?? "")
+          )
+        );
+
+        const precoFormatado =
+          formatarPreco(plano.preco_mensal);
+        const preco = criarElemento(
+          "div",
+          "preco"
+        );
+        preco.appendChild(
+          criarElemento(
+            "small",
+            "",
+            precoFormatado.simbolo
+          )
+        );
+        preco.appendChild(
+          criarElemento(
+            "strong",
+            "",
+            precoFormatado.valor
+          )
+        );
+        preco.appendChild(
+          criarElemento(
+            "span",
+            "",
+            `/${String(plano.cobranca ?? "")}`
+          )
+        );
+        card.appendChild(preco);
+
+        const limites = criarElemento("ul");
+        adicionarLimite(limites, textoLimite(plano.limite_usuarios, "usuário", "usuários"));
+        adicionarLimite(limites, textoLimite(plano.limite_proprietarios, "proprietário", "proprietários"));
+        adicionarLimite(limites, textoLimite(plano.limite_profissionais, "profissional", "profissionais"));
+        adicionarLimite(limites, textoLimite(plano.limite_recepcionistas, "recepcionista", "recepcionistas"));
+        adicionarLimite(limites, textoLimite(plano.limite_servicos, "serviço", "serviços"));
+        adicionarLimite(limites, textoLimite(plano.limite_agendamentos, "agendamento", "agendamentos"));
+        card.appendChild(limites);
+
+        const botao = criarElemento(
+          "button",
+          destacado
+            ? "btn btn-primary"
+            : "btn btn-secundario",
+          `Escolher ${String(plano.nome ?? "")}`
+        );
+        botao.type = "button";
+        botao.dataset.plano = String(plano.nome ?? "");
+        botao.addEventListener(
+          "click",
+          () => {
+            mostrarToast(
+              `Plano ${botao.dataset.plano}`,
+              "A contratação e o pagamento serão integrados posteriormente."
+            );
+          }
+        );
+        card.appendChild(botao);
+
+        return card;
+      }
+
+      async function carregarPlanos() {
+
+        if (!planosGrid) {
+          return;
+        }
+
+        try {
+          const resposta = await fetch(
+            "/public/api/api_central.php?path=planos/listar",
+            {
+              headers: {
+                Accept: "application/json"
+              },
+              cache: "no-store"
             }
           );
+          const payload = await resposta.json();
 
-        });
+          if (!resposta.ok || payload.ok !== true || !Array.isArray(payload.data)) {
+            throw new Error("Resposta inválida ao carregar planos.");
+          }
+
+          planosGrid.replaceChildren();
+
+          if (payload.data.length === 0) {
+            planosGrid.appendChild(
+              criarElemento(
+                "p",
+                "",
+                "Nenhum plano está disponível no momento."
+              )
+            );
+            return;
+          }
+
+          payload.data.forEach(plano => {
+            planosGrid.appendChild(
+              criarCardPlano(plano)
+            );
+          });
+        } catch (erro) {
+          console.error("Não foi possível carregar os planos.", erro);
+          planosGrid.replaceChildren(
+            criarElemento(
+              "p",
+              "",
+              "Não foi possível carregar os planos no momento."
+            )
+          );
+        }
+      }
+
+      carregarPlanos();
 
 
       /*

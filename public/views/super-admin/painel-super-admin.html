@@ -612,35 +612,119 @@
       <!-- ABA: DOCUMENTOS LEGAIS -->
       <div id="documentos-legais" class="conteudo-aba">
         <div class="conteudo-agenda am-legal-admin-tab">
-          <section class="am-hero">
-            <span class="am-eyebrow">Área restrita · Super Admin</span>
-            <h2 class="am-title">Preview dos documentos</h2>
-            <p class="am-subtitle">Visualização somente para conferência. Esta tela não edita, publica, arquiva, exclui ou registra manifestações.</p>
-            <div class="am-meta">
-              <span id="previewStatus" class="am-badge am-badge--draft">RASCUNHO</span>
-              <span id="previewCodigo" class="am-badge">—</span>
-              <span id="previewVersao" class="am-badge">Versão 1.0</span>
-            </div>
+          <section class="am-legal-page-header" aria-labelledby="tituloDocumentosLegais">
+            <h2 id="tituloDocumentosLegais" class="am-title">Documentos legais</h2>
+            <p class="am-subtitle">Gerencie Termos de Uso, Política de Privacidade e suas versões.</p>
           </section>
 
-          <div class="am-preview-tools">
-            <label class="am-select-label" for="documentoSelecionado">Documento para visualização</label>
-            <select id="documentoSelecionado" class="am-select">
-              <option value="termos_empresa">Termos da Empresa</option>
-              <option value="termos_usuario">Termos do Usuário</option>
-              <option value="termos_cliente">Termos do Cliente</option>
-              <option value="termo_super_admin">Termo de Responsabilidade do Super Admin</option>
-              <option value="politica_privacidade">Política de Privacidade</option>
-            </select>
-            <button id="btnCarregarPreview" class="am-btn am-btn--primary" type="button">Carregar rascunho</button>
-          </div>
-
-          <div id="mensagemErroDocumentosLegais" class="am-alert" role="alert" hidden></div>
-          <section class="am-card">
-            <div class="am-card__body">
-              <h2 id="previewTitulo" class="am-document-title">Documento legal</h2>
-              <article id="previewConteudo" class="am-document"><p class="am-document-placeholder">Selecione a aba para carregar o rascunho.</p></article>
+          <section class="am-card am-legal-manager" aria-labelledby="tituloGerenciamentoDocumentos">
+            <div class="am-legal-manager__header">
+              <div>
+                <h3 id="tituloGerenciamentoDocumentos">Gerenciamento de documentos</h3>
+                <p>Consulte documentos jurídicos e acompanhe a organização de suas versões.</p>
+              </div>
+              <button id="btnNovaVersaoLegal" class="botao-geral destaque" type="button" data-abrir-modal="modalNovaVersaoLegal">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                Nova versão
+              </button>
             </div>
+
+            <div class="am-legal-summary" aria-label="Resumo dos documentos legais">
+              <div class="am-legal-summary__item"><span>Documentos</span><strong id="resumoDocumentosLegais">—</strong></div>
+              <div class="am-legal-summary__item"><span>Publicados</span><strong id="resumoDocumentosPublicados">—</strong></div>
+              <div class="am-legal-summary__item"><span>Rascunhos</span><strong id="resumoDocumentosRascunhos">—</strong></div>
+              <div class="am-legal-summary__item"><span>Arquivados</span><strong id="resumoDocumentosArquivados">—</strong></div>
+            </div>
+
+            <div class="am-preview-tools">
+              <label class="am-select-label" for="documentoSelecionado">Documento para visualização</label>
+              <select id="documentoSelecionado" class="am-select">
+                <option value="termos_empresa">Termos da Empresa</option>
+                <option value="termos_usuario">Termos do Usuário</option>
+                <option value="termos_cliente">Termos do Cliente</option>
+                <option value="termo_super_admin">Termo de Responsabilidade do Super Admin</option>
+                <option value="politica_privacidade">Política de Privacidade</option>
+              </select>
+              <button id="btnCarregarPreview" class="botao-geral destaque" type="button">
+                <i class="fa-regular fa-eye" aria-hidden="true"></i>
+                Visualizar documento
+              </button>
+            </div>
+
+            <div id="mensagemErroDocumentosLegais" class="am-alert" role="alert" hidden></div>
+
+            <section class="am-legal-detail" aria-labelledby="previewTitulo">
+              <div class="am-legal-detail__header">
+                <div>
+                  <span class="am-legal-kicker">Documento selecionado</span>
+                  <h3 id="previewTitulo">Documento legal</h3>
+                </div>
+                <div class="am-legal-detail__badges">
+                  <span id="previewStatus" class="am-badge am-badge--draft">RASCUNHO</span>
+                  <span id="previewCodigo" class="am-badge">—</span>
+                  <span id="previewVersao" class="am-badge">Versão 1.0</span>
+                </div>
+              </div>
+
+              <dl class="am-legal-properties">
+                <div><dt>Tipo</dt><dd id="previewTipo">—</dd></div>
+                <div><dt>Escopo</dt><dd><span id="previewEscopo" class="am-badge">—</span></dd></div>
+                <div><dt>Versão publicada</dt><dd id="previewVersaoPublicada">—</dd></div>
+                <div><dt>Data da publicação</dt><dd id="previewPublicadoEm">—</dd></div>
+                <div><dt>Vigência</dt><dd id="previewVigencia">—</dd></div>
+                <div><dt>Nova manifestação</dt><dd id="previewNovaManifestacao">—</dd></div>
+                <div class="am-legal-property--wide"><dt>Hash SHA-256</dt><dd id="previewHash">—</dd></div>
+              </dl>
+
+              <div class="am-legal-actions" aria-label="Ações do documento">
+                <button class="botao-geral" type="button" disabled>
+                  <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                  Histórico
+                </button>
+                <button id="btnEditarRascunhoLegal" class="botao-geral" type="button" disabled>
+                  <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                  Editar rascunho
+                </button>
+                <button id="btnNovaVersaoLegalDetalhe" class="botao-geral destaque" type="button" data-abrir-modal="modalNovaVersaoLegal">
+                  <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                  Nova versão
+                </button>
+              </div>
+            </section>
+
+            <section class="am-legal-versions" aria-labelledby="tituloVersoesDocumentos">
+              <div class="am-legal-section-heading">
+                <h3 id="tituloVersoesDocumentos">Versões</h3>
+                <p>Histórico preservado das versões deste documento.</p>
+              </div>
+              <div class="am-legal-table-wrap">
+                <table class="am-legal-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Versão</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Publicação</th>
+                      <th scope="col">Nova manifestação</th>
+                      <th scope="col">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="listaVersoesDocumentos">
+                    <tr class="am-legal-table__empty">
+                      <td colspan="5">Nenhuma versão carregada.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="am-legal-content" aria-labelledby="tituloConteudoDocumentoLegal">
+              <div class="am-legal-section-heading">
+                <h3 id="tituloConteudoDocumentoLegal">Documento legal</h3>
+                <span class="am-badge">Somente leitura</span>
+              </div>
+              <p id="previewResumoAlteracoes" class="am-legal-content-summary" hidden></p>
+              <article id="previewConteudo" class="am-document"><p class="am-document-placeholder">Selecione a aba para carregar o rascunho.</p></article>
+            </section>
           </section>
         </div>
       </div>
@@ -648,6 +732,94 @@
     </section>
 
     <section> <!--Todos o modals da pagina-->
+
+      <!-- MODAL: Nova versão de documento legal (estrutura visual da Etapa 1) -->
+      <div id="modalNovaVersaoLegal" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo am-legal-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalNovaVersaoLegal">
+          <div class="modal-topo">
+            <h2 id="tituloModalNovaVersaoLegal">Nova versão</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <div class="modal-grid">
+              <div class="modal-campo">
+                <select id="novaVersaoDocumento" disabled>
+                  <option value="">Documento</option>
+                </select>
+                <label for="novaVersaoDocumento" class="label-fixa">Documento</label>
+              </div>
+              <div class="modal-campo">
+                <input id="novaVersaoNumero" type="text" placeholder=" " disabled>
+                <label for="novaVersaoNumero">Nova versão</label>
+              </div>
+              <div class="modal-campo linha">
+                <textarea id="novaVersaoResumo" rows="3" placeholder=" " disabled></textarea>
+                <label for="novaVersaoResumo">Resumo das alterações</label>
+              </div>
+              <div class="am-legal-modal-check linha">
+                <label for="novaVersaoManifestacao">
+                  <input id="novaVersaoManifestacao" type="checkbox" disabled>
+                  <span>Exigir nova manifestação</span>
+                </label>
+                <small>Define se os usuários aplicáveis deverão realizar uma nova manifestação após a publicação.</small>
+              </div>
+              <div class="modal-campo linha am-legal-editor-field">
+                <textarea id="novaVersaoConteudo" rows="12" placeholder=" " disabled></textarea>
+                <label for="novaVersaoConteudo">Conteúdo do documento</label>
+              </div>
+            </div>
+            <div class="modal-acoes">
+              <button class="botao-geral" data-fechar-modal type="button">Cancelar</button>
+              <button id="btnSalvarNovoRascunhoLegal" class="botao-geral destaque" type="button" disabled>Salvar rascunho</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Editar rascunho legal (estrutura visual da Etapa 1) -->
+      <div id="modalEditarRascunhoLegal" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo am-legal-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalEditarRascunhoLegal">
+          <div class="modal-topo">
+            <h2 id="tituloModalEditarRascunhoLegal">Editar rascunho</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <div class="modal-grid">
+              <div class="modal-campo">
+                <select id="editarRascunhoDocumento" disabled>
+                  <option value="">Documento</option>
+                </select>
+                <label for="editarRascunhoDocumento" class="label-fixa">Documento</label>
+              </div>
+              <div class="modal-campo">
+                <input id="editarRascunhoVersao" type="text" placeholder=" " disabled>
+                <label for="editarRascunhoVersao">Versão</label>
+              </div>
+              <div class="modal-campo linha">
+                <textarea id="editarRascunhoResumo" rows="3" placeholder=" " disabled></textarea>
+                <label for="editarRascunhoResumo">Resumo das alterações</label>
+              </div>
+              <div class="am-legal-modal-check linha">
+                <label for="editarRascunhoManifestacao">
+                  <input id="editarRascunhoManifestacao" type="checkbox" disabled>
+                  <span>Exigir nova manifestação</span>
+                </label>
+                <small>Define se os usuários aplicáveis deverão realizar uma nova manifestação após a publicação.</small>
+              </div>
+              <div class="modal-campo linha am-legal-editor-field">
+                <textarea id="editarRascunhoConteudo" rows="12" placeholder=" " disabled></textarea>
+                <label for="editarRascunhoConteudo">Conteúdo</label>
+              </div>
+            </div>
+            <div class="modal-acoes am-legal-modal-actions">
+              <button class="botao-geral" data-fechar-modal type="button">Cancelar</button>
+              <button id="btnSalvarEdicaoRascunhoLegal" class="botao-geral" type="button" disabled>Salvar alterações</button>
+              <button id="btnArquivarVersaoLegal" class="botao-geral" type="button" disabled hidden>Arquivar versão</button>
+              <button id="btnPublicarVersaoLegal" class="botao-geral destaque" type="button" disabled>Publicar versão</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- MODAL: PERFIL DO USUÁRIO -->
       <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">

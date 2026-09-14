@@ -85,6 +85,18 @@ function auditoriaCatalogo(): array
         'documentos_legais.manifestacao_registrada' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_manifestacao', 'critica', 'Concluiu a manifestação dos documentos legais obrigatórios.', []),
         'documentos_legais.falha_integridade' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'critica', 'Detectou falha de integridade em documento legal.', []),
         'documentos_legais.preview_visualizado' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'alta', 'Visualizou o preview de um documento legal.', []),
+        'documentos_legais.rascunho_criado' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'alta', 'Criou um rascunho de documento legal.', [
+            'resumo_alteracoes', 'exige_nova_manifestacao', 'conteudo_alterado',
+        ]),
+        'documentos_legais.rascunho_editado' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'alta', 'Editou um rascunho de documento legal.', [
+            'resumo_alteracoes', 'exige_nova_manifestacao', 'conteudo_alterado',
+        ]),
+        'documentos_legais.versao_publicada' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'critica', 'Publicou uma versão de documento legal.', [
+            'status', 'vigencia_inicio', 'vigencia_fim', 'exige_nova_manifestacao', 'versao_anterior_afetada',
+        ]),
+        'documentos_legais.versao_arquivada' => auditoriaDefinicaoEvento('documentos_legais', 'documento_legal_versao', 'alta', 'Arquivou uma versão de documento legal.', [
+            'status', 'vigencia_fim',
+        ]),
     ];
 }
 

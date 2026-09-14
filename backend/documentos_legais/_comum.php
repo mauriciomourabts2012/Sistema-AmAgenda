@@ -235,18 +235,58 @@ function documentosLegaisEscopoAplicavel(string $tipoManifestante, string $escop
     return $escopo === 'todos' || ($escopoEsperado !== null && $escopo === $escopoEsperado);
 }
 
-function documentosLegaisBuscarPublicado(mysqli $conexao, string $codigo, bool $bloquear = false): ?array
+function documentosLegaisExigirSuperAdmin(mysqli $conexao): array
+{
+    $contexto = documentosLegaisContextoAutenticado($conexao);
+    if (($contexto['tipo_manifestante'] ?? '') !== 'super_admin') {
+        out(['ok' => false, 'code' => 'SUPER_ADMIN_REQUIRED', 'user_msg' => 'Acesso exclusivo do Super Admin.'], 403);
+    }
+    return $contexto;
+}
+
+function documentosLegaisValidarCodigo(mixed $valor): string
+{
+    $codigo = is_string($valor) ? trim($valor) : '';
+    if (preg_match('/^[a-z][a-z0-9_]{2,59}$/', $codigo) !== 1) {
+        out(['ok' => false, 'code' => 'DOCUMENT_INPUT_INVALID', 'user_msg' => 'Documento inválido.'], 422);
+    }
+    return $codigo;
+}
+
+function documentosLegaisValidarIdPositivo(mixed $valor, string $codigoErro = 'DOCUMENT_VERSION_INPUT_INVALID'): int
+{
+    if (!is_scalar($valor) || preg_match('/^[1-9]\d*$/', trim((string)$valor)) !== 1) {
+        out(['ok' => false, 'code' => $codigoErro, 'user_msg' => 'Versão inválida.'], 422);
+    }
+    return (int)$valor;
+}
+
+function documentosLegaisValidarVersao(mixed $valor): string
+{
+    $versao = is_string($valor) ? trim($valor) : '';
+    if (preg_match('/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/', $versao) !== 1) {
+        out(['ok' => false, 'code' => 'DOCUMENT_VERSION_INPUT_INVALID', 'user_msg' => 'Versão inválida.'], 422);
+    }
+    return $versao;
+}
+
+function documentosLegaisStatusPermitido(string $status): bool
+{
+    return in_array($status, ['rascunho', 'publicado', 'arquivado'], true);
+}
+
+function documentosLegaisTipoPorCodigo(string $codigo): string
+{
+    return $codigo === 'politica_privacidade' ? 'politica_privacidade' : 'termo';
+}
+
+function documentosLegaisLocalizarDocumentoPorCodigo(mysqli $conexao, string $codigo, bool $bloquear = false): ?array
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     $stmt = $conexao->prepare(
-        "SELECT d.id_documento_legal,d.codigo,d.titulo,d.escopo,
-                v.id_documento_legal_versao,v.versao,v.conteudo_html,v.hash_sha256,
-                v.exige_nova_manifestacao,v.vigencia_inicio,v.vigencia_fim
-           FROM documento_legal d
-           INNER JOIN documento_legal_versao v ON v.id_documento_legal=d.id_documento_legal
-          WHERE d.codigo=? AND d.status='ativo' AND v.status='publicado'
-            AND v.vigencia_inicio<=CURRENT_TIMESTAMP(6)
-            AND (v.vigencia_fim IS NULL OR v.vigencia_fim>CURRENT_TIMESTAMP(6))
+        "SELECT id_documento_legal,codigo,titulo,escopo,status
+           FROM documento_legal
+          WHERE codigo=? AND status='ativo'
           LIMIT 1" . $sufixo
     );
     if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta do documento.');
@@ -258,6 +298,117 @@ function documentosLegaisBuscarPublicado(mysqli $conexao, string $codigo, bool $
     $documento = $stmt->get_result()?->fetch_assoc() ?: null;
     $stmt->close();
     return $documento;
+}
+
+function documentosLegaisLocalizarDocumentoPorId(mysqli $conexao, int $idDocumento, bool $bloquear = false): ?array
+{
+    $sufixo = $bloquear ? ' FOR UPDATE' : '';
+    $stmt = $conexao->prepare(
+        "SELECT id_documento_legal,codigo,titulo,escopo,status
+           FROM documento_legal
+          WHERE id_documento_legal=? AND status='ativo'
+          LIMIT 1" . $sufixo
+    );
+    if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta do documento.');
+    $stmt->bind_param('i', $idDocumento);
+    if (!$stmt->execute()) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao consultar o documento.');
+    }
+    $documento = $stmt->get_result()?->fetch_assoc() ?: null;
+    $stmt->close();
+    return $documento;
+}
+
+function documentosLegaisLocalizarVersaoPorId(mysqli $conexao, int $idVersao, bool $bloquear = false): ?array
+{
+    $sufixo = $bloquear ? ' FOR UPDATE' : '';
+    $stmt = $conexao->prepare(
+        "SELECT d.id_documento_legal,d.codigo,d.titulo,d.escopo,d.status AS documento_status,
+                v.id_documento_legal_versao,v.versao,v.conteudo_html,v.resumo_alteracoes,
+                v.hash_sha256,v.status,v.exige_nova_manifestacao,v.publicado_em,
+                v.vigencia_inicio,v.vigencia_fim,v.criado_em,v.atualizado_em,v.id_documento_publicado
+           FROM documento_legal d
+           INNER JOIN documento_legal_versao v ON v.id_documento_legal=d.id_documento_legal
+          WHERE v.id_documento_legal_versao=? AND d.status='ativo'
+          LIMIT 1" . $sufixo
+    );
+    if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta da versão.');
+    $stmt->bind_param('i', $idVersao);
+    if (!$stmt->execute()) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao consultar a versão.');
+    }
+    $documento = $stmt->get_result()?->fetch_assoc() ?: null;
+    $stmt->close();
+    return $documento;
+}
+
+function documentosLegaisBuscarPublicado(mysqli $conexao, string $codigo, bool $bloquear = false): ?array
+{
+    $sufixo = $bloquear ? ' FOR UPDATE' : '';
+    $stmt = $conexao->prepare(
+        "SELECT d.id_documento_legal,d.codigo,d.titulo,d.escopo,
+                v.id_documento_legal_versao,v.versao,v.conteudo_html,v.resumo_alteracoes,
+                v.hash_sha256,v.status,v.exige_nova_manifestacao,v.publicado_em,
+                v.vigencia_inicio,v.vigencia_fim,v.criado_em,v.atualizado_em,v.id_documento_publicado
+           FROM documento_legal d
+           INNER JOIN documento_legal_versao v ON v.id_documento_legal=d.id_documento_legal
+          WHERE d.codigo=? AND d.status='ativo' AND v.status='publicado'
+            AND v.vigencia_inicio<=CURRENT_TIMESTAMP(6)
+            AND (v.vigencia_fim IS NULL OR v.vigencia_fim>CURRENT_TIMESTAMP(6))
+          ORDER BY v.vigencia_inicio DESC,v.id_documento_legal_versao DESC
+          LIMIT 1" . $sufixo
+    );
+    if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta do documento.');
+    $stmt->bind_param('s', $codigo);
+    if (!$stmt->execute()) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao consultar o documento.');
+    }
+    $documento = $stmt->get_result()?->fetch_assoc() ?: null;
+    $stmt->close();
+    return $documento;
+}
+
+function documentosLegaisVersoesPublicadasPorDocumento(mysqli $conexao, int $idDocumento, bool $bloquear = false): array
+{
+    $sufixo = $bloquear ? ' FOR UPDATE' : '';
+    $stmt = $conexao->prepare(
+        "SELECT d.id_documento_legal,d.codigo,d.titulo,d.escopo,
+                v.id_documento_legal_versao,v.versao,v.conteudo_html,v.resumo_alteracoes,
+                v.hash_sha256,v.status,v.exige_nova_manifestacao,v.publicado_por,v.publicado_em,
+                v.vigencia_inicio,v.vigencia_fim,v.criado_em,v.atualizado_em,v.id_documento_publicado
+           FROM documento_legal d
+           INNER JOIN documento_legal_versao v ON v.id_documento_legal=d.id_documento_legal
+          WHERE d.id_documento_legal=? AND d.status='ativo' AND v.status='publicado'
+          ORDER BY v.id_documento_legal_versao DESC" . $sufixo
+    );
+    if (!$stmt) throw new RuntimeException('Falha ao preparar a consulta da versão publicada.');
+    $stmt->bind_param('i', $idDocumento);
+    if (!$stmt->execute()) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao consultar a versão publicada.');
+    }
+    $resultado = $stmt->get_result();
+    $versoes = [];
+    while ($versao = $resultado?->fetch_assoc()) $versoes[] = $versao;
+    $stmt->close();
+    return $versoes;
+}
+
+function documentosLegaisInstanteAtual(mysqli $conexao): string
+{
+    $stmt = $conexao->prepare('SELECT CURRENT_TIMESTAMP(6) AS instante');
+    if (!$stmt) throw new RuntimeException('Falha ao preparar o instante de publicação.');
+    if (!$stmt->execute()) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao obter o instante de publicação.');
+    }
+    $instante = (string)(($stmt->get_result()?->fetch_assoc() ?: [])['instante'] ?? '');
+    $stmt->close();
+    if ($instante === '') throw new RuntimeException('Instante de publicação inválido.');
+    return $instante;
 }
 
 function documentosLegaisHashValido(array $documento): bool
@@ -375,7 +526,7 @@ function documentosLegaisTemPendencias(mysqli $conexao): bool
     return false;
 }
 
-function documentosLegaisEntradaPost(): array
+function documentosLegaisEntradaPost(array $permitidos = ['documentos', 'declaracao_maioridade']): array
 {
     $contentType = mb_strtolower(trim(explode(';', (string)($_SERVER['CONTENT_TYPE'] ?? ''))[0]), 'UTF-8');
     if (!in_array($contentType, ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'], true)) {
@@ -395,7 +546,7 @@ function documentosLegaisEntradaPost(): array
     if (!is_array($entrada)) {
         out(['ok' => false, 'code' => 'INPUT_INVALID', 'user_msg' => 'Os dados enviados são inválidos.'], 422);
     }
-    $permitidos = ['documentos' => true, 'declaracao_maioridade' => true];
+    $permitidos = array_fill_keys($permitidos, true);
     foreach (array_keys($entrada) as $campo) {
         if (!isset($permitidos[(string)$campo])) {
             out(['ok' => false, 'code' => 'INPUT_FIELD_NOT_ALLOWED', 'user_msg' => 'Os dados enviados contêm campos não permitidos.'], 422);

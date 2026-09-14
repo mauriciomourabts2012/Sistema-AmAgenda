@@ -75,6 +75,24 @@ $routes = [
     'documentos-legais/preview' => [
         'GET' => __DIR__ . '/../../backend/documentos_legais/preview.php',
     ],
+    'documentos-legais/admin/listar' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/listar_admin.php',
+    ],
+    'documentos-legais/admin/versoes' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/listar_versoes.php',
+    ],
+    'documentos-legais/admin/versao' => [
+        'GET' => __DIR__ . '/../../backend/documentos_legais/visualizar_versao.php',
+    ],
+    'documentos-legais/admin/rascunho' => [
+        'POST' => __DIR__ . '/../../backend/documentos_legais/salvar_rascunho.php',
+    ],
+    'documentos-legais/admin/publicar' => [
+        'POST' => __DIR__ . '/../../backend/documentos_legais/publicar_versao.php',
+    ],
+    'documentos-legais/admin/arquivar' => [
+        'POST' => __DIR__ . '/../../backend/documentos_legais/arquivar_versao.php',
+    ],
     'documentos-legais/pendencias' => [
         'GET' => __DIR__ . '/../../backend/documentos_legais/pendencias.php',
     ],
@@ -83,6 +101,11 @@ $routes = [
     ],
     'documentos-legais/manifestar' => [
         'POST' => __DIR__ . '/../../backend/documentos_legais/manifestar.php',
+    ],
+
+    // Planos comerciais ativos exibidos no site público
+    'planos/listar' => [
+        'GET' => __DIR__ . '/../../backend/super_admin/plano/lista_plano.php',
     ],
 
     // Centro de notificações do destinatário autenticado
@@ -617,6 +640,7 @@ $rotasPermitidasComSenhaTemporariaVencida = [
     '_auth/session',
     '_auth/logout',
     'perfil/alterar-senha',
+    'planos/listar',
     'documentos-legais/pendencias',
     'documentos-legais/conteudo',
     'documentos-legais/manifestar',

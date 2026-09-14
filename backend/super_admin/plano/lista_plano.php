@@ -25,6 +25,67 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
   out(['ok' => false, 'code' => 'METHOD_NOT_ALLOWED'], 405);
 }
 
+// Acesso público somente quando o roteador central resolveu explicitamente
+// a rota pública. Parâmetros da requisição não alteram este contexto.
+$consultaPublica = isset($rota) && $rota === 'planos/listar';
+
+if ($consultaPublica) {
+  require __DIR__ . '/../../_config/conexao.php';
+
+  if (!isset($conexao) || !($conexao instanceof mysqli)) {
+    out(['ok' => false, 'code' => 'DB_CONN_MISSING'], 500);
+  }
+
+  $conexao->set_charset('utf8mb4');
+
+  $sqlPublico = "
+    SELECT
+      p.nome,
+      p.preco_mensal,
+      p.cobranca,
+      p.descricao,
+      p.limite_usuarios,
+      p.limite_proprietarios,
+      p.limite_profissionais,
+      p.limite_recepcionistas,
+      p.limite_servicos,
+      p.limite_agendamentos,
+      p.destaque
+    FROM plano p
+    WHERE p.status = ?
+    ORDER BY CAST(p.ref AS UNSIGNED) ASC, p.id_plano ASC
+  ";
+
+  $stmtPublico = $conexao->prepare($sqlPublico);
+  if (!$stmtPublico) {
+    out(['ok' => false, 'code' => 'SQL_PUBLIC_LIST_FAIL'], 500);
+  }
+
+  $statusPublico = 'ativo';
+  $stmtPublico->bind_param('s', $statusPublico);
+  $stmtPublico->execute();
+  $resultadoPublico = $stmtPublico->get_result();
+
+  $planosPublicos = [];
+  while ($planoPublico = $resultadoPublico->fetch_assoc()) {
+    $planoPublico['preco_mensal'] = (string)$planoPublico['preco_mensal'];
+    $planoPublico['limite_usuarios'] = (int)($planoPublico['limite_usuarios'] ?? 0);
+    $planoPublico['limite_proprietarios'] = (int)($planoPublico['limite_proprietarios'] ?? 0);
+    $planoPublico['limite_profissionais'] = (int)($planoPublico['limite_profissionais'] ?? 0);
+    $planoPublico['limite_recepcionistas'] = (int)($planoPublico['limite_recepcionistas'] ?? 0);
+    $planoPublico['limite_servicos'] = (int)($planoPublico['limite_servicos'] ?? 0);
+    $planoPublico['limite_agendamentos'] = (int)($planoPublico['limite_agendamentos'] ?? 0);
+    $planoPublico['destaque'] = (int)$planoPublico['destaque'];
+    $planosPublicos[] = $planoPublico;
+  }
+  $stmtPublico->close();
+
+  out([
+    'ok' => true,
+    'data' => $planosPublicos,
+  ]);
+}
+
 // 🔒 bloqueio
 $bloqueio = __DIR__ . '/../../_auth/bloquear.php';
 if (is_file($bloqueio)) {

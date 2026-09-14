@@ -5,30 +5,13 @@ require_once __DIR__ . '/_comum.php';
 documentosLegaisMetodo('GET');
 $contexto = documentosLegaisExigirSuperAdmin($conexao);
 
-$codigoRaw = $_GET['codigo'] ?? null;
-$versaoRaw = $_GET['versao'] ?? null;
-$codigo = documentosLegaisValidarCodigo($codigoRaw);
-$versao = is_string($versaoRaw) ? trim($versaoRaw) : '';
-if ($versao !== '') $versao = documentosLegaisValidarVersao($versaoRaw);
-
-$sql = "SELECT d.id_documento_legal,d.codigo,d.titulo,d.escopo,
-               v.id_documento_legal_versao,v.versao,v.conteudo_html,v.resumo_alteracoes,
-               v.hash_sha256,v.status,v.exige_nova_manifestacao,v.publicado_em,
-               v.vigencia_inicio,v.vigencia_fim
-          FROM documento_legal d
-          INNER JOIN documento_legal_versao v ON v.id_documento_legal=d.id_documento_legal
-         WHERE d.codigo=? AND d.status='ativo' AND v.status='rascunho'";
-if ($versao !== '') $sql .= ' AND v.versao=?';
-$sql .= ' ORDER BY v.id_documento_legal_versao DESC LIMIT 1';
-$stmt = $conexao->prepare($sql);
-if (!$stmt) throw new RuntimeException('Falha ao preparar o preview.');
-if ($versao !== '') $stmt->bind_param('ss', $codigo, $versao);
-else $stmt->bind_param('s', $codigo);
-$stmt->execute();
-$documento = $stmt->get_result()?->fetch_assoc() ?: null;
-$stmt->close();
+$idVersao = documentosLegaisValidarIdPositivo($_GET['id_versao'] ?? null);
+$documento = documentosLegaisLocalizarVersaoPorId($conexao, $idVersao);
 if ($documento === null) {
-    out(['ok' => false, 'code' => 'DRAFT_NOT_FOUND', 'user_msg' => 'Rascunho não encontrado.'], 404);
+    out(['ok' => false, 'code' => 'DOCUMENT_VERSION_NOT_FOUND', 'user_msg' => 'Versão não encontrada.'], 404);
+}
+if (!documentosLegaisStatusPermitido((string)$documento['status'])) {
+    out(['ok' => false, 'code' => 'DOCUMENT_VERSION_STATUS_INVALID', 'user_msg' => 'Versão indisponível.'], 409);
 }
 if (!documentosLegaisHashValido($documento)) {
     documentosLegaisAuditarIntegridade($conexao, $contexto, $documento);
@@ -48,7 +31,7 @@ auditoriaRegistrar($conexao, 'documentos_legais.preview_visualizado', [
 
 out([
     'ok' => true,
-    'code' => 'LEGAL_DOCUMENT_DRAFT_PREVIEW',
+    'code' => 'LEGAL_DOCUMENT_VERSION_VIEWED',
     'data' => ['documento' => [
         'titulo' => (string)$documento['titulo'],
         'codigo' => (string)$documento['codigo'],
@@ -63,7 +46,8 @@ out([
         'publicado_em' => $documento['publicado_em'],
         'vigencia_inicio' => $documento['vigencia_inicio'],
         'vigencia_fim' => $documento['vigencia_fim'],
-        'conteudo_html' => (string)$documento['conteudo_html'],
         'hash_sha256' => (string)$documento['hash_sha256'],
+        'conteudo_html' => (string)$documento['conteudo_html'],
     ]],
 ]);
+

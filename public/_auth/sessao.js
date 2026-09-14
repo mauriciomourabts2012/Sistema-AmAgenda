@@ -56,8 +56,18 @@
    * aceite quando houver pendência. Retorna true quando o redirecionamento
    * foi disparado (o chamador deve interromper o fluxo normal da página).
    */
-  async function verificarPendenciasLegais() {
+  async function verificarPendenciasLegais(auth) {
     if (estaNaPaginaDeAceite() || estaEmPaginaPublicaSemGuard()) return false;
+
+    // O primeiro acesso por OTP pode autenticar um cliente ainda sem cadastro.
+    // Nesse estado não existe id_cliente para vincular uma manifestação legal;
+    // o cadastro obrigatório da página cria a identidade antes desta checagem.
+    if (
+      auth?.tipo_usuario === "cliente" &&
+      (!Number.isInteger(Number(auth?.id_cliente)) || Number(auth.id_cliente) <= 0)
+    ) {
+      return false;
+    }
 
     try {
       const resp = await fetch(`${API_BASE}?path=documentos-legais/pendencias`, {
@@ -116,10 +126,11 @@
           return;
         }
 
-        const redirecionou = await verificarPendenciasLegais();
+        const auth = json.data?.user || json.data || null;
+        const redirecionou = await verificarPendenciasLegais(auth);
         if (redirecionou) return;
 
-        aplicarDadosSessao(json.data?.user || json.data || null);
+        aplicarDadosSessao(auth);
 
       } catch (e) {
         window.location.replace(LOGIN_URL);

@@ -245,7 +245,7 @@
       });
       mensagemCadastro.textContent = json.user_msg || "Dados cadastrais salvos com sucesso.";
       mensagemCadastro.className = "cadastro-mensagem sucesso";
-      window.setTimeout(fecharCadastroAutomaticamente, 650);
+      window.setTimeout(() => window.location.reload(), 650);
     } catch (erro) {
       mensagemCadastro.textContent = erro.message || "Não foi possível salvar os dados cadastrais.";
       mensagemCadastro.className = "cadastro-mensagem erro";
