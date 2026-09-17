@@ -49,6 +49,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require __DIR__ . '/../_config/conexao.php';
 require_once __DIR__ . '/../_servicos/auditoria.php';
+require_once __DIR__ . '/../_regras/acesso_assinatura.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -544,6 +545,21 @@ if (
         'code' => 'EMPRESA_NAME_MISMATCH',
         'user_msg' => 'O link da empresa é inválido ou não corresponde ao cadastro.'
     ], 403);
+}
+
+$acessoAssinatura = acessoAssinaturaValidar($conexao, $empresaId);
+
+if (!($acessoAssinatura['permitido'] ?? false)) {
+    $motivoAssinatura = (string)($acessoAssinatura['motivo'] ?? 'sem_contrato_ativo');
+    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', $motivoAssinatura, $empresaId);
+
+    $erroTecnicoAssinatura = (bool)($acessoAssinatura['erro_tecnico'] ?? false);
+    out([
+        'ok' => false,
+        'step' => 'assinatura',
+        'code' => $erroTecnicoAssinatura ? 'LOGIN_SUBSCRIPTION_CHECK_ERROR' : 'LOGIN_SUBSCRIPTION_BLOCKED',
+        'user_msg' => (string)$acessoAssinatura['user_msg']
+    ], $erroTecnicoAssinatura ? 500 : 403);
 }
 
 /**

@@ -101,8 +101,11 @@ $tipoUsuario = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8
 $idUsuario = (int)($auth['id_usuario'] ?? 0);
 $idEmpresa = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? 0);
 
-if ($tipoUsuario !== 'super_admin' && $idUsuario > 0 && $idEmpresa > 0) {
+/* A sessão empresarial é revalidada contra o contrato para que uma mudança
+ * posterior de status não preserve autorização apenas pelo cookie existente. */
+if ($tipoUsuario !== 'super_admin' && $idUsuario > 0) {
   require __DIR__ . '/../_config/conexao.php';
+  require_once __DIR__ . '/../_regras/acesso_assinatura.php';
 
   $stmt = $conexao->prepare("SELECT eu.id_perfil, p.nome, eu.bloqueado_plano FROM empresa_usuario eu INNER JOIN perfil p ON p.id_perfil = eu.id_perfil INNER JOIN empresa e ON e.id_empresa = eu.id_empresa WHERE eu.id_usuario = ? AND eu.id_empresa = ? AND eu.status = 'ativo' AND p.status = 'ativo' AND e.status = 'ativo' LIMIT 1");
   if (!$stmt) {
@@ -122,6 +125,16 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0 && $idEmpresa > 0) {
   // Permissões não podem manter ativa uma sessão bloqueada pelo plano.
   if ((int)($vinculo['bloqueado_plano'] ?? 0) === 1) {
     out(['ok' => false, 'code' => 'SESSION_ACCESS_DENIED', 'user_msg' => 'Acesso indisponível para o plano atual.'], 403);
+  }
+
+  $acessoAssinatura = acessoAssinaturaValidar($conexao, $idEmpresa);
+  if (!($acessoAssinatura['permitido'] ?? false)) {
+    $erroTecnicoAssinatura = (bool)($acessoAssinatura['erro_tecnico'] ?? false);
+    out([
+      'ok' => false,
+      'code' => $erroTecnicoAssinatura ? 'SESSION_SUBSCRIPTION_CHECK_ERROR' : 'SESSION_ACCESS_DENIED',
+      'user_msg' => (string)$acessoAssinatura['user_msg']
+    ], $erroTecnicoAssinatura ? 500 : 403);
   }
 
   $perfilNomeDb = mb_strtolower(trim((string)$vinculo['nome']), 'UTF-8');

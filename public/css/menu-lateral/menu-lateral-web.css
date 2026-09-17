@@ -102,6 +102,37 @@ body.sidebar-agenda-aberta .sidebar-texto {
   gap: 8px;
 }
 
+.sidebar-grupo {
+  min-height: 20px;
+  margin: 7px 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(255, 255, 255, .7);
+}
+
+.sidebar-grupo:first-child { margin-top: 0; }
+.sidebar-grupo::before {
+  content: "";
+  width: 36px;
+  height: 1px;
+  flex: 0 0 36px;
+  background: rgba(255, 255, 255, .2);
+  transition: width .18s ease, flex-basis .18s ease;
+}
+
+.sidebar-grupo-texto {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+body.sidebar-agenda-aberta .sidebar-grupo::before {
+  width: 14px;
+  flex-basis: 14px;
+}
+
 .sidebar-ajuda {
   margin-top: auto;
   padding-top: 14px;

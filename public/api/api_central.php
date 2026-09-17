@@ -286,6 +286,34 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/super_admin/empresa/editar_empresa.php',
     ],
 
+    // Cobranças manuais do Super Admin
+    'superadmin/cobranca/listar' => [
+        'GET' => __DIR__ . '/../../backend/super_admin/cobranca/gerenciar_cobranca.php',
+    ],
+    'superadmin/cobranca/gerar' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/cobranca/gerenciar_cobranca.php',
+    ],
+    'superadmin/cobranca/pagamentos' => [
+        'GET' => __DIR__ . '/../../backend/super_admin/cobranca/gerenciar_cobranca.php',
+    ],
+    'superadmin/cobranca/pagamento/registrar' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/cobranca/gerenciar_cobranca.php',
+    ],
+    'superadmin/cobranca/pagamento/status' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/cobranca/gerenciar_cobranca.php',
+    ],
+    'superadmin/cobranca/cancelar' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/cobranca/gerenciar_cobranca.php',
+    ],
+
+    // Gestão contratual das assinaturas do Super Admin
+    'superadmin/assinatura/listar' => [
+        'GET' => __DIR__ . '/../../backend/super_admin/assinatura/gerenciar_assinatura.php',
+    ],
+    'superadmin/assinatura/status' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/assinatura/gerenciar_assinatura.php',
+    ],
+
     /*
     |----------------------
     | PAINEL ADMINISTRATIVO
@@ -334,6 +362,30 @@ $routes = [
     // Consulta cronológica da auditoria da empresa autenticada
     'painel/auditoria/listar' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/auditoria/lista_auditoria.php',
+    ],
+    'painel/faturamento/resumo' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
+    'painel/faturamento/cobrancas' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
+    'painel/faturamento/pagamentos' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
+    'painel/faturamento/pagamento/pix/iniciar' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+    ],
+    'painel/faturamento/pagamento/transacao' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+    ],
+    'painel/faturamento/pagamento/cartao/configuracao' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+    ],
+    'painel/faturamento/pagamento/cartao/autorizar' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+    ],
+    'painel/faturamento/pagamento/cartao/status' => [
+        'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
     ],
 
     // Editar Usuário (FUNCIONARIO)
@@ -676,6 +728,14 @@ $permissoesPorRota = [
     'painel/usuario/editar' => 'usuarios.editar',
     'painel/usuario/alterar-status' => 'usuarios.alterar_status',
     'painel/auditoria/listar' => 'auditoria.visualizar',
+    'painel/faturamento/resumo' => 'faturamento.visualizar',
+    'painel/faturamento/cobrancas' => 'faturamento.visualizar',
+    'painel/faturamento/pagamentos' => 'faturamento.visualizar',
+    'painel/faturamento/pagamento/pix/iniciar' => 'faturamento.pagar',
+    'painel/faturamento/pagamento/transacao' => 'faturamento.visualizar',
+    'painel/faturamento/pagamento/cartao/configuracao' => 'faturamento.pagar',
+    'painel/faturamento/pagamento/cartao/autorizar' => 'faturamento.pagar',
+    'painel/faturamento/pagamento/cartao/status' => 'faturamento.pagar',
     // As três rotas de configuração de serviços validam permissão e propriedade no handler,
     // pois a decisão depende do id_profissional alvo. O cadastro pelo agendamento não depende disso.
     'agenda/servico-profissional/cadastrar-agendamento' => 'servicos.cadastrar',

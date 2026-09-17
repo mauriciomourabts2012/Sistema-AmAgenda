@@ -10,8 +10,8 @@
     <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_1"/>
     <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
     <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260828_2"/>
-    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260817_3"/>
+    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=20260915_7"/>
+    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260915_1"/>
     <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2"/>
     <link rel="stylesheet" href="../../css/perfil.css">
     <link rel="stylesheet" href="../../css/documentos-legais/documentos-legais.css">
@@ -199,6 +199,127 @@
           <!-- Paginação — EMPRESAS -->
           <div class="section-paginacao">
             <div id="paginacao_empresas" class="paginacao-div"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ABA: COBRANÇAS -->
+      <div id="cobrancas" class="conteudo-aba">
+        <div class="conteudo-agenda">
+          <div id="areaCobrancas" aria-labelledby="cabecalhoModuloTitulo">
+            <div class="agenda-topo cobranca-toolbar">
+              <form id="formGerarCobranca" class="cobranca-geracao-contexto" autocomplete="off">
+                <div class="modal-campo cobranca-seletor-campo">
+                  <label for="btnCobrancaEmpresa" class="label-fixa">Empresa</label>
+                  <input type="hidden" id="cobrancaEmpresa" name="id_empresa" value="">
+                  <div class="section-filtro" id="seletorCobrancaEmpresa">
+                    <button id="btnCobrancaEmpresa" class="btn-filtro" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="popoverCobrancaEmpresa">
+                      <span id="cobrancaEmpresaNome">Selecione a empresa</span>
+                      <span class="caret" aria-hidden="true">▾</span>
+                    </button>
+                    <div id="popoverCobrancaEmpresa" class="popover" hidden>
+                      <div class="filtro">
+                        <input type="search" class="input-filtro" id="cobrancaEmpresaPesquisa" placeholder="Pesquisar empresa..." aria-label="Pesquisar empresa" autocomplete="off" inputmode="search">
+                      </div>
+                      <div id="opcoesCobrancaEmpresa" class="agenda-pesquisa-resultados-lista" role="listbox" aria-label="Empresas ativas"></div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+              <div class="pesquisar-super cobranca-pesquisa">
+                <div class="input-wrapper">
+                  <i class="fas fa-search" aria-hidden="true"></i>
+                  <input id="pesquisar-cobrancas" type="search" placeholder="Pesquisar cobrança..." aria-label="Pesquisar cobrança" autocomplete="off">
+                </div>
+              </div>
+              <div class="cobranca-toolbar-acoes">
+                <div class="section-filtro cobranca-filtro-popover" id="seletorFiltrosCobranca">
+                  <button id="btnFiltrosCobranca" class="botao-geral cobranca-btn-filtro" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="formFiltrosCobranca">
+                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                    <span>Filtro</span>
+                  </button>
+                  <form id="formFiltrosCobranca" class="popover cobranca-filtros" autocomplete="off" hidden>
+                    <div class="cobranca-filtro-campo">
+                      <label for="filtroCobrancaSituacao">Situação</label>
+                      <select id="filtroCobrancaSituacao" name="situacao">
+                        <option value="todas">Todas</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="vencida">Vencida</option>
+                        <option value="paga">Paga</option>
+                        <option value="cancelada">Cancelada</option>
+                      </select>
+                    </div>
+                    <div class="cobranca-filtro-campo">
+                      <label for="filtroCobrancaDataDe">Vencimento de</label>
+                      <input id="filtroCobrancaDataDe" name="data_vencimento_de" type="date">
+                    </div>
+                    <div class="cobranca-filtro-campo">
+                      <label for="filtroCobrancaDataAte">Vencimento até</label>
+                      <input id="filtroCobrancaDataAte" name="data_vencimento_ate" type="date">
+                    </div>
+                    <div class="cobranca-filtros-acoes">
+                      <button class="botao-geral destaque" type="submit">Aplicar filtros</button>
+                      <button id="btnLimparFiltrosCobranca" class="botao-geral" type="button">Limpar</button>
+                    </div>
+                  </form>
+                </div>
+                <button id="btnGerarCobranca" class="botao-geral destaque cobranca-btn-gerar" type="submit" form="formGerarCobranca">
+                  <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                  <span>Gerar cobrança</span>
+                </button>
+              </div>
+            </div>
+            <div id="resumoFinanceiroCobrancas" class="cobranca-resumo" aria-live="polite" aria-label="Resumo financeiro">
+              <div><span>A receber</span><strong id="resumoAReceber">R$ 0,00</strong></div>
+              <div><span>Recebido</span><strong id="resumoRecebido">R$ 0,00</strong></div>
+              <div><span>Vencido</span><strong id="resumoVencido">R$ 0,00</strong></div>
+              <div><span>Total de cobranças</span><strong id="resumoTotalCobrancas">0</strong></div>
+            </div>
+            <div id="listaCobrancas" class="agenda-cards" style="min-height: 0;" aria-live="polite"></div>
+            <div class="section-paginacao">
+              <div id="paginacao_cobrancas" class="paginacao-div" aria-label="Paginação das cobranças"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA: ASSINATURAS -->
+      <div id="assinaturas" class="conteudo-aba">
+        <div class="conteudo-agenda">
+          <div id="areaAssinaturas" aria-labelledby="cabecalhoModuloTitulo">
+            <div class="agenda-topo assinaturas-toolbar">
+              <div class="assinaturas-filtro-campo">
+                <label for="btnAssinaturaEmpresa" class="label-fixa">Empresa</label>
+                <input type="hidden" id="assinaturaEmpresa" name="id_empresa" value="">
+                <div class="section-filtro" id="seletorAssinaturaEmpresa">
+                  <button id="btnAssinaturaEmpresa" class="btn-filtro" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="popoverAssinaturaEmpresa">
+                    <span id="assinaturaEmpresaNome">Todas as empresas</span>
+                    <span class="caret" aria-hidden="true">▾</span>
+                  </button>
+                  <div id="popoverAssinaturaEmpresa" class="popover" hidden>
+                    <div class="filtro">
+                      <input type="search" class="input-filtro" id="assinaturaEmpresaPesquisa" placeholder="Pesquisar empresa..." autocomplete="off">
+                    </div>
+                    <div id="opcoesAssinaturaEmpresa" class="agenda-pesquisa-resultados-lista" role="listbox" aria-label="Empresas"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="pesquisar-super assinaturas-pesquisa">
+                <div class="input-wrapper">
+                  <i class="fas fa-search" aria-hidden="true"></i>
+                  <input id="pesquisar-assinaturas" type="search" placeholder="Pesquisar assinatura..." aria-label="Pesquisar assinatura" autocomplete="off">
+                </div>
+              </div>
+              <button class="botao-geral" type="button" id="btnAtualizarAssinaturas">
+                <i class="fas fa-rotate" aria-hidden="true"></i>
+                <span>Atualizar</span>
+              </button>
+            </div>
+            <div id="listaAssinaturas" class="agenda-cards" aria-live="polite"></div>
+            <div class="section-paginacao">
+              <div id="paginacao_assinaturas" class="paginacao-div" aria-label="Paginação das assinaturas"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -612,11 +733,6 @@
       <!-- ABA: DOCUMENTOS LEGAIS -->
       <div id="documentos-legais" class="conteudo-aba">
         <div class="conteudo-agenda am-legal-admin-tab">
-          <section class="am-legal-page-header" aria-labelledby="tituloDocumentosLegais">
-            <h2 id="tituloDocumentosLegais" class="am-title">Documentos legais</h2>
-            <p class="am-subtitle">Gerencie Termos de Uso, Política de Privacidade e suas versões.</p>
-          </section>
-
           <section class="am-card am-legal-manager" aria-labelledby="tituloGerenciamentoDocumentos">
             <div class="am-legal-manager__header">
               <div>
@@ -732,6 +848,115 @@
     </section>
 
     <section> <!--Todos o modals da pagina-->
+
+      <!-- MODAL: Pagamentos da cobrança -->
+      <div id="modalPagamentosCobranca" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo am-pagamentos-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalPagamentosCobranca">
+          <div class="modal-topo">
+            <div>
+              <h2 id="tituloModalPagamentosCobranca">Pagamentos da cobrança</h2>
+              <p id="subtituloModalPagamentosCobranca">Consulte os pagamentos e o saldo restante.</p>
+            </div>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <div id="resumoPagamentoCobranca" class="am-pagamento-resumo" aria-live="polite"></div>
+            <form id="formRegistrarPagamentoCobranca" class="am-pagamento-form" autocomplete="off" hidden>
+              <input type="hidden" id="pagamentoCobrancaId" name="id_cobranca" value="">
+              <div class="modal-grid">
+                <div class="modal-campo">
+                  <input id="pagamentoValor" name="valor_pago" type="text" inputmode="decimal" placeholder=" " required>
+                  <label for="pagamentoValor">Valor pago (R$)</label>
+                </div>
+                <div class="modal-campo">
+                  <input id="pagamentoData" name="data_pagamento" type="date" required>
+                  <label for="pagamentoData" class="label-fixa">Data do pagamento</label>
+                </div>
+                <div class="modal-campo">
+                  <select id="pagamentoForma" name="forma_pagamento" required>
+                    <option value="">Forma de pagamento</option>
+                    <option value="pix">PIX</option>
+                    <option value="boleto">Boleto</option>
+                    <option value="cartao_credito">Cartão de crédito</option>
+                    <option value="cartao_debito">Cartão de débito</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                  <label for="pagamentoForma" class="label-fixa">Forma de pagamento</label>
+                </div>
+                <div class="modal-campo" style="grid-column: 1 / -1;">
+                  <textarea id="pagamentoObservacao" name="observacao" rows="2" maxlength="1000" placeholder=" "></textarea>
+                  <label for="pagamentoObservacao">Observação (opcional)</label>
+                </div>
+              </div>
+              <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button">Cancelar</button>
+                <button id="btnSalvarPagamento" class="botao-geral destaque" type="submit">
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
+                  Registrar pagamento
+                </button>
+              </div>
+            </form>
+            <div id="listaPagamentosCobranca" class="am-pagamentos-lista" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Motivo do cancelamento manual da cobrança -->
+      <div id="modalCancelarCobranca" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloModalCancelarCobranca">
+          <div class="modal-topo">
+            <h2 id="tituloModalCancelarCobranca">Cancelar cobrança</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <p>Informe o motivo do cancelamento. A cobrança será mantida no histórico.</p>
+            <form id="formCancelarCobranca" autocomplete="off">
+              <input type="hidden" id="cancelamentoCobrancaId" name="id_cobranca" value="">
+              <div class="modal-campo">
+                <textarea id="cancelamentoMotivo" name="motivo" rows="3" maxlength="500" placeholder=" " required></textarea>
+                <label for="cancelamentoMotivo">Motivo do cancelamento</label>
+              </div>
+              <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button">Voltar</button>
+                <button class="botao-geral destaque" type="submit">
+                  <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                  Cancelar cobrança
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Motivo do cancelamento contratual da assinatura -->
+      <div id="modalCancelarAssinatura" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloModalCancelarAssinatura">
+          <div class="modal-topo">
+            <h2 id="tituloModalCancelarAssinatura">Cancelar assinatura</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <p>A assinatura será encerrada contratualmente e permanecerá no histórico.</p>
+            <form id="formCancelarAssinatura" autocomplete="off">
+              <input type="hidden" id="cancelamentoAssinaturaId" name="id_assinatura" value="">
+              <input type="hidden" id="cancelamentoAssinaturaEmpresaId" name="id_empresa" value="">
+              <div class="modal-campo">
+                <textarea id="cancelamentoAssinaturaMotivo" name="motivo" rows="3" maxlength="500" placeholder=" " required></textarea>
+                <label for="cancelamentoAssinaturaMotivo">Motivo do cancelamento</label>
+              </div>
+              <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button">Voltar</button>
+                <button class="botao-geral destaque" type="submit">
+                  <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                  Cancelar assinatura
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
 
       <!-- MODAL: Nova versão de documento legal (estrutura visual da Etapa 1) -->
       <div id="modalNovaVersaoLegal" class="modal-geral" aria-hidden="true">
@@ -1887,7 +2112,7 @@
 
     <!--lista Core-->
     <script src="../../js/core/lista-core.js?v=20260820_2" ></script>
-    <script src="../../js/menu-lateral/menu-lateral.js?v=20260817_3"></script>
+    <script src="../../js/menu-lateral/menu-lateral.js?v=20260915_1"></script>
     <script src="../../js/notificacoes/notificacoes.js?v=20260903_1"></script>
 
 
@@ -1902,6 +2127,8 @@
     <script src="../../js/super-admin/empresa/lista-empresa.js?v=20260820_2"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
     <script src="../../js/super-admin/empresa/cadastrar_empresa.js" ></script> <!--Cadastrar novas empresas-->
     <script src="../../js/super-admin/empresa/editar_empresa.js" ></script> <!--Editar dados de cadastro da empresa -->
+    <script src="../../js/super-admin/cobranca/gerenciar-cobranca.js?v=20260915_5" ></script> <!--Listar e gerar cobranças -->
+    <script src="../../js/super-admin/assinatura/gerenciar-assinatura.js?v=20260915_2" ></script> <!--Gerenciar contratos e histórico de assinaturas -->
 
     
     <!--ABA USUARIOS-->

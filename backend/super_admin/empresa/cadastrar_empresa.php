@@ -35,6 +35,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require __DIR__ . '/../../_auth/bloquear.php';
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 
 /* ==========================================================
    HELPERS
@@ -304,7 +306,7 @@ try {
     $st->close();
 
     // valida plano obrigatório e ativo
-    $sqlPlano = "SELECT id_plano, status FROM plano WHERE id_plano = ? LIMIT 1";
+    $sqlPlano = "SELECT id_plano, preco_mensal, cobranca, status FROM plano WHERE id_plano = ? LIMIT 1";
     $st = $conexao->prepare($sqlPlano);
 
     if (!$st) {
@@ -383,6 +385,55 @@ try {
 
     $idEmpresa = (int)$stmt->insert_id;
     $stmt->close();
+
+    $dataInicioAssinatura = date('Y-m-d');
+    $diaVencimentoAssinatura = 10;
+    $statusAssinatura = 'ativa';
+    $valorContratado = (float)$plano['preco_mensal'];
+    $periodicidadeAssinatura = (string)$plano['cobranca'];
+
+    $stmtAssinatura = $conexao->prepare(
+        "INSERT INTO assinatura
+            (id_empresa, id_plano, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim, status)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?)"
+    );
+    if (!$stmtAssinatura) {
+        throw new Exception('Prepare insert assinatura falhou.');
+    }
+    $stmtAssinatura->bind_param(
+        'iidsiss',
+        $idEmpresa,
+        $planoId,
+        $valorContratado,
+        $periodicidadeAssinatura,
+        $diaVencimentoAssinatura,
+        $dataInicioAssinatura,
+        $statusAssinatura
+    );
+    if (!$stmtAssinatura->execute()) {
+        $erroAssinatura = (string)$stmtAssinatura->error;
+        $stmtAssinatura->close();
+        throw new Exception('Erro ao criar assinatura. Erro: ' . $erroAssinatura);
+    }
+    $idAssinatura = (int)$stmtAssinatura->insert_id;
+    $stmtAssinatura->close();
+
+    auditoriaRegistrar($conexao, 'assinatura.criada', [
+        'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+        'entidade_id' => $idAssinatura,
+        'entidade_rotulo' => 'Assinatura da empresa ' . $nome,
+        'descricao' => 'Criou a assinatura inicial da empresa ' . $nome . '.',
+        'alteracoes' => ['depois' => ['antes' => null, 'depois' => [
+            'id_empresa' => $idEmpresa,
+            'id_plano' => $planoId,
+            'valor_contratado' => $valorContratado,
+            'periodicidade' => $periodicidadeAssinatura,
+            'dia_vencimento' => $diaVencimentoAssinatura,
+            'data_inicio' => $dataInicioAssinatura,
+            'status' => $statusAssinatura,
+        ]]],
+        'contexto' => ['origem' => 'painel_super_admin'],
+    ]);
 
     // cria configuração padrão da empresa
     $sqlConfig = "

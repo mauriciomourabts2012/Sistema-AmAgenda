@@ -39,6 +39,7 @@ $tipoUsuario = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8
 $idEmpresa = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? $_SESSION['empresa_id'] ?? 0);
 
 require_once __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_regras/acesso_assinatura.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
     out([
@@ -99,7 +100,9 @@ if ($senhaTemporariaVencida && !defined('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA'
     ], 403);
 }
 
-if ($tipoUsuario !== 'super_admin' && $idEmpresa > 0) {
+/* A API também revalida o contrato, pois uma chamada direta não depende do
+ * guard visual da sessão. Super Admin não depende de assinatura empresarial. */
+if ($tipoUsuario !== 'super_admin') {
     $stmt = $conexao->prepare('SELECT bloqueado_plano FROM empresa_usuario WHERE id_usuario = ? AND id_empresa = ? LIMIT 1');
     if (!$stmt) {
         out([
@@ -129,5 +132,15 @@ if ($tipoUsuario !== 'super_admin' && $idEmpresa > 0) {
             'code' => 'SESSION_ACCESS_DENIED',
             'user_msg' => 'Acesso indisponível para o plano atual.'
         ], 403);
+    }
+
+    $acessoAssinatura = acessoAssinaturaValidar($conexao, $idEmpresa);
+    if (!($acessoAssinatura['permitido'] ?? false)) {
+        $erroTecnicoAssinatura = (bool)($acessoAssinatura['erro_tecnico'] ?? false);
+        out([
+            'ok' => false,
+            'code' => $erroTecnicoAssinatura ? 'SESSION_SUBSCRIPTION_CHECK_ERROR' : 'SESSION_ACCESS_DENIED',
+            'user_msg' => (string)$acessoAssinatura['user_msg']
+        ], $erroTecnicoAssinatura ? 500 : 403);
     }
 }

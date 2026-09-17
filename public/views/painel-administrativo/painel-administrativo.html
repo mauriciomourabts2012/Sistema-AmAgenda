@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_2"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260828_2"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260917_2"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
   <!--CSS MOBILE-->
   <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260818_1"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260828_1"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260917_2"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
@@ -117,6 +117,60 @@
             </div>
 
         </div>
+    </div>
+
+    <!-- ABA: FATURAMENTO DA EMPRESA AUTENTICADA -->
+    <div id="faturamento" class="conteudo-aba">
+      <div class="conteudo-agenda faturamento-conteudo">
+        <section class="faturamento-bloco faturamento-assinatura" aria-labelledby="tituloMinhaAssinatura">
+          <header class="faturamento-secao-cabecalho">
+            <span class="faturamento-secao-icone" aria-hidden="true"><i class="fa-solid fa-crown"></i></span>
+            <div><h2 id="tituloMinhaAssinatura">Minha assinatura</h2><p>Consulte os detalhes do seu plano atual.</p></div>
+          </header>
+          <div id="faturamentoAssinatura" class="faturamento-assinatura-card" aria-live="polite">
+            <div class="a-loading">Carregando assinatura...</div>
+          </div>
+        </section>
+        <section id="faturamentoPagamentoAutomatico" class="faturamento-bloco faturamento-automatico" aria-labelledby="tituloPagamentoAutomatico" hidden>
+          <header class="faturamento-secao-cabecalho">
+            <span class="faturamento-secao-icone" aria-hidden="true"><i class="fa-regular fa-credit-card"></i></span>
+            <div><h2 id="tituloPagamentoAutomatico">Pagamento automático</h2><p>Configure um cartão para as próximas cobranças da sua assinatura.</p></div>
+          </header>
+          <div id="faturamentoCartaoEstado" class="faturamento-cartao-card" aria-live="polite">
+            <div class="a-loading">Carregando configuração do cartão...</div>
+          </div>
+        </section>
+        <section class="faturamento-bloco" aria-labelledby="tituloResumoFinanceiro">
+          <header class="faturamento-secao-cabecalho">
+            <span class="faturamento-secao-icone" aria-hidden="true"><i class="fa-solid fa-chart-simple"></i></span>
+            <div><h2 id="tituloResumoFinanceiro">Resumo financeiro</h2><p>Acompanhe vencimentos e valores da sua assinatura.</p></div>
+          </header>
+          <div id="faturamentoIndicadores" class="faturamento-indicadores" aria-live="polite"></div>
+        </section>
+        <section class="faturamento-bloco faturamento-cobrancas-bloco" aria-labelledby="tituloMinhasCobrancas">
+          <div class="faturamento-cobrancas-topo">
+            <header class="faturamento-secao-cabecalho">
+              <span class="faturamento-secao-icone" aria-hidden="true"><i class="fa-solid fa-file-invoice-dollar"></i></span>
+              <div><h2 id="tituloMinhasCobrancas">Minhas cobranças</h2><p>Consulte valores, vencimentos e pagamentos.</p></div>
+            </header>
+            <div class="faturamento-ferramentas">
+              <div class="pesquisar-super faturamento-pesquisa"><div class="input-wrapper"><i class="fas fa-search" aria-hidden="true"></i><input id="pesquisar-faturamento" type="search" placeholder="Pesquisar cobrança..." aria-label="Pesquisar cobrança" autocomplete="off"></div></div>
+              <div class="section-filtro faturamento-filtro" id="filtroFaturamento">
+                <button id="btnFiltrosFaturamento" class="botao-geral faturamento-btn-filtro" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="formFiltrosFaturamento"><i class="fas fa-filter" aria-hidden="true"></i><span>Filtro</span></button>
+                <form id="formFiltrosFaturamento" class="popover" autocomplete="off" hidden>
+                  <div class="faturamento-filtro-titulo"><i class="fa-solid fa-filter" aria-hidden="true"></i><strong>Filtros</strong></div>
+                  <label for="filtroSituacaoFaturamento">Situação</label><select id="filtroSituacaoFaturamento" class="input-filtro"><option value="">Todas</option><option value="pendente">Pendente</option><option value="vencida">Vencida</option><option value="paga">Paga</option><option value="cancelada">Cancelada</option></select>
+                  <label for="filtroVencimentoDe">Vencimento de</label><input id="filtroVencimentoDe" class="input-filtro" type="date">
+                  <label for="filtroVencimentoAte">Vencimento até</label><input id="filtroVencimentoAte" class="input-filtro" type="date">
+                  <div class="faturamento-filtro-acoes"><button type="submit" class="botao-geral destaque"><i class="fa-solid fa-filter" aria-hidden="true"></i>Aplicar</button><button type="button" id="limparFiltrosFaturamento" class="botao-geral">Limpar</button></div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div id="listaCobrancasFaturamento" class="agenda-cards faturamento-cobrancas" aria-live="polite"></div>
+          <div class="section-paginacao"><div id="paginacaoFaturamento" class="paginacao-div faturamento-paginacao" aria-label="Paginação das cobranças"></div></div>
+        </section>
+      </div>
     </div>
 
     <!-- ABA: CLIENTES -->
@@ -1209,6 +1263,53 @@
     </div>
 
     <!-- =========================================================
+         MODAIS — FATURAMENTO E PAGAMENTOS
+         Estruturas fixas para consulta, PIX e cartão recorrente.
+    ========================================================== -->
+    <div id="modalPagamentosFaturamento" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-md faturamento-pagamentos-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalPagamentosFaturamento">
+        <div class="modal-topo"><div><h2 id="tituloModalPagamentosFaturamento">Pagamentos da cobrança</h2><p>Histórico somente para consulta.</p></div><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
+        <div class="modal-corpo"><div id="resumoPagamentoFaturamento" class="faturamento-pagamento-resumo" aria-live="polite"></div><div id="listaPagamentosFaturamento" class="faturamento-pagamentos-lista" aria-live="polite"></div><div class="section-paginacao"><div id="paginacaoPagamentosFaturamento" class="paginacao-div"></div></div></div>
+        <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Fechar</button></div>
+      </div>
+    </div>
+
+    <div id="modalPagamentoPixFaturamento" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-md faturamento-pix-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalPagamentoPix">
+        <div class="modal-topo"><div><h2 id="tituloModalPagamentoPix">Pagar cobrança</h2><p>Pagamento seguro pelo Mercado Pago.</p></div><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
+        <div class="modal-corpo">
+          <div id="pixPagamentoPreparacao" class="pix-preparacao">
+            <div class="pix-resumo"><div><span>Valor</span><strong id="pixPagamentoValor">R$ 0,00</strong></div><div><span>Forma</span><strong><i class="fa-brands fa-pix" aria-hidden="true"></i> PIX</strong></div></div>
+            <p>O valor será recalculado com os pagamentos confirmados antes da geração.</p>
+            <button id="btnGerarPixFaturamento" class="botao-geral destaque" type="button"><i class="fa-brands fa-pix" aria-hidden="true"></i>Gerar PIX</button>
+            <div id="pixPagamentoCarregando" class="a-loading" hidden>Gerando PIX com segurança...</div>
+            <div id="pixPagamentoErro" class="faturamento-estado faturamento-estado--erro" hidden><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span><div><strong>Não foi possível gerar o PIX.</strong><p>Tente novamente mais tarde.</p></div></div>
+          </div>
+          <div id="pixPagamentoResultado" class="pix-resultado" hidden>
+            <img id="pixPagamentoQr" class="pix-qr" alt="QR Code para pagamento PIX" hidden>
+            <div class="pix-detalhes"><div><span>Status</span><strong id="pixPagamentoStatus" class="pix-status">Aguardando pagamento</strong></div><div><span>Valor</span><strong id="pixPagamentoValorResultado">R$ 0,00</strong></div><div><span>Validade</span><strong id="pixPagamentoValidade">—</strong></div></div>
+            <div class="pix-copia"><label for="pixPagamentoCodigo">PIX Copia e Cola</label><div><textarea id="pixPagamentoCodigo" rows="3" readonly></textarea><button id="btnCopiarPixFaturamento" class="botao-geral" type="button"><i class="fa-regular fa-copy" aria-hidden="true"></i>Copiar</button></div></div>
+            <div class="pix-acoes"><a id="pixPagamentoLink" class="botao-geral" target="_blank" rel="noopener noreferrer" hidden>Ver instruções</a><button id="btnAtualizarPixFaturamento" class="botao-geral destaque" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i>Atualizar situação</button></div>
+          </div>
+        </div>
+        <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Fechar</button></div>
+      </div>
+    </div>
+
+    <div id="modalCartaoRecorrenteFaturamento" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-md faturamento-cartao-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalCartaoRecorrente">
+        <div class="modal-topo"><div><h2 id="tituloModalCartaoRecorrente">Configurar cartão</h2><p>Cadastro seguro realizado pelo Mercado Pago.</p></div><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
+        <div class="modal-corpo">
+          <div class="cartao-consentimento"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><p>Ao autorizar, este cartão poderá ser usado nos pagamentos futuros automáticos das cobranças da sua assinatura AmAgenda. Nenhuma cobrança será feita agora.</p></div>
+          <div id="cartaoBrickCarregando" class="a-loading">Carregando ambiente seguro...</div>
+          <div id="cardPaymentBrick_container" class="cartao-brick" aria-live="polite"></div>
+          <div id="cartaoBrickErro" class="faturamento-estado faturamento-estado--erro" hidden><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span><div><strong>Não foi possível carregar o formulário seguro.</strong><p>Tente novamente mais tarde.</p></div></div>
+        </div>
+        <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Cancelar</button></div>
+      </div>
+    </div>
+
+    <!-- =========================================================
          MODAL — PERMISSÕES DO USUÁRIO
          Controle visual das permissões do usuário selecionado.
          O perfil fornecerá o padrão e, em etapa futura, poderão
@@ -1350,6 +1451,9 @@
 
   <!--ABA RESUMO DO DIA -->
   <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=20260818_6"></script> <!--DADOS RESUMO DO DIA -->
+  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=20260917_1"></script>
+  <script src="https://sdk.mercadopago.com/js/v2"></script>
+  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=20260917_2"></script>
 
   <!--ABA CLIENTES -->
   <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=20260821_3" ></script> <!-- LISTA DE CLIENTES -->

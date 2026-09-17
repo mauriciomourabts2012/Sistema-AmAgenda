@@ -546,6 +546,7 @@
         cache: "no-store",
         headers: {
           Accept: "application/json",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
         },
       });
 

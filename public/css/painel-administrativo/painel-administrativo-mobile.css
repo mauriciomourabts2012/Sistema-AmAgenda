@@ -16,6 +16,11 @@
 }
 @media (max-width: 980px){
 
+  #faturamento .faturamento-indicadores { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #faturamento .faturamento-cobrancas { grid-template-columns:1fr; }
+  #faturamento .faturamento-assinatura-card { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #faturamento .faturamento-plano-identidade { grid-column:1 / -1; }
+
   /* ==========================================================
    ABAS (ÚNICO CSS) — RESUMO / CLIENTES / USUÁRIOS / AGENDAMENTOS
    ========================================================== */
@@ -28,6 +33,10 @@
 }
 
 @media (max-width: 820px){
+
+  #faturamento .faturamento-cobrancas-topo { flex-direction:column; align-items:stretch; }
+  #faturamento .faturamento-ferramentas { width:100%; }
+  #faturamento .faturamento-pesquisa { flex:1 1 auto; width:auto; max-width:none; }
 
 /* ==========================================================
    BOTAO-GERAL — MOBILE
@@ -132,6 +141,37 @@
 }
 
 @media (max-width: 600px){
+
+  #faturamento .faturamento-indicadores { grid-template-columns:1fr; }
+  #faturamento .faturamento-ferramentas { flex-direction:column; align-items:stretch; }
+  #faturamento .faturamento-pesquisa { width:100%; min-width:0; }
+  #faturamento .faturamento-filtro, #faturamento .faturamento-btn-filtro { width:100%; }
+  #faturamento .faturamento-filtro .popover { position:fixed; top:auto; left:12px; right:12px; bottom:12px; width:auto; max-height:calc(100dvh - 24px); overflow-y:auto; z-index:1000; }
+  #faturamento .faturamento-cobranca-detalhes { grid-template-columns:1fr; gap:10px; }
+  #faturamento .faturamento-cobranca-rodape { align-items:flex-start; flex-wrap:wrap; }
+  #faturamento .faturamento-cobranca-rodape .faturamento-ver-pagamentos { width:100%; }
+  #faturamento .faturamento-conteudo { gap:22px; padding-inline:0; }
+  #faturamento .faturamento-secao-icone { flex-basis:40px; width:40px; height:40px; font-size:16px; }
+  #faturamento .faturamento-secao-cabecalho h2 { font-size:18px; }
+  #faturamento .faturamento-assinatura-card { grid-template-columns:1fr; align-items:flex-start; gap:16px; padding:18px; }
+  #faturamento .faturamento-plano-identidade { grid-column:auto; }
+  #faturamento .faturamento-indicador { min-height:94px; }
+  #faturamento .faturamento-estado { flex-direction:column; min-height:150px; text-align:center; }
+  .faturamento-pagamentos-modal .faturamento-pagamento-item { flex-direction:column; align-items:flex-start; }
+  #faturamento .faturamento-cobranca-valores { width:100%; justify-content:space-between; gap:10px; }
+  #faturamento .faturamento-pagar-agora { width:100%; }
+  #faturamento .faturamento-cartao-card { flex-direction:column; align-items:stretch; padding:17px; }
+  #faturamento .faturamento-cartao-card > .botao-geral { width:100%; }
+  #faturamento .faturamento-cartao-identidade { align-items:flex-start; }
+  .faturamento-cartao-modal .modal-corpo { max-height:calc(100dvh - 105px); padding:14px; }
+  .cartao-consentimento { padding:12px; }
+  .faturamento-pix-modal .modal-corpo { max-height:calc(100dvh - 110px); padding:14px; }
+  .pix-resumo, .pix-detalhes { grid-template-columns:1fr; }
+  .pix-preparacao > .botao-geral { width:100%; justify-self:stretch; }
+  .pix-copia > div { grid-template-columns:1fr; }
+  .pix-copia textarea { min-height:92px; }
+  .pix-copia .botao-geral, .pix-acoes .botao-geral { width:100%; }
+  .pix-acoes { flex-direction:column; }
 
   .auditoria-conteudo { gap: 14px; }
   .auditoria-timeline { padding-left: 17px; }

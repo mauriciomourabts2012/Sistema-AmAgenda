@@ -34,6 +34,127 @@
 .conteudo-aba { display:none; }
 .conteudo-aba.ativa { display:block; }
 
+/* ===== FATURAMENTO: consulta da assinatura, cobranças e pagamentos ===== */
+#faturamento .faturamento-conteudo { display:grid; align-content:start; height:auto; gap:28px; padding:2px 4px 24px; }
+#faturamento .faturamento-bloco { display:grid; gap:14px; min-width:0; }
+#faturamento .faturamento-secao-cabecalho { display:flex; align-items:center; gap:13px; min-width:0; }
+#faturamento .faturamento-secao-icone { display:grid; place-items:center; flex:0 0 46px; width:46px; height:46px; border-radius:50%; background:#eaf3ff; color:#1163dd; font-size:18px; }
+#faturamento .faturamento-secao-cabecalho h2 { margin:0; color:#102c57; font-size:20px; line-height:1.2; }
+#faturamento .faturamento-secao-cabecalho p { margin:3px 0 0; color:#71829a; font-size:13px; line-height:1.4; }
+#faturamento .faturamento-assinatura-card { position:relative; display:grid; grid-template-columns:minmax(250px,1.5fr) repeat(2,minmax(130px,.65fr)) auto; align-items:center; gap:24px; min-height:96px; padding:20px 24px; overflow:hidden; border:1px solid #cfe0f5; border-radius:16px; background:linear-gradient(118deg,#f5f9ff 0%,#fff 62%,#eef6ff 100%); box-shadow:0 7px 20px rgba(28,62,105,.05); }
+#faturamento .faturamento-assinatura-card::after { content:""; position:absolute; right:-38px; bottom:-72px; width:210px; height:210px; border-radius:50%; background:rgba(17,99,221,.045); pointer-events:none; }
+#faturamento .faturamento-assinatura-card > * { position:relative; z-index:1; min-width:0; }
+#faturamento .faturamento-assinatura-card > div:not(.a-loading):not(.faturamento-estado):not(.faturamento-plano-identidade), #faturamento .faturamento-indicadores article { display:grid; gap:5px; }
+#faturamento .faturamento-plano-identidade { display:flex; align-items:center; gap:14px; }
+#faturamento .faturamento-plano-icone { display:grid; place-items:center; flex:0 0 52px; width:52px; height:52px; border-radius:16px; background:#dfeeff; color:#1163dd; font-size:20px; }
+#faturamento .faturamento-assinatura-card > div:not(.faturamento-estado) span:not(.faturamento-plano-icone), #faturamento .faturamento-indicador > span:not(.faturamento-indicador-icone), #faturamento .faturamento-cobranca-detalhes span { color:#71829a; font-size:11px; font-weight:700; letter-spacing:.025em; }
+#faturamento .faturamento-assinatura-card strong { color:#173b63; font-size:15px; }
+#faturamento .faturamento-assinatura-plano { display:flex; flex-direction:column; align-items:flex-start; min-width:190px; }
+#faturamento .faturamento-assinatura-rotulo { display:block; margin-bottom:3px; line-height:1.2; }
+#faturamento .faturamento-assinatura-nome { display:block; font-size:18px; line-height:1.25; }
+#faturamento .faturamento-assinatura-preco { display:flex; align-items:baseline; gap:6px; margin-top:6px; }
+#faturamento .faturamento-assinatura-preco b { display:block; color:#1163dd; font-size:21px; line-height:1.15; }
+#faturamento .faturamento-assinatura-preco small { color:#60738d; font-size:12px; font-weight:600; }
+#faturamento .faturamento-assinatura-card > .a-loading { padding:0; border:0; background:transparent; text-align:left; }
+#faturamento .faturamento-indicadores { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+#faturamento .faturamento-indicador { grid-template-columns:42px minmax(0,1fr); align-items:center; min-height:104px; padding:16px 18px; border:1px solid #dce6f2; border-radius:14px; background:#fff; box-shadow:0 5px 14px rgba(28,62,105,.035); }
+#faturamento .faturamento-indicador-icone { display:grid; place-items:center; grid-row:1 / span 3; width:42px; height:42px; border-radius:50%; background:#eaf3ff; color:#1163dd; font-size:17px; }
+#faturamento .faturamento-indicador strong { color:#102c57; font-size:21px; line-height:1.1; }
+#faturamento .faturamento-indicador small { color:#7c8da4; font-size:11px; }
+#faturamento .faturamento-indicador--receber { border-color:#cae9dc; background:#f7fcf9; }
+#faturamento .faturamento-indicador--receber .faturamento-indicador-icone { background:#dff5ea; color:#16835d; }
+#faturamento .faturamento-indicador--vencido { border-color:#f4d1d5; background:#fff9f9; }
+#faturamento .faturamento-indicador--vencido .faturamento-indicador-icone { background:#fee7e9; color:#d62f43; }
+#faturamento .faturamento-indicador--recebido { border-color:#cfe1f8; background:#f7fbff; }
+#faturamento .faturamento-cobrancas-bloco { padding-top:2px; border-top:1px solid #e4ebf3; }
+#faturamento .faturamento-cobrancas-topo { display:flex; justify-content:space-between; align-items:flex-end; gap:20px; padding-top:18px; }
+#faturamento .faturamento-ferramentas { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-width:0; }
+#faturamento .faturamento-pesquisa { width:min(360px,32vw); min-width:250px; margin:0; padding:0; }
+#faturamento .faturamento-pesquisa .input-wrapper { width:100%; min-width:0; }
+#faturamento .faturamento-pesquisa input { min-height:40px; }
+#faturamento .faturamento-filtro { position:relative; }
+#faturamento .faturamento-btn-filtro { min-height:40px; border:1px solid #d5e1ef; background:#fff; color:#173b63; box-shadow:none; white-space:nowrap; }
+#faturamento .faturamento-btn-filtro:hover { border-color:#acc7e6; background:#f5f9ff; }
+#faturamento .faturamento-filtro .popover { right:0; left:auto; display:grid; gap:7px; width:290px; padding:16px; border-color:#dce6f2; box-shadow:0 16px 36px rgba(23,59,99,.14); }
+#faturamento .faturamento-filtro .popover[hidden] { display:none; }
+#faturamento .faturamento-filtro .popover > label { margin-top:4px; color:#36577c; font-size:12px; font-weight:700; }
+#faturamento .faturamento-filtro-titulo { display:flex; align-items:center; gap:8px; margin-bottom:3px; color:#173b63; font-size:14px; }
+#faturamento .faturamento-filtro-titulo i { color:#1163dd; }
+#faturamento .faturamento-filtro-acoes { display:flex; gap:8px; margin-top:8px; }
+#faturamento .faturamento-filtro-acoes button { flex:1; min-height:38px; }
+#faturamento .faturamento-cobrancas { gap:12px; min-height:0; overflow:visible; }
+#faturamento .faturamento-cobranca-card { display:grid; grid-template-columns:minmax(0,1fr); align-items:stretch; gap:15px; min-height:0; padding:19px 22px; overflow:visible; border-color:#dce6f2; box-shadow:0 6px 16px rgba(28,62,105,.045); cursor:default; }
+#faturamento .faturamento-cobranca-card:hover { transform:none; border-color:#c9d9ee; box-shadow:0 9px 22px rgba(28,62,105,.075); }
+#faturamento .faturamento-cobranca-card > * { min-width:0; }
+#faturamento .faturamento-cobranca-topo, #faturamento .faturamento-cobranca-rodape { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+#faturamento .faturamento-cobranca-topo > strong { color:#102c57; font-size:16px; }
+#faturamento .faturamento-cobranca-detalhes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+#faturamento .faturamento-cobranca-detalhes > div { display:grid; gap:5px; }
+#faturamento .faturamento-cobranca-detalhes strong { color:#263f5d; font-size:14px; }
+#faturamento .faturamento-cobranca-rodape { padding-top:13px; border-top:1px solid #edf1f6; color:#64748b; font-size:13px; }
+#faturamento .faturamento-cobranca-rodape > span { white-space:nowrap; }
+#faturamento .faturamento-status, .faturamento-pagamentos-modal .faturamento-status { display:inline-flex; align-items:center; width:max-content; padding:5px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:capitalize; }
+#faturamento .faturamento-status--ativa, #faturamento .faturamento-status--paga, .faturamento-pagamentos-modal .faturamento-status--confirmado { color:#166534; background:#dcfce7; }
+#faturamento .faturamento-status--pendente { color:#925c00; background:#fff1d6; }
+#faturamento .faturamento-status--vencida, .faturamento-pagamentos-modal .faturamento-status--estornado { color:#b42318; background:#fee2e2; }
+#faturamento .faturamento-status--cancelada, .faturamento-pagamentos-modal .faturamento-status--cancelado { color:#475569; background:#e2e8f0; }
+#faturamento .faturamento-estado { grid-column:1 / -1; display:flex; align-items:center; justify-content:center; gap:16px; width:100%; min-height:112px; padding:20px; text-align:left; }
+#faturamento .faturamento-estado-icone { display:grid; place-items:center; flex:0 0 54px; width:54px; height:54px; border-radius:50%; background:#eaf3ff; color:#1163dd; font-size:22px; }
+#faturamento .faturamento-estado strong { display:block; color:#173b63; font-size:15px; }
+#faturamento .faturamento-estado p { margin:4px 0 0; color:#71829a; font-size:13px; }
+#faturamento .faturamento-estado--lista { min-height:190px; border:1px dashed #d7e2ef; border-radius:16px; background:#fbfdff; }
+#faturamento .faturamento-estado--erro .faturamento-estado-icone { background:#fff0f1; color:#d62f43; }
+#faturamento .faturamento-paginacao { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+#faturamento .faturamento-paginacao-info { color:#64748b; font-size:13px; margin-right:auto; }
+.faturamento-pagamentos-modal .modal-topo p { margin:4px 0 0; color:#64748b; font-size:13px; }
+.faturamento-pagamentos-modal .faturamento-pagamento-resumo { display:flex; justify-content:space-between; gap:12px; padding:12px; border-radius:12px; background:#f8fafc; color:#64748b; }
+.faturamento-pagamentos-modal .faturamento-pagamentos-lista { display:grid; gap:8px; margin-top:16px; }
+.faturamento-pagamentos-modal .faturamento-pagamento-item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:13px; border:1px solid #e2e8f0; border-radius:12px; }
+.faturamento-pagamentos-modal .faturamento-pagamento-item div { display:grid; gap:4px; } .faturamento-pagamentos-modal .faturamento-pagamento-item span { color:#64748b; font-size:12px; }
+#faturamento .faturamento-cobranca-valores { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+#faturamento .faturamento-pagar-agora { min-height:38px; padding-inline:15px; }
+#faturamento .faturamento-automatico[hidden] { display:none; }
+#faturamento .faturamento-cartao-card { display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:94px; padding:19px 22px; border:1px solid #d8e4f2; border-radius:16px; background:linear-gradient(120deg,#f8fbff 0%,#fff 70%); box-shadow:0 6px 16px rgba(28,62,105,.04); }
+#faturamento .faturamento-cartao-identidade { display:flex; align-items:center; gap:15px; min-width:0; }
+#faturamento .faturamento-cartao-identidade > div { display:grid; gap:3px; min-width:0; }
+#faturamento .faturamento-cartao-identidade span { color:#71829a; font-size:11px; font-weight:700; }
+#faturamento .faturamento-cartao-identidade strong { color:#102c57; font-size:17px; overflow-wrap:anywhere; }
+#faturamento .faturamento-cartao-identidade small { color:#64748b; font-size:12px; line-height:1.45; }
+#faturamento .faturamento-cartao-icone { display:grid; place-items:center; flex:0 0 50px; width:50px; height:50px; border-radius:15px; background:#e4f0ff; color:#1163dd; font-size:20px; }
+.faturamento-cartao-modal { width:min(680px,94vw); }
+.faturamento-cartao-modal .modal-topo p { margin:4px 0 0; color:#64748b; font-size:13px; }
+.faturamento-cartao-modal .modal-corpo { max-height:calc(100dvh - 150px); overflow-y:auto; }
+.faturamento-cartao-modal [hidden] { display:none !important; }
+.cartao-consentimento { display:flex; align-items:flex-start; gap:11px; margin-bottom:16px; padding:13px 14px; border:1px solid #cfe0f5; border-radius:13px; background:#f5f9ff; }
+.cartao-consentimento i { margin-top:2px; color:#1163dd; }
+.cartao-consentimento p { margin:0; color:#405873; font-size:12px; line-height:1.5; }
+.cartao-brick { width:100%; min-width:0; overflow:hidden; }
+.cartao-brick iframe { max-width:100% !important; }
+.faturamento-pix-modal { width:min(620px,94vw); }
+.faturamento-pix-modal .modal-topo p { margin:4px 0 0; color:#64748b; font-size:13px; }
+.faturamento-pix-modal .modal-corpo { max-height:calc(100dvh - 170px); overflow-y:auto; }
+.pix-preparacao, .pix-resultado { display:grid; gap:18px; }
+.pix-preparacao[hidden], .pix-resultado[hidden], .faturamento-pix-modal [hidden] { display:none !important; }
+.pix-preparacao > p { margin:0; color:#64748b; font-size:13px; }
+.pix-resumo { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.pix-resumo > div, .pix-detalhes > div { display:grid; gap:5px; padding:15px; border:1px solid #dce6f2; border-radius:13px; background:#f8fbff; }
+.pix-resumo span, .pix-detalhes span { color:#71829a; font-size:11px; font-weight:700; }
+.pix-resumo strong { color:#102c57; font-size:18px; }
+.pix-resumo strong i { color:#1163dd; }
+.pix-preparacao > .botao-geral { justify-self:end; min-width:150px; }
+.pix-qr { display:block; width:min(260px,100%); height:auto; margin:0 auto; padding:10px; border:1px solid #dce6f2; border-radius:16px; background:#fff; }
+.pix-detalhes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.pix-detalhes strong { color:#263f5d; font-size:13px; overflow-wrap:anywhere; }
+.pix-status[data-status="aguardando"] { color:#925c00; }
+.pix-status[data-status="confirmada"] { color:#166534; }
+.pix-status[data-status="expirada"], .pix-status[data-status="recusada"] { color:#b42318; }
+.pix-copia { display:grid; gap:7px; }
+.pix-copia label { color:#263f5d; font-size:12px; font-weight:800; }
+.pix-copia > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:stretch; }
+.pix-copia textarea { width:100%; min-width:0; resize:vertical; padding:11px; border:1px solid #cad8e8; border-radius:11px; color:#334155; background:#f8fafc; font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; word-break:break-all; }
+.pix-acoes { display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+.pix-acoes .botao-geral { text-decoration:none; }
+
 .agenda-topo{
   display:flex;
   align-items:center;

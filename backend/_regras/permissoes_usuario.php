@@ -28,6 +28,8 @@ function permissoesCatalogo(): array
         'usuarios.gerenciar_permissoes' => ['grupo'=>'usuarios','rotulo'=>'Gerenciar permissões','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
         // A futura interface apenas ocultará a aba; este código continuará sendo a autoridade no backend.
         'auditoria.visualizar' => ['grupo'=>'auditoria','rotulo'=>'Visualizar auditoria','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
+        'faturamento.visualizar' => ['grupo'=>'faturamento','rotulo'=>'Visualizar faturamento','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
+        'faturamento.pagar' => ['grupo'=>'faturamento','rotulo'=>'Iniciar pagamento online','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
         'empresa.visualizar_configuracoes' => ['grupo'=>'configuracoes','rotulo'=>'Visualizar configurações da empresa','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'empresa.editar_configuracoes' => ['grupo'=>'configuracoes','rotulo'=>'Editar configurações da empresa','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'empresa.editar_identidade_visual' => ['grupo'=>'configuracoes','rotulo'=>'Editar identidade visual','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
@@ -83,6 +85,7 @@ function usuarioTemPermissao(mysqli $conexao, string $codigo, array $contexto = 
     if (!isset($catalogo[$codigo])) return false;
     $ctx = permissoesContexto($conexao, $contexto['id_usuario'] ?? null, $contexto['id_empresa'] ?? null);
     if (!($ctx['valido'] ?? false)) return false;
+    if ($codigo === 'faturamento.pagar' && ($ctx['super_admin_suporte'] ?? false)) return false;
     if ($ctx['super_admin_suporte'] ?? false) return true;
     $regra = $catalogo[$codigo];
     if (($regra['critica'] ?? '') === 'proprietario' && $ctx['perfil'] !== 'proprietario') return false;

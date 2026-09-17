@@ -106,7 +106,8 @@ function auditoriaSanitizarContexto(array $contexto): array
 {
     auditoriaValidarAusenciaDadosSensiveis($contexto);
     $permitidos = [
-        'origem', 'aba', 'recorrencia', 'quantidade_afetada', 'escopo', 'grupo_recorrencia',
+        'origem', 'origem_geracao', 'id_empresa', 'id_assinatura', 'id_plano', 'status_anterior', 'status_novo', 'data_fim',
+        'aba', 'recorrencia', 'quantidade_afetada', 'escopo', 'grupo_recorrencia',
         'data_referencia', 'motivo', 'versao', 'documento_codigo', 'documento_versao',
         'documento_hash', 'tipo_manifestacao', 'tipo_manifestante',
     ];

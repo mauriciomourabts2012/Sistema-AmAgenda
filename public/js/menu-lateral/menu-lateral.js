@@ -23,6 +23,7 @@
     ],
     "painel-administrativo": [
       { tipo: "aba", aba: "resumo", texto: "Resumo do dia", icone: "fa-solid fa-chart-line", permissao: "painel.visualizar_resumo" },
+      { tipo: "aba", aba: "faturamento", texto: "Faturamento", icone: "fa-solid fa-file-invoice-dollar", permissao: "faturamento.visualizar" },
       { tipo: "link", texto: "Agenda", icone: "fa-solid fa-calendar-days", href: "/public/views/agenda.html", titulo: "Abrir Agenda" },
       { tipo: "aba", aba: "clientes", texto: "Clientes", icone: "fa-solid fa-users", permissao: "clientes.visualizar" },
       { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-user-gear", permissao: "usuarios.visualizar" },
@@ -30,10 +31,16 @@
       { tipo: "button", texto: "Configurações da Empresa", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", permissao: "empresa.visualizar_configuracoes" }
     ],
     "super-admin": [
+      { tipo: "grupo", texto: "Gestão" },
       { tipo: "aba", aba: "empresas", texto: "Empresas", icone: "fa-solid fa-building" },
+      { tipo: "aba", aba: "planos", texto: "Planos", icone: "fa-solid fa-layer-group" },
+      { tipo: "grupo", texto: "Financeiro" },
+      { tipo: "aba", aba: "assinaturas", texto: "Assinaturas", icone: "fa-solid fa-file-signature" },
+      { tipo: "aba", aba: "cobrancas", texto: "Cobranças", icone: "fa-solid fa-file-invoice-dollar" },
+      { tipo: "grupo", texto: "Acessos" },
       { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-users" },
       { tipo: "aba", aba: "usuarios-super", texto: "Usuário Super", icone: "fa-solid fa-user-shield" },
-      { tipo: "aba", aba: "planos", texto: "Planos", icone: "fa-solid fa-layer-group" },
+      { tipo: "grupo", texto: "Controle" },
       { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" },
       { tipo: "aba", aba: "documentos-legais", texto: "Documentos legais", icone: "fa-solid fa-file-contract" }
     ],
@@ -48,6 +55,7 @@
       padrao: "resumo",
       titulos: {
         resumo: ["Resumo do dia", "Acompanhe as principais informações de hoje"],
+        faturamento: ["Faturamento", "Consulte sua assinatura e cobranças do AmAgenda"],
         clientes: ["Clientes", "Gerencie os clientes da sua empresa"],
         usuarios: ["Usuários", "Gerencie os usuários da sua empresa"],
         auditoria: ["Auditoria", "Consulte o histórico de atividades e alterações realizadas na empresa."]
@@ -58,9 +66,11 @@
       padrao: "empresas",
       titulos: {
         empresas: ["Empresas", "Gerencie as empresas da plataforma"],
+        assinaturas: ["Assinaturas", "Gerencie os contratos e o histórico das empresas"],
         usuarios: ["Usuários", "Gerencie os usuários vinculados às empresas"],
         "usuarios-super": ["Usuário Super", "Gerencie os administradores globais"],
         planos: ["Planos", "Gerencie os planos da plataforma"],
+        cobrancas: ["Cobranças", "Gerencie mensalidades e cobranças das empresas"],
         auditoria: ["Auditoria", "Consulte atividades globais, suporte e autenticação"],
         "documentos-legais": ["Documentos legais", "Visualize os rascunhos jurídicos da plataforma"]
       }
@@ -72,6 +82,9 @@
   }
 
   function htmlItem(item) {
+    if (item.tipo === "grupo") {
+      return `<div class="sidebar-grupo" role="presentation"><span class="sidebar-texto sidebar-grupo-texto">${escaparHtml(item.texto)}</span></div>`;
+    }
     const atributos = [
       `class="sidebar-item${item.aba ? "" : ""}"`,
       `title="${escaparHtml(item.titulo || item.texto)}"`,

@@ -34,6 +34,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require __DIR__ . '/../../_auth/bloquear.php';
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 
 /* ==========================================================
    HELPERS
@@ -383,6 +385,147 @@ try {
     $resultadoTrocaPlano = limitesPlanoPrepararTrocaEmpresa($conexao, $idEmpresa, $planoId, $idsPermanentesPlano);
     limitesPlanoAbortarSeNegado($conexao, $resultadoTrocaPlano);
 
+    $planoMudou = (int)$empresaAnterior['plano_id'] !== $planoId;
+    $assinaturaAnteriorId = null;
+    $diaVencimentoAssinatura = 10;
+    $dataOperacaoAssinatura = date('Y-m-d');
+    if ($planoMudou) {
+        $stmtAssinaturaAtiva = $conexao->prepare(
+            "SELECT id_assinatura, dia_vencimento
+               FROM assinatura
+              WHERE id_empresa = ?
+                AND status = 'ativa'
+              ORDER BY id_assinatura DESC
+              FOR UPDATE"
+        );
+        if (!$stmtAssinaturaAtiva) {
+            throw new RuntimeException('Prepare assinatura ativa falhou.');
+        }
+        $stmtAssinaturaAtiva->bind_param('i', $idEmpresa);
+        if (!$stmtAssinaturaAtiva->execute()) {
+            $erro = $stmtAssinaturaAtiva->error;
+            $stmtAssinaturaAtiva->close();
+            throw new RuntimeException('Falha ao localizar assinatura ativa: ' . $erro);
+        }
+        $resAssinaturaAtiva = $stmtAssinaturaAtiva->get_result();
+        $assinaturasAtivas = $resAssinaturaAtiva ? $resAssinaturaAtiva->fetch_all(MYSQLI_ASSOC) : [];
+        $stmtAssinaturaAtiva->close();
+        if (count($assinaturasAtivas) > 1) {
+            throw new RuntimeException('A empresa possui mais de uma assinatura ativa.');
+        }
+        if ($assinaturasAtivas !== []) {
+            $assinaturaAnteriorId = (int)$assinaturasAtivas[0]['id_assinatura'];
+            $diaVencimentoAssinatura = (int)$assinaturasAtivas[0]['dia_vencimento'];
+            if ($diaVencimentoAssinatura < 1 || $diaVencimentoAssinatura > 28) {
+                throw new RuntimeException('Dia de vencimento da assinatura anterior inválido.');
+            }
+
+            $stmtEncerrarAssinatura = $conexao->prepare(
+                "UPDATE assinatura
+                    SET status = 'encerrada', data_fim = ?
+                  WHERE id_assinatura = ? AND status = 'ativa'"
+            );
+            if (!$stmtEncerrarAssinatura) {
+                throw new RuntimeException('Prepare encerramento de assinatura falhou.');
+            }
+            $stmtEncerrarAssinatura->bind_param('si', $dataOperacaoAssinatura, $assinaturaAnteriorId);
+            if (!$stmtEncerrarAssinatura->execute()) {
+                $erro = $stmtEncerrarAssinatura->error;
+                $stmtEncerrarAssinatura->close();
+                throw new RuntimeException('Falha ao encerrar assinatura: ' . $erro);
+            }
+            $stmtEncerrarAssinatura->close();
+        }
+
+        $stmtPlanoAssinatura = $conexao->prepare(
+            'SELECT preco_mensal, cobranca FROM plano WHERE id_plano = ? LIMIT 1 FOR UPDATE'
+        );
+        if (!$stmtPlanoAssinatura) {
+            throw new RuntimeException('Prepare plano da assinatura falhou.');
+        }
+        $stmtPlanoAssinatura->bind_param('i', $planoId);
+        if (!$stmtPlanoAssinatura->execute()) {
+            $erro = $stmtPlanoAssinatura->error;
+            $stmtPlanoAssinatura->close();
+            throw new RuntimeException('Falha ao carregar plano da assinatura: ' . $erro);
+        }
+        $resPlanoAssinatura = $stmtPlanoAssinatura->get_result();
+        $planoAssinatura = $resPlanoAssinatura ? ($resPlanoAssinatura->fetch_assoc() ?: null) : null;
+        $stmtPlanoAssinatura->close();
+        if (!$planoAssinatura) {
+            throw new RuntimeException('Plano da nova assinatura não encontrado.');
+        }
+
+        $valorContratado = (float)$planoAssinatura['preco_mensal'];
+        $periodicidadeAssinatura = (string)$planoAssinatura['cobranca'];
+        $statusAssinatura = 'ativa';
+        $stmtNovaAssinatura = $conexao->prepare(
+            "INSERT INTO assinatura
+                (id_empresa, id_plano, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim, status)
+             VALUES (?, ?, ?, ?, ?, ?, NULL, ?)"
+        );
+        if (!$stmtNovaAssinatura) {
+            throw new RuntimeException('Prepare nova assinatura falhou.');
+        }
+        $stmtNovaAssinatura->bind_param(
+            'iidsiss',
+            $idEmpresa,
+            $planoId,
+            $valorContratado,
+            $periodicidadeAssinatura,
+            $diaVencimentoAssinatura,
+            $dataOperacaoAssinatura,
+            $statusAssinatura
+        );
+        if (!$stmtNovaAssinatura->execute()) {
+            $erro = $stmtNovaAssinatura->error;
+            $stmtNovaAssinatura->close();
+            throw new RuntimeException('Falha ao criar nova assinatura: ' . $erro);
+        }
+        $novaAssinaturaId = (int)$stmtNovaAssinatura->insert_id;
+        $stmtNovaAssinatura->close();
+
+        if ($assinaturaAnteriorId !== null) {
+            auditoriaRegistrar($conexao, 'assinatura.encerrada', [
+                'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+                'entidade_id' => $assinaturaAnteriorId,
+                'entidade_rotulo' => 'Assinatura encerrada da empresa ' . $nome,
+                'descricao' => 'Encerrou a assinatura anterior da empresa ' . $nome . '.',
+                'alteracoes' => ['status' => ['antes' => 'ativa', 'depois' => 'encerrada'], 'data_fim' => ['antes' => null, 'depois' => $dataOperacaoAssinatura]],
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
+        }
+        auditoriaRegistrar($conexao, 'assinatura.criada', [
+            'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+            'entidade_id' => $novaAssinaturaId,
+            'entidade_rotulo' => 'Nova assinatura da empresa ' . $nome,
+            'descricao' => 'Criou nova assinatura para a empresa ' . $nome . '.',
+            'alteracoes' => ['depois' => ['antes' => null, 'depois' => [
+                'id_empresa' => $idEmpresa,
+                'id_plano' => $planoId,
+                'valor_contratado' => $valorContratado,
+                'periodicidade' => $periodicidadeAssinatura,
+                'dia_vencimento' => $diaVencimentoAssinatura,
+                'data_inicio' => $dataOperacaoAssinatura,
+                'status' => $statusAssinatura,
+            ]]],
+            'contexto' => ['origem' => 'painel_super_admin'],
+        ]);
+        auditoriaRegistrar($conexao, 'assinatura.trocada', [
+            'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+            'entidade_id' => $novaAssinaturaId,
+            'entidade_rotulo' => 'Troca de assinatura da empresa ' . $nome,
+            'descricao' => 'Trocou o plano contratual da empresa ' . $nome . '.',
+            'alteracoes' => [
+                'id_assinatura_anterior' => ['antes' => $assinaturaAnteriorId, 'depois' => null],
+                'id_plano' => ['antes' => (int)$empresaAnterior['plano_id'], 'depois' => $planoId],
+                'valor_contratado' => ['antes' => null, 'depois' => $valorContratado],
+                'periodicidade' => ['antes' => null, 'depois' => $periodicidadeAssinatura],
+            ],
+            'contexto' => ['origem' => 'painel_super_admin'],
+        ]);
+    }
+
     $sql = "
         UPDATE empresa
            SET nome = ?,
@@ -424,22 +567,10 @@ try {
         $stmt->close();
 
         if ($errno === 1062) {
-            out([
-                'ok' => false,
-                'code' => 'DUPLICATE_KEY',
-                'user_msg' => 'Já existe um registro duplicado para os dados informados.',
-            ], 409);
+            throw new RuntimeException('Já existe um registro duplicado para os dados informados.');
         }
 
-        out([
-            'ok' => false,
-            'code' => 'DB_UPDATE_ERROR',
-            'user_msg' => 'Não foi possível atualizar a empresa.',
-            'debug' => [
-                'errno' => $errno,
-                'error' => $error,
-            ],
-        ], 500);
+        throw new RuntimeException('Não foi possível atualizar a empresa. Erro: ' . $error);
     }
 
     $affected = (int)$stmt->affected_rows;

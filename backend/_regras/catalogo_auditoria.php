@@ -64,6 +64,44 @@ function auditoriaCatalogo(): array
         'empresa.editada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Alterou uma empresa.', ['nome', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao']),
         'empresa.status_alterado' => auditoriaDefinicaoEvento('empresas', 'empresa', 'critica', 'Alterou o status de uma empresa.', ['status']),
 
+        'assinatura.criada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Criou uma assinatura.', [
+            'id_empresa', 'id_plano', 'valor_contratado', 'periodicidade', 'dia_vencimento', 'data_inicio', 'status', 'depois',
+        ]),
+        'assinatura.encerrada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Encerrou uma assinatura.', [
+            'status', 'data_fim', 'antes', 'depois',
+        ]),
+        'assinatura.trocada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Trocou a assinatura de uma empresa.', [
+            'id_assinatura_anterior', 'id_plano', 'valor_contratado', 'periodicidade', 'antes', 'depois',
+        ]),
+        'assinatura.suspensa' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Suspendeu uma assinatura.', [
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'status_anterior', 'status_novo', 'depois',
+        ]),
+        'assinatura.reativada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Reativou uma assinatura.', [
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'status_anterior', 'status_novo', 'depois',
+        ]),
+        'assinatura.cancelada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Cancelou uma assinatura.', [
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'status_anterior', 'status_novo', 'data_fim', 'depois',
+        ]),
+        'cobranca.gerada' => auditoriaDefinicaoEvento('financeiro', 'cobranca', 'alta', 'Gerou uma cobrança.', [
+            'id_empresa', 'id_assinatura', 'periodo_inicio', 'periodo_fim', 'data_vencimento', 'valor', 'status', 'depois',
+        ]),
+        'cobranca.cancelada' => auditoriaDefinicaoEvento('financeiro', 'cobranca', 'alta', 'Cancelou uma cobrança.', [
+            'id_empresa', 'id_assinatura', 'id_cobranca', 'valor', 'periodo_inicio', 'periodo_fim', 'data_vencimento',
+            'status', 'motivo', 'antes', 'depois',
+        ]),
+        'pagamento.registrado' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'alta', 'Registrou um pagamento manual.', [
+            'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
+            'total_pago_confirmado', 'saldo_restante', 'depois',
+        ]),
+        'pagamento.cancelado' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'alta', 'Cancelou um pagamento.', [
+            'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
+            'total_pago_confirmado', 'saldo_restante', 'antes', 'depois',
+        ]),
+        'pagamento.estornado' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'critica', 'Estornou um pagamento.', [
+            'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
+            'total_pago_confirmado', 'saldo_restante', 'antes', 'depois',
+        ]),
+
         'plano.criado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Criou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'destaque', 'status', 'descricao', 'observacao', 'depois']),
         'plano.editado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Alterou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'destaque', 'status', 'descricao', 'observacao']),
         'plano.status_alterado' => auditoriaDefinicaoEvento('planos', 'plano', 'critica', 'Alterou o status de um plano.', ['status']),
