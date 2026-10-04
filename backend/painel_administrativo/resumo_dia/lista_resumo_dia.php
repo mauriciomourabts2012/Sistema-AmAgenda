@@ -48,19 +48,39 @@ try {
         out(['ok' => false, 'code' => 'COMPANY_ACCESS_DENIED', 'user_msg' => 'Acesso à empresa não autorizado.'], 403);
     }
 
-    $hoje = (new DateTimeImmutable('now'))->format('Y-m-d');
-    $servidorAgora = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+    $agora = new DateTimeImmutable('now');
+    $hoje = $agora->format('Y-m-d');
+    $servidorAgora = $agora->format('Y-m-d H:i:s');
+
+    // Data consultada: opcional (YYYY-MM-DD). Sem o parâmetro, mantém o comportamento anterior (dia atual).
+    // id_empresa continua vindo exclusivamente da sessão autenticada.
+    $dataResumo = $hoje;
+    $dataInformada = $_GET['data'] ?? null;
+    if ($dataInformada !== null && $dataInformada !== '') {
+        $dataTexto = is_string($dataInformada) ? trim($dataInformada) : '';
+        $dataObj = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataTexto) === 1
+            ? DateTimeImmutable::createFromFormat('!Y-m-d', $dataTexto)
+            : false;
+        $anoInformado = $dataObj ? (int)$dataObj->format('Y') : 0;
+        if (!$dataObj || $dataObj->format('Y-m-d') !== $dataTexto || $anoInformado < 2000 || $anoInformado > 2100) {
+            out(['ok' => false, 'code' => 'RESUMO_DIA_DATA_INVALIDA', 'reason' => 'Data inválida. Use o formato AAAA-MM-DD.', 'user_msg' => 'Data inválida. Use o formato AAAA-MM-DD.'], 422);
+        }
+        $dataResumo = $dataTexto;
+    }
+    $ehHoje = $dataResumo === $hoje;
+    // "Próximos" e "em atendimento" dependem do horário atual e só fazem sentido no dia de hoje.
+    $filtroHorarioProximos = $ehHoje ? ' AND a.hora_fim > CURTIME()' : '';
 
     $stmt = $conexao->prepare("SELECT COUNT(*) total, SUM(status = 'confirmado') confirmados, SUM(status = 'pendente') pendentes, SUM(status = 'cancelado') cancelados FROM agendamento WHERE id_empresa = ? AND data_agendamento = ?");
     if (!$stmt) throw new RuntimeException('Falha ao preparar totais do resumo.');
-    $stmt->bind_param('is', $idEmpresa, $hoje);
+    $stmt->bind_param('is', $idEmpresa, $dataResumo);
     $stmt->execute();
     $totais = $stmt->get_result()->fetch_assoc() ?: [];
     $stmt->close();
 
-    $stmt = $conexao->prepare("SELECT a.id_agendamento, c.nome_completo cliente, u.nome profissional, s.nome servico, DATE_FORMAT(a.hora_inicio, '%H:%i') hora_inicio, DATE_FORMAT(a.hora_fim, '%H:%i') hora_fim, a.status FROM agendamento a INNER JOIN cliente c ON c.id_cliente = a.id_cliente AND c.id_empresa = a.id_empresa INNER JOIN profissional p ON p.id_profissional = a.id_profissional INNER JOIN usuario u ON u.id_usuario = p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario = p.id_usuario AND eu.id_empresa = a.id_empresa AND eu.status = 'ativo' INNER JOIN servico s ON s.id_servico = a.id_servico AND s.id_empresa = a.id_empresa AND s.id_profissional = a.id_profissional WHERE a.id_empresa = ? AND a.data_agendamento = ? AND a.status IN ('pendente','confirmado') AND a.hora_fim > CURTIME() ORDER BY a.hora_inicio ASC, a.id_agendamento ASC LIMIT 10");
+    $stmt = $conexao->prepare("SELECT a.id_agendamento, c.nome_completo cliente, u.nome profissional, s.nome servico, DATE_FORMAT(a.hora_inicio, '%H:%i') hora_inicio, DATE_FORMAT(a.hora_fim, '%H:%i') hora_fim, a.status FROM agendamento a INNER JOIN cliente c ON c.id_cliente = a.id_cliente AND c.id_empresa = a.id_empresa INNER JOIN profissional p ON p.id_profissional = a.id_profissional INNER JOIN usuario u ON u.id_usuario = p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario = p.id_usuario AND eu.id_empresa = a.id_empresa AND eu.status = 'ativo' INNER JOIN servico s ON s.id_servico = a.id_servico AND s.id_empresa = a.id_empresa AND s.id_profissional = a.id_profissional WHERE a.id_empresa = ? AND a.data_agendamento = ? AND a.status IN ('pendente','confirmado')" . $filtroHorarioProximos . " ORDER BY a.hora_inicio ASC, a.id_agendamento ASC LIMIT 10");
     if (!$stmt) throw new RuntimeException('Falha ao preparar próximos atendimentos.');
-    $stmt->bind_param('is', $idEmpresa, $hoje);
+    $stmt->bind_param('is', $idEmpresa, $dataResumo);
     $stmt->execute();
     $resultado = $stmt->get_result();
     $proximos = [];
@@ -79,7 +99,7 @@ try {
 
     $stmt = $conexao->prepare("SELECT p.id_profissional, u.nome, u.foto_perfil, COUNT(a.id_agendamento) total, COALESCE(SUM(a.status = 'confirmado'),0) confirmados, COALESCE(SUM(a.status = 'pendente'),0) pendentes, COALESCE(SUM(a.status = 'cancelado'),0) cancelados FROM profissional p INNER JOIN usuario u ON u.id_usuario = p.id_usuario AND u.status = 'ativo' INNER JOIN empresa_usuario eu ON eu.id_usuario = p.id_usuario AND eu.id_empresa = ? AND eu.status = 'ativo' INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil AND pf.status = 'ativo' AND LOWER(TRIM(pf.nome)) IN ('profissional','profissionais') LEFT JOIN agendamento a ON a.id_profissional = p.id_profissional AND a.id_empresa = eu.id_empresa AND a.data_agendamento = ? GROUP BY p.id_profissional, u.nome, u.foto_perfil ORDER BY u.nome ASC, p.id_profissional ASC");
     if (!$stmt) throw new RuntimeException('Falha ao preparar resumo por profissional.');
-    $stmt->bind_param('is', $idEmpresa, $hoje);
+    $stmt->bind_param('is', $idEmpresa, $dataResumo);
     $stmt->execute();
     $resultado = $stmt->get_result();
     $profissionais = [];
@@ -100,40 +120,45 @@ try {
     }
     $stmt->close();
 
-    $inicioSemana = (new DateTimeImmutable('monday this week'))->format('Y-m-d');
+    // Ocupação semanal da semana (segunda a domingo) que contém a data consultada.
+    $inicioSemana = (new DateTimeImmutable($dataResumo))->modify('monday this week')->format('Y-m-d');
     $fimSemana = (new DateTimeImmutable($inicioSemana))->modify('+6 days')->format('Y-m-d');
     require_once __DIR__ . '/../../agenda/calculo_ocupacao_semanal.php';
     $ocupacao = calcularOcupacaoSemanal($conexao, $idEmpresa, array_keys($indiceProfissional), $inicioSemana, $fimSemana);
 
-    $stmt = $conexao->prepare("SELECT a.id_agendamento, a.id_profissional, c.nome_completo cliente, s.nome servico, DATE_FORMAT(a.hora_inicio, '%H:%i') hora_inicio, DATE_FORMAT(a.hora_fim, '%H:%i') hora_fim FROM agendamento a INNER JOIN cliente c ON c.id_cliente = a.id_cliente AND c.id_empresa = a.id_empresa INNER JOIN servico s ON s.id_servico = a.id_servico AND s.id_empresa = a.id_empresa AND s.id_profissional = a.id_profissional WHERE a.id_empresa = ? AND a.data_agendamento = ? AND a.status = 'confirmado' AND a.hora_inicio <= CURTIME() AND a.hora_fim > CURTIME() ORDER BY a.hora_inicio ASC, a.id_agendamento ASC");
-    if (!$stmt) throw new RuntimeException('Falha ao preparar atendimentos atuais.');
-    $stmt->bind_param('is', $idEmpresa, $hoje);
-    $stmt->execute();
-    $resultado = $stmt->get_result();
-    while ($row = $resultado->fetch_assoc()) {
-        $idProfissional = (int)$row['id_profissional'];
-        if (!array_key_exists($idProfissional, $indiceProfissional)) continue;
-        $i = $indiceProfissional[$idProfissional];
-        $profissionais[$i]['em_atendimento'] = true;
-        // Em caso de inconsistência com horários sobrepostos, exibe o primeiro por ordem cronológica.
-        if ($profissionais[$i]['atendimento_atual'] === null) {
-            $profissionais[$i]['atendimento_atual'] = [
-                'id_agendamento' => (int)$row['id_agendamento'],
-                'cliente' => (string)$row['cliente'],
-                'servico' => (string)$row['servico'],
-                'hora_inicio' => (string)$row['hora_inicio'],
-                'hora_fim' => (string)$row['hora_fim'],
-            ];
+    if ($ehHoje) {
+        $stmt = $conexao->prepare("SELECT a.id_agendamento, a.id_profissional, c.nome_completo cliente, s.nome servico, DATE_FORMAT(a.hora_inicio, '%H:%i') hora_inicio, DATE_FORMAT(a.hora_fim, '%H:%i') hora_fim FROM agendamento a INNER JOIN cliente c ON c.id_cliente = a.id_cliente AND c.id_empresa = a.id_empresa INNER JOIN servico s ON s.id_servico = a.id_servico AND s.id_empresa = a.id_empresa AND s.id_profissional = a.id_profissional WHERE a.id_empresa = ? AND a.data_agendamento = ? AND a.status = 'confirmado' AND a.hora_inicio <= CURTIME() AND a.hora_fim > CURTIME() ORDER BY a.hora_inicio ASC, a.id_agendamento ASC");
+        if (!$stmt) throw new RuntimeException('Falha ao preparar atendimentos atuais.');
+        $stmt->bind_param('is', $idEmpresa, $hoje);
+        $stmt->execute();
+        $resultado = $stmt->get_result();
+        while ($row = $resultado->fetch_assoc()) {
+            $idProfissional = (int)$row['id_profissional'];
+            if (!array_key_exists($idProfissional, $indiceProfissional)) continue;
+            $i = $indiceProfissional[$idProfissional];
+            $profissionais[$i]['em_atendimento'] = true;
+            // Em caso de inconsistência com horários sobrepostos, exibe o primeiro por ordem cronológica.
+            if ($profissionais[$i]['atendimento_atual'] === null) {
+                $profissionais[$i]['atendimento_atual'] = [
+                    'id_agendamento' => (int)$row['id_agendamento'],
+                    'cliente' => (string)$row['cliente'],
+                    'servico' => (string)$row['servico'],
+                    'hora_inicio' => (string)$row['hora_inicio'],
+                    'hora_fim' => (string)$row['hora_fim'],
+                ];
+            }
         }
+        $stmt->close();
     }
-    $stmt->close();
 
     out([
         'ok' => true,
         'code' => 'RESUMO_DIA_OK',
         'user_msg' => '',
         'data' => [
-            'data' => $hoje,
+            'data' => $dataResumo,
+            'hoje' => $hoje,
+            'eh_hoje' => $ehHoje,
             'servidor_agora' => $servidorAgora,
             'resumo' => [
                 'agendamentos' => (int)($totais['total'] ?? 0),

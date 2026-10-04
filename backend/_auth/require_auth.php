@@ -103,7 +103,18 @@ if ($senhaTemporariaVencida && !defined('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA'
 /* A API também revalida o contrato, pois uma chamada direta não depende do
  * guard visual da sessão. Super Admin não depende de assinatura empresarial. */
 if ($tipoUsuario !== 'super_admin') {
-    $stmt = $conexao->prepare('SELECT bloqueado_plano FROM empresa_usuario WHERE id_usuario = ? AND id_empresa = ? LIMIT 1');
+    $stmt = $conexao->prepare(
+        "SELECT eu.bloqueado_plano, p.nome
+           FROM empresa_usuario eu
+           INNER JOIN perfil p ON p.id_perfil = eu.id_perfil
+           INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
+          WHERE eu.id_usuario = ?
+            AND eu.id_empresa = ?
+            AND eu.status = 'ativo'
+            AND p.status = 'ativo'
+            AND e.status = 'ativo'
+          LIMIT 1"
+    );
     if (!$stmt) {
         out([
             'ok' => false,
@@ -121,9 +132,17 @@ if ($tipoUsuario !== 'super_admin') {
             'user_msg' => 'Não foi possível validar sua sessão.'
         ], 500);
     }
-    $stmt->bind_result($bloqueadoPlano);
+    $stmt->bind_result($bloqueadoPlano, $perfilNomeVinculo);
     $vinculoEncontrado = $stmt->fetch();
     $stmt->close();
+
+    if (!$vinculoEncontrado) {
+        out([
+            'ok' => false,
+            'code' => 'SESSION_COMPANY_LINK_INVALID',
+            'user_msg' => 'Seu vínculo com a empresa não está ativo. Faça login novamente.'
+        ], 403);
+    }
 
     // O bloqueio do plano prevalece enquanto o vínculo autenticado estiver bloqueado.
     if ($vinculoEncontrado && (int)$bloqueadoPlano === 1) {
@@ -134,7 +153,7 @@ if ($tipoUsuario !== 'super_admin') {
         ], 403);
     }
 
-    $acessoAssinatura = acessoAssinaturaValidar($conexao, $idEmpresa);
+    $acessoAssinatura = acessoAssinaturaValidar($conexao, $idEmpresa, (string)$perfilNomeVinculo);
     if (!($acessoAssinatura['permitido'] ?? false)) {
         $erroTecnicoAssinatura = (bool)($acessoAssinatura['erro_tecnico'] ?? false);
         out([
@@ -142,5 +161,37 @@ if ($tipoUsuario !== 'super_admin') {
             'code' => $erroTecnicoAssinatura ? 'SESSION_SUBSCRIPTION_CHECK_ERROR' : 'SESSION_ACCESS_DENIED',
             'user_msg' => (string)$acessoAssinatura['user_msg']
         ], $erroTecnicoAssinatura ? 500 : 403);
+    }
+
+    $modoRegularizacao = (bool)($acessoAssinatura['modo_regularizacao'] ?? false);
+    $_SESSION['auth']['modo_regularizacao'] = $modoRegularizacao;
+
+    if ($modoRegularizacao) {
+        // A sessão suspensa nunca recebe acesso por prefixo: somente rotas exatas de regularização e aceite legal.
+        $rotasPermitidasRegularizacao = [
+            '_auth/session',
+            '_auth/logout',
+            'painel/faturamento/resumo',
+            'painel/faturamento/cobrancas',
+            'painel/faturamento/pagamentos',
+            'painel/faturamento/regularizacao/cobranca',
+            'painel/faturamento/pagamento/pix/iniciar',
+            'painel/faturamento/pagamento/transacao',
+            'painel/faturamento/pagamento/cartao/configuracao',
+            'painel/faturamento/pagamento/cartao/autorizar',
+            'painel/faturamento/pagamento/cartao/status',
+            'documentos-legais/pendencias',
+            'documentos-legais/conteudo',
+            'documentos-legais/manifestar',
+        ];
+        $rotaAutenticada = isset($rota) && is_string($rota) ? $rota : '';
+
+        if (!in_array($rotaAutenticada, $rotasPermitidasRegularizacao, true)) {
+            out([
+                'ok' => false,
+                'code' => 'SESSION_REGULARIZATION_REQUIRED',
+                'user_msg' => 'A assinatura está suspensa. Regularize o faturamento para continuar usando o sistema.'
+            ], 403);
+        }
     }
 }

@@ -2,8 +2,13 @@
   "use strict";
 
   const API = "/public/api/api_central.php";
-  const rotas = { resumo: `${API}?path=painel/faturamento/resumo`, cobrancas: `${API}?path=painel/faturamento/cobrancas`, pagamentos: `${API}?path=painel/faturamento/pagamentos` };
-  const estado = { pagina: 1, pagamentoPagina: 1, totalPagamentos: 0, idCobranca: "", carregado: false, requisicao: 0 };
+  const rotas = {
+    resumo: `${API}?path=painel/faturamento/resumo`,
+    cobrancas: `${API}?path=painel/faturamento/cobrancas`,
+    pagamentos: `${API}?path=painel/faturamento/pagamentos`,
+    regularizacao: `${API}?path=painel/faturamento/regularizacao/cobranca`
+  };
+  const estado = { pagina: 1, pagamentoPagina: 1, totalPagamentos: 0, idCobranca: "", carregado: false, requisicao: 0, regularizando: false };
   const esc = valor => String(valor ?? "").replace(/[&<>'"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
   const br = valor => /^\d{4}-\d{2}-\d{2}/.test(String(valor || "")) ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
   const moeda = valor => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -30,10 +35,16 @@
     if (String(auth.tipo_usuario || "").toLowerCase() === "super_admin" && auth.modo_suporte === true) return false;
     return typeof window.usuarioPode === "function" && window.usuarioPode("faturamento.pagar");
   }
+  function podeRegularizar(assinatura) {
+    const auth = window.__AUTH__ || {};
+    const perfil = normalizar(auth.perfil_nome || auth.perfil);
+    return auth.modo_regularizacao === true && assinatura?.em_regularizacao === true && perfil === "proprietario";
+  }
   function renderAssinatura(assinatura, erro = false) {
     const el = document.getElementById("faturamentoAssinatura"); if (!el) return;
-    if (!assinatura) { el.innerHTML = erro ? estadoVisual("Não foi possível carregar sua assinatura.", "Tente novamente mais tarde.", true) : estadoVisual("Você ainda não possui uma assinatura ativa.", "Quando houver uma assinatura, os detalhes do plano aparecerão aqui.", false, "fa-crown"); return; }
-    el.innerHTML = `<div class="faturamento-plano-identidade"><span class="faturamento-plano-icone" aria-hidden="true"><i class="fa-solid fa-crown"></i></span><div class="faturamento-assinatura-plano"><span class="faturamento-assinatura-rotulo">Plano atual</span><strong class="faturamento-assinatura-nome">${esc(assinatura.plano || "Plano não identificado")}</strong><div class="faturamento-assinatura-preco"><b>${moeda(assinatura.valor_contratado)}</b><small>/ ${esc(texto(assinatura.periodicidade))}</small></div></div></div><div><span>Vencimento</span><strong>Dia ${esc(assinatura.dia_vencimento)}</strong></div><div><span>Início</span><strong>${br(assinatura.data_inicio)}</strong></div><span class="${statusClasse(assinatura.status)}">${esc(texto(assinatura.status))}</span>`;
+    if (!assinatura) { el.innerHTML = erro ? estadoVisual("Não foi possível carregar sua assinatura.", "Tente novamente mais tarde.", true) : window.__AUTH__?.modo_regularizacao === true ? estadoVisual("Assinatura suspensa.", "Regularize o faturamento para continuar usando o sistema.", false, "fa-crown") : estadoVisual("Você ainda não possui uma assinatura ativa.", "Quando houver uma assinatura, os detalhes do plano aparecerão aqui.", false, "fa-crown"); return; }
+    const acaoRegularizacao = podeRegularizar(assinatura) ? '<button class="botao-geral destaque" type="button" data-regularizar-trial><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>Gerar cobrança de regularização</button>' : "";
+    el.innerHTML = `<div class="faturamento-plano-identidade"><span class="faturamento-plano-icone" aria-hidden="true"><i class="fa-solid fa-crown"></i></span><div class="faturamento-assinatura-plano"><span class="faturamento-assinatura-rotulo">Plano atual</span><strong class="faturamento-assinatura-nome">${esc(assinatura.plano || "Plano não identificado")}</strong><div class="faturamento-assinatura-preco"><b>${moeda(assinatura.valor_contratado)}</b><small>/ ${esc(texto(assinatura.periodicidade))}</small></div></div></div><div><span>Vencimento</span><strong>Dia ${esc(assinatura.dia_vencimento)}</strong></div><div><span>Início</span><strong>${br(assinatura.data_inicio)}</strong></div><span class="${statusClasse(assinatura.status)}">${esc(texto(assinatura.status))}</span>${acaoRegularizacao}`;
   }
   function renderIndicadores(indicadores) {
     const el = document.getElementById("faturamentoIndicadores"); if (!el) return;
@@ -69,9 +80,32 @@
     [["Anterior", page - 1], ["Próximo", page + 1]].forEach(([label, destino]) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn-pag"; b.textContent = label; b.disabled = destino < 1 || destino > pages; b.addEventListener("click", () => aoMudarPagina(destino)); el.append(b); });
   }
   async function carregarCobrancas() { const lista = document.getElementById("listaCobrancasFaturamento"); if (lista) lista.innerHTML = '<div class="a-loading">Carregando cobranças...</div>'; const req = ++estado.requisicao; try { const data = await get(`${rotas.cobrancas}&${paramsCobrancas()}`); if (req === estado.requisicao) renderCobrancas(data); } catch (erro) { if (req !== estado.requisicao) return; if (lista) lista.innerHTML = `<div class="faturamento-estado faturamento-estado--lista faturamento-estado--erro"><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid fa-file-circle-exclamation"></i></span><div><strong>Não foi possível carregar as cobranças.</strong><p>Tente novamente mais tarde ou verifique sua conexão.</p></div></div>`; avisar("erro", erro.message); } }
+  async function regularizarTrial(botao) {
+    if (estado.regularizando) return;
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    if (!/^[a-f0-9]{64}$/.test(csrf)) { avisar("erro", "Atualize a página para renovar sua sessão."); return; }
+    estado.regularizando = true;
+    botao.disabled = true;
+    botao.textContent = "Gerando cobrança...";
+    try {
+      const resposta = await fetch(rotas.regularizacao, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
+      const retorno = await resposta.json().catch(() => ({}));
+      if (!resposta.ok || retorno.ok !== true) throw new Error(retorno.user_msg || "Não foi possível gerar a cobrança de regularização.");
+      avisar("sucesso", retorno.user_msg || "Cobrança de regularização disponível.");
+      estado.pagina = 1;
+      await carregarCobrancas();
+    } catch (erro) {
+      avisar("erro", erro.message);
+    } finally {
+      estado.regularizando = false;
+      botao.disabled = false;
+      botao.innerHTML = '<i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>Gerar cobrança de regularização';
+    }
+  }
   function renderPagamentos(data) { const lista = document.getElementById("listaPagamentosFaturamento"); if (!lista) return; const items = data.items || []; lista.innerHTML = items.length ? items.map(item => `<article class="faturamento-pagamento-item"><div><strong>${br(item.data_pagamento)}</strong><span>${moeda(item.valor_pago)} · ${esc(texto(item.forma_pagamento))}</span></div><span class="${statusClasse(item.status)}">${esc(texto(item.status))}</span></article>`).join("") : '<div class="a-empty">Nenhum pagamento registrado para esta cobrança.</div>'; renderPaginacao(data, "paginacaoPagamentosFaturamento", destino => { estado.pagamentoPagina = destino; carregarPagamentos(); }); }
   async function carregarPagamentos() { const resumo = document.getElementById("resumoPagamentoFaturamento"); const lista = document.getElementById("listaPagamentosFaturamento"); if (resumo) resumo.textContent = "Carregando..."; if (lista) lista.innerHTML = '<div class="a-loading">Carregando pagamentos...</div>'; try { const data = await get(`${rotas.pagamentos}&id_cobranca=${encodeURIComponent(estado.idCobranca)}&page=${estado.pagamentoPagina}&limit=20`); if (resumo) resumo.innerHTML = `<span>Pagamentos da cobrança</span><strong>${data.total || 0} registro(s)</strong>`; renderPagamentos(data); } catch (erro) { if (lista) lista.innerHTML = '<div class="a-empty">Não foi possível carregar os pagamentos.</div>'; avisar("erro", erro.message); } }
   function abrirPagamentos(id) { estado.idCobranca = String(id || ""); estado.pagamentoPagina = 1; window.abrirModal?.("modalPagamentosFaturamento"); carregarPagamentos(); }
   async function iniciar() { const aba = document.getElementById("faturamento"); if (!aba || !podeVer()) { if (aba) aba.hidden = true; return; } try { const data = await get(rotas.resumo); renderAssinatura(data.assinatura); renderIndicadores(data.indicadores || {}); estado.carregado = true; } catch (erro) { renderAssinatura(null, true); renderIndicadores(null); avisar("erro", erro.message); } await carregarCobrancas(); }
+  document.addEventListener("click", evento => { const botao = evento.target.closest("[data-regularizar-trial]"); if (botao) regularizarTrial(botao); });
   document.addEventListener("DOMContentLoaded", () => { document.addEventListener("amagenda:painel-aba-alterada", e => { if (e.detail?.aba === "faturamento" && !estado.carregado) iniciar(); }); document.addEventListener("amagenda:sessao-carregada", () => { if (document.getElementById("faturamento")?.classList.contains("ativa")) carregarCobrancas(); }); document.getElementById("pesquisar-faturamento")?.addEventListener("input", () => { estado.pagina = 1; carregarCobrancas(); }); const form = document.getElementById("formFiltrosFaturamento"); form?.addEventListener("submit", e => { e.preventDefault(); form.hidden = true; document.getElementById("btnFiltrosFaturamento")?.setAttribute("aria-expanded", "false"); estado.pagina = 1; carregarCobrancas(); }); document.getElementById("limparFiltrosFaturamento")?.addEventListener("click", () => { form?.reset(); estado.pagina = 1; carregarCobrancas(); }); document.getElementById("btnFiltrosFaturamento")?.addEventListener("click", () => { const aberto = !form?.hidden; if (form) form.hidden = aberto; document.getElementById("btnFiltrosFaturamento")?.setAttribute("aria-expanded", String(!aberto)); }); if (document.getElementById("faturamento")?.classList.contains("ativa")) iniciar(); });
 })();

@@ -59,7 +59,12 @@ function assinaturaListar(mysqli $conexao): void
                 a.dia_vencimento,
                 DATE_FORMAT(a.data_inicio, '%Y-%m-%d') AS data_inicio,
                 DATE_FORMAT(a.data_fim, '%Y-%m-%d') AS data_fim,
-                a.status
+                a.status,
+                a.modalidade,
+                DATE_FORMAT(a.teste_iniciado_em, '%Y-%m-%d %H:%i:%s') AS teste_iniciado_em,
+                DATE_FORMAT(a.teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em,
+                a.motivo_suspensao,
+                DATE_FORMAT(a.suspensa_em, '%Y-%m-%d %H:%i:%s') AS suspensa_em
             FROM assinatura a
             INNER JOIN empresa e ON e.id_empresa = a.id_empresa
             LEFT JOIN plano p ON p.id_plano = a.id_plano";
@@ -109,6 +114,11 @@ function assinaturaListar(mysqli $conexao): void
             'data_inicio' => (string)$linha['data_inicio'],
             'data_fim' => $linha['data_fim'] === null ? null : (string)$linha['data_fim'],
             'status' => (string)$linha['status'],
+            'modalidade' => (string)$linha['modalidade'],
+            'teste_iniciado_em' => $linha['teste_iniciado_em'] === null ? null : (string)$linha['teste_iniciado_em'],
+            'teste_expira_em' => $linha['teste_expira_em'] === null ? null : (string)$linha['teste_expira_em'],
+            'motivo_suspensao' => $linha['motivo_suspensao'] === null ? null : (string)$linha['motivo_suspensao'],
+            'suspensa_em' => $linha['suspensa_em'] === null ? null : (string)$linha['suspensa_em'],
         ];
     }
     $stmt->close();
@@ -167,7 +177,8 @@ function assinaturaAlterarStatus(mysqli $conexao): void
         }
 
         $stmtAssinatura = $conexao->prepare(
-            "SELECT id_assinatura, id_empresa, id_plano, status
+            "SELECT id_assinatura, id_empresa, id_plano, status, modalidade,
+                    motivo_suspensao, suspensa_em
                FROM assinatura
               WHERE id_assinatura = ?
               LIMIT 1
@@ -235,6 +246,8 @@ function assinaturaAlterarStatus(mysqli $conexao): void
         }
 
         $dataFim = null;
+        $motivoSuspensao = $assinatura['motivo_suspensao'];
+        $suspensaEm = $assinatura['suspensa_em'];
         if ($acao === 'cancelar') {
             $dataFim = date('Y-m-d');
             $stmtUpdate = $conexao->prepare(
@@ -247,10 +260,25 @@ function assinaturaAlterarStatus(mysqli $conexao): void
                 throw new RuntimeException('Falha ao preparar cancelamento da assinatura.');
             }
             $stmtUpdate->bind_param('ssis', $statusNovo, $dataFim, $idAssinatura, $statusAnterior);
-        } else {
+        } elseif ($acao === 'suspender') {
+            $motivoSuspensao = 'manual';
+            $suspensaEm = date('Y-m-d H:i:s');
             $stmtUpdate = $conexao->prepare(
                 "UPDATE assinatura
-                    SET status = ?
+                    SET status = ?, motivo_suspensao = ?, suspensa_em = ?
+                  WHERE id_assinatura = ?
+                    AND status = ?"
+            );
+            if (!$stmtUpdate) {
+                throw new RuntimeException('Falha ao preparar suspensão da assinatura.');
+            }
+            $stmtUpdate->bind_param('sssis', $statusNovo, $motivoSuspensao, $suspensaEm, $idAssinatura, $statusAnterior);
+        } else {
+            $motivoSuspensao = null;
+            $suspensaEm = null;
+            $stmtUpdate = $conexao->prepare(
+                "UPDATE assinatura
+                    SET status = ?, motivo_suspensao = NULL, suspensa_em = NULL
                   WHERE id_assinatura = ?
                     AND status = ?"
             );
@@ -282,6 +310,7 @@ function assinaturaAlterarStatus(mysqli $conexao): void
             'id_empresa' => $idEmpresaInformada,
             'id_assinatura' => $idAssinatura,
             'id_plano' => (int)$assinatura['id_plano'],
+            'modalidade' => (string)$assinatura['modalidade'],
             'status_anterior' => $statusAnterior,
             'status_novo' => $statusNovo,
         ];
@@ -289,11 +318,16 @@ function assinaturaAlterarStatus(mysqli $conexao): void
             $contexto['data_fim'] = $dataFim;
             $contexto['motivo'] = $motivo;
         }
+        if (in_array($acao, ['suspender', 'reativar'], true)) {
+            $contexto['motivo_suspensao'] = $motivoSuspensao;
+            $contexto['suspensa_em'] = $suspensaEm;
+        }
 
         $alteracoesDados = [
             'id_empresa' => $idEmpresaInformada,
             'id_assinatura' => $idAssinatura,
             'id_plano' => (int)$assinatura['id_plano'],
+            'modalidade' => (string)$assinatura['modalidade'],
             'status' => $statusNovo,
             'status_anterior' => $statusAnterior,
             'status_novo' => $statusNovo,
@@ -304,6 +338,16 @@ function assinaturaAlterarStatus(mysqli $conexao): void
 
         $alteracoes = assinaturaAlteracoes($alteracoesDados);
         $alteracoes['status'] = ['antes' => $statusAnterior, 'depois' => $statusNovo];
+        if (in_array($acao, ['suspender', 'reativar'], true)) {
+            $alteracoes['motivo_suspensao'] = [
+                'antes' => $assinatura['motivo_suspensao'],
+                'depois' => $motivoSuspensao,
+            ];
+            $alteracoes['suspensa_em'] = [
+                'antes' => $assinatura['suspensa_em'],
+                'depois' => $suspensaEm,
+            ];
+        }
 
         auditoriaRegistrar($conexao, $evento, [
             'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresaInformada),
@@ -329,6 +373,9 @@ function assinaturaAlterarStatus(mysqli $conexao): void
                 'status_anterior' => $statusAnterior,
                 'status_novo' => $statusNovo,
                 'data_fim' => $dataFim,
+                'modalidade' => (string)$assinatura['modalidade'],
+                'motivo_suspensao' => $motivoSuspensao,
+                'suspensa_em' => $suspensaEm,
             ],
         ]);
     } catch (Throwable $erro) {

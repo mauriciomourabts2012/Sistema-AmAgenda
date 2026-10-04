@@ -293,6 +293,7 @@
       }
       if (campos.especialidade) {
         campos.especialidade.required = true;
+        campos.especialidade.disabled = false;
       }
       return;
     }
@@ -304,6 +305,7 @@
 
     if (campos.especialidade) {
       campos.especialidade.required = false;
+      campos.especialidade.disabled = true;
       campos.especialidade.value = "";
       limparErroCampo(campos.especialidade);
     }
@@ -368,18 +370,12 @@
       ok = false;
     }
 
-    if (!senha) {
-      setErro(campos.senha, "Informe a senha.");
-      ok = false;
-    } else if (senha.length < 6 || senha.length > 60) {
+    if (senha && (senha.length < 6 || senha.length > 60)) {
       setErro(campos.senha, "A senha deve ter entre 6 e 60 caracteres.");
       ok = false;
     }
 
-    if (!senha2) {
-      setErro(campos.senha2, "Confirme a senha.");
-      ok = false;
-    } else if (senha !== senha2) {
+    if ((senha || senha2) && senha !== senha2) {
       setErro(campos.senha2, "A confirmação de senha não confere.");
       ok = false;
     }
@@ -447,6 +443,12 @@
       return;
     }
 
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    if (!/^[a-f0-9]{64}$/.test(csrf)) {
+      showToast("warning", "Sessão expirada", "Atualize a página e tente novamente.");
+      return;
+    }
+
     const payload = coletarPayload();
     setLoading(true);
 
@@ -456,6 +458,7 @@
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
+          "X-CSRF-Token": csrf,
         },
         body: JSON.stringify(payload),
         credentials: "same-origin",

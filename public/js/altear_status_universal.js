@@ -317,6 +317,11 @@
   }
 
   async function toggleStatus(cfg, id) {
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    if (!/^[a-f0-9]{64}$/.test(csrf)) {
+      throw new Error("CSRF_INVALID");
+    }
+
     const body = new URLSearchParams();
     body.set(cfg.idPayload, id);
 
@@ -326,6 +331,7 @@
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest",
         "Accept": "application/json",
+        "X-CSRF-Token": csrf,
       },
       body: body.toString(),
       credentials: "same-origin",

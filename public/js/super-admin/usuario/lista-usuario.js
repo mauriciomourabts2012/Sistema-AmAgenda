@@ -499,38 +499,35 @@
         data-foto_perfil="${C.escapeHtml(fotoPerfil)}"
         data-created_at="${C.escapeHtml(u.created_at || "")}">
 
-        ${avatarTemplate(u)}
+        <div class="super-lista-identidade">
+          ${avatarTemplate(u)}
 
-        <div class="agenda-info">
-          <div class="agenda-nome">${C.escapeHtml(nome)}</div>
+          <div class="agenda-info super-lista-conteudo">
+            <div class="agenda-nome">${C.escapeHtml(nome)}</div>
 
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">${C.escapeHtml(perfil)}</div>
-            ${email ? `<div class="agenda-duracao">• ${C.escapeHtml(email)}</div>` : ""}
-          </div>
-
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">Empresa: ${C.escapeHtml(empresa || "—")}</div>
-          </div>
-
-          <div class="agenda-linha-extra">
-            ${telefone ? `<span class="agenda-duracao"><strong>Telefone:</strong> ${C.escapeHtml(telefone)}</span>` : ""}
-            ${u.created_at ? `<span class="agenda-duracao"><strong>Cadastro:</strong> ${C.escapeHtml(String(u.created_at).split("-").reverse().join("/"))}</span>` : ""}
-          </div>
-
-          <div class="agenda-linha-extra">
-            ${badgeStatus(status)}
-            ${badgeMemento(memento)}
+            <div class="super-lista-metadados">
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Perfil</span><strong>${C.escapeHtml(perfil)}</strong></span>
+              ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Empresa</span><strong>${C.escapeHtml(empresa || "—")}</strong></span>
+              ${telefone ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone)}</strong></span>` : ""}
+              ${u.created_at ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Cadastro</span><strong>${C.escapeHtml(String(u.created_at).split("-").reverse().join("/"))}</strong></span>` : ""}
+            </div>
           </div>
         </div>
 
-        <div class="agenda-acoes" aria-haspopup="menu">
-          <button class="agenda-btn-acoes" type="button"
-            data-acao="toggle-menu" aria-expanded="false" title="Ações">
-            ${iconAcoes()}
-          </button>
+        <div class="super-lista-status-acoes">
+          <div class="super-lista-status-grupo">
+            ${badgeStatus(status)}
+            ${badgeMemento(memento)}
+          </div>
+          <div class="agenda-acoes" aria-haspopup="menu">
+            <button class="agenda-btn-acoes" type="button"
+              data-acao="toggle-menu" aria-expanded="false" title="Ações">
+              ${iconAcoes()}
+            </button>
 
-          ${buildMenuAcoes({ ...u, status })}
+            ${buildMenuAcoes({ ...u, status })}
+          </div>
         </div>
       </article>
     `;

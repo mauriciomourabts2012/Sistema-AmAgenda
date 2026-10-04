@@ -222,13 +222,13 @@
         <span class="tag">AM-AGENDA</span>
       </div>
 
-      <h1>Link de acesso inválido</h1>
+      <h1 id="tituloErroLink">Link de acesso inválido</h1>
 
-      <p class="desc">
+      <p id="descricaoErroLink" class="desc">
         Não foi possível validar o link informado para acessar esta empresa ou studio no sistema.
       </p>
 
-      <div class="alert">
+      <div id="alertaErroLink" class="alert">
         Verifique se o endereço recebido está correto e solicite o link oficial ao responsável pela empresa ou studio.
       </div>
 
@@ -263,6 +263,7 @@
         LINK_INVALIDO: "O link recebido está incompleto ou possui dados inválidos.",
         EMPRESA_NAO_ENCONTRADA: "A empresa ou studio informado não foi encontrado no sistema.",
         EMPRESA_INATIVA: "A empresa ou studio informado está inativo ou bloqueado no momento.",
+        AGENDA_ONLINE_INDISPONIVEL: "Agenda Online indisponível no momento.",
         SLUG_INVALIDO: "Os dados do link não conferem com a empresa encontrada.",
         CONEXAO_INVALIDA: "Não foi possível validar o link no banco de dados.",
         ERRO_INTERNO: "Ocorreu um erro interno ao validar o acesso."
@@ -271,6 +272,12 @@
       const textoBase = mensagens[motivo] || "";
 
       if (!textoBase) return;
+
+      if (motivo === "AGENDA_ONLINE_INDISPONIVEL") {
+        document.getElementById("tituloErroLink").textContent = "Agenda Online indisponível";
+        document.getElementById("descricaoErroLink").textContent = "Este canal de agendamento não está disponível no momento.";
+        document.getElementById("alertaErroLink").textContent = "Entre em contato diretamente com a empresa ou studio para obter atendimento.";
+      }
 
       const detalhes = [];
       if (empresa) detalhes.push("empresa=" + empresa);

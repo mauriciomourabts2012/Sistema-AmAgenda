@@ -9,6 +9,7 @@
     const inObs = document.getElementById("ag_obs");
     if (!app || !box || !btnVoltar || !btnAgendar || !inObs) return;
 
+    const DESTINO_APOS_SUCESSO = "/public/views/cliente-perfil.html";
     let enviando = false;
     const moneyBR = (valor) => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -98,7 +99,15 @@
           body,
           headers: { "X-CSRF-Token": csrfToken }
         });
-        app.mensagem("sucesso", json.user_msg || "Solicitação enviada. O agendamento aguarda confirmação do profissional.");
+        const mensagemSucesso = json.user_msg || "Solicitação enviada. O agendamento aguarda confirmação do profissional.";
+        // Após a mensagem de sucesso fechar automaticamente, leva o cliente à página inicial (mesma rota do menu lateral).
+        const irParaPerfil = () => window.location.assign(DESTINO_APOS_SUCESSO);
+        if (typeof window.MensagemSistema?.sucesso === "function") {
+          window.MensagemSistema.sucesso(mensagemSucesso, { aoFechar: irParaPerfil });
+        } else {
+          app.mensagem("sucesso", mensagemSucesso);
+          irParaPerfil();
+        }
         inObs.value = "";
         document.dispatchEvent(new CustomEvent("cliente-agendamento:resetar"));
         renderizar();

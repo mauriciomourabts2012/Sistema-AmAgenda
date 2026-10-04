@@ -127,7 +127,7 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0) {
     out(['ok' => false, 'code' => 'SESSION_ACCESS_DENIED', 'user_msg' => 'Acesso indisponível para o plano atual.'], 403);
   }
 
-  $acessoAssinatura = acessoAssinaturaValidar($conexao, $idEmpresa);
+  $acessoAssinatura = acessoAssinaturaValidar($conexao, $idEmpresa, (string)$vinculo['nome']);
   if (!($acessoAssinatura['permitido'] ?? false)) {
     $erroTecnicoAssinatura = (bool)($acessoAssinatura['erro_tecnico'] ?? false);
     out([
@@ -136,6 +136,8 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0) {
       'user_msg' => (string)$acessoAssinatura['user_msg']
     ], $erroTecnicoAssinatura ? 500 : 403);
   }
+
+  $_SESSION['auth']['modo_regularizacao'] = (bool)($acessoAssinatura['modo_regularizacao'] ?? false);
 
   $perfilNomeDb = mb_strtolower(trim((string)$vinculo['nome']), 'UTF-8');
   $perfilNome = match ($perfilNomeDb) {
@@ -153,6 +155,37 @@ if ($tipoUsuario !== 'super_admin' && $idUsuario > 0) {
 }
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) require __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_regras/acesso_assinatura.php';
+
+$empresaSlug = '';
+$agendaOnlineDisponivel = false;
+if ($idEmpresa > 0) {
+  $stmtEmpresa = $conexao->prepare(
+    "SELECT slug
+       FROM empresa
+      WHERE id_empresa = ?
+        AND status = 'ativo'
+      LIMIT 1"
+  );
+  if (!$stmtEmpresa) {
+    out(['ok' => false, 'code' => 'SESSION_COMPANY_CHECK_ERROR', 'user_msg' => 'Não foi possível validar a empresa da sessão.'], 500);
+  }
+  $stmtEmpresa->bind_param('i', $idEmpresa);
+  if (!$stmtEmpresa->execute()) {
+    $stmtEmpresa->close();
+    out(['ok' => false, 'code' => 'SESSION_COMPANY_CHECK_ERROR', 'user_msg' => 'Não foi possível validar a empresa da sessão.'], 500);
+  }
+  $resultadoEmpresa = $stmtEmpresa->get_result();
+  $empresaAtual = $resultadoEmpresa ? ($resultadoEmpresa->fetch_assoc() ?: null) : null;
+  $stmtEmpresa->close();
+
+  $empresaSlug = trim((string)($empresaAtual['slug'] ?? ''));
+  if ($empresaAtual === null || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlug) !== 1) {
+    out(['ok' => false, 'code' => 'SESSION_COMPANY_CONTEXT_INVALID', 'user_msg' => 'Não foi possível validar a empresa da sessão.'], 403);
+  }
+
+  $agendaOnlineDisponivel = acessoAssinaturaAgendaOnlineDisponivel($conexao, $idEmpresa);
+}
 
 $stmt = $conexao->prepare(
   "SELECT deve_alterar_senha,
@@ -197,6 +230,9 @@ out([
       'id_empresa'    => (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? 0),
       'empresa_id'    => (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? 0),
       'empresa_nome'  => (string)($auth['empresa_nome'] ?? ''),
+      'empresa_slug'  => $empresaSlug,
+      'agenda_online_path' => $empresaSlug !== '' ? '/agendar/' . rawurlencode($empresaSlug) : '',
+      'agenda_online_disponivel' => $agendaOnlineDisponivel,
       'nome_completo' => (string)($auth['nome_completo'] ?? ''),
       'email'         => (string)($auth['email'] ?? ''),
       'telefone'      => (string)($auth['telefone'] ?? ''),
@@ -205,6 +241,7 @@ out([
       'perfil_nome'   => (string)($auth['perfil_nome'] ?? $auth['perfil'] ?? ''),
       'tipo_usuario'  => (string)($auth['tipo_usuario'] ?? ''),
       'modo_suporte'  => (bool)($auth['modo_suporte'] ?? false),
+      'modo_regularizacao' => (bool)($auth['modo_regularizacao'] ?? false),
       'status'        => (string)($auth['status'] ?? ''),
       'login_em'      => (string)($auth['login_em'] ?? ''),
       'deve_alterar_senha' => $deveAlterarSenha,

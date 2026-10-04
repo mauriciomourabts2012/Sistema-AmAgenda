@@ -13,6 +13,7 @@
   const BREAKPOINT_DESKTOP = "(min-width: 961px)";
   const ATRASO_ABRIR_MS = 110;
   const ATRASO_FECHAR_MS = 230;
+  let avisoRegularizacaoExibido = false;
 
   const MENUS = {
     agenda: [
@@ -42,6 +43,7 @@
       { tipo: "aba", aba: "usuarios-super", texto: "Usuário Super", icone: "fa-solid fa-user-shield" },
       { tipo: "grupo", texto: "Controle" },
       { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left" },
+      { tipo: "aba", aba: "integracoes", texto: "Integrações", icone: "fa-solid fa-plug-circle-check" },
       { tipo: "aba", aba: "documentos-legais", texto: "Documentos legais", icone: "fa-solid fa-file-contract" }
     ],
     cliente: [
@@ -72,6 +74,7 @@
         planos: ["Planos", "Gerencie os planos da plataforma"],
         cobrancas: ["Cobranças", "Gerencie mensalidades e cobranças das empresas"],
         auditoria: ["Auditoria", "Consulte atividades globais, suporte e autenticação"],
+        integracoes: ["Integrações", "Consulte o estado das integrações da plataforma"],
         "documentos-legais": ["Documentos legais", "Visualize os rascunhos jurídicos da plataforma"]
       }
     }
@@ -92,6 +95,7 @@
     ];
     if (item.modal) atributos.push(`data-abrir-modal="${escaparHtml(item.modal)}"`);
     if (item.aba) atributos.push(`data-menu-aba="${escaparHtml(item.aba)}"`);
+    if (item.acao) atributos.push(`data-menu-acao="${escaparHtml(item.acao)}"`);
     const conteudo = `<i class="${escaparHtml(item.icone)}" aria-hidden="true"></i><span class="sidebar-texto">${escaparHtml(item.texto)}</span>`;
     return item.tipo === "link"
       ? `<a href="${escaparHtml(item.href)}" ${atributos.join(" ")}>${conteudo}</a>`
@@ -101,6 +105,7 @@
   function renderizarMenu(contexto) {
     const navegacao = document.querySelector("[data-menu-navegacao]");
     let itens = MENUS[contexto] || [];
+    const modoRegularizacao = window.__AUTH__?.modo_regularizacao === true;
     const caminhoAtual = window.location.pathname.replace(/\/+$/, "").toLowerCase();
     if (contexto === "cliente" && caminhoAtual.endsWith("/cliente-agendamento.html")) {
       itens = [
@@ -125,6 +130,10 @@
     }
     if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
       itens = itens.filter(item => !item.permissao || window.usuarioPode?.(item.permissao));
+    }
+    if (modoRegularizacao && contexto === "painel-administrativo") {
+      itens = itens.filter(item => item.aba === "faturamento");
+      itens.push({ tipo: "button", acao: "logout", texto: "Sair", icone: "fa-solid fa-right-from-bracket", titulo: "Sair do sistema" });
     }
     if (navegacao) {
       navegacao.innerHTML = itens.map(htmlItem).join("");
@@ -154,6 +163,15 @@
       const abasPermitidas = itens.filter(item => item.aba).map(item => item.aba);
       if (!abasPermitidas.includes(abaAtiva) && abasPermitidas[0]) {
         ativarAbaContexto(contexto, abasPermitidas[0], false);
+      }
+    }
+    if (modoRegularizacao && contexto === "painel-administrativo") {
+      document.body.classList.add("modo-regularizacao");
+      if (document.getElementById("faturamento")) ativarAbaContexto(contexto, "faturamento", false);
+
+      if (!avisoRegularizacaoExibido) {
+        window.MensagemSistema?.aviso?.("A assinatura está suspensa. Regularize o faturamento para continuar usando o sistema.");
+        avisoRegularizacaoExibido = true;
       }
     }
   }
@@ -187,7 +205,13 @@
     window.CentroNotificacoes?.inicializar?.();
     const contexto = document.body.dataset.menuContexto || "agenda";
     renderizarMenu(contexto);
-    document.addEventListener("amagenda:sessao-carregada", () => renderizarMenu(contexto));
+    document.addEventListener("amagenda:sessao-carregada", () => {
+      if (window.__AUTH__?.modo_regularizacao === true && contexto === "agenda") {
+        window.location.replace("/public/views/painel-administrativo/painel-administrativo.html");
+        return;
+      }
+      renderizarMenu(contexto);
+    });
 
     const sidebar = document.getElementById("sidebarAgenda");
     const abrir = document.getElementById("abrirSidebarAgenda");
@@ -291,6 +315,10 @@
     ajuda?.addEventListener("click", abrirAjuda);
 
     sidebar.addEventListener("click", (evento) => {
+      const itemAcao = evento.target.closest("[data-menu-acao]");
+      if (itemAcao?.dataset.menuAcao === "logout") {
+        document.getElementById("btnSair")?.click();
+      }
       const itemAba = evento.target.closest("[data-menu-aba]");
       if (CONTEXTOS_ABAS[contexto] && itemAba) {
         ativarAbaContexto(contexto, itemAba.dataset.menuAba);

@@ -7,19 +7,24 @@ declare(strict_types=1);
  * ----------------------------------------------------------
  * REGRA:
  * 1) Sem parâmetros                         -> login super admin
- * 2) Com ?empresa=ID&nome=nome-da-empresa  -> login da empresa
+ * 2) Com ?slug=slug-persistido             -> Agenda Online da empresa
+ * 3) Com ?empresa=ID&nome=nome-da-empresa  -> entrada tecnica legada
  *    ou ?empresa=ID&slug=nome-da-empresa
  *
  * VALIDAÇÃO:
  * - antes de redirecionar, verifica no banco:
  *   • empresa existe
  *   • empresa está ativa
- *   • slug/nome confere com o nome real
+ *   • slug persistido identifica a empresa
+ *   • entrada legada continua validando ID e nome/slug
  * - em caso de erro, redireciona para página amigável
  * ==========================================================
  */
 
 session_start();
+
+require_once __DIR__ . '/../backend/_servicos/empresa.php';
+require_once __DIR__ . '/../backend/_regras/acesso_assinatura.php';
 
 function go(string $url): void {
     header("Location: {$url}");
@@ -28,15 +33,6 @@ function go(string $url): void {
 
 function goErro(string $motivo, int $empresaId = 0, string $slug = ''): void {
     $params = ['motivo' => $motivo];
-
-    if ($empresaId > 0) {
-        $params['empresa'] = $empresaId;
-    }
-
-    if ($slug !== '') {
-        $params['slug'] = $slug;
-    }
-
     $qs = http_build_query($params);
 
     go('/public/views/link-empresa-invalido.html' . ($qs ? '?' . $qs : ''));
@@ -50,6 +46,8 @@ function clearSessaoEmpresa(): void {
     unset($_SESSION['usuario_nome']);
     unset($_SESSION['usuario_email']);
     unset($_SESSION['usuario_tipo']);
+    unset($_SESSION['cliente_auth']);
+    unset($_SESSION['cliente_agendamento_csrf']);
 }
 
 function clearSessaoSuperAdmin(): void {
@@ -57,46 +55,6 @@ function clearSessaoSuperAdmin(): void {
     unset($_SESSION['superadmin_nome']);
     unset($_SESSION['superadmin_email']);
     unset($_SESSION['super']);
-}
-
-/**
- * Gera slug seguro e consistente:
- * - remove acentos
- * - converte para minúsculo
- * - troca separadores por hífen
- * - remove hífens duplicados/início/fim
- */
-function normalizeSlug(string $text): string {
-
-    $text = trim($text);
-
-    if ($text === '') {
-        return '';
-    }
-
-    // converte para minúsculo
-    $text = mb_strtolower($text, 'UTF-8');
-
-    // remove acentos manualmente (100% confiável)
-    $map = [
-        'á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a',
-        'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e',
-        'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i',
-        'ó'=>'o','ò'=>'o','õ'=>'o','ô'=>'o','ö'=>'o',
-        'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u',
-        'ç'=>'c',
-        'ñ'=>'n'
-    ];
-
-    $text = strtr($text, $map);
-
-    // troca qualquer coisa que não seja letra ou número por hífen
-    $text = preg_replace('/[^a-z0-9]+/', '-', $text) ?? '';
-
-    // remove hífen do começo e fim
-    $text = trim($text, '-');
-
-    return $text;
 }
 
 function getEmpresaId(): int {
@@ -130,11 +88,28 @@ function getEmpresaSlug(): string {
         return '';
     }
 
-    return normalizeSlug($raw);
+    return trim($raw);
 }
 
-$empresaId   = getEmpresaId();
-$empresaSlug = getEmpresaSlug();
+function getRotaPublicaSlug(): ?string {
+    $path = parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    if (!is_string($path)
+        || preg_match('~(?:^|/)agendar/([^/]+)/?$~D', $path, $matches) !== 1) {
+        return null;
+    }
+
+    return rawurldecode((string)$matches[1]);
+}
+
+$slugRotaPublica = getRotaPublicaSlug();
+$rotaPublica = $slugRotaPublica !== null;
+$empresaId = $rotaPublica ? 0 : getEmpresaId();
+$empresaSlug = $rotaPublica ? $slugRotaPublica : getEmpresaSlug();
+$entradaLegada = !$rotaPublica && $empresaId > 0;
+
+if ($entradaLegada) {
+    $empresaSlug = empresaSlugNormalizar($empresaSlug);
+}
 
 /* ==========================================================
    CENÁRIO 1: LOGIN SUPER ADMIN
@@ -142,13 +117,13 @@ $empresaSlug = getEmpresaSlug();
 if ($empresaId === 0 && $empresaSlug === '') {
     clearSessaoEmpresa();
     clearSessaoSuperAdmin();
-    go('/public/views/login-superadmin.html');
+    go('/public/views/login-super-admin.html');
 }
 
 /* ==========================================================
    CENÁRIO 2: LINK DE EMPRESA
 ========================================================== */
-if ($empresaId <= 0 || $empresaSlug === '') {
+if ($empresaSlug === '' || !empresaSlugEntradaValida($empresaSlug)) {
     goErro('LINK_INVALIDO', $empresaId, $empresaSlug);
 }
 
@@ -184,15 +159,9 @@ $con->set_charset('utf8mb4');
 /* ==========================================================
    VALIDA EMPRESA
 ========================================================== */
-$sql = "
-    SELECT
-        id_empresa,
-        nome,
-        status
-    FROM empresa
-    WHERE id_empresa = ?
-    LIMIT 1
-";
+$sql = $entradaLegada
+    ? "SELECT id_empresa, nome, slug, status FROM empresa WHERE id_empresa = ? LIMIT 1"
+    : "SELECT id_empresa, nome, slug, status FROM empresa WHERE slug = ? LIMIT 1";
 
 $stmt = $con->prepare($sql);
 
@@ -200,7 +169,11 @@ if (!$stmt) {
     goErro('ERRO_INTERNO', $empresaId, $empresaSlug);
 }
 
-$stmt->bind_param('i', $empresaId);
+if ($entradaLegada) {
+    $stmt->bind_param('i', $empresaId);
+} else {
+    $stmt->bind_param('s', $empresaSlug);
+}
 $stmt->execute();
 
 $res = $stmt->get_result();
@@ -214,22 +187,33 @@ if (!$row) {
 
 $statusEmpresa = trim((string)($row['status'] ?? ''));
 $nomeEmpresa   = trim((string)($row['nome'] ?? ''));
-$slugReal      = normalizeSlug($nomeEmpresa);
+$slugReal      = trim((string)($row['slug'] ?? ''));
 
 if ($nomeEmpresa === '') {
     goErro('ERRO_INTERNO', $empresaId, $empresaSlug);
 }
 
 if (strtolower($statusEmpresa) !== 'ativo') {
-    goErro('EMPRESA_INATIVA', $empresaId, $empresaSlug);
+    clearSessaoEmpresa();
+    clearSessaoSuperAdmin();
+    goErro('AGENDA_ONLINE_INDISPONIVEL');
 }
 
-if ($slugReal === '') {
+if (!empresaSlugEntradaValida($slugReal)) {
     goErro('ERRO_INTERNO', $empresaId, $empresaSlug);
 }
 
-if (!hash_equals($slugReal, $empresaSlug)) {
+$slugLegado = empresaSlugNormalizar($nomeEmpresa);
+if ($entradaLegada
+    && !hash_equals($slugReal, $empresaSlug)
+    && ($slugLegado === '' || !hash_equals($slugLegado, $empresaSlug))) {
     goErro('SLUG_INVALIDO', $empresaId, $empresaSlug);
+}
+
+if (!acessoAssinaturaAgendaOnlineDisponivel($con, (int)$row['id_empresa'])) {
+    clearSessaoEmpresa();
+    clearSessaoSuperAdmin();
+    goErro('AGENDA_ONLINE_INDISPONIVEL');
 }
 
 /* ==========================================================

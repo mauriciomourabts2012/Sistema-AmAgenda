@@ -13,7 +13,7 @@ declare(strict_types=1);
    ✅ Filtro por período (opcional)
    ✅ Paginação real
    ✅ Compatível com lista-usuario.js
-   ✅ Especialidade via LEFT JOIN profissional
+   ✅ Especialidade específica do vínculo empresa_usuario
 ========================================================== */
 
 // ✅ NÃO defina header aqui (api_central já define)
@@ -338,7 +338,7 @@ try {
         $types .= 's';
         $params[] = $buscaLike;
 
-        $buscaParts[] = 'pr.especialidade LIKE ?';
+        $buscaParts[] = 'eu.especialidade_profissional LIKE ?';
         $types .= 's';
         $params[] = $buscaLike;
 
@@ -424,7 +424,7 @@ try {
             p.descricao AS perfil_descricao,
 
             pr.id_profissional,
-            pr.especialidade,
+            eu.especialidade_profissional AS especialidade,
 
             CASE
                 WHEN pr.id_profissional IS NULL THEN 0

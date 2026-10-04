@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260828_2"/>
     <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=20260915_7"/>
     <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260915_1"/>
-    <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2"/>
+    <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20261003_1"/>
     <link rel="stylesheet" href="../../css/perfil.css">
     <link rel="stylesheet" href="../../css/documentos-legais/documentos-legais.css">
 
@@ -26,7 +26,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
 
   <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
-  <script src="/public/_auth/sessao.js?v=20260818_1"></script>
+  <script src="/public/_auth/sessao.js?v=20261002_1"></script>
   <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
   </head>
 
@@ -727,6 +727,55 @@
           <div id="estadoAuditoria" class="auditoria-estado" role="status" aria-live="polite"></div>
           <div id="listaAuditoria" class="auditoria-timeline" aria-live="polite"></div>
           <div class="section-paginacao"><div id="paginacaoAuditoria" class="paginacao-div" aria-label="Paginação da auditoria"></div></div>
+        </div>
+      </div>
+
+      <!-- ABA: INTEGRAÇÕES -->
+      <div id="integracoes" class="conteudo-aba">
+        <div class="conteudo-agenda integracoes-conteudo">
+          <section class="integracao-card" aria-labelledby="tituloIntegracaoMercadoPago">
+            <header class="integracao-card__cabecalho">
+              <div class="integracao-card__titulo">
+                <span class="integracao-card__icone" aria-hidden="true"><i class="fa-solid fa-handshake"></i></span>
+                <div>
+                  <span class="integracao-card__rotulo">Gateway de pagamento</span>
+                  <h2 id="tituloIntegracaoMercadoPago">Mercado Pago</h2>
+                  <p>Diagnóstico seguro da configuração disponível no servidor.</p>
+                </div>
+              </div>
+              <button id="btnVerificarMercadoPago" class="botao-geral destaque" type="button">
+                <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                Verificar configuração
+              </button>
+            </header>
+
+            <div class="integracao-resumo">
+              <div>
+                <span>Status geral</span>
+                <strong id="mpStatusGeral" class="integracao-status integracao-status--pendente">Aguardando verificação</strong>
+              </div>
+              <p>A verificação é somente local e não realiza chamadas ao Mercado Pago.</p>
+            </div>
+
+            <div id="mpIntegracaoEstado" class="integracao-feedback" role="status" aria-live="polite" hidden></div>
+
+            <dl class="integracao-grade">
+              <div><dt>Ambiente</dt><dd id="mpAmbienteStatus" class="integracao-status">—</dd></div>
+              <div><dt>Public Key</dt><dd id="mpPublicKeyStatus" class="integracao-status">—</dd></div>
+              <div><dt>Access Token</dt><dd id="mpAccessTokenStatus" class="integracao-status">—</dd></div>
+              <div><dt>Webhook Secret</dt><dd id="mpWebhookSecretStatus" class="integracao-status">—</dd></div>
+              <div><dt>URL pública</dt><dd id="mpUrlPublicaStatus" class="integracao-status">—</dd></div>
+              <div class="integracao-grade__webhook">
+                <dt>URL esperada do webhook</dt>
+                <dd id="mpWebhookUrl">Aguardando verificação.</dd>
+              </div>
+            </dl>
+
+            <footer class="integracao-card__rodape">
+              <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+              <p>Credenciais permanecem nas variáveis seguras do servidor. Esta área não exibe nem permite editar segredos.</p>
+            </footer>
+          </section>
         </div>
       </div>
 
@@ -1549,6 +1598,9 @@
                 <div class="vc-linha"><strong>Recepcionistas:</strong> <span id="vp_limite_recepcionistas">—</span></div>
                 <div class="vc-linha"><strong>Serviços:</strong> <span id="vp_limite_servicos">—</span></div>
                 <div class="vc-linha"><strong>Agendamentos/mês:</strong> <span id="vp_limite_agendamentos">—</span></div>
+                <div class="vc-linha"><strong>Agenda Online:</strong> <span id="vp_agenda_online">—</span></div>
+                <div class="vc-linha"><strong>Gera cobrança:</strong> <span id="vp_gera_cobranca">—</span></div>
+                <div class="vc-linha"><strong>Cadastro público:</strong> <span id="vp_disponivel_cadastro_publico">—</span></div>
               </div>
 
               <div class="vc-card">
@@ -1648,6 +1700,36 @@
                   <input id="p_limite_agendamentos" name="limite_agendamentos" type="number" placeholder=" " min="0" step="1">
                   <label for="p_limite_agendamentos">Agendamentos/mês (limite)</label>
                   <small class="msg-erro" data-erro-for="p_limite_agendamentos"></small>
+                </div>
+
+                <!-- Disponibilidade da Agenda Online -->
+                <div class="modal-campo">
+                  <select id="p_agenda_online" name="agenda_online" required>
+                    <option value="1" selected>Disponível</option>
+                    <option value="0">Indisponível</option>
+                  </select>
+                  <label for="p_agenda_online" class="label-fixa">Agenda Online</label>
+                  <small class="msg-erro" data-erro-for="p_agenda_online"></small>
+                </div>
+
+                <!-- Participação nos fluxos financeiros -->
+                <div class="modal-campo">
+                  <select id="p_gera_cobranca" name="gera_cobranca" required>
+                    <option value="1" selected>Sim</option>
+                    <option value="0">Não</option>
+                  </select>
+                  <label for="p_gera_cobranca" class="label-fixa">Gera cobrança</label>
+                  <small class="msg-erro" data-erro-for="p_gera_cobranca"></small>
+                </div>
+
+                <!-- Disponibilidade no cadastro público -->
+                <div class="modal-campo">
+                  <select id="p_disponivel_cadastro_publico" name="disponivel_cadastro_publico" required>
+                    <option value="1" selected>Sim</option>
+                    <option value="0">Não</option>
+                  </select>
+                  <label for="p_disponivel_cadastro_publico" class="label-fixa">Disponível no cadastro público</label>
+                  <small class="msg-erro" data-erro-for="p_disponivel_cadastro_publico"></small>
                 </div>
 
                 <!-- Destaque -->
@@ -1798,6 +1880,36 @@
                   <input id="e_limite_agendamentos" name="limite_agendamentos" type="number" placeholder=" " min="0" step="1">
                   <label for="e_limite_agendamentos">Agendamentos/mês (limite)</label>
                   <small class="msg-erro" data-erro-for="e_limite_agendamentos"></small>
+                </div>
+
+                <!-- Disponibilidade da Agenda Online -->
+                <div class="modal-campo">
+                  <select id="e_agenda_online" name="agenda_online" required>
+                    <option value="1">Disponível</option>
+                    <option value="0">Indisponível</option>
+                  </select>
+                  <label for="e_agenda_online" class="label-fixa">Agenda Online</label>
+                  <small class="msg-erro" data-erro-for="e_agenda_online"></small>
+                </div>
+
+                <!-- Participação nos fluxos financeiros -->
+                <div class="modal-campo">
+                  <select id="e_gera_cobranca" name="gera_cobranca" required>
+                    <option value="1">Sim</option>
+                    <option value="0">Não</option>
+                  </select>
+                  <label for="e_gera_cobranca" class="label-fixa">Gera cobrança</label>
+                  <small class="msg-erro" data-erro-for="e_gera_cobranca"></small>
+                </div>
+
+                <!-- Disponibilidade no cadastro público -->
+                <div class="modal-campo">
+                  <select id="e_disponivel_cadastro_publico" name="disponivel_cadastro_publico" required>
+                    <option value="1">Sim</option>
+                    <option value="0">Não</option>
+                  </select>
+                  <label for="e_disponivel_cadastro_publico" class="label-fixa">Disponível no cadastro público</label>
+                  <small class="msg-erro" data-erro-for="e_disponivel_cadastro_publico"></small>
                 </div>
 
                 <!-- Destaque -->
@@ -2124,7 +2236,7 @@
 
 
     <!--ABA EMPRESAS-->
-    <script src="../../js/super-admin/empresa/lista-empresa.js?v=20260820_2"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
+    <script src="../../js/super-admin/empresa/lista-empresa.js?v=20261003_1"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
     <script src="../../js/super-admin/empresa/cadastrar_empresa.js" ></script> <!--Cadastrar novas empresas-->
     <script src="../../js/super-admin/empresa/editar_empresa.js" ></script> <!--Editar dados de cadastro da empresa -->
     <script src="../../js/super-admin/cobranca/gerenciar-cobranca.js?v=20260915_5" ></script> <!--Listar e gerar cobranças -->
@@ -2142,15 +2254,18 @@
     <script src="../../js/super-admin/usuario-super/editar_usuario_super.js" ></script>
 
     <!--ABA PLANOS-->
-    <script src="../../js/super-admin/plano/lista-plano.js?v=20260903_3" ></script>
-    <script src="../../js/super-admin/plano/cadastrar-plano.js" ></script> <!--Cadastrar Planos-->
-    <script src="../../js/super-admin/plano/editar_plano.js?v=20260903_2" ></script> <!--Editar dados do modal-->
+    <script src="../../js/super-admin/plano/lista-plano.js?v=20261004_2" ></script>
+    <script src="../../js/super-admin/plano/cadastrar-plano.js?v=20261004_2" ></script> <!--Cadastrar Planos-->
+    <script src="../../js/super-admin/plano/editar_plano.js?v=20261004_2" ></script> <!--Editar dados do modal-->
 
     <!--ABA AUDITORIA-->
     <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260828_5"></script>
 
     <!--ABA DOCUMENTOS LEGAIS-->
     <script src="../../js/documentos-legais/preview.js"></script>
+
+    <!--ABA INTEGRAÇÕES-->
+    <script src="../../js/super-admin/integracao/mercado-pago.js?v=20260917_1"></script>
 
 
     <!--Universal-->

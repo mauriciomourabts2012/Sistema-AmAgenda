@@ -30,7 +30,7 @@ body { margin: 0; color: var(--text); font-family: 'Poppins', Arial, sans-serif;
 .login-boas-vindas p { margin: 8px 0 0; color: var(--muted); font-size: 15px; }
 .campo { width: 100%; display: flex; flex-direction: column; gap: 7px; }
 label { color: #44536b; font-size: 12px; font-weight: 600; }
-input[type="email"], input[type="password"] { width: 100%; min-height: 50px; padding: 13px 15px; color: var(--text); border: 1px solid var(--border); border-radius: 12px; outline: none; background: #fff; font: inherit; font-size: 14px; transition: border-color .2s, box-shadow .2s; }
+input[type="email"], input[type="password"], #recuperacaoCodigo { width: 100%; box-sizing: border-box; min-height: 50px; padding: 13px 15px; color: var(--text); border: 1px solid var(--border); border-radius: 12px; outline: none; background: #fff; font: inherit; font-size: 14px; transition: border-color .2s, box-shadow .2s; }
 input::placeholder { color: #9aa5b5; }
 input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(17,99,221,.13); }
 .lembrar-container { display: flex; align-items: center; gap: 9px; margin: -7px 0 0; color: var(--muted); }
@@ -52,6 +52,26 @@ input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(17,99,221
 .voltar-cliente { position: absolute; top: 24px; left: 24px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); border: 1px solid var(--border); border-radius: 10px; background: #fff; text-decoration: none; font-size: 18px; font-weight: 700; transition: background .2s, transform .15s; }
 .voltar-cliente:hover { background: var(--primary-weak); transform: translateX(-1px); }
 .voltar-cliente:visited { color: var(--text); }
+/* Seleção de empresa (login central multiempresa) */
+.login-etapa { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.login-etapa[hidden] { display: none; }
+.empresa-lista { display: flex; flex-direction: column; gap: 12px; max-height: min(48vh, 380px); padding: 3px; margin: -3px; overflow-x: hidden; overflow-y: auto; }
+.empresa-opcao { width: 100%; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; color: var(--text); text-align: left; border: 1px solid var(--border); border-radius: 12px; background: #fff; font: inherit; cursor: pointer; transition: border-color .2s, background .2s, box-shadow .2s; }
+.empresa-opcao:hover:not(:disabled) { border-color: var(--primary); background: var(--primary-weak); }
+.empresa-opcao:focus-visible { outline: 3px solid rgba(17,99,221,.28); outline-offset: 2px; border-color: var(--primary); }
+.empresa-opcao:disabled { cursor: not-allowed; opacity: .6; }
+.empresa-opcao.is-loading { opacity: 1; border-color: var(--primary); background: var(--primary-weak); }
+.empresa-opcao-textos { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.empresa-opcao-nome { font-size: 15px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.empresa-opcao-perfil { color: var(--muted); font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.empresa-opcao::after { content: ""; flex: 0 0 8px; width: 8px; height: 8px; border-top: 2px solid #8a98ad; border-right: 2px solid #8a98ad; transform: rotate(45deg); }
+.empresa-opcao.is-loading::after { flex-basis: 16px; width: 16px; height: 16px; border: 2px solid rgba(17,99,221,.25); border-top-color: var(--primary); border-radius: 50%; transform: none; animation: empresa-giro .7s linear infinite; }
+@keyframes empresa-giro { to { transform: rotate(360deg); } }
+.botao-voltar-etapa { align-self: flex-start; min-height: 40px; padding: 8px 4px; color: var(--muted); border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.botao-voltar-etapa:hover:not(:disabled) { color: var(--primary); }
+.botao-voltar-etapa:focus-visible { outline: 3px solid rgba(17,99,221,.28); outline-offset: 3px; border-radius: 8px; }
+.botao-voltar-etapa:disabled { cursor: not-allowed; opacity: .55; }
+#empresaTitulo:focus { outline: none; }
 @media (min-width: 961px) {
   .login-fundo { padding: 20px; }
   .login { width: min(1440px, 92vw); }

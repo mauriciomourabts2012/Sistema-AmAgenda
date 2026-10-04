@@ -40,6 +40,7 @@ if ($consultaPublica) {
 
   $sqlPublico = "
     SELECT
+      p.id_plano,
       p.nome,
       p.preco_mensal,
       p.cobranca,
@@ -50,9 +51,11 @@ if ($consultaPublica) {
       p.limite_recepcionistas,
       p.limite_servicos,
       p.limite_agendamentos,
+      p.agenda_online,
       p.destaque
     FROM plano p
     WHERE p.status = ?
+      AND p.disponivel_cadastro_publico = 1
     ORDER BY CAST(p.ref AS UNSIGNED) ASC, p.id_plano ASC
   ";
 
@@ -68,6 +71,7 @@ if ($consultaPublica) {
 
   $planosPublicos = [];
   while ($planoPublico = $resultadoPublico->fetch_assoc()) {
+    $planoPublico['id_plano'] = (int)($planoPublico['id_plano'] ?? 0);
     $planoPublico['preco_mensal'] = (string)$planoPublico['preco_mensal'];
     $planoPublico['limite_usuarios'] = (int)($planoPublico['limite_usuarios'] ?? 0);
     $planoPublico['limite_proprietarios'] = (int)($planoPublico['limite_proprietarios'] ?? 0);
@@ -75,6 +79,7 @@ if ($consultaPublica) {
     $planoPublico['limite_recepcionistas'] = (int)($planoPublico['limite_recepcionistas'] ?? 0);
     $planoPublico['limite_servicos'] = (int)($planoPublico['limite_servicos'] ?? 0);
     $planoPublico['limite_agendamentos'] = (int)($planoPublico['limite_agendamentos'] ?? 0);
+    $planoPublico['agenda_online'] = (int)($planoPublico['agenda_online'] ?? 0);
     $planoPublico['destaque'] = (int)$planoPublico['destaque'];
     $planosPublicos[] = $planoPublico;
   }
@@ -247,6 +252,9 @@ SELECT
   p.limite_recepcionistas,
   p.limite_servicos,
   p.limite_agendamentos,
+  p.agenda_online,
+  p.gera_cobranca,
+  p.disponivel_cadastro_publico,
   p.destaque,
   p.status,
   p.descricao,
@@ -278,6 +286,9 @@ while ($row = $res->fetch_assoc()) {
   $row['preco_mensal'] = (string)$row['preco_mensal'];
   $row['limite_proprietarios'] = (int)($row['limite_proprietarios'] ?? 0);
   $row['limite_recepcionistas'] = (int)($row['limite_recepcionistas'] ?? 0);
+  $row['agenda_online'] = (int)($row['agenda_online'] ?? 0);
+  $row['gera_cobranca'] = (int)($row['gera_cobranca'] ?? 1);
+  $row['disponivel_cadastro_publico'] = (int)($row['disponivel_cadastro_publico'] ?? 1);
   $row['destaque'] = (int)$row['destaque'];
   $data[] = $row;
 }

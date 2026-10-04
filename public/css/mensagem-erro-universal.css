@@ -218,6 +218,12 @@
   border: 1px solid rgba(17,99,221,.20);
   color: #1163dd;
 }
+
+.ui-alert--confirm .ui-alert__actions{
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
 .ui-alert--info { border-color: rgba(17,99,221,.20); }
 .ui-alert--info::before { background: #1163dd; }
 .ui-alert--info .ui-alert__icon { background: rgba(17,99,221,.10); border: 1px solid rgba(17,99,221,.20); color: #1163dd; }

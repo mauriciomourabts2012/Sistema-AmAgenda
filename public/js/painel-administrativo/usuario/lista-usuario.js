@@ -356,7 +356,7 @@
           class="agenda-menu-item danger"
           type="button"
           data-acao="toggle-status"
-          data-scope="tabela_usuario"
+          data-scope="tabela_usuario_painel"
           data-id="${u.id_usuario}"
           data-status="${u.status}">
           <i class="fa-regular ${ativo ? "fa-circle-xmark" : "fa-circle-check"}"></i>
@@ -708,6 +708,7 @@
     if (u_e_id) u_e_id.value = usuario.id_usuario ?? "";
     if (u_e_nome) u_e_nome.value = usuario.nome || "";
     if (u_e_especialidade) u_e_especialidade.value = usuario.especialidade || "";
+    if (u_e_especialidade) u_e_especialidade.readOnly = false;
     if (u_e_email) u_e_email.value = usuario.email || "";
     if (u_e_tel) u_e_tel.value = usuario.telefone || "";
     if (u_e_senha) u_e_senha.value = "";
@@ -1208,6 +1209,7 @@
           "Accept": "application/json",
           "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
           "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
         },
         body: corpo,
       });

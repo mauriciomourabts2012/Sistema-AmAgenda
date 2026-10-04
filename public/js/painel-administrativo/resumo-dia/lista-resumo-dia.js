@@ -12,10 +12,38 @@
   const aba = document.getElementById("resumo");
   const cards = document.querySelector("#resumo .resumo-cards");
   const graficos = document.querySelector("#resumo .resumo-graficos");
+  const inputData = document.getElementById("resumoData");
+  const btnHoje = document.getElementById("resumoDataHoje");
+  const tituloData = document.getElementById("resumoDataTitulo");
   if (!aba || !cards || !graficos) return;
 
   let carregando = false;
   let intervaloId = null;
+  let sequenciaRequisicao = 0;
+  // Enquanto estiver no modo "Hoje", a data acompanha o dia atual (inclusive após a meia-noite).
+  let modoHoje = true;
+
+  function dataLocalHoje() {
+    const agora = new Date();
+    return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`;
+  }
+
+  function dataValida(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return false;
+    const [ano, mes, dia] = iso.split("-").map(Number);
+    const data = new Date(ano, mes - 1, dia);
+    return ano >= 2000 && ano <= 2100 && data.getFullYear() === ano && data.getMonth() === mes - 1 && data.getDate() === dia;
+  }
+
+  function dataSelecionada() {
+    if (modoHoje || !inputData || !dataValida(inputData.value)) return dataLocalHoje();
+    return inputData.value;
+  }
+
+  function atualizarTituloData(iso, ehHoje) {
+    if (tituloData) tituloData.textContent = `Resumo do dia — ${ehHoje ? "Hoje" : formatarData(iso)}`;
+    if (btnHoje) btnHoje.setAttribute("aria-pressed", ehHoje ? "true" : "false");
+  }
 
   function formatarData(iso) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(iso || "")) ? String(iso).split("-").reverse().join("/") : "Hoje";
@@ -56,27 +84,30 @@
     const ocupacaoMotivo = ocupacao?.motivo_indisponivel === "nenhum_profissional_ativo"
       ? "Nenhum profissional ativo"
       : "Horários da agenda não configurados";
-    const dataHoje = `Hoje • ${formatarData(data?.data)}`;
+    const ehHoje = data?.eh_hoje !== false;
+    const dataHoje = `${ehHoje ? "Hoje" : "Dia"} • ${formatarData(data?.data)}`;
+    const semanaOcupacao = ehHoje ? "Agenda preenchida nesta semana" : `Semana de ${formatarData(ocupacao?.inicio_semana)} a ${formatarData(ocupacao?.fim_semana)}`;
     cards.innerHTML = [
       cardKpi({ titulo: "Agendamentos", valor: resumo.agendamentos ?? 0, subtitulo: dataHoje, icone: "fa-regular fa-calendar" }),
       cardKpi({ titulo: "Confirmados", valor: resumo.confirmados ?? 0, subtitulo: "Inclui quem está em atendimento", icone: "fa-regular fa-circle-check" }),
       cardKpi({ titulo: "Pendentes", valor: resumo.pendentes ?? 0, subtitulo: "Aguardando confirmação", icone: "fa-regular fa-clock" }),
       cardKpi({ titulo: "Cancelados", valor: resumo.cancelados ?? 0, subtitulo: "Cancelamentos no dia", icone: "fa-regular fa-circle-xmark" }),
       cardKpi({ titulo: "Faturamento (dia)", valor: formatarMoeda(resumo.faturamento), subtitulo: resumo.faturamento == null ? "Pagamento ainda não controlado" : "Receita realizada", icone: "fa-solid fa-sack-dollar", indisponivel: resumo.faturamento == null }),
-      cardKpi({ titulo: "Ocupação semanal", valor: ocupacaoDisponivel ? `${Number(ocupacao.percentual)}%` : "Não disponível", subtitulo: ocupacaoDisponivel ? "Agenda preenchida nesta semana" : ocupacaoMotivo, icone: "fa-solid fa-chart-simple", indisponivel: !ocupacaoDisponivel }),
+      cardKpi({ titulo: "Ocupação semanal", valor: ocupacaoDisponivel ? `${Number(ocupacao.percentual)}%` : "Não disponível", subtitulo: ocupacaoDisponivel ? semanaOcupacao : ocupacaoMotivo, icone: "fa-solid fa-chart-simple", indisponivel: !ocupacaoDisponivel }),
     ].join("");
   }
 
   function renderizarProximosAtendimentos(data) {
+    const ehHoje = data?.eh_hoje !== false;
     const itens = Array.isArray(data?.proximos_atendimentos) ? data.proximos_atendimentos : [];
     const conteudo = itens.length ? itens.map((item) => {
       const status = normalizarStatus(item.status);
       return `<div class="painel-linha"><div class="painel-linha-esq"><div class="painel-hora">${C.escapeHtml(formatarHora(item.hora_inicio))}</div><div class="painel-info"><div class="painel-cliente">${C.escapeHtml(item.cliente || "Cliente")}</div><div class="painel-sub">${C.escapeHtml(item.servico || "Serviço")} • ${C.escapeHtml(item.profissional || "Profissional")} • até ${C.escapeHtml(formatarHora(item.hora_fim))}</div></div></div><div class="painel-linha-dir"><span class="agenda-status ${status.classe}">${status.texto}</span></div></div>`;
-    }).join("") : '<div class="painel-vazio">Nenhum próximo atendimento para hoje.</div>';
-    return `<section class="painel-bloco painel-bloco--proximos"><div class="painel-bloco-topo"><h3>Próximos atendimentos</h3></div><div class="painel-lista">${conteudo}</div></section>`;
+    }).join("") : (ehHoje ? '<div class="painel-vazio">Nenhum próximo atendimento para hoje.</div>' : '<div class="painel-vazio">Nenhum agendamento pendente ou confirmado nesta data.</div>');
+    return `<section class="painel-bloco painel-bloco--proximos"><div class="painel-bloco-topo"><h3>${ehHoje ? "Próximos atendimentos" : "Agendamentos do dia"}</h3></div><div class="painel-lista">${conteudo}</div></section>`;
   }
 
-  function renderizarProfissional(profissional, dataResumo) {
+  function renderizarProfissional(profissional, ehHoje = true) {
     const atual = profissional?.atendimento_atual;
     const atendendo = profissional?.em_atendimento === true && atual;
     const nomeProfissional = C.escapeHtml(profissional?.nome || "Profissional");
@@ -88,22 +119,23 @@
       : FOTO_FALLBACK;
     const avatar = `<span class="painel-prof-avatar" aria-hidden="true"><img src="${C.escapeHtml(fotoPerfil)}" alt="" class="agenda-avatar-img" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="if(this.dataset.fallbackApplied==='1'){this.onerror=null;return;}this.dataset.fallbackApplied='1';this.src='${FOTO_FALLBACK}';"></span>`;
     const total = Number(profissional?.total || 0);
-    const estado = atendendo
+    const estado = !ehHoje ? "" : atendendo
       ? '<span class="painel-prof-badge"><i aria-hidden="true"></i> Em atendimento</span>'
       : '<span class="painel-prof-livre"><i aria-hidden="true"></i> Livre neste momento</span>';
     const atendimentoAtual = atendendo
       ? `<div class="painel-prof-atual"><span>Atendendo agora</span><strong><i class="fa-regular fa-user" aria-hidden="true"></i>${C.escapeHtml(atual.cliente || "Cliente")}</strong><small>${C.escapeHtml(atual.servico || "Serviço")}</small><small><i class="fa-regular fa-clock" aria-hidden="true"></i>${C.escapeHtml(formatarHora(atual.hora_inicio))} às ${C.escapeHtml(formatarHora(atual.hora_fim))}</small></div>`
       : "";
-    return `<article class="painel-prof${atendendo ? " painel-prof--atendendo" : ""}"><header class="painel-prof-cabecalho"><div class="painel-prof-nome">${nomeProfissional}</div>${avatar}</header><div class="painel-prof-estado">${estado}</div><div class="painel-prof-servico">${total} agendamento(s) hoje</div><div class="painel-prof-metrics"><span class="pill">${total} total</span><span class="pill ok">${Number(profissional?.confirmados || 0)} conf.</span><span class="pill warn">${Number(profissional?.pendentes || 0)} pend.</span><span class="pill danger">${Number(profissional?.cancelados || 0)} canc.</span></div>${atendimentoAtual}</article>`;
+    return `<article class="painel-prof${atendendo ? " painel-prof--atendendo" : ""}"><header class="painel-prof-cabecalho"><div class="painel-prof-nome">${nomeProfissional}</div>${avatar}</header>${estado ? `<div class="painel-prof-estado">${estado}</div>` : ""}<div class="painel-prof-servico">${total} agendamento(s) ${ehHoje ? "hoje" : "no dia"}</div><div class="painel-prof-metrics"><span class="pill">${total} total</span><span class="pill ok">${Number(profissional?.confirmados || 0)} conf.</span><span class="pill warn">${Number(profissional?.pendentes || 0)} pend.</span><span class="pill danger">${Number(profissional?.cancelados || 0)} canc.</span></div>${atendimentoAtual}</article>`;
   }
 
   function renderizarProfissionais(data) {
     const profissionais = Array.isArray(data?.profissionais) ? data.profissionais : [];
-    const conteudo = profissionais.length ? profissionais.map((profissional) => renderizarProfissional(profissional, data?.data)).join("") : '<div class="painel-vazio">Nenhum profissional ativo nesta empresa.</div>';
+    const conteudo = profissionais.length ? profissionais.map((profissional) => renderizarProfissional(profissional, data?.eh_hoje !== false)).join("") : '<div class="painel-vazio">Nenhum profissional ativo nesta empresa.</div>';
     return `<section class="painel-bloco painel-bloco--profissionais"><div class="painel-bloco-topo"><h3>Por profissional</h3><small>Atualizado pelo horário do servidor</small></div><div class="painel-prof-list">${conteudo}</div></section>`;
   }
 
   function renderizarConteudo(data) {
+    atualizarTituloData(data?.data, data?.eh_hoje !== false);
     renderizarCardsResumo(data);
     graficos.innerHTML = renderizarProfissionais(data) + renderizarProximosAtendimentos(data);
   }
@@ -119,20 +151,49 @@
   }
 
   async function carregarResumoDia({ silencioso = false } = {}) {
-    if (carregando) return;
+    // Atualizações automáticas não se sobrepõem; uma troca de data sempre dispara nova consulta.
+    if (carregando && silencioso) return;
+    const data = dataSelecionada();
+    if (inputData && inputData.value !== data) inputData.value = data;
+    const requisicao = ++sequenciaRequisicao;
     carregando = true;
-    if (!silencioso) renderizarCarregamento();
+    if (!silencioso) {
+      atualizarTituloData(data, data === dataLocalHoje());
+      renderizarCarregamento();
+    }
     try {
-      const json = await C.fetchJSON(ENDPOINT);
+      const json = await C.fetchJSON(`${ENDPOINT}&data=${encodeURIComponent(data)}`);
+      if (requisicao !== sequenciaRequisicao) return;
       if (!json?.ok || !json?.data) throw new Error(json?.user_msg || "Resposta inválida do servidor.");
       renderizarConteudo(json.data);
     } catch (erro) {
+      if (requisicao !== sequenciaRequisicao) return;
       if (!silencioso) renderizarErro(erro.message);
       console.error("[ResumoDia]", erro);
     } finally {
-      carregando = false;
+      if (requisicao === sequenciaRequisicao) carregando = false;
     }
   }
+
+  function selecionarHoje() {
+    modoHoje = true;
+    if (inputData) inputData.value = dataLocalHoje();
+    carregarResumoDia();
+  }
+
+  if (inputData) {
+    inputData.value = dataLocalHoje();
+    inputData.addEventListener("change", () => {
+      if (!dataValida(inputData.value)) {
+        // Campo limpo ou data incompleta: volta para o dia atual.
+        selecionarHoje();
+        return;
+      }
+      modoHoje = inputData.value === dataLocalHoje();
+      carregarResumoDia();
+    });
+  }
+  btnHoje?.addEventListener("click", selecionarHoje);
 
   function abaEstaAtiva() { return aba.classList.contains("ativa"); }
 

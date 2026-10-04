@@ -296,7 +296,7 @@ $sql = "
     SELECT
         p.id_profissional,
         p.id_usuario,
-        p.especialidade,
+        eu.especialidade_profissional AS especialidade,
         p.descricao,
 
         u.nome,
@@ -359,7 +359,7 @@ if ($q !== '') {
             u.nome LIKE ?
             OR u.email LIKE ?
             OR u.telefone LIKE ?
-            OR p.especialidade LIKE ?
+            OR eu.especialidade_profissional LIKE ?
         )
     ";
 

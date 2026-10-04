@@ -6,8 +6,8 @@
     <title>AmAgenda • Studio</title>
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
   
-    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20260818_2"/>
-    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=20260818_1"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20261004_2"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=20261004_4"/>
     <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
     <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
     <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=20260821_2">
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
-    <script src="/public/_auth/sessao.js?v=20260818_1"></script>
+    <script src="/public/_auth/sessao.js?v=20261003_1"></script>
     <script src="/public/_auth/permissoes.js?v=20260821_1"></script>
     <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
 
@@ -78,6 +78,16 @@
 
       <!-- Lado direito -->
       <div class="cabecalho-direita">
+        <!-- Indicador de Modo Suporte: mesmo componente do Painel Administrativo, preenchido por _auth/sessao.js. -->
+        <div id="indicadorModoSuporte" class="cabecalho-modo-suporte" role="status" hidden>
+          <button class="cabecalho-modo-suporte-acionador" type="button" aria-label="Exibir detalhes do Modo Suporte" title="Modo Suporte ativo">
+            <i class="fa-solid fa-headset" aria-hidden="true"></i>
+          </button>
+          <div class="cabecalho-modo-suporte-conteudo">
+            <span><i class="fa-solid fa-headset" aria-hidden="true"></i> Modo Suporte — <strong id="nomeEmpresaModoSuporte">Empresa</strong></span>
+            <button id="btnSairModoSuporte" class="botao-geral pequeno" type="button">Sair do modo suporte</button>
+          </div>
+        </div>
         <!-- Estrutura visual; notificações ainda não possuem backend. -->
         <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
           <i class="fa-regular fa-bell" aria-hidden="true"></i>
@@ -136,6 +146,34 @@
 
       <!-- Barra única para pesquisar e filtrar todas as abas da semana. -->
       <div class="agenda-painel-global">
+        <section id="agendaOnlineCompartilhar" class="agenda-online-compartilhar" aria-labelledby="agendaOnlineTitulo" hidden>
+          <div class="agenda-online-apresentacao">
+            <span class="agenda-online-icone" aria-hidden="true">
+              <i class="fa-solid fa-globe"></i>
+            </span>
+            <div>
+              <h2 id="agendaOnlineTitulo">Agenda Online</h2>
+              <p>Compartilhe este link com seus clientes</p>
+            </div>
+          </div>
+
+          <label class="agenda-online-endereco" for="agendaOnlineUrl">
+            <i class="fa-solid fa-link" aria-hidden="true"></i>
+            <input id="agendaOnlineUrl" type="text" readonly aria-label="Endereço público da Agenda Online">
+          </label>
+
+          <div class="agenda-online-acoes">
+            <button id="agendaOnlineCopiar" class="botao-geral" type="button">
+              <i class="fa-regular fa-copy" aria-hidden="true"></i>
+              <span>Copiar link</span>
+            </button>
+            <a id="agendaOnlineAbrir" class="botao-geral destaque" href="" target="_blank" rel="noopener noreferrer">
+              <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+              <span>Abrir</span>
+            </a>
+          </div>
+        </section>
+
         <div class="agenda-ferramentas-global">
           <button class="botao-geral agenda-abrir-calendario" data-abrir-modal="modalCalendario" type="button" title="Abrir calendário" aria-label="Abrir calendário">
             <i class="fa-regular fa-calendar-days" aria-hidden="true"></i>
@@ -1320,7 +1358,7 @@
     <script src="../js/notificacoes/notificacoes.js?v=20260903_1"></script> <!--Centro de notificações e experiência de senha temporária-->
     <script src="../js/identidade-visual/identidade-visual.js?v=20260822_1"></script>
 
-    <script src="../js/agenda/lista-agenda.js" ></script> <!--Lista Agendamentos-->
+    <script src="../js/agenda/lista-agenda.js?v=20261004_2" ></script> <!--Lista Agendamentos-->
     <script src="../js/agenda/pesquisar-agendamento.js?v=20260828_1" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
     <script src="../js/agenda/excluir-agendamento.js" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
 

@@ -5,6 +5,7 @@ date_default_timezone_set('America/Sao_Paulo');
 
 require_once __DIR__ . '/../cliente/_sessao_cliente.php';
 require_once __DIR__ . '/../_config/conexao.php';
+require_once __DIR__ . '/../_regras/acesso_assinatura.php';
 
 const CLIENTE_AGENDAMENTO_JANELA_DIAS = 90;
 const CLIENTE_AGENDAMENTO_FOTO_PADRAO = '/public/imagens/avatar-default.png';
@@ -50,6 +51,10 @@ function clienteAgendamentoContexto(mysqli $conexao, bool $exigirCliente = false
 
     if (!$empresaAtiva) {
         out(['ok' => false, 'code' => 'CLIENT_COMPANY_ACCESS_DENIED', 'user_msg' => 'A empresa não está disponível para agendamentos.'], 403);
+    }
+
+    if (!acessoAssinaturaAgendaOnlineDisponivel($conexao, $idEmpresa)) {
+        out(['ok' => false, 'code' => 'AGENDA_ONLINE_UNAVAILABLE', 'user_msg' => 'Agenda Online indisponível no momento.'], 403);
     }
 
     $cliente = null;

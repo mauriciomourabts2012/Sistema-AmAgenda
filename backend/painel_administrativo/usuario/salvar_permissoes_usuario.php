@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/../../_auth/csrf.php'; csrfValidarSessao();
 require __DIR__.'/../../_config/conexao.php'; require_once __DIR__.'/../../_regras/permissoes_usuario.php'; require_once __DIR__.'/../../_servicos/auditoria.php';
 $ctx=permissoesContexto($conexao); exigirPermissao($conexao,'usuarios.gerenciar_permissoes');
 $alvo=filter_input(INPUT_POST,'id_usuario',FILTER_VALIDATE_INT) ?: 0;

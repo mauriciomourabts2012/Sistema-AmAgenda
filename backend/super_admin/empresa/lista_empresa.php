@@ -28,6 +28,175 @@ if (!function_exists('out')) {
 
 require __DIR__ . '/../../_auth/bloquear.php';
 
+/**
+ * As rotas de suporte reutilizam este handler para não criar um segundo ponto
+ * de entrada para o mesmo contexto de empresa. A identidade continua sendo a
+ * do Super Admin; somente a empresa ativa é anexada temporariamente à sessão.
+ */
+$rotaAtual = isset($rota) && is_string($rota) ? $rota : '';
+$rotasSuporte = ['superadmin/suporte/entrar', 'superadmin/suporte/sair'];
+
+if (in_array($rotaAtual, $rotasSuporte, true)) {
+    if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        out(['ok' => false, 'code' => 'METHOD_NOT_ALLOWED', 'user_msg' => 'Método não permitido.'], 405);
+    }
+
+    require_once __DIR__ . '/../../_auth/csrf.php';
+    require_once __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
+    csrfValidarSessao();
+
+    if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
+        out(['ok' => false, 'code' => 'DB_CONNECTION_ERROR', 'user_msg' => 'Não foi possível validar o modo suporte.'], 500);
+    }
+    $conexao->set_charset('utf8mb4');
+
+    $authSuporte = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+    $idSuperAdmin = (int)($authSuporte['id_usuario'] ?? 0);
+    $emModoSuporte = (bool)($authSuporte['modo_suporte'] ?? false);
+
+    if ($rotaAtual === 'superadmin/suporte/entrar') {
+        if ($emModoSuporte) {
+            out(['ok' => false, 'code' => 'SUPPORT_ALREADY_ACTIVE', 'user_msg' => 'Finalize o modo suporte atual antes de selecionar outra empresa.'], 409);
+        }
+
+        $idEmpresaSuporte = filter_var($_POST['id_empresa'] ?? null, FILTER_VALIDATE_INT);
+        if ($idEmpresaSuporte === false || $idEmpresaSuporte <= 0) {
+            out(['ok' => false, 'code' => 'INVALID_COMPANY', 'user_msg' => 'Empresa inválida.'], 422);
+        }
+
+        $stmtEmpresaSuporte = $conexao->prepare("SELECT nome FROM empresa WHERE id_empresa=? AND status='ativo' LIMIT 1");
+        if (!$stmtEmpresaSuporte) {
+            out(['ok' => false, 'code' => 'SUPPORT_COMPANY_CHECK_ERROR', 'user_msg' => 'Não foi possível validar a empresa.'], 500);
+        }
+        $stmtEmpresaSuporte->bind_param('i', $idEmpresaSuporte);
+        $stmtEmpresaSuporte->execute();
+        $stmtEmpresaSuporte->bind_result($nomeEmpresaSuporte);
+        $empresaSuporteValida = $stmtEmpresaSuporte->fetch();
+        $stmtEmpresaSuporte->close();
+
+        if (!$empresaSuporteValida) {
+            out(['ok' => false, 'code' => 'SUPPORT_COMPANY_INACTIVE', 'user_msg' => 'A empresa não existe ou não está ativa.'], 422);
+        }
+
+        $sessaoAnterior = $_SESSION;
+        try {
+            if (!session_regenerate_id(true)) {
+                throw new RuntimeException('Não foi possível renovar a sessão.');
+            }
+
+            $iniciadoEm = date('Y-m-d H:i:s');
+            $_SESSION['empresa_id'] = (int)$idEmpresaSuporte;
+            $_SESSION['id_empresa'] = (int)$idEmpresaSuporte;
+            $_SESSION['empresa_nome'] = (string)$nomeEmpresaSuporte;
+            $_SESSION['perfil_id'] = 0;
+            $_SESSION['perfil_nome'] = 'super_admin';
+            $_SESSION['modo_suporte'] = true;
+            $_SESSION['modo_suporte_iniciado_em'] = $iniciadoEm;
+            $_SESSION['auth']['empresa_id'] = (int)$idEmpresaSuporte;
+            $_SESSION['auth']['id_empresa'] = (int)$idEmpresaSuporte;
+            $_SESSION['auth']['empresa_nome'] = (string)$nomeEmpresaSuporte;
+            $_SESSION['auth']['perfil_id'] = 0;
+            $_SESSION['auth']['perfil_nome'] = 'super_admin';
+            $_SESSION['auth']['modo_suporte'] = true;
+            $_SESSION['auth']['modo_suporte_iniciado_em'] = $iniciadoEm;
+
+            $conexao->begin_transaction();
+            auditoriaRegistrar($conexao, 'suporte.iniciado', [
+                'entidade_rotulo' => (string)$nomeEmpresaSuporte,
+                'descricao' => 'Iniciou o modo suporte na empresa ' . (string)$nomeEmpresaSuporte . '.',
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
+            $conexao->commit();
+        } catch (Throwable $e) {
+            try { $conexao->rollback(); } catch (Throwable) {}
+            $_SESSION = $sessaoAnterior;
+            error_log('[modo_suporte] Falha ao iniciar o modo suporte: ' . $e->getMessage());
+            out(['ok' => false, 'code' => 'SUPPORT_START_ERROR', 'user_msg' => 'Não foi possível iniciar o modo suporte.'], 500);
+        }
+
+        out([
+            'ok' => true,
+            'code' => 'SUPPORT_STARTED',
+            'user_msg' => 'Modo suporte iniciado.',
+            'data' => [
+                'empresa_id' => (int)$idEmpresaSuporte,
+                'empresa_nome' => (string)$nomeEmpresaSuporte,
+                'redirect' => '/views/painel-administrativo/painel-administrativo.html',
+            ],
+        ]);
+    }
+
+    $idEmpresaSuporte = (int)($authSuporte['empresa_id'] ?? $_SESSION['empresa_id'] ?? 0);
+    if (!$emModoSuporte || $idEmpresaSuporte <= 0) {
+        out(['ok' => false, 'code' => 'SUPPORT_NOT_ACTIVE', 'user_msg' => 'O modo suporte não está ativo.'], 409);
+    }
+
+    $stmtContextoSuporte = $conexao->prepare("SELECT u.nome, e.nome FROM usuario u INNER JOIN empresa e ON e.id_empresa=? WHERE u.id_usuario=? AND u.tipo_usuario='super_admin' AND u.status='ativo' LIMIT 1");
+    if (!$stmtContextoSuporte) {
+        out(['ok' => false, 'code' => 'SUPPORT_CONTEXT_CHECK_ERROR', 'user_msg' => 'Não foi possível validar o modo suporte.'], 500);
+    }
+    $stmtContextoSuporte->bind_param('ii', $idEmpresaSuporte, $idSuperAdmin);
+    $stmtContextoSuporte->execute();
+    $stmtContextoSuporte->bind_result($nomeSuperAdmin, $nomeEmpresaSuporte);
+    $contextoSuporteValido = $stmtContextoSuporte->fetch();
+    $stmtContextoSuporte->close();
+    if (!$contextoSuporteValido) {
+        out(['ok' => false, 'code' => 'SUPPORT_CONTEXT_INVALID', 'user_msg' => 'O contexto do modo suporte não é mais válido.'], 403);
+    }
+
+    try {
+        if (!session_regenerate_id(true)) {
+            throw new RuntimeException('Não foi possível renovar a sessão.');
+        }
+
+        $conexao->begin_transaction();
+        auditoriaRegistrar($conexao, 'suporte.finalizado', [
+            'ator' => [
+                'ator_tipo' => 'super_admin',
+                'id_ator' => $idSuperAdmin,
+                'ator_nome' => (string)$nomeSuperAdmin,
+                'ator_perfil' => 'super_admin',
+                'id_empresa' => $idEmpresaSuporte,
+                'modo_suporte' => true,
+                'origem' => 'modo_suporte',
+            ],
+            'entidade_rotulo' => (string)$nomeEmpresaSuporte,
+            'descricao' => 'Finalizou o modo suporte na empresa ' . (string)$nomeEmpresaSuporte . '.',
+            'contexto' => ['origem' => 'painel_administrativo'],
+        ]);
+        $conexao->commit();
+    } catch (Throwable $e) {
+        try { $conexao->rollback(); } catch (Throwable) {}
+        error_log('[modo_suporte] Falha ao finalizar o modo suporte: ' . $e->getMessage());
+        out(['ok' => false, 'code' => 'SUPPORT_FINISH_ERROR', 'user_msg' => 'Não foi possível finalizar o modo suporte.'], 500);
+    }
+
+    unset(
+        $_SESSION['empresa_id'],
+        $_SESSION['id_empresa'],
+        $_SESSION['empresa_nome'],
+        $_SESSION['perfil_id'],
+        $_SESSION['perfil_nome'],
+        $_SESSION['modo_suporte_iniciado_em']
+    );
+    $_SESSION['modo_suporte'] = false;
+    $_SESSION['auth']['empresa_id'] = 0;
+    $_SESSION['auth']['id_empresa'] = 0;
+    $_SESSION['auth']['empresa_nome'] = '';
+    $_SESSION['auth']['perfil_id'] = 0;
+    $_SESSION['auth']['perfil_nome'] = 'super_admin';
+    $_SESSION['auth']['modo_suporte'] = false;
+    unset($_SESSION['auth']['modo_suporte_iniciado_em']);
+
+    out([
+        'ok' => true,
+        'code' => 'SUPPORT_FINISHED',
+        'user_msg' => 'Modo suporte finalizado.',
+        'data' => ['redirect' => '/views/super-admin/painel-super-admin.html'],
+    ]);
+}
+
 /* ==========================================================
    HELPERS
 ========================================================== */

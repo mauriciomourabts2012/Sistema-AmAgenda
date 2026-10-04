@@ -74,16 +74,31 @@ function auditoriaCatalogo(): array
             'id_assinatura_anterior', 'id_plano', 'valor_contratado', 'periodicidade', 'antes', 'depois',
         ]),
         'assinatura.suspensa' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Suspendeu uma assinatura.', [
-            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'status_anterior', 'status_novo', 'depois',
+            'id_empresa', 'id_assinatura', 'id_cobranca', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo',
+            'motivo_suspensao', 'suspensa_em', 'depois',
         ]),
         'assinatura.reativada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Reativou uma assinatura.', [
-            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'status_anterior', 'status_novo', 'depois',
+            'id_empresa', 'id_assinatura', 'id_cobranca', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo',
+            'motivo_suspensao', 'suspensa_em', 'depois',
         ]),
         'assinatura.cancelada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Cancelou uma assinatura.', [
-            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'status_anterior', 'status_novo', 'data_fim', 'depois',
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo', 'data_fim', 'depois',
+        ]),
+        'assinatura.teste_iniciado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Iniciou o período de teste de uma assinatura.', [
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'teste_iniciado_em', 'teste_expira_em', 'depois',
+        ]),
+        'assinatura.teste_expirado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Registrou a expiração do período de teste de uma assinatura.', [
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'teste_iniciado_em', 'teste_expira_em',
+            'motivo_suspensao', 'suspensa_em', 'antes', 'depois',
+        ]),
+        'assinatura.convertida_paga' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Converteu o período de teste em assinatura paga após a quitação da cobrança de conversão.', [
+            'id_empresa', 'id_assinatura', 'id_cobranca', 'id_plano', 'status', 'modalidade',
+            'status_anterior', 'status_novo', 'modalidade_anterior', 'modalidade_nova',
+            'teste_iniciado_em', 'teste_expira_em', 'valor', 'periodo_inicio', 'periodo_fim',
+            'motivo_suspensao', 'suspensa_em', 'depois',
         ]),
         'cobranca.gerada' => auditoriaDefinicaoEvento('financeiro', 'cobranca', 'alta', 'Gerou uma cobrança.', [
-            'id_empresa', 'id_assinatura', 'periodo_inicio', 'periodo_fim', 'data_vencimento', 'valor', 'status', 'depois',
+            'id_empresa', 'id_assinatura', 'periodo_inicio', 'periodo_fim', 'data_vencimento', 'valor', 'status', 'finalidade', 'depois',
         ]),
         'cobranca.cancelada' => auditoriaDefinicaoEvento('financeiro', 'cobranca', 'alta', 'Cancelou uma cobrança.', [
             'id_empresa', 'id_assinatura', 'id_cobranca', 'valor', 'periodo_inicio', 'periodo_fim', 'data_vencimento',
@@ -101,9 +116,23 @@ function auditoriaCatalogo(): array
             'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
             'total_pago_confirmado', 'saldo_restante', 'antes', 'depois',
         ]),
+        'pagamento.confirmado_gateway' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'alta', 'Confirmou um pagamento recebido pelo gateway.', [
+            'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
+            'provedor', 'referencia_externa', 'total_pago_confirmado', 'saldo_restante', 'depois',
+        ]),
+        'pagamento.recusado_gateway' => auditoriaDefinicaoEvento('financeiro', 'transacao', 'alta', 'Registrou uma recusa informada pelo gateway.', [
+            'id_empresa', 'id_cobranca', 'id_transacao', 'status', 'status_externo', 'detalhe_status_externo', 'depois',
+        ]),
+        'pagamento.estornado_gateway' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'critica', 'Registrou um estorno confirmado pelo gateway.', [
+            'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
+            'provedor', 'referencia_externa', 'total_pago_confirmado', 'saldo_restante', 'antes', 'depois',
+        ]),
+        'pagamento.conciliacao_necessaria' => auditoriaDefinicaoEvento('financeiro', 'transacao', 'critica', 'Identificou uma divergência financeira que exige conciliação.', [
+            'id_empresa', 'id_cobranca', 'id_transacao', 'status', 'status_externo', 'detalhe_status_externo', 'motivo', 'depois',
+        ]),
 
-        'plano.criado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Criou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'destaque', 'status', 'descricao', 'observacao', 'depois']),
-        'plano.editado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Alterou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'destaque', 'status', 'descricao', 'observacao']),
+        'plano.criado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Criou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'agenda_online', 'gera_cobranca', 'disponivel_cadastro_publico', 'destaque', 'status', 'descricao', 'observacao', 'depois']),
+        'plano.editado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Alterou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'agenda_online', 'gera_cobranca', 'disponivel_cadastro_publico', 'destaque', 'status', 'descricao', 'observacao']),
         'plano.status_alterado' => auditoriaDefinicaoEvento('planos', 'plano', 'critica', 'Alterou o status de um plano.', ['status']),
 
         'super_admin.criado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'critica', 'Criou um Super Admin.', ['nome', 'email', 'telefone', 'status', 'depois']),
@@ -115,6 +144,10 @@ function auditoriaCatalogo(): array
         'autenticacao.empresa_inativa' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por empresa indisponível.', []),
         'autenticacao.vinculo_inativo' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Falha de autenticação por vínculo indisponível.', []),
         'autenticacao.acesso_negado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'critica', 'Acesso negado por regra de autenticação.', []),
+        'cadastro_publico.tentativa' => auditoriaDefinicaoEvento('autenticacao', 'cadastro_publico', 'alta', 'Registrou uma tentativa de cadastro público.', []),
+        'cadastro_publico.recusado' => auditoriaDefinicaoEvento('autenticacao', 'cadastro_publico', 'alta', 'Recusou uma tentativa de cadastro público.', []),
+        'cadastro_publico.concluido' => auditoriaDefinicaoEvento('autenticacao', 'cadastro_publico', 'alta', 'Concluiu um cadastro público.', []),
+        'cadastro_publico.falha_tecnica' => auditoriaDefinicaoEvento('autenticacao', 'cadastro_publico', 'critica', 'Registrou uma falha técnica no cadastro público.', []),
         'suporte.iniciado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'alta', 'Iniciou o modo suporte.', []),
         'suporte.finalizado' => auditoriaDefinicaoEvento('autenticacao', 'sessao', 'alta', 'Finalizou o modo suporte.', []),
 

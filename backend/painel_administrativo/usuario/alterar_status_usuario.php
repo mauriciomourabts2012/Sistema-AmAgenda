@@ -46,6 +46,9 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
+
 $auth = $_SESSION['auth'] ?? [];
 $idUsuarioSessao = (int)($auth['id_usuario'] ?? 0);
 $tipoUsuarioSessao = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8');

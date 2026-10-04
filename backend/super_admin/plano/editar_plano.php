@@ -87,6 +87,9 @@ $limite_profissionais = intv('limite_profissionais', 0);
 $limite_recepcionistas = intv('limite_recepcionistas', 0);
 $limite_servicos      = intv('limite_servicos', 0);
 $limite_agendamentos  = intv('limite_agendamentos', 0);
+$agenda_online        = intv('agenda_online', -1);
+$gera_cobranca        = intv('gera_cobranca', -1);
+$disponivel_cadastro_publico = intv('disponivel_cadastro_publico', -1);
 
 $destaque = intv('destaque', 0);
 $status   = strv('status', 20, true);
@@ -117,6 +120,18 @@ if ($status !== '' && !in_array($status, $allowedStatus, true)) {
 
 if ($destaque !== 0 && $destaque !== 1) {
   $erros['e_destaque'] = 'Valor de destaque inválido.';
+}
+
+if ($agenda_online !== 0 && $agenda_online !== 1) {
+  $erros['e_agenda_online'] = 'Disponibilidade da Agenda Online inválida.';
+}
+
+if ($gera_cobranca !== 0 && $gera_cobranca !== 1) {
+  $erros['e_gera_cobranca'] = 'Regra de cobrança inválida.';
+}
+
+if ($disponivel_cadastro_publico !== 0 && $disponivel_cadastro_publico !== 1) {
+  $erros['e_disponivel_cadastro_publico'] = 'Disponibilidade no cadastro público inválida.';
 }
 
 if ($limite_profissionais < 0) $erros['e_limite_profissionais'] = 'Não pode ser negativo.';
@@ -176,7 +191,7 @@ try {
   $preco = (float)$preco_str;
 
   // Verifica se plano existe
-  $sqlExiste = "SELECT nome,ref,preco_mensal,cobranca,limite_usuarios,limite_proprietarios,limite_profissionais,limite_recepcionistas,limite_servicos,limite_agendamentos,destaque,status,descricao,observacao FROM plano WHERE id_plano = ? LIMIT 1";
+  $sqlExiste = "SELECT nome,ref,preco_mensal,cobranca,limite_usuarios,limite_proprietarios,limite_profissionais,limite_recepcionistas,limite_servicos,limite_agendamentos,agenda_online,gera_cobranca,disponivel_cadastro_publico,destaque,status,descricao,observacao FROM plano WHERE id_plano = ? LIMIT 1";
   $st = $conexao->prepare($sqlExiste);
   if (!$st) throw new Exception('Prepare check plano falhou.');
 
@@ -252,6 +267,9 @@ try {
            limite_recepcionistas = ?,
            limite_servicos = ?,
            limite_agendamentos = ?,
+           agenda_online = ?,
+           gera_cobranca = ?,
+           disponivel_cadastro_publico = ?,
            destaque = ?,
            status = ?,
            descricao = ?,
@@ -264,7 +282,7 @@ try {
   if (!$stmt) throw new Exception('Prepare update falhou.');
 
   $stmt->bind_param(
-    'ssdsiiiiiiisssi',
+    'ssdsiiiiiiiiiisssi',
     $nome,
     $ref,
     $preco,
@@ -275,6 +293,9 @@ try {
     $limite_recepcionistas,
     $limite_servicos,
     $limite_agendamentos,
+    $agenda_online,
+    $gera_cobranca,
+    $disponivel_cadastro_publico,
     $destaque,
     $status,
     $descricao,
@@ -306,8 +327,8 @@ try {
 
   $stmt->close();
 
-  $depois = ['nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,'limite_usuarios'=>$limite_usuarios,'limite_proprietarios'=>$limite_proprietarios,'limite_profissionais'=>$limite_profissionais,'limite_recepcionistas'=>$limite_recepcionistas,'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs];
-  $antes = ['nome'=>$planoAnterior['nome'],'ref'=>$planoAnterior['ref'],'preco_mensal'=>number_format((float)$planoAnterior['preco_mensal'],2,'.',''),'cobranca'=>$planoAnterior['cobranca'],'limite_usuarios'=>(int)$planoAnterior['limite_usuarios'],'limite_proprietarios'=>(int)($planoAnterior['limite_proprietarios'] ?? 0),'limite_profissionais'=>(int)$planoAnterior['limite_profissionais'],'limite_recepcionistas'=>(int)($planoAnterior['limite_recepcionistas'] ?? 0),'limite_servicos'=>(int)$planoAnterior['limite_servicos'],'limite_agendamentos'=>(int)$planoAnterior['limite_agendamentos'],'destaque'=>(int)$planoAnterior['destaque'],'status'=>$planoAnterior['status'],'descricao'=>$planoAnterior['descricao'],'observacao'=>$planoAnterior['observacao']];
+  $depois = ['nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,'limite_usuarios'=>$limite_usuarios,'limite_proprietarios'=>$limite_proprietarios,'limite_profissionais'=>$limite_profissionais,'limite_recepcionistas'=>$limite_recepcionistas,'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,'agenda_online'=>$agenda_online,'gera_cobranca'=>$gera_cobranca,'disponivel_cadastro_publico'=>$disponivel_cadastro_publico,'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs];
+  $antes = ['nome'=>$planoAnterior['nome'],'ref'=>$planoAnterior['ref'],'preco_mensal'=>number_format((float)$planoAnterior['preco_mensal'],2,'.',''),'cobranca'=>$planoAnterior['cobranca'],'limite_usuarios'=>(int)$planoAnterior['limite_usuarios'],'limite_proprietarios'=>(int)($planoAnterior['limite_proprietarios'] ?? 0),'limite_profissionais'=>(int)$planoAnterior['limite_profissionais'],'limite_recepcionistas'=>(int)($planoAnterior['limite_recepcionistas'] ?? 0),'limite_servicos'=>(int)$planoAnterior['limite_servicos'],'limite_agendamentos'=>(int)$planoAnterior['limite_agendamentos'],'agenda_online'=>(int)$planoAnterior['agenda_online'],'gera_cobranca'=>(int)$planoAnterior['gera_cobranca'],'disponivel_cadastro_publico'=>(int)$planoAnterior['disponivel_cadastro_publico'],'destaque'=>(int)$planoAnterior['destaque'],'status'=>$planoAnterior['status'],'descricao'=>$planoAnterior['descricao'],'observacao'=>$planoAnterior['observacao']];
   $alteracoes = [];
   foreach ($depois as $campo=>$valor) if (!auditoriaValoresIguais($antes[$campo] ?? null,$valor)) $alteracoes[$campo]=['antes'=>$antes[$campo] ?? null,'depois'=>$valor];
   if ($alteracoes !== []) auditoriaRegistrar($conexao, 'plano.editado', [
@@ -333,6 +354,9 @@ try {
       'limite_recepcionistas' => $limite_recepcionistas,
       'limite_servicos' => $limite_servicos,
       'limite_agendamentos' => $limite_agendamentos,
+      'agenda_online' => $agenda_online,
+      'gera_cobranca' => $gera_cobranca,
+      'disponivel_cadastro_publico' => $disponivel_cadastro_publico,
       'destaque' => $destaque,
       'status' => $status,
       'descricao' => $descricao,

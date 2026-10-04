@@ -145,7 +145,7 @@ try {
             c.nome_completo AS cliente_nome,
             c.whatsapp_celular AS cliente_telefone,
             u.nome AS profissional_nome,
-            p.especialidade AS profissional_especialidade,
+            eup.especialidade_profissional AS profissional_especialidade,
             s.nome AS servico_nome
         FROM agendamento a
         INNER JOIN cliente c

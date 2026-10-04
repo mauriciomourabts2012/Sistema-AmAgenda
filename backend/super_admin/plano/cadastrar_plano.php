@@ -80,6 +80,9 @@ $limite_usuarios       = intv('limite_usuarios', 0);
 $limite_profissionais  = intv('limite_profissionais', 0);
 $limite_servicos       = intv('limite_servicos', 0);
 $limite_agendamentos   = intv('limite_agendamentos', 0);
+$agenda_online         = intv('agenda_online', -1);
+$gera_cobranca         = intv('gera_cobranca', -1);
+$disponivel_cadastro_publico = intv('disponivel_cadastro_publico', -1);
 $destaque = intv('destaque', 0);
 $status   = strv('status', 20, true);
 $descricao = strv('descricao', 300, false);
@@ -107,6 +110,18 @@ if ($status !== '' && !in_array($status, $allowedStatus, true)) {
 
 if ($destaque !== 0 && $destaque !== 1) {
   $erros['p_destaque'] = 'Valor de destaque inválido.';
+}
+
+if ($agenda_online !== 0 && $agenda_online !== 1) {
+  $erros['p_agenda_online'] = 'Disponibilidade da Agenda Online inválida.';
+}
+
+if ($gera_cobranca !== 0 && $gera_cobranca !== 1) {
+  $erros['p_gera_cobranca'] = 'Regra de cobrança inválida.';
+}
+
+if ($disponivel_cadastro_publico !== 0 && $disponivel_cadastro_publico !== 1) {
+  $erros['p_disponivel_cadastro_publico'] = 'Disponibilidade no cadastro público inválida.';
 }
 
 if ($limite_profissionais < 0) $erros['p_limite_profissionais'] = 'Não pode ser negativo.';
@@ -193,9 +208,10 @@ try {
   $sql = "
     INSERT INTO plano (
       nome, ref, preco_mensal, cobranca,
-      limite_usuarios, limite_profissionais, limite_servicos, limite_agendamentos,
+      limite_usuarios, limite_profissionais, limite_servicos, limite_agendamentos, agenda_online,
+      gera_cobranca, disponivel_cadastro_publico,
       destaque, status, descricao, observacao
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   ";
 
   $stmt = $conexao->prepare($sql);
@@ -203,7 +219,7 @@ try {
 
   $preco = (float)$preco_str;
   $stmt->bind_param(
-    'ssdssssiiiss',
+    'ssdsiiiiiiiisss',
     $nome,
     $ref,
     $preco,
@@ -212,6 +228,9 @@ try {
     $limite_profissionais,
     $limite_servicos,
     $limite_agendamentos,
+    $agenda_online,
+    $gera_cobranca,
+    $disponivel_cadastro_publico,
     $destaque,
     $status,
     $descricao,
@@ -227,10 +246,10 @@ try {
 
   // tipos corretos:
   // nome(s) ref(s) preco(d) cobranca(s)
-  // limites(i i i i)
+  // limites(i i i i), Agenda Online(i)
   // destaque(i) status(s) descricao(s) obs(s)
   $stmt->bind_param(
-    'ssdsiiiiisss',
+    'ssdsiiiiiiiisss',
     $nome,
     $ref,
     $preco,
@@ -239,6 +258,9 @@ try {
     $limite_profissionais,
     $limite_servicos,
     $limite_agendamentos,
+    $agenda_online,
+    $gera_cobranca,
+    $disponivel_cadastro_publico,
     $destaque,
     $status,
     $descricao,
@@ -275,6 +297,8 @@ try {
       'nome'=>$nome,'ref'=>$ref,'preco_mensal'=>number_format($preco,2,'.',''),'cobranca'=>$cobranca,
       'limite_usuarios'=>$limite_usuarios,'limite_profissionais'=>$limite_profissionais,
       'limite_servicos'=>$limite_servicos,'limite_agendamentos'=>$limite_agendamentos,
+      'agenda_online'=>$agenda_online,
+      'gera_cobranca'=>$gera_cobranca,'disponivel_cadastro_publico'=>$disponivel_cadastro_publico,
       'destaque'=>$destaque,'status'=>$status,'descricao'=>$descricao,'observacao'=>$obs,
     ]]],
     'contexto' => ['origem'=>'painel_super_admin'],
@@ -295,6 +319,9 @@ try {
       'limite_profissionais' => $limite_profissionais,
       'limite_servicos' => $limite_servicos,
       'limite_agendamentos' => $limite_agendamentos,
+      'agenda_online' => $agenda_online,
+      'gera_cobranca' => $gera_cobranca,
+      'disponivel_cadastro_publico' => $disponivel_cadastro_publico,
       'destaque' => $destaque,
       'status' => $status,
     ],

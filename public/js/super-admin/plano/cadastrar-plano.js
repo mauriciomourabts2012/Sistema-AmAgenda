@@ -28,6 +28,9 @@
   const elLimiteProfissionais = document.getElementById("p_limite_profissionais");
   const elLimiteServicos = document.getElementById("p_limite_servicos");
   const elLimiteAgendamentos = document.getElementById("p_limite_agendamentos");
+  const elAgendaOnline = document.getElementById("p_agenda_online");
+  const elGeraCobranca = document.getElementById("p_gera_cobranca");
+  const elDisponivelCadastroPublico = document.getElementById("p_disponivel_cadastro_publico");
   const elDestaque = document.getElementById("p_destaque");
   const elStatus = document.getElementById("p_status");
   const elDescricao = document.getElementById("p_descricao");
@@ -260,7 +263,8 @@
 
   [
     elNome, elRef, elPreco, elCobranca, elLimiteUsuarios,
-    elLimiteProfissionais, elLimiteServicos, elLimiteAgendamentos,
+    elLimiteProfissionais, elLimiteServicos, elLimiteAgendamentos, elAgendaOnline,
+    elGeraCobranca, elDisponivelCadastroPublico,
     elDestaque, elStatus, elDescricao, elObs
   ].forEach(bindClearOnInput);
 
@@ -331,6 +335,21 @@
       ok = false;
     }
 
+    if (!["0", "1"].includes(String(elAgendaOnline?.value ?? ""))) {
+      setFieldError("p_agenda_online", "Selecione a disponibilidade da Agenda Online.");
+      ok = false;
+    }
+
+    if (!["0", "1"].includes(String(elGeraCobranca?.value ?? ""))) {
+      setFieldError("p_gera_cobranca", "Informe se o plano gera cobrança.");
+      ok = false;
+    }
+
+    if (!["0", "1"].includes(String(elDisponivelCadastroPublico?.value ?? ""))) {
+      setFieldError("p_disponivel_cadastro_publico", "Informe se o plano fica disponível no cadastro público.");
+      ok = false;
+    }
+
     if (!ok) focusFirstError();
     return ok;
   }
@@ -356,6 +375,9 @@
     payload.set("limite_profissionais", String(parseInt(elLimiteProfissionais?.value || "0", 10) || 0));
     payload.set("limite_servicos", String(parseInt(elLimiteServicos?.value || "0", 10) || 0));
     payload.set("limite_agendamentos", String(parseInt(elLimiteAgendamentos?.value || "0", 10) || 0));
+    payload.set("agenda_online", String(elAgendaOnline?.value ?? "1"));
+    payload.set("gera_cobranca", String(elGeraCobranca?.value ?? "1"));
+    payload.set("disponivel_cadastro_publico", String(elDisponivelCadastroPublico?.value ?? "1"));
 
     payload.set("destaque", String(parseInt(elDestaque?.value || "0", 10) || 0));
     payload.set("status", (elStatus?.value || "ativo").trim());

@@ -467,37 +467,37 @@
         data-created_at="${C.escapeHtml(String(u.created_at || ""))}"
         data-ultimo_login_em="${C.escapeHtml(String(u.ultimo_login_em || ""))}">
 
-        ${avatarTemplate(u)}
+        <div class="super-lista-identidade">
+          ${avatarTemplate(u)}
 
-        <div class="agenda-info">
-          <div class="agenda-nome">${C.escapeHtml(nome)}</div>
+          <div class="agenda-info super-lista-conteudo">
+            <div class="agenda-nome">${C.escapeHtml(nome)}</div>
 
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">Super Admin</div>
-            ${email ? `<div class="agenda-duracao">• ${C.escapeHtml(email)}</div>` : ""}
-          </div>
-
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">Telefone: ${C.escapeHtml(telefone || "Não informado")}</div>
-          </div>
-
-          <div class="agenda-linha-extra">
-            ${badgeStatus(status)}
-            ${badgePerfil(perfil)}
+            <div class="super-lista-metadados">
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Perfil</span><strong>Super Admin</strong></span>
+              ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone || "Não informado")}</strong></span>
+            </div>
           </div>
         </div>
 
-        <div class="agenda-acoes" aria-haspopup="menu">
-          <button
-            class="agenda-btn-acoes"
-            type="button"
-            data-acao="toggle-menu"
-            aria-expanded="false"
-            title="Ações">
-            ${iconAcoes()}
-          </button>
+        <div class="super-lista-status-acoes">
+          <div class="super-lista-status-grupo">
+            ${badgeStatus(status)}
+            ${badgePerfil(perfil)}
+          </div>
+          <div class="agenda-acoes" aria-haspopup="menu">
+            <button
+              class="agenda-btn-acoes"
+              type="button"
+              data-acao="toggle-menu"
+              aria-expanded="false"
+              title="Ações">
+              ${iconAcoes()}
+            </button>
 
-          ${buildMenuAcoes({ ...u, status })}
+            ${buildMenuAcoes({ ...u, status })}
+          </div>
         </div>
       </article>
     `;

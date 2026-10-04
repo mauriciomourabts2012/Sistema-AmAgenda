@@ -46,6 +46,7 @@
   // =========================
   const CFG = {
     ENDPOINT: "/public/api/api_central.php?path=superadmin/empresa/listar",
+    ENDPOINT_SUPORTE: "/public/api/api_central.php?path=superadmin/suporte/entrar",
 
     ABA_ID: "empresas",
     BOX_ID: "listaEmpresas",
@@ -212,6 +213,12 @@
 
     return `
       <div class="agenda-menu" role="menu">
+        ${ativo ? `
+        <button class="agenda-menu-item" type="button" data-acao="entrar_suporte">
+          <i class="fa-solid fa-headset"></i> Entrar em modo suporte
+        </button>
+        ` : ""}
+
         <button class="agenda-menu-item" type="button" data-acao="editar_empresa">
           <i class="fa-regular fa-pen-to-square"></i> Editar
         </button>
@@ -229,6 +236,56 @@
         </button>
       </div>
     `;
+  }
+
+  async function entrarModoSuporte(card, botao) {
+    const idEmpresa = Number(card?.dataset?.id || 0);
+    const nomeEmpresa = String(card?.dataset?.nome || "esta empresa").trim();
+    const csrfToken = String(window.__AUTH__?.csrf_token || "").trim();
+
+    if (!Number.isInteger(idEmpresa) || idEmpresa <= 0 || !csrfToken) {
+      window.MensagemSistema.erro(
+        "Não foi possível validar sua sessão. Atualize a página e tente novamente."
+      );
+      return;
+    }
+
+    const confirmou = await window.MensagemSistema.confirmar(
+      `Deseja entrar em modo suporte na empresa ${nomeEmpresa}?`,
+      {
+        titulo: "Modo Suporte",
+        textoConfirmar: "Entrar em modo suporte",
+        textoCancelar: "Cancelar",
+      }
+    );
+    if (!confirmou) return;
+
+    if (botao) botao.disabled = true;
+    try {
+      const body = new URLSearchParams({ id_empresa: String(idEmpresa) });
+      const resp = await fetch(CFG.ENDPOINT_SUPORTE, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "X-CSRF-Token": csrfToken,
+        },
+        body,
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || json?.ok !== true) {
+        throw new Error(json?.user_msg || "Não foi possível iniciar o modo suporte.");
+      }
+
+      window.location.assign(json.data?.redirect || "/views/painel-administrativo/painel-administrativo.html");
+    } catch (erro) {
+      window.MensagemSistema.erro(
+        erro instanceof Error ? erro.message : "Não foi possível iniciar o modo suporte."
+      );
+      if (botao) botao.disabled = false;
+    }
   }
 
   function slugEmpresa(nome) {
@@ -402,45 +459,33 @@
         data-endereco="${C.escapeHtml(endereco)}"
         data-observacao="${C.escapeHtml(observacao)}">
 
-        <div class="agenda-hora">${C.escapeHtml(initials(nome))}</div>
+        <div class="super-lista-identidade">
+          <div class="agenda-hora">${C.escapeHtml(initials(nome))}</div>
 
-        <div class="agenda-info">
-          <div class="agenda-nome">${C.escapeHtml(nome)}</div>
+          <div class="agenda-info super-lista-conteudo">
+            <div class="agenda-nome">${C.escapeHtml(nome)}</div>
 
-          <div class="agenda-linha-extra">
-            <span class="agenda-duracao"><strong>ID:</strong> ${C.escapeHtml(String(id || "—"))}</span>
-          </div>
-
-          ${loginLink ? `
-            <div class="agenda-linha-extra">
-              <span class="agenda-duracao">
-                <strong>Link:</strong>
-                <a href="${C.escapeHtml(loginLink)}" target="_blank" rel="noopener noreferrer">
-                  ${C.escapeHtml(loginLink)}
-                </a>
-              </span>
+            <div class="super-lista-metadados">
+              <span class="super-lista-meta"><span class="super-lista-meta-label">ID</span><strong>${C.escapeHtml(String(id || "—"))}</strong></span>
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Plano</span><strong>${C.escapeHtml(plano)}</strong></span>
+              ${cnpj ? `<span class="super-lista-meta"><span class="super-lista-meta-label">CNPJ</span><strong>${C.escapeHtml(cnpj)}</strong></span>` : ""}
+              ${telefone ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone)}</strong></span>` : ""}
+              ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
+              ${loginLink ? `<span class="super-lista-meta super-lista-meta--link"><span class="super-lista-meta-label">Link</span><a href="${C.escapeHtml(loginLink)}" target="_blank" rel="noopener noreferrer">${C.escapeHtml(loginLink)}</a></span>` : ""}
             </div>
-          ` : ""}
-
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">${C.escapeHtml(plano)}</div>
-            ${cnpj ? `<div class="agenda-duracao">• ${C.escapeHtml(cnpj)}</div>` : ""}
-          </div>
-
-          <div class="agenda-linha-extra">
-            ${badgeStatus(status)}
-            ${telefone ? `<span class="agenda-duracao">• ${C.escapeHtml(telefone)}</span>` : ""}
-            ${email ? `<span class="agenda-duracao">• ${C.escapeHtml(email)}</span>` : ""}
           </div>
         </div>
 
-        <div class="agenda-acoes" aria-haspopup="menu">
-          <button class="agenda-btn-acoes" type="button"
-            data-acao="toggle-menu" aria-expanded="false" title="Ações">
-            ${iconAcoes()}
-          </button>
+        <div class="super-lista-status-acoes">
+          <div class="super-lista-status-grupo">${badgeStatus(status)}</div>
+          <div class="agenda-acoes" aria-haspopup="menu">
+            <button class="agenda-btn-acoes" type="button"
+              data-acao="toggle-menu" aria-expanded="false" title="Ações">
+              ${iconAcoes()}
+            </button>
 
-          ${buildMenuAcoes({ ...emp, status })}
+            ${buildMenuAcoes({ ...emp, status })}
+          </div>
         </div>
       </article>
     `;
@@ -960,6 +1005,11 @@
 
         if (acao === "editar_empresa") {
           abrirModalEditarEmpresaPeloCard(card);
+          return;
+        }
+
+        if (acao === "entrar_suporte") {
+          entrarModoSuporte(card, menuItem);
           return;
         }
 

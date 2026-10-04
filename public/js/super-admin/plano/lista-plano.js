@@ -404,38 +404,41 @@
         data-limite_recepcionistas="${C.escapeHtml(String(p.limite_recepcionistas ?? ""))}"
         data-limite_servicos="${C.escapeHtml(String(p.limite_servicos ?? ""))}"
         data-limite_agendamentos="${C.escapeHtml(String(p.limite_agendamentos ?? ""))}"
+        data-agenda_online="${C.escapeHtml(String(p.agenda_online ?? "1"))}"
+        data-gera_cobranca="${C.escapeHtml(String(p.gera_cobranca ?? "1"))}"
+        data-disponivel_cadastro_publico="${C.escapeHtml(String(p.disponivel_cadastro_publico ?? "1"))}"
         data-preco_mensal="${C.escapeHtml(String(p.preco_mensal ?? ""))}">
 
-        <div class="agenda-hora">${C.escapeHtml(initials(nome))}</div>
+        <div class="super-lista-identidade">
+          <div class="agenda-hora">${C.escapeHtml(initials(nome))}</div>
 
-        <div class="agenda-info">
-          <div class="agenda-nome">${C.escapeHtml(nome)}</div>
+          <div class="agenda-info super-lista-conteudo">
+            <div class="agenda-nome">${C.escapeHtml(nome)}</div>
 
-          <div class="agenda-servico-linha">
-            <div class="agenda-servico">${C.escapeHtml(valor)}</div>
-            ${limite ? `<div class="agenda-duracao">• ${C.escapeHtml(limite)}</div>` : ""}
-          </div>
+            <div class="super-lista-metadados">
+              <span class="super-lista-meta super-lista-meta--principal"><span class="super-lista-meta-label">Preço</span><strong>${C.escapeHtml(valor)}</strong></span>
+              ${limite ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Limites</span><strong>${C.escapeHtml(limite)}</strong></span>` : ""}
+              ${p.ref ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Referência</span><strong>${C.escapeHtml(p.ref)}</strong></span>` : ""}
+              ${p.created_at ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Cadastro</span><strong>${C.escapeHtml(String(p.created_at).split("-").reverse().join("/"))}</strong></span>` : ""}
+            </div>
 
-          <div class="agenda-linha-extra">
-            ${p.ref ? `<span class="agenda-duracao"><strong>Referência:</strong> ${C.escapeHtml(p.ref)}</span>` : ""}
-            ${p.created_at ? `<span class="agenda-duracao"><strong>Cadastro:</strong> ${C.escapeHtml(String(p.created_at).split("-").reverse().join("/"))}</span>` : ""}
-          </div>
-
-          ${p.descricao ? `<div class="agenda-linha-extra"><span class="agenda-duracao">${C.escapeHtml(p.descricao)}</span></div>` : ""}
-
-          <div class="agenda-linha-extra">
-            ${badgeStatus(status)}
-            ${badgeDestaque(destaque)}
+            ${p.descricao ? `<div class="super-lista-descricao">${C.escapeHtml(p.descricao)}</div>` : ""}
           </div>
         </div>
 
-        <div class="agenda-acoes" aria-haspopup="menu">
-          <button class="agenda-btn-acoes" type="button"
-            data-acao="toggle-menu" aria-expanded="false" title="Ações">
-            ${iconAcoes()}
-          </button>
+        <div class="super-lista-status-acoes">
+          <div class="super-lista-status-grupo">
+            ${badgeStatus(status)}
+            ${badgeDestaque(destaque)}
+          </div>
+          <div class="agenda-acoes" aria-haspopup="menu">
+            <button class="agenda-btn-acoes" type="button"
+              data-acao="toggle-menu" aria-expanded="false" title="Ações">
+              ${iconAcoes()}
+            </button>
 
-          ${buildMenuAcoes({ ...p, status })}
+            ${buildMenuAcoes({ ...p, status })}
+          </div>
         </div>
       </article>
     `;
@@ -462,6 +465,9 @@
     setVal("#e_limite_recepcionistas", card.dataset.limite_recepcionistas || "");
     setVal("#e_limite_servicos", card.dataset.limite_servicos || "");
     setVal("#e_limite_agendamentos", card.dataset.limite_agendamentos || "");
+    setVal("#e_agenda_online", card.dataset.agenda_online || "1");
+    setVal("#e_gera_cobranca", card.dataset.gera_cobranca || "1");
+    setVal("#e_disponivel_cadastro_publico", card.dataset.disponivel_cadastro_publico || "1");
     setVal("#e_status", statusFiltroNorm(card.dataset.status || "") || "ativo");
     setVal("#e_destaque", destaqueFiltroNorm(card.dataset.destaque || "") || "0");
     setVal("#e_descricao", card.dataset.descricao || "");
@@ -493,6 +499,9 @@
     const limiteRecepcionistas = card.dataset.limite_recepcionistas || "—";
     const limiteServicos = card.dataset.limite_servicos || "—";
     const limiteAgendamentos = card.dataset.limite_agendamentos || "—";
+    const agendaOnline = card.dataset.agenda_online === "1" ? "Disponível" : "Indisponível";
+    const geraCobranca = card.dataset.gera_cobranca === "1" ? "Sim" : "Não";
+    const disponivelCadastroPublico = card.dataset.disponivel_cadastro_publico === "1" ? "Sim" : "Não";
 
     const setText = (selector, value) => {
       const el = modalVisualizarPlano.querySelector(selector);
@@ -516,6 +525,9 @@
     setText("#vp_limite_recepcionistas", limiteRecepcionistas);
     setText("#vp_limite_servicos", limiteServicos);
     setText("#vp_limite_agendamentos", limiteAgendamentos);
+    setText("#vp_agenda_online", agendaOnline);
+    setText("#vp_gera_cobranca", geraCobranca);
+    setText("#vp_disponivel_cadastro_publico", disponivelCadastroPublico);
 
     setText("#vp_status", status || "—");
     setText("#vp_destaque", destaque);
@@ -1067,6 +1079,9 @@
       `Recepcionistas: ${valor(p.limite_recepcionistas)}`,
       `Serviços: ${valor(p.limite_servicos)}`,
       `Agendamentos/mês: ${valor(p.limite_agendamentos)}`,
+      `Agenda Online: ${Number(p.agenda_online) === 1 ? "Disponível" : "Indisponível"}`,
+      `Gera cobrança: ${Number(p.gera_cobranca) === 1 ? "Sim" : "Não"}`,
+      `Cadastro público: ${Number(p.disponivel_cadastro_publico) === 1 ? "Sim" : "Não"}`,
     ].join(" • ");
   }
 
@@ -1113,6 +1128,9 @@
         limite_recepcionistas: p.limite_recepcionistas ?? "",
         limite_servicos: p.limite_servicos ?? "",
         limite_agendamentos: p.limite_agendamentos ?? "",
+        agenda_online: p.agenda_online ?? 1,
+        gera_cobranca: p.gera_cobranca ?? 1,
+        disponivel_cadastro_publico: p.disponivel_cadastro_publico ?? 1,
         preco_mensal: p.preco_mensal ?? "",
       };
       })

@@ -225,7 +225,7 @@ try {
     exigirPermissao($conexao, $permissaoEdicao);
 
     $stmt = $conexao->prepare("
-        SELECT p.id_profissional, p.id_usuario, p.especialidade, u.nome
+        SELECT p.id_profissional, p.id_usuario, u.nome
         FROM profissional p
         INNER JOIN empresa_usuario eu
             ON eu.id_usuario = p.id_usuario
@@ -242,7 +242,7 @@ try {
 
     $stmt->bind_param('ii', $idEmpresaSessao, $idProfissionalSolicitado);
     $stmt->execute();
-    $stmt->bind_result($idProfissionalDb, $idUsuarioProfissionalDb, $especialidadeDb, $nomeProfissionalDb);
+    $stmt->bind_result($idProfissionalDb, $idUsuarioProfissionalDb, $nomeProfissionalDb);
 
     $profissionalEncontrado = $stmt->fetch();
     $stmt->close();

@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../_auth/require_auth.php';
 require_once __DIR__ . '/../../_auth/csrf.php';
 require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
 require_once __DIR__ . '/../../_gateways/mercado_pago.php';
+require_once __DIR__ . '/../../_servicos/assinatura.php';
 
 final class PagamentoOnlineErro extends RuntimeException
 {
@@ -59,11 +60,12 @@ function pagamentoOnlineExec(mysqli $db, string $sql, string $tipos, mixed ...$v
 
 function pagamentoOnlineGatewayTeste(): MercadoPagoGateway
 {
-    if (getenv('MERCADO_PAGO_AMBIENTE') !== 'teste') {
-        pagamentoOnlineFalhar('PIX_CONFIGURACAO', 'O pagamento PIX de teste não está configurado.', 503);
-    }
     try {
-        return MercadoPagoGateway::daConfiguracao();
+        $gateway = MercadoPagoGateway::daConfiguracao();
+        if ($gateway->ambiente() !== 'teste') {
+            throw new RuntimeException('Ambiente de teste indisponível.');
+        }
+        return $gateway;
     } catch (RuntimeException $e) {
         pagamentoOnlineFalhar('PIX_CONFIGURACAO', 'O pagamento PIX de teste não está configurado.', 503);
     }
@@ -71,11 +73,12 @@ function pagamentoOnlineGatewayTeste(): MercadoPagoGateway
 
 function pagamentoCartaoGatewayTeste(): MercadoPagoGateway
 {
-    if (getenv('MERCADO_PAGO_AMBIENTE') !== 'teste') {
-        pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão de teste não está configurado.', 503);
-    }
     try {
-        return MercadoPagoGateway::daConfiguracao();
+        $gateway = MercadoPagoGateway::daConfiguracao();
+        if ($gateway->ambiente() !== 'teste') {
+            throw new RuntimeException('Ambiente de teste indisponível.');
+        }
+        return $gateway;
     } catch (RuntimeException $e) {
         pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão de teste não está configurado.', 503);
     }
@@ -85,7 +88,7 @@ function pagamentoOnlineStatus(string $externo): string
 {
     return match ($externo) {
         'created', 'action_required' => 'aguardando',
-        'processing' => 'processando',
+        'processing', 'in_review' => 'processando',
         'processed' => 'confirmada',
         'expired' => 'expirada',
         'canceled' => 'cancelada',
@@ -94,11 +97,13 @@ function pagamentoOnlineStatus(string $externo): string
     };
 }
 
-function pagamentoOnlineCampo(?string $valor, int $maximo): ?string
+function pagamentoOnlineCampo(mixed $valor, int $maximo): ?string
 {
-    if ($valor === null || $valor === '' || strlen($valor) > $maximo
-        || !preg_match('/^[a-zA-Z0-9_.-]+$/D', $valor)) return null;
-    return $valor;
+    if (!is_string($valor) && !is_int($valor)) return null;
+    $texto = (string)$valor;
+    if ($texto === '' || strlen($texto) > $maximo
+        || !preg_match('/^[a-zA-Z0-9_.-]+$/D', $texto)) return null;
+    return $texto;
 }
 
 function pagamentoOnlineExpiracao(array $order, array $payment): ?string
@@ -154,7 +159,10 @@ function pagamentoOnlineAplicarOrder(mysqli $db, array $transacao, array $order)
     $payment = $order['transactions']['payments'][0] ?? [];
     $payment = is_array($payment) ? $payment : [];
     $paymentId = pagamentoOnlineCampo($payment['id'] ?? null, 150);
+    $statusPagamento = pagamentoOnlineCampo($payment['status'] ?? null, 50);
+    $detalhePagamento = pagamentoOnlineCampo($payment['status_detail'] ?? null, 100);
     $valorValido = false;
+    $valorPagamentoValido = false;
     if (is_string($valor)) {
         try {
             $valorValido = pagamentoGatewayValorCentavos($valor)
@@ -163,8 +171,16 @@ function pagamentoOnlineAplicarOrder(mysqli $db, array $transacao, array $order)
             $valorValido = false;
         }
     }
+    if (is_string($payment['amount'] ?? null)) {
+        try {
+            $valorPagamentoValido = pagamentoGatewayValorCentavos($payment['amount'])
+                === pagamentoGatewayValorCentavos((string)$transacao['valor']);
+        } catch (InvalidArgumentException $e) {
+            $valorPagamentoValido = false;
+        }
+    }
     if ($orderId === null || $referencia !== $transacao['referencia_interna']
-        || !$valorValido
+        || !$valorValido || !$valorPagamentoValido
         || (($transacao['ordem_externa_id'] ?? null) !== null && $transacao['ordem_externa_id'] !== $orderId)
         || (($transacao['pagamento_externo_id'] ?? null) !== null && $paymentId !== null
             && $transacao['pagamento_externo_id'] !== $paymentId)
@@ -181,6 +197,13 @@ function pagamentoOnlineAplicarOrder(mysqli $db, array $transacao, array $order)
         pagamentoOnlineFalhar('PIX_RESPOSTA_INVALIDA', 'Não foi possível validar o PIX. Tente consultar novamente.', 502);
     }
     $statusNovo = pagamentoOnlineStatus($statusExterno);
+    $confirmacaoValida = $statusNovo !== 'confirmada'
+        || ($detalheExterno === 'accredited' && $paymentId !== null
+            && $statusPagamento === 'processed' && $detalhePagamento === 'accredited');
+    if (!$confirmacaoValida) {
+        pagamentoOnlineMarcarConciliacao($db, $transacao, 'confirmacao_order_divergente');
+        pagamentoOnlineFalhar('PIX_CONCILIACAO', 'Este PIX precisa de verificação antes de uma nova tentativa.', 409);
+    }
     if ($statusNovo === 'conciliacao') {
         pagamentoOnlineMarcarConciliacao($db, $transacao, 'status_order_desconhecido');
         pagamentoOnlineFalhar('PIX_CONCILIACAO', 'Este PIX precisa de verificação antes de uma nova tentativa.', 409);
@@ -243,13 +266,41 @@ function pagamentoOnlineRegistrarErro(mysqli $db, array $transacao, string $codi
         'sii', $codigo, (int)$transacao['id_transacao'], (int)$transacao['id_empresa']);
 }
 
-function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $empresa, int $cobranca, string $email): array
+function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $empresa, int $cobranca, string $email, string $perfil = ''): array
 {
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar pagamento.');
     try {
         $c = pagamentoOnlineConsulta($db,
-            'SELECT valor,status FROM cobranca WHERE id_cobranca=? AND id_empresa=? FOR UPDATE', 'ii', $cobranca, $empresa)->fetch_assoc();
+            "SELECT c.id_assinatura,c.valor,c.status,c.finalidade,p.gera_cobranca,
+                    a.modalidade,a.teste_iniciado_em,a.teste_expira_em,
+                    a.status AS assinatura_status,a.motivo_suspensao,
+                    (a.teste_expira_em IS NOT NULL AND CURRENT_TIMESTAMP >= a.teste_expira_em) AS teste_expirado
+               FROM cobranca c
+               JOIN assinatura a
+                 ON a.id_assinatura=c.id_assinatura
+                 AND a.id_empresa=c.id_empresa
+               JOIN plano p
+                 ON p.id_plano=a.id_plano
+              WHERE c.id_cobranca=? AND c.id_empresa=?
+              FOR UPDATE", 'ii', $cobranca, $empresa)->fetch_assoc();
         if (!$c) pagamentoOnlineFalhar('COBRANCA_NAO_ENCONTRADA', 'Cobrança não encontrada.', 404);
+        if ($c['modalidade'] === 'teste') {
+            if ($c['teste_iniciado_em'] === null || $c['teste_expira_em'] === null) {
+                pagamentoOnlineFalhar('ASSINATURA_TRIAL_INCONSISTENTE', 'Os dados do período de teste da assinatura precisam de verificação.', 409);
+            }
+            // Única exceção em assinatura de teste: cobrança de conversão de trial expirado, paga pelo Proprietário
+            // (perfil vindo do vínculo autenticado) enquanto a assinatura está suspensa por expiração do teste.
+            $regularizacaoTrial = $perfil === 'proprietario'
+                && $c['finalidade'] === 'conversao_trial'
+                && $c['assinatura_status'] === 'suspensa'
+                && $c['motivo_suspensao'] === 'teste_expirado'
+                && (int)$c['teste_expirado'] === 1;
+            if (!$regularizacaoTrial) {
+                pagamentoOnlineFalhar('ASSINATURA_TRIAL_SEM_COBRANCA', 'Não é possível iniciar pagamento durante o período de teste.', 409);
+            }
+        } elseif ($c['modalidade'] !== 'paga') {
+            pagamentoOnlineFalhar('ASSINATURA_MODALIDADE_INVALIDA', 'A modalidade da assinatura precisa de verificação.', 409);
+        }
         if ($c['status'] === 'cancelada') pagamentoOnlineFalhar('COBRANCA_CANCELADA', 'Esta cobrança está cancelada.', 409);
         if ($c['status'] === 'paga') pagamentoOnlineFalhar('COBRANCA_PAGA', 'Esta cobrança já está paga.', 409);
         $pago = pagamentoOnlineConsulta($db,
@@ -272,6 +323,9 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
                 pagamentoOnlineFalhar('PIX_CONCILIACAO', 'Existe uma transação financeira que precisa de verificação.', 409);
             }
         } else {
+            if ((int)($c['gera_cobranca'] ?? 0) !== 1) {
+                pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite gerar um novo pagamento.', 409);
+            }
             $chave = pagamentoGatewayChaveIdempotencia();
             $referencia = pagamentoGatewayReferenciaInterna();
             pagamentoOnlineExec($db,
@@ -281,6 +335,9 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
             $transacao = ['id_transacao'=>$id,'id_empresa'=>$empresa,'id_cobranca'=>$cobranca,'valor'=>$valor,
                 'metodo'=>'pix','ambiente'=>'teste','status'=>'criada','chave_idempotencia'=>$chave,
                 'referencia_interna'=>$referencia,'ordem_externa_id'=>null,'pagamento_externo_id'=>null,'expira_em'=>null];
+        }
+        if ($transacao['ordem_externa_id'] === null && (int)($c['gera_cobranca'] ?? 0) !== 1) {
+            pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite gerar um novo pagamento.', 409);
         }
         if (!$db->commit()) throw new RuntimeException('Falha ao confirmar transação local.');
     } catch (Throwable $e) {
@@ -292,6 +349,12 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
         $dados = pagamentoOnlineConsultarGateway($db, $gateway, $transacao);
         $dados['reutilizado'] = true;
         return $dados;
+    }
+    if (!assinaturaServicoPlanoGeraCobranca($db, (int)$c['id_assinatura'])) {
+        pagamentoOnlineExec($db,
+            "UPDATE transacao_pagamento SET status='erro',erro_codigo='PLAN_NO_BILLING' WHERE id_transacao=? AND id_empresa=? AND ordem_externa_id IS NULL AND status IN ('criada','enviando')",
+            'ii', (int)$transacao['id_transacao'], (int)$transacao['id_empresa']);
+        pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite gerar um novo pagamento.', 409);
     }
     pagamentoOnlineExec($db,
         "UPDATE transacao_pagamento SET status='enviando',numero_tentativa=numero_tentativa+?,erro_codigo=NULL WHERE id_transacao=? AND id_empresa=? AND status IN ('criada','enviando')",
@@ -307,6 +370,12 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
         ]]],
         'payer' => ['email' => $email],
     ];
+    if (!assinaturaServicoPlanoGeraCobranca($db, (int)$c['id_assinatura'])) {
+        pagamentoOnlineExec($db,
+            "UPDATE transacao_pagamento SET status='erro',erro_codigo='PLAN_NO_BILLING' WHERE id_transacao=? AND id_empresa=? AND ordem_externa_id IS NULL AND status IN ('criada','enviando')",
+            'ii', (int)$transacao['id_transacao'], (int)$transacao['id_empresa']);
+        pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite gerar um novo pagamento.', 409);
+    }
     $resposta = $gateway->requisitar('criar_order', [], $payload, (string)$transacao['chave_idempotencia']);
     if (!($resposta['sucesso'] ?? false)) {
         pagamentoOnlineRegistrarErro($db, $transacao, (string)($resposta['codigo'] ?? 'falha_criacao'));
@@ -329,11 +398,76 @@ function pagamentoOnlineConsultar(mysqli $db, MercadoPagoGateway $gateway, int $
     return pagamentoOnlineConsultarGateway($db, $gateway, $transacao);
 }
 
+/**
+ * Inicia a regularização do trial expirado: cria ou reutiliza a única cobrança de conversão.
+ * O valor, a periodicidade e o vencimento vêm exclusivamente da assinatura persistida.
+ */
+function pagamentoOnlineRegularizar(mysqli $db, int $empresa, string $perfil, bool $modoRegularizacao): array
+{
+    if ($perfil !== 'proprietario') {
+        pagamentoOnlineFalhar('REGULARIZACAO_SOMENTE_PROPRIETARIO', 'Somente o Proprietário pode iniciar a regularização.', 403);
+    }
+    if (!$modoRegularizacao) {
+        pagamentoOnlineFalhar('REGULARIZACAO_INDISPONIVEL', 'A assinatura não está em modo de regularização.', 409);
+    }
+    if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar regularização.');
+    try {
+        try {
+            $cobranca = assinaturaServicoObterOuCriarCobrancaConversao($db, $empresa);
+        } catch (AssinaturaServicoConversaoErro $e) {
+            pagamentoOnlineFalhar($e->getMessage(), $e->mensagemUsuario, $e->httpStatus);
+        }
+        if ($cobranca['criada']) {
+            $depois = static fn (mixed $valor): array => ['antes' => null, 'depois' => $valor];
+            auditoriaRegistrar($db, 'cobranca.gerada', [
+                'entidade_id' => (int)$cobranca['id_cobranca'],
+                'entidade_rotulo' => 'Cobrança de conversão da assinatura #' . (int)$cobranca['id_assinatura'],
+                'descricao' => 'Gerou a cobrança de conversão do período de teste da assinatura #' . (int)$cobranca['id_assinatura'] . '.',
+                'alteracoes' => [
+                    'id_empresa' => $depois($empresa),
+                    'id_assinatura' => $depois((int)$cobranca['id_assinatura']),
+                    'periodo_inicio' => $depois((string)$cobranca['periodo_inicio']),
+                    'periodo_fim' => $depois((string)$cobranca['periodo_fim']),
+                    'data_vencimento' => $depois((string)$cobranca['data_vencimento']),
+                    'valor' => $depois((string)$cobranca['valor']),
+                    'status' => $depois((string)$cobranca['status']),
+                    'finalidade' => $depois('conversao_trial'),
+                ],
+                'contexto' => ['origem' => 'regularizacao_trial', 'origem_geracao' => 'proprietario'],
+            ]);
+        }
+        if (!$db->commit()) throw new RuntimeException('Falha ao confirmar regularização.');
+    } catch (Throwable $e) {
+        $db->rollback();
+        throw $e;
+    }
+
+    return [
+        'id_cobranca' => (int)$cobranca['id_cobranca'],
+        'id_assinatura' => (int)$cobranca['id_assinatura'],
+        'finalidade' => 'conversao_trial',
+        'periodo_inicio' => (string)$cobranca['periodo_inicio'],
+        'periodo_fim' => (string)$cobranca['periodo_fim'],
+        'data_vencimento' => (string)$cobranca['data_vencimento'],
+        'valor' => (string)$cobranca['valor'],
+        'status' => (string)$cobranca['status'],
+        'total_pago_confirmado' => (string)$cobranca['total_pago_confirmado'],
+        'saldo_restante' => (string)$cobranca['saldo_restante'],
+        'reutilizada' => !$cobranca['criada'],
+    ];
+}
+
 function pagamentoCartaoAssinaturaAtiva(mysqli $db, int $empresa, bool $bloquear = false): ?array
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     $linhas = pagamentoOnlineConsulta($db,
-        "SELECT id_assinatura,valor_contratado,status FROM assinatura WHERE id_empresa=? AND status='ativa' ORDER BY id_assinatura DESC{$sufixo}",
+        "SELECT a.id_assinatura,a.valor_contratado,a.status,p.gera_cobranca
+           FROM assinatura a
+           INNER JOIN plano p
+                   ON p.id_plano = a.id_plano
+          WHERE a.id_empresa=?
+            AND a.status IN ('ativa','suspensa')
+          ORDER BY a.id_assinatura DESC{$sufixo}",
         'i', $empresa)->fetch_all(MYSQLI_ASSOC);
     if (count($linhas) > 1) pagamentoOnlineFalhar('ASSINATURA_INCONSISTENTE', 'Não foi possível determinar sua assinatura vigente.', 409);
 
@@ -362,7 +496,9 @@ function pagamentoCartaoDadosPublicos(?array $vinculo, ?array $assinatura, ?stri
     $status = $vinculo['status'] ?? 'nao_configurado';
     return [
         'configurado' => $status === 'ativa' && (int)($vinculo['slot_ativo'] ?? 0) === 1,
-        'pode_configurar' => $assinatura !== null && !in_array($status, ['pendente', 'ativa', 'suspensa', 'atualizacao_necessaria', 'cancelamento_pendente'], true),
+        'pode_configurar' => $assinatura !== null
+            && (int)($assinatura['gera_cobranca'] ?? 0) === 1
+            && !in_array($status, ['pendente', 'ativa', 'suspensa', 'atualizacao_necessaria', 'cancelamento_pendente'], true),
         'status' => $status,
         'status_externo' => $vinculo['status_externo'] ?? null,
         'bandeira' => $vinculo['bandeira'] ?? null,
@@ -392,7 +528,10 @@ function pagamentoCartaoReservar(mysqli $db, int $empresa): array
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar autorização do cartão.');
     try {
         $assinatura = pagamentoCartaoAssinaturaAtiva($db, $empresa, true);
-        if (!$assinatura) pagamentoOnlineFalhar('ASSINATURA_INATIVA', 'É necessário possuir uma assinatura ativa para configurar o cartão.', 409);
+        if (!$assinatura) pagamentoOnlineFalhar('ASSINATURA_INATIVA', 'Não há assinatura ativa para configurar o pagamento recorrente.', 409);
+        if ((int)($assinatura['gera_cobranca'] ?? 0) !== 1) {
+            pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
+        }
         $bloqueios = pagamentoOnlineConsulta($db,
             "SELECT id_assinatura_pagamento,status FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente='teste' AND status IN ('pendente','ativa','suspensa','atualizacao_necessaria','cancelamento_pendente') ORDER BY id_assinatura_pagamento DESC FOR UPDATE",
             'i', $empresa)->fetch_all(MYSQLI_ASSOC);
@@ -455,6 +594,10 @@ function pagamentoCartaoObterCliente(mysqli $db, MercadoPagoGateway $gateway, ar
     $existente = pagamentoCartaoIdExterno($vinculo['cliente_externo_id'] ?? null);
     if ($existente !== null) return $existente;
 
+    if (!assinaturaServicoPlanoGeraCobranca($db, (int)$vinculo['id_assinatura'])) {
+        pagamentoCartaoMarcarErro($db, $vinculo, 'PLAN_NO_BILLING');
+        pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
+    }
     $busca = $gateway->requisitar('buscar_cliente', ['email'=>$email]);
     if (!($busca['sucesso'] ?? false)) {
         pagamentoOnlineFalhar('CARTAO_CLIENTE_INDISPONIVEL', 'Não foi possível localizar seu cadastro de pagamento agora.', 503);
@@ -474,6 +617,10 @@ function pagamentoCartaoObterCliente(mysqli $db, MercadoPagoGateway $gateway, ar
     }
     $cliente = $correspondentes ? (string)reset($correspondentes) : null;
     if ($cliente === null) {
+        if (!assinaturaServicoPlanoGeraCobranca($db, (int)$vinculo['id_assinatura'])) {
+            pagamentoCartaoMarcarErro($db, $vinculo, 'PLAN_NO_BILLING');
+            pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
+        }
         $criacao = $gateway->requisitar('criar_cliente', [], ['email'=>$email]);
         if (!($criacao['sucesso'] ?? false)) {
             if (($criacao['codigo'] ?? '') === 'provedor_rejeitou') pagamentoCartaoMarcarErro($db, $vinculo, 'CUSTOMER_REJECTED');
@@ -565,6 +712,10 @@ function pagamentoCartaoAutorizar(mysqli $db, MercadoPagoGateway $gateway, int $
     $bandeira = strtolower($bandeira);
     if (!preg_match('/^[a-z0-9_]{2,30}$/D', $bandeira)) pagamentoOnlineFalhar('CARTAO_BANDEIRA_INVALIDA', 'Não foi possível identificar a bandeira do cartão.', 422);
     $vinculo = pagamentoCartaoReservar($db, $empresa);
+    if (!assinaturaServicoPlanoGeraCobranca($db, (int)$vinculo['id_assinatura'])) {
+        pagamentoCartaoMarcarErro($db, $vinculo, 'PLAN_NO_BILLING');
+        pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
+    }
     $cliente = pagamentoCartaoObterCliente($db, $gateway, $vinculo, $email);
     $payload = [
         'description' => 'AmAgenda vinculo ' . (int)$vinculo['id_assinatura_pagamento'],
@@ -577,6 +728,10 @@ function pagamentoCartaoAutorizar(mysqli $db, MercadoPagoGateway $gateway, int $
             'default_method' => true,
         ]],
     ];
+    if (!assinaturaServicoPlanoGeraCobranca($db, (int)$vinculo['id_assinatura'])) {
+        pagamentoCartaoMarcarErro($db, $vinculo, 'PLAN_NO_BILLING');
+        pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
+    }
     $resposta = $gateway->requisitar('criar_perfil', ['customer_id'=>$cliente], $payload, (string)$vinculo['chave_idempotencia_criacao']);
     $payload['payment_methods'][0]['token'] = '';
     if (function_exists('sodium_memzero')) sodium_memzero($token); else $token = '';
@@ -662,10 +817,22 @@ try {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             pagamentoOnlineFalhar('EMAIL_INDISPONIVEL', 'Seu e-mail de acesso precisa ser válido para gerar o PIX.', 422);
         }
-        $dados = pagamentoOnlineIniciar($conexao, pagamentoOnlineGatewayTeste(), $empresa, $id, $email);
+        $dados = pagamentoOnlineIniciar($conexao, pagamentoOnlineGatewayTeste(), $empresa, $id, $email, (string)($contexto['perfil'] ?? ''));
         out(['ok'=>true,'code'=>$dados['reutilizado'] ? 'PIX_REUTILIZADO' : 'PIX_CRIADO',
             'user_msg'=>$dados['reutilizado'] ? 'PIX existente reutilizado com segurança.' : 'PIX criado com sucesso.',
             'data'=>$dados]);
+    }
+    if ($rota === 'painel/faturamento/regularizacao/cobranca' && $metodo === 'POST') {
+        csrfValidarSessao();
+        $dados = pagamentoOnlineRegularizar(
+            $conexao,
+            $empresa,
+            (string)($contexto['perfil'] ?? ''),
+            (bool)($_SESSION['auth']['modo_regularizacao'] ?? false)
+        );
+        out(['ok'=>true,'code'=>$dados['reutilizada'] ? 'COBRANCA_CONVERSAO_REUTILIZADA' : 'COBRANCA_CONVERSAO_CRIADA',
+            'user_msg'=>$dados['reutilizada'] ? 'Cobrança de regularização já existente.' : 'Cobrança de regularização gerada com sucesso.',
+            'data'=>$dados], $dados['reutilizada'] ? 200 : 201);
     }
     if ($rota === 'painel/faturamento/pagamento/transacao' && $metodo === 'GET') {
         exigirPermissao($conexao, 'faturamento.visualizar', $contexto);

@@ -117,8 +117,10 @@
     campos.especialidadeWrap.hidden = !mostrar;
     campos.especialidadeWrap.style.display = mostrar ? "" : "none";
 
-    if (!mostrar && campos.especialidade) {
-      campos.especialidade.value = "";
+    if (campos.especialidade) {
+      campos.especialidade.required = mostrar;
+      campos.especialidade.disabled = !mostrar;
+      campos.especialidade.readOnly = false;
     }
   }
 
@@ -182,13 +184,8 @@
   function montarFormData() {
     const fd = new FormData();
     fd.append("id_usuario", campos.id_usuario?.value?.trim() || "");
-    fd.append("nome", campos.nome?.value?.trim() || "");
     fd.append("perfil", campos.perfil?.value?.trim() || "");
     fd.append("especialidade", campos.especialidade?.value?.trim() || "");
-    fd.append("email", campos.email?.value?.trim() || "");
-    fd.append("telefone", campos.telefone?.value?.trim() || "");
-    fd.append("senha", campos.senha?.value || "");
-    fd.append("senha2", campos.senha2?.value || "");
     fd.append("status", campos.status?.value?.trim() || "");
 
     return fd;
@@ -243,6 +240,10 @@
 
     try {
       const formData = montarFormData();
+      const csrf = String(window.__AUTH__?.csrf_token || "");
+      if (!/^[a-f0-9]{64}$/.test(csrf)) {
+        throw new Error("Atualize a página para renovar sua sessão.");
+      }
 
       const resp = await fetch(ENDPOINT, {
         method: "POST",
@@ -250,6 +251,7 @@
         credentials: "same-origin",
         headers: {
           "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-Token": csrf,
         },
       });
 

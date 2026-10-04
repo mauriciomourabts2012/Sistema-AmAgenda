@@ -6,6 +6,9 @@ RewriteRule ^backend/ - [F,L]
 # Se já estiver em /public/, não reescreve
 RewriteRule ^public/ - [L]
 
+# /agendar/{slug} -> resolvedor da empresa/Agenda Online
+RewriteRule ^agendar/[^/]+/?$ public/login.php [QSD,L]
+
 # /api/... -> /public/api/...
 RewriteRule ^api/(.*)$ public/api/$1 [L]
 

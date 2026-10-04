@@ -356,6 +356,58 @@
   padding: 14px;
 }
 
+/* ===== RESUMO DO DIA: filtro de data ===== */
+#resumo .resumo-filtro-data{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
+#resumo .resumo-filtro-controles{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#resumo .resumo-filtro-label{
+  color: #36577c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#resumo .resumo-filtro-input{
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid #d5e1ef;
+  border-radius: 10px;
+  background: #fff;
+  color: #173b63;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+#resumo .resumo-filtro-input:focus{
+  border-color: #1163dd;
+  box-shadow: 0 0 0 3px rgba(17, 99, 221, .18);
+  outline: none;
+}
+
+#resumo .resumo-filtro-hoje{
+  min-height: 40px;
+  border: 1px solid #d5e1ef;
+  background: #fff;
+  color: #173b63;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+#resumo .resumo-filtro-hoje:hover{ border-color: #acc7e6; background: #f5f9ff; }
+#resumo .resumo-filtro-hoje[aria-pressed="true"]{ border-color: #acc7e6; background: #eef5ff; color: #1163dd; }
+
 /* ===== KPIs (cards) ===== */
 #resumo .resumo-cards{
   display: grid;

@@ -39,9 +39,11 @@ function faturamentoDecimal(mixed $valor): float { return round((float)$valor, 2
 function faturamentoAssinatura(mysqli $db, int $empresa): ?array {
     $stmt = $db->prepare("SELECT a.id_assinatura, a.id_plano, p.nome AS plano, a.valor_contratado,
         a.periodicidade, a.dia_vencimento, DATE_FORMAT(a.data_inicio,'%Y-%m-%d') AS data_inicio,
-        DATE_FORMAT(a.data_fim,'%Y-%m-%d') AS data_fim, a.status
+        DATE_FORMAT(a.data_fim,'%Y-%m-%d') AS data_fim, a.status, a.modalidade, a.motivo_suspensao
         FROM assinatura a LEFT JOIN plano p ON p.id_plano=a.id_plano
-        WHERE a.id_empresa=? AND a.status='ativa' ORDER BY a.id_assinatura DESC");
+        WHERE a.id_empresa=? AND (a.status='ativa'
+            OR (a.status='suspensa' AND a.modalidade='teste' AND a.motivo_suspensao='teste_expirado'))
+        ORDER BY a.id_assinatura DESC");
     if (!$stmt) throw new RuntimeException('Falha ao preparar assinatura.');
     $stmt->bind_param('i', $empresa);
     if (!$stmt->execute()) { $stmt->close(); throw new RuntimeException('Falha ao consultar assinatura.'); }
@@ -54,7 +56,9 @@ function faturamentoAssinatura(mysqli $db, int $empresa): ?array {
     return ['id_assinatura'=>(int)$r['id_assinatura'],'plano'=>$r['plano'] === null ? null : (string)$r['plano'],
         'valor_contratado'=>faturamentoDecimal($r['valor_contratado']),'periodicidade'=>(string)$r['periodicidade'],
         'dia_vencimento'=>(int)$r['dia_vencimento'],'data_inicio'=>(string)$r['data_inicio'],
-        'data_fim'=>$r['data_fim'] === null ? null : (string)$r['data_fim'],'status'=>(string)$r['status']];
+        'data_fim'=>$r['data_fim'] === null ? null : (string)$r['data_fim'],'status'=>(string)$r['status'],
+        'modalidade'=>(string)$r['modalidade'],'motivo_suspensao'=>$r['motivo_suspensao'] === null ? null : (string)$r['motivo_suspensao'],
+        'em_regularizacao'=>(string)$r['status']==='suspensa'];
 }
 
 function faturamentoCobrancas(mysqli $db, int $empresa): void {
@@ -74,10 +78,10 @@ function faturamentoCobrancas(mysqli $db, int $empresa): void {
     foreach ([['vencimento_de','>='],['vencimento_ate','<=']] as [$key,$op]) if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET[$key] ?? ''))) { $where[]="c.data_vencimento {$op} ?"; $vals[]=(string)$_GET[$key]; $types.='s'; }
     $from = " FROM cobranca c INNER JOIN assinatura a ON a.id_assinatura=c.id_assinatura LEFT JOIN plano p ON p.id_plano=a.id_plano LEFT JOIN (SELECT id_cobranca,SUM(CASE WHEN status='confirmado' THEN valor_pago ELSE 0 END) total_pago FROM pagamento GROUP BY id_cobranca) pg ON pg.id_cobranca=c.id_cobranca WHERE ".implode(' AND ',$where);
     $stmt=$db->prepare("SELECT COUNT(*) total {$from}"); if (!$stmt) throw new RuntimeException('Falha ao preparar total.'); faturamentoBind($stmt,$types,$vals); $stmt->execute(); $total=(int)$stmt->get_result()->fetch_assoc()['total']; $stmt->close();
-    $sql="SELECT c.id_cobranca,c.id_assinatura,p.nome plano,c.periodo_inicio,c.periodo_fim,c.data_vencimento,c.valor,c.status,COALESCE(pg.total_pago,0) total_pago,c.criado_em {$from} ORDER BY c.data_vencimento DESC,c.id_cobranca DESC LIMIT ? OFFSET ?";
+    $sql="SELECT c.id_cobranca,c.id_assinatura,p.nome plano,c.periodo_inicio,c.periodo_fim,c.data_vencimento,c.valor,c.status,c.finalidade,COALESCE(pg.total_pago,0) total_pago,c.criado_em {$from} ORDER BY c.data_vencimento DESC,c.id_cobranca DESC LIMIT ? OFFSET ?";
     $stmt=$db->prepare($sql); if (!$stmt) throw new RuntimeException('Falha ao preparar cobranças.'); $vals[]=$limit; $vals[]=$offset; faturamentoBind($stmt,$types.'ii',$vals); $stmt->execute(); $res=$stmt->get_result(); $items=[]; $hoje=date('Y-m-d');
     while ($r=$res->fetch_assoc()) { $valor=faturamentoDecimal($r['valor']); $pago=faturamentoDecimal($r['total_pago']); // vencida é situação calculada, nunca persistida.
-        $items[]=['id_cobranca'=>(int)$r['id_cobranca'],'id_assinatura'=>(int)$r['id_assinatura'],'plano'=>$r['plano']===null?null:(string)$r['plano'],'periodo_inicio'=>(string)$r['periodo_inicio'],'periodo_fim'=>(string)$r['periodo_fim'],'data_vencimento'=>(string)$r['data_vencimento'],'valor'=>$valor,'status'=>(string)$r['status'],'situacao'=>$r['status']==='pendente' && (string)$r['data_vencimento']<$hoje?'vencida':(string)$r['status'],'total_pago_confirmado'=>$pago,'saldo_restante'=>max(0,round($valor-$pago,2)),'criado_em'=>$r['criado_em']===null?null:(string)$r['criado_em']]; }
+        $items[]=['id_cobranca'=>(int)$r['id_cobranca'],'id_assinatura'=>(int)$r['id_assinatura'],'plano'=>$r['plano']===null?null:(string)$r['plano'],'periodo_inicio'=>(string)$r['periodo_inicio'],'periodo_fim'=>(string)$r['periodo_fim'],'data_vencimento'=>(string)$r['data_vencimento'],'valor'=>$valor,'status'=>(string)$r['status'],'finalidade'=>(string)$r['finalidade'],'situacao'=>$r['status']==='pendente' && (string)$r['data_vencimento']<$hoje?'vencida':(string)$r['status'],'total_pago_confirmado'=>$pago,'saldo_restante'=>max(0,round($valor-$pago,2)),'criado_em'=>$r['criado_em']===null?null:(string)$r['criado_em']]; }
     $stmt->close(); out(['ok'=>true,'code'=>'COBRANCAS_LISTADAS','user_msg'=>'Cobranças listadas com sucesso.','data'=>['items'=>$items,'page'=>$page,'limit'=>$limit,'total'=>$total,'total_pages'=>$total===0?0:(int)ceil($total/$limit)]]);
 }
 

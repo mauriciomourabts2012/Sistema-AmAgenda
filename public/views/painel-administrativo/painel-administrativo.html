@@ -7,17 +7,17 @@
   <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
   
   <!--CSS WEB-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20260818_2"/>
+  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20261004_2"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260917_2"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20261003_4"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
   <!--CSS MOBILE-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20260818_1"/>
+  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20261004_4"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20260917_2"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20261003_4"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
 
@@ -25,7 +25,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
   
   <!--Verifica se usuario esta logado se não redireciona para tela de login e tabem informa no cabeçalho a data atual e nome da emresa loada-->
-  <script src="/public/_auth/sessao.js?v=20260818_1"></script>
+  <script src="/public/_auth/sessao.js?v=20261003_1"></script>
   <script src="/public/_auth/permissoes.js?v=20260821_1"></script>
   <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
 </head>
@@ -81,6 +81,15 @@
       </div>
 
       <div class="cabecalho-direita">
+        <div id="indicadorModoSuporte" class="cabecalho-modo-suporte" role="status" hidden>
+          <button class="cabecalho-modo-suporte-acionador" type="button" aria-label="Exibir detalhes do Modo Suporte" title="Modo Suporte ativo">
+            <i class="fa-solid fa-headset" aria-hidden="true"></i>
+          </button>
+          <div class="cabecalho-modo-suporte-conteudo">
+            <span><i class="fa-solid fa-headset" aria-hidden="true"></i> Modo Suporte — <strong id="nomeEmpresaModoSuporte">Empresa</strong></span>
+            <button id="btnSairModoSuporte" class="botao-geral pequeno" type="button">Sair do modo suporte</button>
+          </div>
+        </div>
         <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
           <i class="fa-regular fa-bell" aria-hidden="true"></i>
         </button>
@@ -103,6 +112,15 @@
 
             <!-- CONTEÚDO DO RESUMO -->
             <div class="painel-resumo">
+
+                <!-- Filtro de data do Resumo do dia (lista-resumo-dia.js) -->
+                <div class="resumo-filtro-data" role="group" aria-label="Data do Resumo do dia">
+                    <div class="resumo-filtro-controles">
+                        <label for="resumoData" class="resumo-filtro-label">Data</label>
+                        <input id="resumoData" class="input-filtro resumo-filtro-input" type="date" min="2000-01-01" max="2100-12-31">
+                        <button id="resumoDataHoje" class="botao-geral resumo-filtro-hoje" type="button" aria-pressed="true"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Hoje</button>
+                    </div>
+                </div>
 
                 <!-- Exemplo de cards KPI -->
                 <div class="resumo-cards">
@@ -1089,7 +1107,7 @@
               <!-- Especialidade (somente se perfil = profissional) -->
               <div class="modal-campo modal-campo-full" id="campo_especialidade" hidden style="display:none;">
               
-                  <input id="u_especialidade"  name="especialidade"  type="text" placeholder="" />
+                  <input id="u_especialidade" name="especialidade" type="text" placeholder="" maxlength="120" />
                   <label for="u_especialidade">Especialidade (aparece no agendamento online)</label>
 
                   <small class="msg-erro" data-erro-for="u_especialidade"></small>
@@ -1119,15 +1137,15 @@
 
               <!-- Senha -->
               <div class="modal-campo">
-                  <input id="u_senha" name="senha" type="password" placeholder="" minlength="6" maxlength="60" autocomplete="new-password" required>
-                  <label for="u_senha">Senha</label>
+                  <input id="u_senha" name="senha" type="password" placeholder="" minlength="6" maxlength="60" autocomplete="new-password">
+                  <label for="u_senha">Senha (somente para usuário novo)</label>
                   <small class="msg-erro" data-erro-for="u_senha"></small>
               </div>
 
               <!-- Confirmar senha -->
               <div class="modal-campo">
-                  <input id="u_senha2" name="senha2" type="password" placeholder="" minlength="6" maxlength="60" autocomplete="new-password" required>
-                  <label for="u_senha2">Confirmar senha</label>
+                  <input id="u_senha2" name="senha2" type="password" placeholder="" minlength="6" maxlength="60" autocomplete="new-password">
+                  <label for="u_senha2">Confirmar senha do usuário novo</label>
                   <small class="msg-erro" data-erro-for="u_senha2"></small>
               </div>
 
@@ -1175,8 +1193,8 @@
 
               <!-- Nome -->
               <div class="modal-campo">
-                <input id="u_e_nome" name="nome" type="text" placeholder="" required maxlength="120">
-                <label for="u_e_nome">Nome</label>
+                <input id="u_e_nome" name="nome" type="text" placeholder="" readonly maxlength="120">
+                <label for="u_e_nome">Nome (identidade global)</label>
                 <small class="msg-erro" data-erro-for="u_e_nome"></small>
               </div>
 
@@ -1192,7 +1210,7 @@
               <!-- Especialidade (somente se perfil = profissional) -->
               <div class="modal-campo modal-campo-full" id="campo_especialidade_editar" hidden style="display:none;">
 
-                <input id="u_e_especialidade" name="especialidade" type="text" placeholder="" />
+                <input id="u_e_especialidade" name="especialidade" type="text" placeholder="" maxlength="120" />
                 <label for="u_e_especialidade">Especialidade (aparece no agendamento online)</label>
 
                 <small class="msg-erro" data-erro-for="u_e_especialidade"></small>
@@ -1208,30 +1226,16 @@
 
               <!-- E-mail (login) -->
               <div class="modal-campo">
-                <input id="u_e_email" name="email" type="email" placeholder="" required maxlength="160" autocomplete="username">
-                <label for="u_e_email">E-mail (login)</label>
+                <input id="u_e_email" name="email" type="email" placeholder="" readonly maxlength="160" autocomplete="username">
+                <label for="u_e_email">E-mail global (somente leitura)</label>
                 <small class="msg-erro" data-erro-for="u_e_email"></small>
               </div>
 
               <!-- WhatsApp -->
               <div class="modal-campo">
-                <input id="u_e_tel" name="telefone" type="tel" placeholder="" required maxlength="20" autocomplete="tel">
-                <label for="u_e_tel">Telefone (WhatsApp)</label>
+                <input id="u_e_tel" name="telefone" type="tel" placeholder="" readonly maxlength="20" autocomplete="tel">
+                <label for="u_e_tel">Telefone global (somente leitura)</label>
                 <small class="msg-erro" data-erro-for="u_e_tel"></small>
-              </div>
-
-              <!-- Senha (no editar é opcional) -->
-              <div class="modal-campo">
-                <input id="u_e_senha" name="senha" type="password" placeholder="" minlength="6" maxlength="60" autocomplete="new-password">
-                <label for="u_e_senha">Nova senha (opcional)</label>
-                <small class="msg-erro" data-erro-for="u_e_senha"></small>
-              </div>
-
-              <!-- Confirmar senha (no editar é opcional) -->
-              <div class="modal-campo">
-                <input id="u_e_senha2" name="senha2" type="password" placeholder="" minlength="6" maxlength="60" autocomplete="new-password">
-                <label for="u_e_senha2">Confirmar nova senha</label>
-                <small class="msg-erro" data-erro-for="u_e_senha2"></small>
               </div>
 
               <!-- STATUS -->
@@ -1305,7 +1309,6 @@
           <div id="cardPaymentBrick_container" class="cartao-brick" aria-live="polite"></div>
           <div id="cartaoBrickErro" class="faturamento-estado faturamento-estado--erro" hidden><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span><div><strong>Não foi possível carregar o formulário seguro.</strong><p>Tente novamente mais tarde.</p></div></div>
         </div>
-        <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Cancelar</button></div>
       </div>
     </div>
 
@@ -1450,8 +1453,8 @@
  
 
   <!--ABA RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=20260818_6"></script> <!--DADOS RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=20260917_1"></script>
+  <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=20261003_1"></script> <!--DADOS RESUMO DO DIA -->
+  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=20261001_1"></script>
   <script src="https://sdk.mercadopago.com/js/v2"></script>
   <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=20260917_2"></script>
 
@@ -1698,8 +1701,10 @@
 
       if (esp) {
         esp.required = mostrarEspecialidade;
+        esp.disabled = !mostrarEspecialidade;
+        esp.readOnly = false;
 
-        if (!mostrarEspecialidade) {
+        if (!mostrarEspecialidade && cfg.MODAL_ID === "modalNovoUsuario") {
           esp.value = "";
         }
       }

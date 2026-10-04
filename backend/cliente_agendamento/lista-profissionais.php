@@ -10,7 +10,7 @@ try {
 
     $stmt = $conexao->prepare(
         "SELECT DISTINCT p.id_profissional, u.nome, u.foto_perfil,
-                p.especialidade, p.descricao
+                eu.especialidade_profissional AS especialidade, p.descricao
            FROM profissional p
            INNER JOIN usuario u
                    ON u.id_usuario = p.id_usuario

@@ -267,7 +267,7 @@ try {
         SELECT
             p.id_profissional,
             p.id_usuario,
-            p.especialidade,
+            eu.especialidade_profissional AS especialidade,
             p.descricao,
             u.nome,
             u.email,

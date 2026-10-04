@@ -227,7 +227,7 @@ $empresaId = (int)$_SESSION['empresa_id'];
             </h2>
 
             <p>
-              Escolha uma opção para continuar
+              Acesse seus agendamentos como cliente
             </p>
 
           </div>
@@ -242,7 +242,7 @@ $empresaId = (int)$_SESSION['empresa_id'];
           >
 
             <p class="cliente-sub">
-              Escolha uma opção abaixo para continuar.
+              Continue com seu telefone para receber o código de acesso.
             </p>
 
             <button
@@ -269,46 +269,6 @@ $empresaId = (int)$_SESSION['empresa_id'];
               Continuar com telefone
 
             </button>
-
-            <div
-              class="login-divisor"
-              aria-hidden="true"
-            >
-              <span>ou</span>
-            </div>
-
-            <a
-              href="../views/login-empresa.php"
-              class="cliente-link"
-            >
-
-              <svg
-                class="login-icone"
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <rect
-                  x="4"
-                  y="10"
-                  width="16"
-                  height="11"
-                  rx="2"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-
-                <path
-                  d="M8 10V7a4 4 0 0 1 8 0v3"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
-
-              Acesso restrito • login com senha
-
-            </a>
 
             <p class="cliente-termos">
               Ao continuar você aceita os

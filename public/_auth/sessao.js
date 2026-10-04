@@ -1,6 +1,7 @@
 /* ==========================================================
    sessao.js — Verifica sessão (AmAgenda) ✅
-   - Se NÃO estiver logado: redireciona para /public/views/login-cliente.php
+   - Se NÃO estiver logado: redireciona para o login interno central
+     (/public/views/login-empresa.php). Páginas de Super Admin mantêm o destino anterior.
    - Endpoint: /api/api_central.php?path=_auth/session
    - IMPORTANTE: credentials: "include" (cookie PHPSESSID)
    - Expõe dados da sessão e mostra nome da empresa no header
@@ -14,7 +15,11 @@
   "use strict";
 
   const API_BASE = "/api/api_central.php";
-  const LOGIN_URL = "/public/views/login-cliente.php";
+  // Páginas internas do usuário usam o login central (sem exigir link de empresa).
+  // As páginas de Super Admin preservam o destino anterior.
+  const LOGIN_URL = String(window.location.pathname || "").toLowerCase().includes("/super-admin/")
+    ? "/public/views/login-super-admin.html"
+    : "/public/views/login-empresa.php";
   const ACEITE_URL = "/views/documentos-legais/aceite-documentos.html";
 
   function caminhoAtual() {
@@ -49,6 +54,49 @@
     if (String(empresaNome).trim()) {
       elNomeEmpresa.textContent = String(empresaNome).trim();
     }
+  }
+
+  function aplicarModoSuporte(auth) {
+    const indicador = document.getElementById("indicadorModoSuporte");
+    const nome = document.getElementById("nomeEmpresaModoSuporte");
+    const sair = document.getElementById("btnSairModoSuporte");
+    if (!indicador || !nome || !sair) return;
+
+    const ativo = String(auth?.tipo_usuario || "").toLowerCase() === "super_admin"
+      && auth?.modo_suporte === true
+      && Number(auth?.empresa_id || 0) > 0;
+    if (!ativo) {
+      indicador.hidden = true;
+      return;
+    }
+
+    nome.textContent = String(auth?.empresa_nome || "Empresa").trim() || "Empresa";
+    indicador.hidden = false;
+    if (sair.dataset.suporteBound === "1") return;
+    sair.dataset.suporteBound = "1";
+
+    sair.addEventListener("click", async () => {
+      sair.disabled = true;
+      try {
+        const resp = await fetch(`${API_BASE}?path=superadmin/suporte/sair`, {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+            "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
+          },
+        });
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok || json?.ok !== true) {
+          throw new Error(json?.user_msg || "Não foi possível finalizar o modo suporte.");
+        }
+        window.location.assign(json.data?.redirect || "/views/super-admin/painel-super-admin.html");
+      } catch (erro) {
+        alert(erro instanceof Error ? erro.message : "Não foi possível finalizar o modo suporte.");
+        sair.disabled = false;
+      }
+    });
   }
 
   /**
@@ -131,6 +179,7 @@
         if (redirecionou) return;
 
         aplicarDadosSessao(auth);
+        aplicarModoSuporte(auth);
 
       } catch (e) {
         window.location.replace(LOGIN_URL);

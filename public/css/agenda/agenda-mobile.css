@@ -1,6 +1,14 @@
 
 @media (max-width: 960px){
 
+  .agenda-online-compartilhar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .agenda-online-endereco { grid-column: 1 / -1; grid-row: 2; }
+  .agenda-online-acoes { grid-column: 2; grid-row: 1; }
+
   :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-agenda{
     padding: 9px 12px;
     margin-bottom: 6px;
@@ -317,6 +325,20 @@
   }
 
   .agenda-painel-global { width: 100%; flex: none; gap: 10px; }
+  .agenda-online-compartilhar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+  .agenda-online-apresentacao,
+  .agenda-online-endereco,
+  .agenda-online-acoes {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .agenda-online-endereco { width: 100%; }
+  .agenda-online-acoes { width: 100%; justify-content: stretch; }
+  .agenda-online-acoes .botao-geral { flex: 1 1 0; min-width: 0; }
+  .agenda-online-acoes .botao-geral span { overflow: hidden; text-overflow: ellipsis; }
   .agenda-ferramentas-global {
     width: 100%;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1092,4 +1114,124 @@
   display: block;
   object-fit: cover;
   border-radius: 50%;
+}
+
+/* ==========================================================
+   COMPONENTE COMPARTILHADO: INDICADOR MODO SUPORTE — MOBILE
+   ========================================================== */
+@media (max-width: 820px){
+
+  .cabecalho-modo-suporte{
+    max-width:min(62vw, 360px);
+    flex-wrap:wrap;
+    gap:6px;
+    padding:6px 8px;
+    font-size:11px;
+  }
+
+  .cabecalho-modo-suporte .botao-geral{
+    padding:7px 8px;
+    font-size:11px;
+  }
+}
+
+@media (max-width: 450px){
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-direita{
+    overflow:visible;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte{
+    position:static;
+    width:44px;
+    max-width:none;
+    min-width:0;
+    height:44px;
+    flex:0 0 44px;
+    padding:0;
+    border:0;
+    background:transparent;
+    overflow:visible;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-acionador{
+    position:relative;
+    width:44px;
+    height:44px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    border:1px solid #f59e0b;
+    border-radius:12px;
+    background:#fffbeb;
+    color:#92400e;
+    font-size:17px;
+    cursor:pointer;
+    box-shadow:0 7px 16px rgba(146, 64, 14, .16);
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-acionador::after{
+    content:"";
+    position:absolute;
+    top:5px;
+    right:5px;
+    width:8px;
+    height:8px;
+    border:2px solid #fffbeb;
+    border-radius:50%;
+    background:#ef4444;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-acionador:focus-visible{
+    outline:3px solid rgba(245, 158, 11, .3);
+    outline-offset:2px;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-conteudo{
+    position:absolute;
+    top:calc(100% + 8px);
+    left:50%;
+    right:auto;
+    z-index:1100;
+    width:min(360px, calc(100% - 24px));
+    display:none;
+    flex-direction:column;
+    align-items:stretch;
+    gap:9px;
+    padding:11px;
+    border:1px solid #f59e0b;
+    border-radius:12px;
+    background:#fffbeb;
+    color:#92400e;
+    font-size:12px;
+    line-height:1.35;
+    text-align:left;
+    transform:translateX(-50%);
+    box-shadow:0 12px 28px rgba(15, 23, 42, .18);
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte:focus-within .cabecalho-modo-suporte-conteudo{
+    display:flex;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-conteudo > span{
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-conteudo strong{
+    display:block;
+    margin-top:2px;
+    font-size:13px;
+  }
+
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"]) .cabecalho-modo-suporte-conteudo .botao-geral{
+    width:100%;
+    min-height:44px;
+    height:auto;
+    padding:9px 12px;
+    white-space:normal;
+    font-size:12px;
+  }
 }

@@ -27,6 +27,7 @@ try {
     require_once __DIR__ . '/../../_regras/limites_plano.php';
     require_once __DIR__ . '/../../_servicos/auditoria.php';
     require_once __DIR__ . '/../../_servicos/notificacao.php';
+    require_once __DIR__ . '/../../_servicos/usuario_empresa.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -245,38 +246,6 @@ try {
         ], 422);
     }
 
-    /* ==========================================================
-       VALIDAR E-MAIL GLOBAL
-       usuário é global no sistema
-    ========================================================== */
-    $stmt = $conexao->prepare("
-        SELECT id_usuario, nome, email, telefone, status, tipo_usuario
-        FROM usuario
-        WHERE LOWER(email) = ?
-        LIMIT 1
-    ");
-
-    if (!$stmt) {
-        throw new RuntimeException('Erro ao preparar validação de e-mail: ' . $conexao->error);
-    }
-
-    $stmt->bind_param("s", $email);
-
-    if (!$stmt->execute()) {
-        throw new RuntimeException('Erro ao executar validação de e-mail: ' . $stmt->error);
-    }
-
-    $stmt->bind_result(
-        $usuarioExistenteId,
-        $usuarioExistenteNome,
-        $usuarioExistenteEmail,
-        $usuarioExistenteTelefone,
-        $usuarioExistenteStatus,
-        $usuarioExistenteTipo
-    );
-    $usuarioJaExiste = $stmt->fetch();
-    $stmt->close();
-
     $idUsuario = 0;
     $idEmpresaUsuario = 0;
     $usuarioFoiCriadoAgora = false;
@@ -291,191 +260,64 @@ try {
     $conexao->begin_transaction();
 
     try {
-        $resultadoPlano = limitesPlanoBloquearEmpresa($conexao, $idEmpresa);
-        limitesPlanoAbortarSeNegado($conexao, $resultadoPlano);
+        try {
+            $resultadoUsuario = usuarioEmpresaServicoCriarOuVincular($conexao, [
+                'id_empresa' => $idEmpresa,
+                'id_perfil' => $idPerfil,
+                'nome' => $nome,
+                'email' => $email,
+                'telefone' => $telefone,
+                'senha' => $senha,
+                'status' => $status,
+                'deve_alterar_senha' => true,
+                'autorizar_vinculo_existente' => true,
+                'perfil_esperado_normalizado' => 'proprietarios',
+            ]);
+        } catch (UsuarioEmpresaServicoErro $erroServico) {
+            $conexao->rollback();
+            $codigo = $erroServico->codigo();
 
-        $statusEfetivoPlano = (!$usuarioJaExiste || limitesPlanoStatusConta((string)$usuarioExistenteStatus))
-            ? $status
-            : 'inativo';
-        $resultadoLimites = limitesPlanoVerificarTransicaoPerfil(
-            $conexao,
-            $resultadoPlano['plano'],
-            $idEmpresa,
-            null,
-            null,
-            (string)$perfilNomeDb,
-            $statusEfetivoPlano
-        );
-        limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
-
-        if ($usuarioJaExiste) {
-            $idUsuario = (int)$usuarioExistenteId;
-            $nomeRetorno = (string)$usuarioExistenteNome;
-            $emailRetorno = lower((string)$usuarioExistenteEmail);
-            $telefoneRetorno = (string)($usuarioExistenteTelefone ?? '');
-            $statusRetorno = lower((string)$usuarioExistenteStatus);
-
-            if (lower((string)$usuarioExistenteTipo) === 'super_admin') {
-                $conexao->rollback();
-
+            if ($codigo === 'INVALID_LINK_SUPERADMIN') {
                 out([
                     'ok' => false,
                     'code' => 'INVALID_LINK_SUPERADMIN',
                     'user_msg' => 'Super Admin não pode ser vinculado como usuário de empresa.',
-                    'fields' => [
-                        'u_email' => 'Este e-mail pertence a um Super Admin.'
-                    ]
+                    'fields' => ['u_email' => 'Este e-mail pertence a um Super Admin.'],
                 ], 422);
             }
-
-            /* ==========================================================
-               SE JÁ EXISTE USUÁRIO, VALIDAR SE JÁ ESTÁ VINCULADO À EMPRESA
-            ========================================================== */
-            $stmt = $conexao->prepare("
-                SELECT id_empresa_usuario
-                FROM empresa_usuario
-                WHERE id_empresa = ?
-                  AND id_usuario = ?
-                LIMIT 1
-            ");
-
-            if (!$stmt) {
-                throw new RuntimeException('Erro ao preparar validação de vínculo: ' . $conexao->error);
-            }
-
-            $stmt->bind_param("ii", $idEmpresa, $idUsuario);
-
-            if (!$stmt->execute()) {
-                throw new RuntimeException('Erro ao executar validação de vínculo: ' . $stmt->error);
-            }
-
-            $stmt->store_result();
-
-            if ($stmt->num_rows > 0) {
-                $stmt->close();
-                $conexao->rollback();
-
+            if ($codigo === 'USER_ALREADY_LINKED') {
                 out([
                     'ok' => false,
                     'code' => 'USER_ALREADY_LINKED',
                     'user_msg' => 'Este usuário já está vinculado a esta empresa.',
-                    'fields' => [
-                        'u_email' => 'Usuário já vinculado a esta empresa.'
-                    ]
+                    'fields' => ['u_email' => 'Usuário já vinculado a esta empresa.'],
                 ], 409);
             }
-
-            $stmt->close();
-        } else {
-            /* ==========================================================
-               INSERIR USUÁRIO GLOBAL
-               tipo_usuario = usuario
-            ========================================================== */
-            $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
-
-            if ($senhaHash === false) {
-                throw new RuntimeException('Não foi possível gerar o hash da senha.');
-            }
-
-            $tipoUsuario = 'usuario';
-
-            $stmt = $conexao->prepare("
-                INSERT INTO usuario
-                    (nome, email, telefone, senha_hash, status, tipo_usuario, deve_alterar_senha, data_senha_temporaria)
-                VALUES
-                    (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-            ");
-
-            if (!$stmt) {
-                throw new RuntimeException('Erro ao preparar cadastro do usuário: ' . $conexao->error);
-            }
-
-            $stmt->bind_param(
-                "ssssss",
-                $nome,
-                $email,
-                $telefone,
-                $senhaHash,
-                $status,
-                $tipoUsuario
-            );
-
-            if (!$stmt->execute()) {
-                $errno = (int)$stmt->errno;
-                $error = (string)$stmt->error;
-                $stmt->close();
-
-                if ($errno === 1062) {
-                    $conexao->rollback();
-
-                    out([
-                        'ok' => false,
-                        'code' => 'EMAIL_EXISTS',
-                        'user_msg' => 'Já existe um usuário com este e-mail.',
-                        'fields' => [
-                            'u_email' => 'E-mail (login) já cadastrado.'
-                        ]
-                    ], 409);
-                }
-
-                throw new RuntimeException('Erro ao executar cadastro do usuário: ' . $error);
-            }
-
-            $idUsuario = (int)$stmt->insert_id;
-            $stmt->close();
-
-            $usuarioFoiCriadoAgora = true;
-            $nomeRetorno = $nome;
-            $emailRetorno = $email;
-            $telefoneRetorno = $telefone;
-            $statusRetorno = $status;
-        }
-
-        /* ==========================================================
-           INSERIR VÍNCULO EMPRESA_USUARIO
-        ========================================================== */
-        $stmt = $conexao->prepare("
-            INSERT INTO empresa_usuario
-                (id_empresa, id_usuario, id_perfil, status)
-            VALUES
-                (?, ?, ?, ?)
-        ");
-
-        if (!$stmt) {
-            throw new RuntimeException('Erro ao preparar vínculo empresa/usuário: ' . $conexao->error);
-        }
-
-        $stmt->bind_param(
-            "iiis",
-            $idEmpresa,
-            $idUsuario,
-            $idPerfil,
-            $status
-        );
-
-        if (!$stmt->execute()) {
-            $errno = (int)$stmt->errno;
-            $error = (string)$stmt->error;
-            $stmt->close();
-
-            if ($errno === 1062) {
-                $conexao->rollback();
-
+            if ($codigo === 'EMAIL_EXISTS') {
                 out([
                     'ok' => false,
-                    'code' => 'USER_ALREADY_LINKED',
-                    'user_msg' => 'Este usuário já está vinculado a esta empresa.',
-                    'fields' => [
-                        'u_email' => 'Usuário já vinculado a esta empresa.'
-                    ]
+                    'code' => 'EMAIL_EXISTS',
+                    'user_msg' => 'Já existe um usuário com este e-mail.',
+                    'fields' => ['u_email' => 'E-mail (login) já cadastrado.'],
                 ], 409);
             }
 
-            throw new RuntimeException('Erro ao executar vínculo empresa/usuário: ' . $error);
+            $detalhes = $erroServico->dados();
+            if ($detalhes !== []) {
+                $statusHttp = (int)($detalhes['http_status'] ?? 409);
+                unset($detalhes['http_status']);
+                out($detalhes, $statusHttp);
+            }
+            throw $erroServico;
         }
 
-        $idEmpresaUsuario = (int)$stmt->insert_id;
-        $stmt->close();
+        $idUsuario = (int)$resultadoUsuario['id_usuario'];
+        $idEmpresaUsuario = (int)$resultadoUsuario['id_empresa_usuario'];
+        $usuarioFoiCriadoAgora = (bool)$resultadoUsuario['usuario_novo'];
+        $nomeRetorno = (string)$resultadoUsuario['nome'];
+        $emailRetorno = (string)$resultadoUsuario['email'];
+        $telefoneRetorno = (string)$resultadoUsuario['telefone'];
+        $statusRetorno = (string)$resultadoUsuario['status_usuario'];
 
         if ($usuarioFoiCriadoAgora) {
             auditoriaRegistrar($conexao, 'usuario.criado', [

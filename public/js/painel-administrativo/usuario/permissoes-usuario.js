@@ -22,7 +22,13 @@
   }
 
   async function requisicao(url, opcoes = {}) {
-    const resposta = await fetch(url, { credentials: "same-origin", ...opcoes });
+    const config = { credentials: "same-origin", ...opcoes };
+    if (String(config.method || "GET").toUpperCase() !== "GET") {
+      const csrf = String(window.__AUTH__?.csrf_token || "");
+      if (!/^[a-f0-9]{64}$/.test(csrf)) throw new Error("Atualize a página para renovar sua sessão.");
+      config.headers = { ...(config.headers || {}), "X-CSRF-Token": csrf };
+    }
+    const resposta = await fetch(url, config);
     const json = await resposta.json().catch(() => ({}));
     if (!resposta.ok || json.ok === false) throw new Error(json.user_msg || "Não foi possível concluir a operação.");
     return json;

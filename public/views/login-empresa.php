@@ -5,17 +5,18 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+require_once __DIR__ . '/../../backend/_auth/csrf.php';
+$loginCsrfToken = csrfTokenSessao();
+
+/**
+ * Login interno central: o contexto de empresa da sessão (criado pelo link
+ * antigo public/login.php?empresa=ID&nome=slug) é OPCIONAL. A empresa de acesso
+ * só é definida pelo backend, depois da autenticação (login.php / seleção).
+ */
 $empresaId   = (int)($_SESSION['empresa_id'] ?? 0);
 $empresaNome = trim((string)($_SESSION['empresa_nome'] ?? ''));
 $empresaSlug = trim((string)($_SESSION['empresa_slug'] ?? ''));
-
-/**
- * Exige contexto mínimo da empresa
- */
-if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
-    header('Location: /public/views/link-empresa-invalido.html');
-    exit;
-}
+$temContextoEmpresa = $empresaId > 0 && ($empresaNome !== '' || $empresaSlug !== '');
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -25,7 +26,7 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
     <meta name="description" content="Um sistema de Pedidos" />
 
     <!-- CSS -->
-    <link rel="stylesheet" href="../css/login/login-web.css?v=20260818_15" />
+    <link rel="stylesheet" href="../css/login/login-web.css?v=20261002_1" />
     <link rel="stylesheet" href="../css/login/login-mobile.css?v=20260818_5" />
 
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png" />
@@ -64,7 +65,9 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
 
             <!-- Área de login restrito. IDs preservados para login.js. -->
             <div class="login-dados-right">
+              <?php if ($temContextoEmpresa): ?>
               <a href="../views/login-cliente.php" class="voltar-cliente" aria-label="Voltar para login cliente"> ← </a>
+              <?php endif; ?>
 
               <header class="login-marca">
                 <img src="/public/imagens/logo-menu.png" alt="" class="login-marca-logo" data-identidade-login-logo />
@@ -73,43 +76,107 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
                 </div>
               </header>
 
-              <div class="login-boas-vindas">
-                <h2 class="h2-titulo">Acesso restrito</h2>
-                <p>Entre com seus dados para continuar</p>
+              <!-- Etapa 1: credenciais. IDs preservados para login.js. -->
+              <div class="login-etapa" id="loginEtapaCredenciais">
+                <div class="login-boas-vindas">
+                  <h2 class="h2-titulo">Acesso restrito</h2>
+                  <p>Entre com seus dados para continuar</p>
+                </div>
+
+                <div class="campo">
+                  <label for="email">E-mail</label>
+                  <input
+                    type="email"
+                    name="email"
+                    id="email"
+                    placeholder="seuemail@exemplo.com"
+                    required
+                    autocomplete="email"
+                    inputmode="email"
+                  />
+                </div>
+
+                <div class="campo">
+                  <label for="password">Senha</label>
+                  <input
+                    type="password"
+                    name="password"
+                    id="password"
+                    placeholder="••••••••"
+                    required
+                    autocomplete="current-password"
+                  />
+                </div>
+
+                <div class="lembrar-container">
+                  <input type="checkbox" id="lembrar" name="lembrar" />
+                  <label for="lembrar">Lembrar de mim</label>
+                </div>
+
+                <button class="botao-entrar" id="login" aria-label="Entrar no sistema">Entrar</button>
+                <button type="button" class="botao-voltar-etapa" id="esqueciSenha">Esqueci minha senha</button>
+                <p class="mensagem" id="message" role="alert" aria-live="polite"></p>
               </div>
 
-              <div class="campo">
-                <label for="email">E-mail</label>
-                <input
-                  type="email"
-                  name="email"
-                  id="email"
-                  placeholder="seuemail@exemplo.com"
-                  required
-                  autocomplete="email"
-                  inputmode="email"
-                />
+              <!-- Recuperação global: email -> SMS -> código -> nova senha. -->
+              <div class="login-etapa" id="loginEtapaRecuperacaoEmail" hidden>
+                <div class="login-boas-vindas">
+                  <h2 class="h2-titulo">Recuperar acesso</h2>
+                  <p>Informe o e-mail da sua conta.</p>
+                </div>
+                <div class="campo">
+                  <label for="recuperacaoEmail">E-mail</label>
+                  <input type="email" id="recuperacaoEmail" autocomplete="email" inputmode="email" />
+                </div>
+                <button type="button" class="botao-entrar" id="recuperacaoEnviarCodigo">Enviar código</button>
+                <p class="mensagem" id="recuperacaoMensagemEmail" role="alert" aria-live="polite"></p>
+                <button type="button" class="botao-voltar-etapa" id="recuperacaoVoltarLogin">&larr; Voltar ao login</button>
               </div>
 
-              <div class="campo">
-                <label for="password">Senha</label>
-                <input
-                  type="password"
-                  name="password"
-                  id="password"
-                  placeholder="••••••••"
-                  required
-                  autocomplete="current-password"
-                />
+              <div class="login-etapa" id="loginEtapaRecuperacaoCodigo" hidden>
+                <div class="login-boas-vindas">
+                  <h2 class="h2-titulo">Código de recuperação</h2>
+                  <p>Digite o código enviado ao telefone cadastrado.</p>
+                </div>
+                <div class="campo">
+                  <label for="recuperacaoCodigo">Código de 6 dígitos</label>
+                  <input type="text" id="recuperacaoCodigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+                </div>
+                <p class="mensagem" id="recuperacaoTempo" aria-live="polite"></p>
+                <button type="button" class="botao-entrar" id="recuperacaoValidarCodigo">Validar código</button>
+                <p class="mensagem" id="recuperacaoMensagemCodigo" role="alert" aria-live="polite"></p>
+                <button type="button" class="botao-voltar-etapa" id="recuperacaoReenviarCodigo">Reenviar código</button>
+                <button type="button" class="botao-voltar-etapa" id="recuperacaoVoltarEmail">&larr; Alterar e-mail</button>
               </div>
 
-              <div class="lembrar-container">
-                <input type="checkbox" id="lembrar" name="lembrar" />
-                <label for="lembrar">Lembrar de mim</label>
+              <div class="login-etapa" id="loginEtapaRecuperacaoSenha" hidden>
+                <div class="login-boas-vindas">
+                  <h2 class="h2-titulo">Definir nova senha</h2>
+                  <p>A nova senha será usada em todas as empresas vinculadas.</p>
+                </div>
+                <div class="campo">
+                  <label for="recuperacaoNovaSenha">Nova senha</label>
+                  <input type="password" id="recuperacaoNovaSenha" autocomplete="new-password" minlength="6" maxlength="72" />
+                </div>
+                <div class="campo">
+                  <label for="recuperacaoConfirmarSenha">Confirmar nova senha</label>
+                  <input type="password" id="recuperacaoConfirmarSenha" autocomplete="new-password" minlength="6" maxlength="72" />
+                </div>
+                <button type="button" class="botao-entrar" id="recuperacaoSalvarSenha">Alterar senha</button>
+                <p class="mensagem" id="recuperacaoMensagemSenha" role="alert" aria-live="polite"></p>
               </div>
 
-              <button class="botao-entrar" id="login" aria-label="Entrar no sistema">Entrar</button>
-              <p class="mensagem" id="message" role="alert" aria-live="polite"></p>
+              <!-- Etapa 2: seleção de empresa (só aparece quando o backend responde EMPRESA_SELECTION_REQUIRED). -->
+              <div class="login-etapa" id="loginEtapaEmpresa" hidden>
+                <div class="login-boas-vindas">
+                  <h2 class="h2-titulo" id="empresaTitulo" tabindex="-1">Selecione a empresa</h2>
+                  <p>Escolha em qual empresa deseja entrar.</p>
+                </div>
+                <div class="empresa-lista" id="empresaLista" role="group" aria-labelledby="empresaTitulo"></div>
+                <p class="mensagem" id="messageEmpresa" role="alert" aria-live="polite"></p>
+                <button type="button" class="botao-voltar-etapa" id="empresaVoltar">&larr; Voltar</button>
+              </div>
+
               <nav class="login-links-legais" aria-label="Documentos legais">
                 <a href="/views/termos-de-uso/termos-empresa.html" target="_blank" rel="noopener noreferrer">Termos da Empresa</a>
                 <a href="/views/termos-de-uso/termos-usuario.html" target="_blank" rel="noopener noreferrer">Termos do Usuário</a>
@@ -123,15 +190,16 @@ if ($empresaId <= 0 || ($empresaNome === '' && $empresaSlug === '')) {
     </main>
 
     <script>
-      window.AMAGENDA_EMPRESA = {
-        id: <?php echo $empresaId; ?>,
-        nome: <?php echo json_encode($empresaNome, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
-        slug: <?php echo json_encode($empresaSlug, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>
-      };
+      window.AMAGENDA_EMPRESA = <?php echo $temContextoEmpresa ? json_encode([
+        'id' => $empresaId,
+        'nome' => $empresaNome,
+        'slug' => $empresaSlug,
+      ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) : 'null'; ?>;
+      window.AMAGENDA_LOGIN_CSRF = <?php echo json_encode($loginCsrfToken, JSON_HEX_TAG | JSON_HEX_AMP); ?>;
     </script>
 
     <!-- Scripts -->
-    <script src="/public/_auth/login.js"></script>
+    <script src="/public/_auth/login.js?v=20261003_1"></script>
     <script src="/public/js/identidade-visual/identidade-visual-login.js?v=20260822_1"></script>
   </body>
 </html>

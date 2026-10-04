@@ -924,3 +924,103 @@
 
   // Cadastro e edição controlam o momento da atualização após exibirem o retorno ao usuário.
 })();
+
+/* ==========================================================
+   LINK PÚBLICO DA AGENDA ONLINE
+   O backend fornece somente o slug da empresa validada na sessão.
+========================================================== */
+(() => {
+  "use strict";
+
+  const PERFIS_COM_LINK = new Set(["proprietario", "recepcionista", "profissional"]);
+
+  function perfilNormalizado(auth) {
+    return String(auth?.perfil_nome || auth?.perfil || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function podeExibir(auth) {
+    if (auth?.agenda_online_disponivel !== true) return false;
+
+    const perfil = perfilNormalizado(auth);
+    const modoSuporte = String(auth?.tipo_usuario || "").toLowerCase() === "super_admin"
+      && auth?.modo_suporte === true;
+
+    return PERFIS_COM_LINK.has(perfil) || modoSuporte;
+  }
+
+  function urlAgendaOnline(auth) {
+    const slug = String(auth?.empresa_slug || "").trim();
+    const path = String(auth?.agenda_online_path || "").trim();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || path !== `/agendar/${slug}`) {
+      return "";
+    }
+
+    return new URL(path, window.location.origin).href;
+  }
+
+  async function copiarEndereco(campo, botao) {
+    const url = campo.value;
+    if (!url) return;
+
+    botao.disabled = true;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        campo.focus();
+        campo.select();
+        if (!document.execCommand("copy")) {
+          throw new Error("Cópia não suportada.");
+        }
+      }
+
+      window.MensagemSistema?.sucesso("Link da Agenda Online copiado.", {
+        titulo: "Link copiado"
+      });
+    } catch (_erro) {
+      window.MensagemSistema?.erro("Não foi possível copiar o link. Selecione o endereço e copie manualmente.");
+      campo.focus();
+      campo.select();
+    } finally {
+      botao.disabled = false;
+    }
+  }
+
+  function configurarLink(auth) {
+    const bloco = document.getElementById("agendaOnlineCompartilhar");
+    const campo = document.getElementById("agendaOnlineUrl");
+    const copiar = document.getElementById("agendaOnlineCopiar");
+    const abrir = document.getElementById("agendaOnlineAbrir");
+    if (!bloco || !campo || !copiar || !abrir) return;
+
+    const url = podeExibir(auth) ? urlAgendaOnline(auth) : "";
+    if (!url) {
+      bloco.hidden = true;
+      campo.value = "";
+      abrir.removeAttribute("href");
+      bloco.dataset.configurado = "0";
+      return;
+    }
+
+    campo.value = url;
+    abrir.href = url;
+    bloco.hidden = false;
+    bloco.dataset.configurado = "1";
+    if (copiar.dataset.listenerConfigurado !== "1") {
+      copiar.addEventListener("click", () => copiarEndereco(campo, copiar));
+      copiar.dataset.listenerConfigurado = "1";
+    }
+  }
+
+  document.addEventListener("amagenda:sessao-carregada", (evento) => {
+    configurarLink(evento.detail);
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    configurarLink(window.__AUTH__);
+  });
+})();

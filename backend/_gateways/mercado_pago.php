@@ -12,6 +12,7 @@ final class MercadoPagoGateway
 
     private string $ambiente;
     private string $accessToken;
+    private static ?array $configuracaoCentral = null;
 
     private function __construct(string $ambiente, string $accessToken)
     {
@@ -22,15 +23,9 @@ final class MercadoPagoGateway
     /** Lê exclusivamente a configuração privada do servidor, nunca do navegador. */
     public static function daConfiguracao(): self
     {
-        $ambiente = getenv('MERCADO_PAGO_AMBIENTE');
-        if (!is_string($ambiente) || !in_array($ambiente, ['teste', 'producao'], true)) {
-            throw new RuntimeException('Configuração de pagamento indisponível.');
-        }
-
-        $variavelToken = $ambiente === 'teste'
-            ? 'MERCADO_PAGO_ACCESS_TOKEN_TESTE'
-            : 'MERCADO_PAGO_ACCESS_TOKEN_PRODUCAO';
-        $token = getenv($variavelToken);
+        $ativa = self::configuracaoAtiva();
+        $ambiente = $ativa['ambiente'];
+        $token = $ativa['dados']['access_token'] ?? null;
         if (!is_string($token) || $token === '' || trim($token) !== $token
             || preg_match('/[\x00-\x1F\x7F]/', $token)) {
             throw new RuntimeException('Configuração de pagamento indisponível.');
@@ -39,19 +34,157 @@ final class MercadoPagoGateway
         return new self($ambiente, $token);
     }
 
-    /** Somente a chave pública de teste pode sair do backend para o MercadoPago.js. */
+    /** Somente a chave pública do ambiente de teste pode sair para o MercadoPago.js. */
     public static function chavePublicaTeste(): string
     {
-        if (getenv('MERCADO_PAGO_AMBIENTE') !== 'teste') {
+        $ativa = self::configuracaoAtiva();
+        if ($ativa['ambiente'] !== 'teste') {
             throw new RuntimeException('Configuração pública de pagamento indisponível.');
         }
-        $chave = getenv('MERCADO_PAGO_PUBLIC_KEY_TESTE');
+        $chave = $ativa['dados']['public_key'] ?? null;
         if (!is_string($chave) || strlen($chave) < 20 || strlen($chave) > 200
             || trim($chave) !== $chave || preg_match('/[\x00-\x20\x7F]/', $chave)) {
             throw new RuntimeException('Configuração pública de pagamento indisponível.');
         }
 
         return $chave;
+    }
+
+    /** Retorna somente estados seguros; credenciais nunca integram o diagnóstico administrativo. */
+    public static function diagnosticoConfiguracaoSeguro(): array
+    {
+        $configuracao = self::carregarConfiguracaoCentral();
+        $ambienteRaw = $configuracao['ambiente'] ?? null;
+        $ambiente = is_string($ambienteRaw) && in_array($ambienteRaw, ['teste', 'producao'], true)
+            ? $ambienteRaw
+            : null;
+
+        $publicKeyConfigurada = false;
+        $accessTokenConfigurado = false;
+        $webhookSecretConfigurado = false;
+
+        if ($ambiente !== null && is_array($configuracao[$ambiente] ?? null)) {
+            $dados = $configuracao[$ambiente];
+            $publicKeyConfigurada = self::chavePublicaConfigurada(
+                $dados['public_key'] ?? null
+            );
+            $accessTokenConfigurado = self::credencialConfigurada(
+                $dados['access_token'] ?? null,
+                1,
+                512
+            );
+            $webhookSecretConfigurado = self::credencialConfigurada(
+                $dados['webhook_secret'] ?? null,
+                16,
+                512
+            );
+        }
+
+        $urlPublicaRaw = $configuracao['url_publica'] ?? null;
+        $urlPublica = self::urlPublicaValida($urlPublicaRaw) ? (string)$urlPublicaRaw : null;
+        $webhookUrl = $urlPublica === null
+            ? null
+            : rtrim($urlPublica, '/') . '/api/api_central.php?path=webhooks/mercado-pago';
+        $pronto = $ambiente !== null
+            && $publicKeyConfigurada
+            && $accessTokenConfigurado
+            && $webhookSecretConfigurado
+            && $urlPublica !== null;
+
+        return [
+            'ambiente' => $ambiente,
+            'ambiente_configurado' => $ambiente !== null,
+            'public_key_configurada' => $publicKeyConfigurada,
+            'access_token_configurado' => $accessTokenConfigurado,
+            'webhook_secret_configurado' => $webhookSecretConfigurado,
+            'url_publica_configurada' => $urlPublica !== null,
+            'webhook_url' => $webhookUrl,
+            'pronto' => $pronto,
+            'status_geral' => $pronto ? 'pronto' : 'configuracao_incompleta',
+        ];
+    }
+
+    /** Retorna o segredo apenas ao processamento interno do webhook. */
+    public static function segredoWebhook(): string
+    {
+        $ativa = self::configuracaoAtiva();
+        $secret = $ativa['dados']['webhook_secret'] ?? null;
+        if (!self::credencialConfigurada($secret, 16, 512)) {
+            throw new RuntimeException('Configuração do webhook indisponível.');
+        }
+
+        return $secret;
+    }
+
+    /** @return array<string,mixed> */
+    private static function carregarConfiguracaoCentral(): array
+    {
+        if (self::$configuracaoCentral !== null) {
+            return self::$configuracaoCentral;
+        }
+
+        $arquivo = __DIR__ . '/../_config/mercado_pago.php';
+        if (!is_file($arquivo)) {
+            throw new RuntimeException('Configuração de pagamento indisponível.');
+        }
+        $configuracao = require $arquivo;
+        if (!is_array($configuracao)) {
+            throw new RuntimeException('Configuração de pagamento indisponível.');
+        }
+
+        self::$configuracaoCentral = $configuracao;
+
+        return $configuracao;
+    }
+
+    /** @return array{ambiente:string,dados:array<string,mixed>} */
+    private static function configuracaoAtiva(): array
+    {
+        $configuracao = self::carregarConfiguracaoCentral();
+        $ambiente = $configuracao['ambiente'] ?? null;
+        if (!is_string($ambiente) || !in_array($ambiente, ['teste', 'producao'], true)
+            || !is_array($configuracao[$ambiente] ?? null)) {
+            throw new RuntimeException('Configuração de pagamento indisponível.');
+        }
+
+        return ['ambiente' => $ambiente, 'dados' => $configuracao[$ambiente]];
+    }
+
+    private static function chavePublicaConfigurada(mixed $valor): bool
+    {
+        return is_string($valor)
+            && strlen($valor) >= 20
+            && strlen($valor) <= 200
+            && trim($valor) === $valor
+            && preg_match('/[\x00-\x20\x7F]/', $valor) !== 1;
+    }
+
+    private static function credencialConfigurada(mixed $valor, int $minimo, int $maximo): bool
+    {
+        return is_string($valor)
+            && strlen($valor) >= $minimo
+            && strlen($valor) <= $maximo
+            && trim($valor) === $valor
+            && preg_match('/[\x00-\x1F\x7F]/', $valor) !== 1;
+    }
+
+    private static function urlPublicaValida(mixed $valor): bool
+    {
+        if (!is_string($valor) || $valor === '' || trim($valor) !== $valor
+            || filter_var($valor, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $partes = parse_url($valor);
+
+        return is_array($partes)
+            && ($partes['scheme'] ?? '') === 'https'
+            && is_string($partes['host'] ?? null)
+            && $partes['host'] !== ''
+            && !isset($partes['user'])
+            && !isset($partes['pass'])
+            && !isset($partes['query'])
+            && !isset($partes['fragment']);
     }
 
     public function ambiente(): string
@@ -157,7 +290,7 @@ final class MercadoPagoGateway
                 ? 'Pagamento temporariamente indisponível.'
                 : 'Não foi possível processar o pagamento.';
 
-            return pagamentoGatewayResultado(false, $codigo, $mensagem, $httpStatus);
+            return pagamentoGatewayResultado(false, $codigo, $mensagem, $httpStatus, $dados);
         }
 
         return pagamentoGatewayResultado(true, 'ok', 'Operação concluída.', $httpStatus, $dados);

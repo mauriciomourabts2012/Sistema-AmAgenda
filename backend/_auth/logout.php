@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../_servicos/empresa.php';
+
 // ✅ NÃO defina header aqui (api_central já define)
 // ✅ NÃO redefina out() se já existir
 if (!function_exists('out')) {
@@ -21,32 +23,6 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
-}
-
-/**
- * Gera slug amigável da empresa
- */
-if (!function_exists('slugify_empresa')) {
-    function slugify_empresa(string $texto): string
-    {
-        $texto = trim(mb_strtolower($texto, 'UTF-8'));
-
-        $map = [
-            'á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a',
-            'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e',
-            'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i',
-            'ó'=>'o','ò'=>'o','õ'=>'o','ô'=>'o','ö'=>'o',
-            'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u',
-            'ç'=>'c',
-            'ñ'=>'n'
-        ];
-
-        $texto = strtr($texto, $map);
-        $texto = preg_replace('/[^a-z0-9]+/u', '-', $texto) ?? '';
-        $texto = trim($texto, '-');
-
-        return $texto;
-    }
 }
 
 /**
@@ -72,15 +48,11 @@ function getEmpresaId(array $session): int
 }
 
 /**
- * Lê nome/slug da empresa da sessão em vários formatos
+ * Lê somente slug persistido da empresa da sessão em vários formatos.
  */
-function getEmpresaNomeOuSlug(array $session): string
+function getEmpresaSlugPersistidoSessao(array $session): string
 {
     $candidatos = [];
-
-    if (!empty($session['empresa_nome'])) {
-        $candidatos[] = (string)$session['empresa_nome'];
-    }
 
     if (!empty($session['empresa_slug'])) {
         $candidatos[] = (string)$session['empresa_slug'];
@@ -91,16 +63,8 @@ function getEmpresaNomeOuSlug(array $session): string
     }
 
     if (!empty($session['auth']) && is_array($session['auth'])) {
-        if (!empty($session['auth']['empresa_nome'])) {
-            $candidatos[] = (string)$session['auth']['empresa_nome'];
-        }
-
         if (!empty($session['auth']['empresa_slug'])) {
             $candidatos[] = (string)$session['auth']['empresa_slug'];
-        }
-
-        if (!empty($session['auth']['empresa']['nome'])) {
-            $candidatos[] = (string)$session['auth']['empresa']['nome'];
         }
 
         if (!empty($session['auth']['empresa']['slug'])) {
@@ -110,7 +74,7 @@ function getEmpresaNomeOuSlug(array $session): string
 
     foreach ($candidatos as $valor) {
         $valor = trim($valor);
-        if ($valor !== '') {
+        if (empresaSlugEntradaValida($valor)) {
             return $valor;
         }
     }
@@ -121,35 +85,60 @@ function getEmpresaNomeOuSlug(array $session): string
 /**
  * Monta URL de retorno do logout
  */
-function detectarRedirectLogout(array $session): string
+function detectarRedirectLogout(array $session, ?mysqli $conexaoEmpresa = null): string
 {
     // SUPER ADMIN
     if (!empty($session['superadmin_id'])) {
         return '/public/views/login-super-admin.html';
     }
 
+    // USUÁRIO INTERNO (não super admin, não cliente): volta ao login central,
+    // sem depender de link de empresa. Cliente OTP mantém o fluxo anterior.
+    $authSessao = is_array($session['auth'] ?? null) ? $session['auth'] : [];
+    if ((int)($authSessao['id_usuario'] ?? 0) > 0
+        && mb_strtolower(trim((string)($authSessao['tipo_usuario'] ?? '')), 'UTF-8') !== 'super_admin'
+        && empty($session['cliente_auth'])) {
+        return '/public/views/login-empresa.php';
+    }
+
     // USUÁRIO DE EMPRESA / CLIENTE
     $empresaId = getEmpresaId($session);
-    $empresaNome = getEmpresaNomeOuSlug($session);
+    $slug = getEmpresaSlugPersistidoSessao($session);
 
-    if ($empresaId > 0 && $empresaNome !== '') {
-        $slug = slugify_empresa($empresaNome);
+    if ($empresaId > 0 && $slug === '' && $conexaoEmpresa instanceof mysqli && !$conexaoEmpresa->connect_errno) {
+        $stmt = $conexaoEmpresa->prepare('SELECT slug FROM empresa WHERE id_empresa = ? LIMIT 1');
+        if ($stmt) {
+            $stmt->bind_param('i', $empresaId);
+            if ($stmt->execute()) {
+                $row = $stmt->get_result()->fetch_assoc();
+                $slugBanco = trim((string)($row['slug'] ?? ''));
+                if (empresaSlugEntradaValida($slugBanco)) {
+                    $slug = $slugBanco;
+                }
+            }
+            $stmt->close();
+        }
+    }
 
-        $qs = http_build_query([
-            'empresa' => $empresaId,
-            'nome'    => $slug
-        ]);
-
-        // ✅ volta para a entrada que recria a sessão da empresa
-        return '/login.php?' . $qs;
+    if ($empresaId > 0 && $slug !== '') {
+        // Volta pela URL publica estavel, que recria o mesmo contexto de empresa.
+        return '/agendar/' . rawurlencode($slug);
     }
 
     // fallback final
     return '/public/views/login-super-admin.html';
 }
 
-// ✅ Descobre a URL ANTES de destruir a sessão
-$redirectUrl = detectarRedirectLogout($_SESSION);
+// Descobre a URL antes de destruir a sessão sem tornar o logout dependente
+// do banco. Se o chamador já disponibilizou uma conexão, ela pode recuperar
+// o slug de uma sessão antiga; caso contrário, o fallback permanece seguro.
+$conexaoEmpresaLogout = null;
+if (isset($conexao) && $conexao instanceof mysqli) {
+    $conexaoEmpresaLogout = $conexao;
+} elseif (isset($ConexBD) && $ConexBD instanceof mysqli) {
+    $conexaoEmpresaLogout = $ConexBD;
+}
+$redirectUrl = detectarRedirectLogout($_SESSION, $conexaoEmpresaLogout);
 
 $authLogout = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
 $finalizandoSuporte = mb_strtolower(trim((string)($authLogout['tipo_usuario'] ?? '')), 'UTF-8') === 'super_admin'
@@ -171,11 +160,8 @@ if ($finalizandoSuporte) {
         ]);
     } catch (Throwable $e) {
         error_log('[auditoria_suporte] Não foi possível registrar a finalização do modo suporte.');
-        out([
-            'ok' => false,
-            'code' => 'SUPPORT_AUDIT_ERROR',
-            'user_msg' => 'Não foi possível finalizar o modo suporte.',
-        ], 500);
+        // A indisponibilidade da auditoria não pode manter uma sessão de
+        // suporte autenticada quando o usuário solicitou o logout completo.
     }
 }
 

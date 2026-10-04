@@ -12,27 +12,6 @@ if (!function_exists('out')) {
     }
 }
 
-if (!function_exists('normalizaEmpresaNome')) {
-    function normalizaEmpresaNome(string $nome): string {
-        $nome = trim(mb_strtolower($nome, 'UTF-8'));
-
-        $map = [
-            'á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a',
-            'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e',
-            'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i',
-            'ó'=>'o','ò'=>'o','õ'=>'o','ô'=>'o','ö'=>'o',
-            'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u',
-            'ç'=>'c',
-            'ñ'=>'n'
-        ];
-
-        $nome = strtr($nome, $map);
-        $nome = preg_replace('/[^a-z0-9]+/u', '-', $nome) ?? '';
-        $nome = trim($nome, '-');
-
-        return $nome;
-    }
-}
 
 if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     out([
@@ -50,6 +29,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require __DIR__ . '/../_config/conexao.php';
 require_once __DIR__ . '/../_servicos/auditoria.php';
 require_once __DIR__ . '/../_regras/acesso_assinatura.php';
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -70,6 +50,255 @@ if ($conexao->connect_errno) {
 }
 
 $conexao->set_charset('utf8mb4');
+
+/* ==========================================================
+   RECUPERAÇÃO CENTRAL DE SENHA
+========================================================== */
+$acaoLogin = trim((string)($_POST['acao'] ?? 'login'));
+
+if (str_starts_with($acaoLogin, 'recuperacao_')) {
+    require_once __DIR__ . '/csrf.php';
+    require_once __DIR__ . '/../_servicos/sms_otp.php';
+    csrfValidarSessao();
+
+    $mensagemSolicitacao = 'Se os dados estiverem corretos, enviaremos um código de recuperação.';
+    $agora = time();
+
+    if ($acaoLogin === 'recuperacao_solicitar') {
+        $emailRecuperacao = mb_strtolower(trim((string)($_POST['email'] ?? '')), 'UTF-8');
+        $desafioAnterior = $_SESSION['usuario_recuperacao_senha'] ?? null;
+
+        if (is_array($desafioAnterior)) {
+            $ultimoEnvio = (int)($desafioAnterior['enviado_em'] ?? 0);
+            if ($ultimoEnvio > 0 && ($agora - $ultimoEnvio) < 30) {
+                out([
+                    'ok' => false,
+                    'code' => 'PASSWORD_RECOVERY_RESEND_LIMIT',
+                    'user_msg' => 'Aguarde alguns segundos antes de solicitar outro código.',
+                    'data' => ['retry_after' => 30 - ($agora - $ultimoEnvio)],
+                ], 429);
+            }
+        }
+
+        $usuarioRecuperacao = null;
+        if ($emailRecuperacao !== '' && filter_var($emailRecuperacao, FILTER_VALIDATE_EMAIL)) {
+            $stmt = $conexao->prepare(
+                "SELECT id_usuario, telefone, status, tipo_usuario
+                   FROM usuario
+                  WHERE LOWER(email) = ?
+                  LIMIT 1"
+            );
+            if ($stmt) {
+                $stmt->bind_param('s', $emailRecuperacao);
+                if ($stmt->execute()) {
+                    $resultado = $stmt->get_result();
+                    $candidato = $resultado ? ($resultado->fetch_assoc() ?: null) : null;
+                    if (is_array($candidato)
+                        && mb_strtolower(trim((string)($candidato['status'] ?? '')), 'UTF-8') === 'ativo'
+                        && mb_strtolower(trim((string)($candidato['tipo_usuario'] ?? '')), 'UTF-8') === 'usuario') {
+                        $telefoneNormalizado = smsOtpNormalizarTelefone((string)($candidato['telefone'] ?? ''));
+                        if ($telefoneNormalizado !== null) {
+                            $usuarioRecuperacao = [
+                                'id_usuario' => (int)$candidato['id_usuario'],
+                                'telefone' => $telefoneNormalizado,
+                            ];
+                        }
+                    }
+                }
+                $stmt->close();
+            }
+        }
+
+        $configOtp = smsOtpConfig();
+        $modoOtp = mb_strtolower(trim((string)($configOtp['mode'] ?? 'programmable_sms')), 'UTF-8');
+        $expiresIn = 300;
+        $otpHash = password_hash((string)random_int(100000, 999999), PASSWORD_DEFAULT);
+        $referencia = '';
+        $envioAceito = false;
+
+        if ($usuarioRecuperacao !== null && is_string($otpHash) && $otpHash !== '') {
+            if ($modoOtp === 'programmable_sms') {
+                $resultadoEnvio = smsOtpEnviar(
+                    (string)$usuarioRecuperacao['telefone'],
+                    'AmAgenda: código de recuperação de acesso.'
+                );
+                $envioAceito = is_array($resultadoEnvio) && ($resultadoEnvio['sucesso'] ?? false) === true;
+                $referencia = (string)($resultadoEnvio['dados']['sid'] ?? '');
+
+                // OTP temporário para ambiente de teste da integração SMS.
+                $otpTesteAtivo = ($configOtp['dev_fixed_otp_enabled'] ?? false) === true
+                    && preg_match('/^\d{6}$/', (string)($configOtp['dev_fixed_otp_code'] ?? '')) === 1;
+                if ($otpTesteAtivo) {
+                    $envioAceito = true;
+                }
+            } elseif ($modoOtp === 'verify') {
+                $resultadoEnvio = smsOtpEnviar((string)$usuarioRecuperacao['telefone']);
+                $envioAceito = is_array($resultadoEnvio) && ($resultadoEnvio['sucesso'] ?? false) === true;
+                $referencia = (string)($resultadoEnvio['dados']['referencia'] ?? $resultadoEnvio['dados']['sid'] ?? '');
+            }
+        }
+
+        /* Desafios fictícios mantêm resposta, expiração e tentativas idênticas
+           sem permitir que a API confirme a existência de uma conta. */
+        $desafioReal = $usuarioRecuperacao !== null && $envioAceito;
+        $_SESSION['usuario_recuperacao_senha'] = [
+            'id_usuario' => $desafioReal ? (int)$usuarioRecuperacao['id_usuario'] : 0,
+            'telefone' => $desafioReal ? (string)$usuarioRecuperacao['telefone'] : '',
+            'modo' => $desafioReal ? $modoOtp : 'decoy',
+            'referencia' => $desafioReal ? $referencia : '',
+            'otp_hash' => $otpHash,
+            'etapa' => 'otp',
+            'criado_em' => $agora,
+            'enviado_em' => $agora,
+            'expira_em' => $agora + $expiresIn,
+            'tentativas' => 0,
+            'max_tentativas' => 5,
+        ];
+
+        loginMultiempresaLimparContexto();
+        unset(
+            $_SESSION['cliente_auth'],
+            $_SESSION['cliente_auth_desafio'],
+            $_SESSION['cliente_recuperacao_senha']
+        );
+        session_regenerate_id(true);
+
+        out([
+            'ok' => true,
+            'code' => 'PASSWORD_RECOVERY_REQUEST_ACCEPTED',
+            'user_msg' => $mensagemSolicitacao,
+            'data' => ['expires_in' => $expiresIn],
+        ]);
+    }
+
+    $desafio = $_SESSION['usuario_recuperacao_senha'] ?? null;
+    if (!is_array($desafio) || (int)($desafio['expira_em'] ?? 0) <= $agora) {
+        unset($_SESSION['usuario_recuperacao_senha']);
+        out([
+            'ok' => false,
+            'code' => 'PASSWORD_RECOVERY_EXPIRED',
+            'user_msg' => 'Código inválido ou expirado.',
+        ], 422);
+    }
+
+    if ($acaoLogin === 'recuperacao_validar_codigo') {
+        if (($desafio['etapa'] ?? '') !== 'otp') {
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_INVALID', 'user_msg' => 'Código inválido ou expirado.'], 422);
+        }
+
+        $tentativas = (int)($desafio['tentativas'] ?? 0);
+        $maxTentativas = (int)($desafio['max_tentativas'] ?? 5);
+        if ($tentativas >= $maxTentativas) {
+            unset($_SESSION['usuario_recuperacao_senha']);
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_ATTEMPTS_EXCEEDED', 'user_msg' => 'Código inválido ou expirado.'], 429);
+        }
+
+        $codigo = preg_replace('/\D+/', '', (string)($_POST['codigo'] ?? '')) ?? '';
+        $_SESSION['usuario_recuperacao_senha']['tentativas'] = $tentativas + 1;
+        $otpAprovado = false;
+
+        if (strlen($codigo) === 6 && (int)($desafio['id_usuario'] ?? 0) > 0) {
+            if (($desafio['modo'] ?? '') === 'programmable_sms') {
+                $otpAprovado = password_verify($codigo, (string)($desafio['otp_hash'] ?? ''));
+                $configOtp = smsOtpConfig();
+                $codigoTeste = preg_replace('/\D+/', '', (string)($configOtp['dev_fixed_otp_code'] ?? '')) ?? '';
+                if (($configOtp['dev_fixed_otp_enabled'] ?? false) === true && strlen($codigoTeste) === 6) {
+                    $otpAprovado = $otpAprovado || hash_equals($codigoTeste, $codigo);
+                }
+            } elseif (($desafio['modo'] ?? '') === 'verify') {
+                $resultadoValidacao = smsOtpValidar(
+                    (string)($desafio['telefone'] ?? ''),
+                    $codigo,
+                    (string)($desafio['referencia'] ?? '') ?: null
+                );
+                $otpAprovado = is_array($resultadoValidacao) && ($resultadoValidacao['sucesso'] ?? false) === true;
+            }
+        }
+
+        if (!$otpAprovado) {
+            if (($tentativas + 1) >= $maxTentativas) {
+                unset($_SESSION['usuario_recuperacao_senha']);
+            }
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_CODE_INVALID', 'user_msg' => 'Código inválido ou expirado.'], 422);
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['usuario_recuperacao_senha']['etapa'] = 'senha';
+        $_SESSION['usuario_recuperacao_senha']['otp_hash'] = null;
+        $_SESSION['usuario_recuperacao_senha']['referencia'] = '';
+        $_SESSION['usuario_recuperacao_senha']['autorizado_em'] = $agora;
+        $_SESSION['usuario_recuperacao_senha']['expira_em'] = $agora + 600;
+        unset($_SESSION['csrf_token']);
+        $csrfRenovado = csrfTokenSessao();
+
+        out([
+            'ok' => true,
+            'code' => 'PASSWORD_RECOVERY_CODE_ACCEPTED',
+            'user_msg' => 'Código validado.',
+            'data' => ['csrf_token' => $csrfRenovado, 'expires_in' => 600],
+        ]);
+    }
+
+    if ($acaoLogin === 'recuperacao_redefinir_senha') {
+        if (($desafio['etapa'] ?? '') !== 'senha' || (int)($desafio['id_usuario'] ?? 0) <= 0) {
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_INVALID', 'user_msg' => 'Sua recuperação expirou. Solicite um novo código.'], 422);
+        }
+
+        $novaSenha = trim((string)($_POST['nova_senha'] ?? ''));
+        $confirmarSenha = trim((string)($_POST['confirmar_senha'] ?? ''));
+        if (mb_strlen($novaSenha) < 6 || mb_strlen($novaSenha) > 72) {
+            out(['ok' => false, 'code' => 'NEW_PASSWORD_INVALID_LENGTH', 'user_msg' => 'A nova senha deve ter entre 6 e 72 caracteres.'], 422);
+        }
+        if ($novaSenha !== $confirmarSenha) {
+            out(['ok' => false, 'code' => 'PASSWORD_CONFIRMATION_MISMATCH', 'user_msg' => 'A confirmação da nova senha não confere.'], 422);
+        }
+
+        $idUsuarioRecuperacao = (int)$desafio['id_usuario'];
+        $stmt = $conexao->prepare("SELECT senha_hash FROM usuario WHERE id_usuario = ? AND status = 'ativo' AND tipo_usuario = 'usuario' LIMIT 1");
+        if (!$stmt) {
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_UNAVAILABLE', 'user_msg' => 'Não foi possível alterar a senha agora.'], 503);
+        }
+        $stmt->bind_param('i', $idUsuarioRecuperacao);
+        $stmt->execute();
+        $stmt->bind_result($senhaHashAtual);
+        $usuarioValido = $stmt->fetch();
+        $stmt->close();
+
+        if (!$usuarioValido) {
+            unset($_SESSION['usuario_recuperacao_senha']);
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_INVALID', 'user_msg' => 'Sua recuperação expirou. Solicite um novo código.'], 422);
+        }
+        if ((string)$senhaHashAtual !== '' && password_verify($novaSenha, (string)$senhaHashAtual)) {
+            out(['ok' => false, 'code' => 'PASSWORD_SAME_AS_CURRENT', 'user_msg' => 'A nova senha deve ser diferente da senha atual.'], 422);
+        }
+
+        $novoHash = password_hash($novaSenha, PASSWORD_DEFAULT);
+        if (!is_string($novoHash) || $novoHash === '') {
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_UNAVAILABLE', 'user_msg' => 'Não foi possível alterar a senha agora.'], 503);
+        }
+
+        $stmt = $conexao->prepare('UPDATE usuario SET senha_hash = ?, deve_alterar_senha = 0, data_senha_temporaria = NULL WHERE id_usuario = ? LIMIT 1');
+        if (!$stmt) {
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_UNAVAILABLE', 'user_msg' => 'Não foi possível alterar a senha agora.'], 503);
+        }
+        $stmt->bind_param('si', $novoHash, $idUsuarioRecuperacao);
+        $atualizado = $stmt->execute();
+        $stmt->close();
+        if (!$atualizado) {
+            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_UNAVAILABLE', 'user_msg' => 'Não foi possível alterar a senha agora.'], 503);
+        }
+
+        unset($_SESSION['usuario_recuperacao_senha'], $_SESSION['csrf_token']);
+        session_regenerate_id(true);
+        out([
+            'ok' => true,
+            'code' => 'PASSWORD_RECOVERY_COMPLETED',
+            'user_msg' => 'Senha alterada com sucesso. Faça login novamente.',
+        ]);
+    }
+
+    out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_ACTION_INVALID', 'user_msg' => 'Operação inválida.'], 422);
+}
 
 function registrarFalhaLogin(mysqli $conexao, string $evento, string $motivo, int $idEmpresa = 0, string $loginTentado = ''): void
 {
@@ -195,16 +424,51 @@ $stmt->close();
  * 2) VALIDA USUÁRIO
  * ==========================================================
  */
+/*
+ * Hash fictício usado só para equalizar o tempo de resposta quando o e-mail não
+ * existe ou não há hash, evitando diferença mensurável entre os casos.
+ */
+const LOGIN_HASH_FICTICIO = '$2y$10$4lvhgkfyLAx9RxqAr6VwLu3BX8lIl5/n5uMF8Uuk7q4x.G5Duk.Da';
+
 if (!$user) {
+    password_verify($senha, LOGIN_HASH_FICTICIO);
     registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaAuditoriaId, $email);
     out([
         'ok' => false,
-        'step' => 'user',
+        'step' => 'credentials',
         'code' => 'LOGIN_INVALID_CREDENTIALS',
         'user_msg' => 'Usuário ou senha inválidos.'
     ], 401);
 }
 
+$hash = (string)($user['senha_hash'] ?? '');
+
+if ($hash === '') {
+    password_verify($senha, LOGIN_HASH_FICTICIO);
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_indisponiveis', $empresaAuditoriaId, $email);
+    out([
+        'ok' => false,
+        'step' => 'credentials',
+        'code' => 'LOGIN_INVALID_CREDENTIALS',
+        'user_msg' => 'Usuário ou senha inválidos.'
+    ], 401);
+}
+
+if (!password_verify($senha, $hash)) {
+    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaAuditoriaId, $email);
+    out([
+        'ok' => false,
+        'step' => 'credentials',
+        'code' => 'LOGIN_INVALID_CREDENTIALS',
+        'user_msg' => 'Usuário ou senha inválidos.'
+    ], 401);
+}
+
+/*
+ * O status do usuário só é avaliado DEPOIS da senha válida: quem não conhece a
+ * senha recebe sempre a mesma resposta, seja o e-mail inexistente, inativo ou
+ * bloqueado (sem enumeração de e-mail).
+ */
 $statusUsuario = mb_strtolower(trim((string)($user['status'] ?? '')), 'UTF-8');
 
 if ($statusUsuario !== 'ativo') {
@@ -215,28 +479,6 @@ if ($statusUsuario !== 'ativo') {
         'code' => 'LOGIN_ACCESS_DENIED',
         'user_msg' => 'Não foi possível realizar o acesso.'
     ], 403);
-}
-
-$hash = (string)($user['senha_hash'] ?? '');
-
-if ($hash === '') {
-    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_indisponiveis', $empresaAuditoriaId, $email);
-    out([
-        'ok' => false,
-        'step' => 'password',
-        'code' => 'LOGIN_INVALID_CREDENTIALS',
-        'user_msg' => 'Usuário ou senha inválidos.'
-    ], 401);
-}
-
-if (!password_verify($senha, $hash)) {
-    registrarFalhaLogin($conexao, 'autenticacao.credenciais_invalidas', 'credenciais_invalidas', $empresaAuditoriaId, $email);
-    out([
-        'ok' => false,
-        'step' => 'password',
-        'code' => 'LOGIN_INVALID_CREDENTIALS',
-        'user_msg' => 'Usuário ou senha inválidos.'
-    ], 401);
 }
 
 $tipoUsuario = mb_strtolower(trim((string)($user['tipo_usuario'] ?? 'usuario')), 'UTF-8');
@@ -378,61 +620,17 @@ if ($tipoUsuario === 'super_admin') {
 
 /**
  * ==========================================================
- * 4) USUÁRIO COMUM PRECISA ENTRAR PELO LINK DA EMPRESA
+ * 4) USUÁRIO COMUM: DESCOBRE AS EMPRESAS ACESSÍVEIS
  * ==========================================================
+ * Com a senha válida, consulta todos os vínculos do usuário e aplica a cada um
+ * as mesmas regras de acesso do login por empresa. O link da empresa
+ * ($_SESSION['empresa_id']) é apenas uma preferência de seleção: nunca
+ * autoriza nada por si só.
  */
-if ($empresaSessaoId <= 0 || $empresaSessaoNome === '') {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'contexto_empresa_ausente');
-    out([
-        'ok' => false,
-        'step' => 'empresa_session',
-        'code' => 'EMPRESA_SESSION_REQUIRED',
-        'user_msg' => 'Acesse pelo link da sua empresa.'
-    ], 403);
-}
-
-/**
- * ==========================================================
- * 5) BUSCA VÍNCULO DO USUÁRIO COM A EMPRESA DA SESSÃO
- * ==========================================================
- */
-$sqlEmpresaUsuario = "
-    SELECT
-        eu.id_empresa,
-        eu.id_perfil,
-        p.nome AS perfil_nome,
-        p.status AS perfil_status,
-        eu.status AS status_vinculo,
-        eu.bloqueado_plano,
-        e.nome AS empresa_nome,
-        e.status AS empresa_status
-    FROM empresa_usuario eu
-    INNER JOIN empresa e
-        ON e.id_empresa = eu.id_empresa
-    INNER JOIN perfil p
-        ON p.id_perfil = eu.id_perfil
-    WHERE eu.id_usuario = ?
-      AND eu.id_empresa = ?
-    LIMIT 1
-";
-
-$stmtEmp = $conexao->prepare($sqlEmpresaUsuario);
-
-if (!$stmtEmp) {
-    out([
-        'ok' => false,
-        'step' => 'empresa_prepare',
-        'code' => 'DB_PREPARE_EMPRESA_FAIL',
-        'user_msg' => 'Erro interno ao localizar a empresa do usuário.'
-    ], 500);
-}
-
 $idUsuario = (int)$user['id_usuario'];
-$stmtEmp->bind_param('ii', $idUsuario, $empresaSessaoId);
+$vinculos = loginMultiempresaBuscarVinculos($conexao, $idUsuario);
 
-if (!$stmtEmp->execute()) {
-    $stmtEmp->close();
-
+if ($vinculos === null) {
     out([
         'ok' => false,
         'step' => 'empresa_exec',
@@ -441,258 +639,99 @@ if (!$stmtEmp->execute()) {
     ], 500);
 }
 
-$resEmp = $stmtEmp->get_result();
-$empresaRow = $resEmp ? $resEmp->fetch_assoc() : null;
-$stmtEmp->close();
+$acessiveis = [];
+$negados = [];
+$erroTecnicoAcesso = false;
 
-if (!$empresaRow) {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'vinculo_nao_encontrado', $empresaSessaoId);
-    out([
-        'ok' => false,
-        'step' => 'empresa',
-        'code' => 'LOGIN_ACCESS_DENIED',
-        'user_msg' => 'Não foi possível realizar o acesso.'
-    ], 403);
-}
-
-$empresaId     = (int)($empresaRow['id_empresa'] ?? 0);
-$perfilId      = (int)($empresaRow['id_perfil'] ?? 0);
-$perfilNomeDb  = trim((string)($empresaRow['perfil_nome'] ?? ''));
-$perfilStatus  = mb_strtolower(trim((string)($empresaRow['perfil_status'] ?? '')), 'UTF-8');
-$statusVinculo = mb_strtolower(trim((string)($empresaRow['status_vinculo'] ?? '')), 'UTF-8');
-$bloqueadoPlano = (int)($empresaRow['bloqueado_plano'] ?? 0) === 1;
-$statusEmpresa = mb_strtolower(trim((string)($empresaRow['empresa_status'] ?? '')), 'UTF-8');
-$empresaNomeBd = trim((string)($empresaRow['empresa_nome'] ?? ''));
-
-if ($empresaId <= 0) {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'vinculo_invalido', $empresaSessaoId);
-    out([
-        'ok' => false,
-        'step' => 'empresa',
-        'code' => 'INVALID_EMPRESA_LINK',
-        'user_msg' => 'Vínculo da empresa inválido.'
-    ], 403);
-}
-
-if ($statusVinculo !== 'ativo') {
-    registrarFalhaLogin($conexao, 'autenticacao.vinculo_inativo', $statusVinculo === 'bloqueado' ? 'vinculo_bloqueado' : 'vinculo_inativo', $empresaId);
-    out([
-        'ok' => false,
-        'step' => 'empresa_status',
-        'code' => 'LOGIN_ACCESS_DENIED',
-        'user_msg' => 'Não foi possível realizar o acesso.'
-    ], 403);
-}
-
-// O bloqueio do plano é independente do status manual do vínculo.
-if ($bloqueadoPlano) {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'acesso_indisponivel_plano', $empresaId);
-    out([
-        'ok' => false,
-        'step' => 'empresa_status',
-        'code' => 'LOGIN_PLAN_UNAVAILABLE',
-        'user_msg' => 'Acesso indisponível para o plano atual.'
-    ], 403);
-}
-
-if ($statusEmpresa !== 'ativo') {
-    registrarFalhaLogin($conexao, 'autenticacao.empresa_inativa', $statusEmpresa === 'bloqueado' ? 'empresa_bloqueada' : 'empresa_inativa', $empresaId);
-    out([
-        'ok' => false,
-        'step' => 'empresa_status',
-        'code' => 'LOGIN_ACCESS_DENIED',
-        'user_msg' => 'Não foi possível realizar o acesso.'
-    ], 403);
-}
-
-if ($perfilId <= 0) {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'perfil_ausente', $empresaId);
-    out([
-        'ok' => false,
-        'step' => 'perfil',
-        'code' => 'USER_WITHOUT_PERFIL',
-        'user_msg' => 'Usuário sem perfil vinculado à empresa.'
-    ], 403);
-}
-
-if ($perfilStatus !== 'ativo') {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', $perfilStatus === 'bloqueado' ? 'perfil_bloqueado' : 'perfil_inativo', $empresaId);
-    out([
-        'ok' => false,
-        'step' => 'perfil',
-        'code' => 'USER_PROFILE_INACTIVE',
-        'user_msg' => 'O perfil vinculado ao usuário não está ativo.'
-    ], 403);
+foreach ($vinculos as $vinculo) {
+    $avaliacao = loginMultiempresaAvaliarVinculo($conexao, $vinculo);
+    if ($avaliacao['permitido']) {
+        $acessiveis[] = $avaliacao;
+        continue;
+    }
+    $negados[] = $avaliacao;
+    if (!empty($avaliacao['erro_tecnico'])) $erroTecnicoAcesso = true;
 }
 
 /**
- * ==========================================================
- * 6) CONFERE O NOME DA EMPRESA DA SESSÃO
- * ==========================================================
+ * CASO C: nenhuma empresa acessível. O motivo real vai só para a auditoria.
  */
-$empresaSessaoNomeNormalizado = normalizaEmpresaNome($empresaSessaoNome);
-$empresaNomeBdNormalizado     = normalizaEmpresaNome($empresaNomeBd);
+if (!$acessiveis) {
+    if ($vinculos === []) {
+        loginMultiempresaAuditarFalha($conexao, 'autenticacao.acesso_negado', 'sem_vinculo_empresa');
+    }
+    foreach ($negados as $negado) {
+        loginMultiempresaAuditarFalha($conexao, (string)$negado['evento'], (string)$negado['motivo'], (int)$negado['empresa_id']);
+    }
 
-if (
-    $empresaSessaoNomeNormalizado === '' ||
-    $empresaNomeBdNormalizado === '' ||
-    $empresaSessaoNomeNormalizado !== $empresaNomeBdNormalizado
-) {
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'contexto_empresa_incompativel', $empresaId);
-    out([
-        'ok' => false,
-        'step' => 'empresa_nome',
-        'code' => 'EMPRESA_NAME_MISMATCH',
-        'user_msg' => 'O link da empresa é inválido ou não corresponde ao cadastro.'
-    ], 403);
-}
-
-$acessoAssinatura = acessoAssinaturaValidar($conexao, $empresaId);
-
-if (!($acessoAssinatura['permitido'] ?? false)) {
-    $motivoAssinatura = (string)($acessoAssinatura['motivo'] ?? 'sem_contrato_ativo');
-    registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', $motivoAssinatura, $empresaId);
-
-    $erroTecnicoAssinatura = (bool)($acessoAssinatura['erro_tecnico'] ?? false);
-    out([
-        'ok' => false,
-        'step' => 'assinatura',
-        'code' => $erroTecnicoAssinatura ? 'LOGIN_SUBSCRIPTION_CHECK_ERROR' : 'LOGIN_SUBSCRIPTION_BLOCKED',
-        'user_msg' => (string)$acessoAssinatura['user_msg']
-    ], $erroTecnicoAssinatura ? 500 : 403);
-}
-
-/**
- * ==========================================================
- * 7) ATUALIZA ÚLTIMO LOGIN
- * ==========================================================
- */
-$sqlUpdateLogin = "
-    UPDATE usuario
-       SET ultimo_login_em = NOW()
-     WHERE id_usuario = ?
-     LIMIT 1
-";
-$stmtUpdate = $conexao->prepare($sqlUpdateLogin);
-
-if ($stmtUpdate) {
-    $idUsuarioUpdate = (int)$user['id_usuario'];
-    $stmtUpdate->bind_param('i', $idUsuarioUpdate);
-    $stmtUpdate->execute();
-    $stmtUpdate->close();
-}
-
-/**
- * ==========================================================
- * 8) REGENERA SESSÃO E LIMPA RESÍDUOS
- * ==========================================================
- */
-session_regenerate_id(true);
-
-unset($_SESSION['auth']);
-unset($_SESSION['superadmin_id']);
-unset($_SESSION['superadmin_nome']);
-unset($_SESSION['superadmin_email']);
-unset($_SESSION['super']);
-unset($_SESSION['usuario_id']);
-unset($_SESSION['usuario_nome']);
-unset($_SESSION['usuario_email']);
-unset($_SESSION['usuario_tipo']);
-unset($_SESSION['perfil_id']);
-unset($_SESSION['perfil_nome']);
-unset($_SESSION['modo_suporte']);
-
-/**
- * Mantém empresa validada na sessão
- */
-$_SESSION['empresa_id']   = $empresaId;
-$_SESSION['empresa_nome'] = $empresaNomeBd;
-
-/**
- * ==========================================================
- * 9) SESSÃO BASE
- * ==========================================================
- */
-$_SESSION['auth'] = [
-    'logado'       => true,
-    'id_usuario'   => (int)$user['id_usuario'],
-    'nome'         => (string)$user['nome'],
-    'email'        => (string)$user['email'],
-    'tipo_usuario' => $tipoUsuario,
-    'status'       => $statusUsuario,
-    'empresa_id'   => $empresaId,
-    'empresa_nome' => $empresaNomeBd,
-    'perfil_id'    => $perfilId,
-    'modo_suporte' => false,
-    'deve_alterar_senha' => $deveAlterarSenha,
-    'senha_temporaria_vencida' => $senhaTemporariaVencida,
-];
-
-$_SESSION['usuario_id']    = (int)$user['id_usuario'];
-$_SESSION['usuario_nome']  = (string)$user['nome'];
-$_SESSION['usuario_email'] = (string)$user['email'];
-$_SESSION['usuario_tipo']  = $tipoUsuario;
-$_SESSION['perfil_id']     = $perfilId;
-
-/**
- * ==========================================================
- * 10) DEFINE PERFIL E REDIRECT
- * ==========================================================
- */
-$perfilNome = '';
-$redirect = '';
-$perfilNomeNormalizado = normalizaEmpresaNome($perfilNomeDb);
-
-switch ($perfilNomeNormalizado) {
-    case 'proprietario':
-        $perfilNome = 'proprietario';
-        $redirect = '/views/painel-administrativo/painel-administrativo.html';
-        break;
-
-    case 'profissional':
-        $perfilNome = 'profissional';
-        $redirect = '/views/agenda.html';
-        break;
-
-    case 'recepcao':
-    case 'recepcionista':
-        $perfilNome = 'recepcionista';
-        $redirect = '/views/agenda.html';
-        break;
-
-    default:
-        registrarFalhaLogin($conexao, 'autenticacao.acesso_negado', 'perfil_nao_permitido', $empresaId);
+    if ($erroTecnicoAcesso) {
         out([
             'ok' => false,
-            'step' => 'perfil',
-            'code' => 'USER_PROFILE_NOT_ALLOWED',
-            'user_msg' => 'Perfil de usuário não permitido para este acesso.',
-            'data' => [
-                'perfil_id' => $perfilId
-            ]
-        ], 403);
-}
+            'step' => 'assinatura',
+            'code' => 'LOGIN_SUBSCRIPTION_CHECK_ERROR',
+            'user_msg' => 'Não foi possível validar o acesso agora. Tente novamente.'
+        ], 500);
+    }
 
-$_SESSION['perfil_nome'] = $perfilNome;
-$_SESSION['auth']['perfil_nome'] = $perfilNome;
+    out([
+        'ok' => false,
+        'step' => 'empresa',
+        'code' => 'LOGIN_ACCESS_DENIED',
+        'user_msg' => 'Não foi possível realizar o acesso.'
+    ], 403);
+}
 
 /**
  * ==========================================================
- * 11) LOGIN OK USUÁRIO COMUM
+ * 5) ESCOLHA DA EMPRESA
  * ==========================================================
+ * - Uma única empresa acessível: seleção automática (CASO A).
+ * - Várias: se o link da empresa apontar para uma delas, ela é usada
+ *   (comportamento anterior preservado); senão exige seleção (CASO B).
  */
+$escolhida = null;
+
+if (count($acessiveis) === 1) {
+    $escolhida = $acessiveis[0];
+} elseif ($empresaSessaoId > 0 && $empresaSessaoNome !== '') {
+    $dicaNormalizada = normalizaEmpresaNome($empresaSessaoNome);
+    foreach ($acessiveis as $candidata) {
+        if ((int)$candidata['empresa_id'] === $empresaSessaoId
+            && $dicaNormalizada !== ''
+            && $dicaNormalizada === normalizaEmpresaNome((string)$candidata['empresa_nome'])) {
+            $escolhida = $candidata;
+            break;
+        }
+    }
+}
+
+if ($escolhida !== null) {
+    $dadosLogin = loginMultiempresaConsolidarSessao($conexao, $user, $escolhida);
+    loginMultiempresaResponderLoginOk($dadosLogin);
+}
+
+/**
+ * CASO B: pré-sessão temporária. Nenhuma sessão operacional é criada.
+ */
+$csrfSelecao = loginMultiempresaCriarPreSessao($idUsuario);
+
+$empresasSelecao = [];
+foreach ($acessiveis as $acessivel) {
+    $empresasSelecao[] = [
+        'id_empresa' => (int)$acessivel['empresa_id'],
+        'nome' => (string)$acessivel['empresa_nome'],
+        'perfil_nome' => (string)$acessivel['perfil_nome_exibicao'],
+    ];
+}
+
 out([
     'ok' => true,
-    'step' => 'done',
-    'code' => 'LOGIN_OK',
-    'user_msg' => 'Login realizado com sucesso.',
+    'step' => 'empresa_selecao',
+    'code' => 'EMPRESA_SELECTION_REQUIRED',
+    'user_msg' => 'Selecione a empresa para continuar.',
     'data' => [
-        'redirect'     => $redirect,
-        'empresa_id'   => $empresaId,
-        'empresa_nome' => $empresaNomeBd,
-        'perfil_id'    => $perfilId,
-        'perfil_nome'  => $perfilNome,
-        'deve_alterar_senha' => $deveAlterarSenha,
-        'senha_temporaria_vencida' => $senhaTemporariaVencida
+        'empresas' => $empresasSelecao,
+        'csrf_token' => $csrfSelecao,
+        'expira_em_segundos' => LOGIN_PENDENTE_TTL_SEGUNDOS,
     ]
 ], 200);

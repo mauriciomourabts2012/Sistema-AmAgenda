@@ -68,6 +68,9 @@ try {
         session_start();
     }
 
+    require_once __DIR__ . '/../../_auth/csrf.php';
+    csrfValidarSessao();
+
     $auth = $_SESSION['auth'] ?? null;
 
     $idUsuarioSessao = (int)($auth['id_usuario'] ?? 0);
@@ -306,9 +309,7 @@ try {
                     'u_especialidade' => 'Informe a especialidade do profissional.'
                 ]
             ], 422);
-        }
-
-        if (mb_strlen($especialidade) > 120) {
+        } elseif (mb_strlen($especialidade) > 120) {
             out([
                 'ok' => false,
                 'code' => 'VALIDATION_ERROR',
@@ -534,20 +535,22 @@ try {
         ========================================================== */
         $stmt = $conexao->prepare("
             INSERT INTO empresa_usuario
-                (id_empresa, id_usuario, id_perfil, status)
+                (id_empresa, id_usuario, id_perfil, especialidade_profissional, status)
             VALUES
-                (?, ?, ?, ?)
+                (?, ?, ?, ?, ?)
         ");
 
         if (!$stmt) {
             throw new RuntimeException('Erro ao preparar vínculo empresa/usuário: ' . $conexao->error);
         }
 
+        $especialidadeVinculo = $isProfissional ? $especialidade : null;
         $stmt->bind_param(
-            "iiis",
+            "iiiss",
             $idEmpresaSessao,
             $idUsuario,
             $idPerfil,
+            $especialidadeVinculo,
             $statusVinculo
         );
 

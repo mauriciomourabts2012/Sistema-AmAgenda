@@ -55,6 +55,9 @@
     limite_recepcionistas: document.getElementById("e_limite_recepcionistas"),
     limite_servicos: document.getElementById("e_limite_servicos"),
     limite_agendamentos: document.getElementById("e_limite_agendamentos"),
+    agenda_online: document.getElementById("e_agenda_online"),
+    gera_cobranca: document.getElementById("e_gera_cobranca"),
+    disponivel_cadastro_publico: document.getElementById("e_disponivel_cadastro_publico"),
     destaque: document.getElementById("e_destaque"),
     status: document.getElementById("e_status"),
     descricao: document.getElementById("e_descricao"),
@@ -194,6 +197,9 @@
       limite_recepcionistas: "e_limite_recepcionistas",
       limite_servicos: "e_limite_servicos",
       limite_agendamentos: "e_limite_agendamentos",
+      agenda_online: "e_agenda_online",
+      gera_cobranca: "e_gera_cobranca",
+      disponivel_cadastro_publico: "e_disponivel_cadastro_publico",
       destaque: "e_destaque",
       status: "e_status",
       descricao: "e_descricao",
@@ -305,6 +311,9 @@
       limite_recepcionistas: normalizarTexto(campos.limite_recepcionistas?.value),
       limite_servicos: normalizarTexto(campos.limite_servicos?.value),
       limite_agendamentos: normalizarTexto(campos.limite_agendamentos?.value),
+      agenda_online: normalizarTexto(campos.agenda_online?.value),
+      gera_cobranca: normalizarTexto(campos.gera_cobranca?.value),
+      disponivel_cadastro_publico: normalizarTexto(campos.disponivel_cadastro_publico?.value),
       destaque: normalizarTexto(campos.destaque?.value),
       status: normalizarTexto(campos.status?.value).toLowerCase(),
       descricao: normalizarTexto(campos.descricao?.value),
@@ -407,6 +416,21 @@
       ok = false;
     }
 
+    if (!["0", "1"].includes(dados.agenda_online)) {
+      setFieldError("agenda_online", "Selecione a disponibilidade da Agenda Online.");
+      ok = false;
+    }
+
+    if (!["0", "1"].includes(dados.gera_cobranca)) {
+      setFieldError("gera_cobranca", "Informe se o plano gera cobrança.");
+      ok = false;
+    }
+
+    if (!["0", "1"].includes(dados.disponivel_cadastro_publico)) {
+      setFieldError("disponivel_cadastro_publico", "Informe se o plano fica disponível no cadastro público.");
+      ok = false;
+    }
+
     if (!["ativo", "inativo", "bloqueado"].includes(dados.status)) {
       setFieldError("status", "Status inválido.");
       ok = false;
@@ -461,6 +485,9 @@
 
     if (campos.id_plano) campos.id_plano.value = "";
     if (campos.cobranca) campos.cobranca.value = "mensal";
+    if (campos.agenda_online) campos.agenda_online.value = "1";
+    if (campos.gera_cobranca) campos.gera_cobranca.value = "1";
+    if (campos.disponivel_cadastro_publico) campos.disponivel_cadastro_publico.value = "1";
     if (campos.destaque) campos.destaque.value = "0";
     if (campos.status) campos.status.value = "ativo";
     atualizarVagasAdministrativas();
@@ -553,6 +580,9 @@
     fd.append("limite_recepcionistas", apenasDigitos(dados.limite_recepcionistas || "0"));
     fd.append("limite_servicos", apenasDigitos(dados.limite_servicos || "0"));
     fd.append("limite_agendamentos", apenasDigitos(dados.limite_agendamentos || "0"));
+    fd.append("agenda_online", dados.agenda_online);
+    fd.append("gera_cobranca", dados.gera_cobranca);
+    fd.append("disponivel_cadastro_publico", dados.disponivel_cadastro_publico);
     fd.append("destaque", dados.destaque);
     fd.append("status", dados.status);
     fd.append("descricao", dados.descricao || "");
@@ -672,6 +702,9 @@
       if (campos.limite_recepcionistas) campos.limite_recepcionistas.value = dados.limite_recepcionistas ?? 0;
       if (campos.limite_servicos) campos.limite_servicos.value = dados.limite_servicos ?? 0;
       if (campos.limite_agendamentos) campos.limite_agendamentos.value = dados.limite_agendamentos ?? 0;
+      if (campos.agenda_online) campos.agenda_online.value = String(dados.agenda_online ?? 1);
+      if (campos.gera_cobranca) campos.gera_cobranca.value = String(dados.gera_cobranca ?? 1);
+      if (campos.disponivel_cadastro_publico) campos.disponivel_cadastro_publico.value = String(dados.disponivel_cadastro_publico ?? 1);
       if (campos.destaque) campos.destaque.value = String(dados.destaque ?? 0);
       if (campos.status) campos.status.value = dados.status ?? "ativo";
       if (campos.descricao) campos.descricao.value = dados.descricao ?? "";

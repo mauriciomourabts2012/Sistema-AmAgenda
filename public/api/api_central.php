@@ -53,6 +53,16 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/_auth/login.php',
     ],
 
+    // Selecao da empresa apos login com mais de uma empresa (exige pre-sessao valida)
+    '_auth/selecionar-empresa' => [
+        'POST' => __DIR__ . '/../../backend/_auth/selecionar_empresa.php',
+    ],
+
+    // Cadastro público de empresa (onboarding): rota pública, sem sessão. Subfase 6.1: validação e preparação.
+    'cadastro-publico/empresa' => [
+        'POST' => __DIR__ . '/../../backend/cadastro_publico/cadastrar_empresa.php',
+    ],
+
     // Verificar sessão (logado?)
     '_auth/session' => [
         'GET' => __DIR__ . '/../../backend/_auth/sessao.php',
@@ -66,6 +76,11 @@ $routes = [
     // Logout (deslogar)
     '_auth/logout' => [
         'POST' => __DIR__ . '/../../backend/_auth/logout.php',
+    ],
+
+    // Webhook público autenticado criptograficamente pelo Mercado Pago
+    'webhooks/mercado-pago' => [
+        'POST' => __DIR__ . '/../../backend/webhooks/mercado_pago.php',
     ],
 
     // Documentos legais e manifestações obrigatórias
@@ -276,6 +291,14 @@ $routes = [
         'GET' => __DIR__ . '/../../backend/super_admin/empresa/lista_empresa.php',
     ],
 
+    // Contexto temporário de empresa para atendimento pelo Super Admin
+    'superadmin/suporte/entrar' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/empresa/lista_empresa.php',
+    ],
+    'superadmin/suporte/sair' => [
+        'POST' => __DIR__ . '/../../backend/super_admin/empresa/lista_empresa.php',
+    ],
+
     // Alterar status da empresa
     'superadmin/empresa/alterar-status' => [
         'POST' => __DIR__ . '/../../backend/super_admin/empresa/alterar_status_empresa.php',
@@ -284,6 +307,11 @@ $routes = [
     // Editar empresa
     'superadmin/empresa/editar' => [
         'POST' => __DIR__ . '/../../backend/super_admin/empresa/editar_empresa.php',
+    ],
+
+    // Diagnóstico local e somente leitura da integração Mercado Pago
+    'superadmin/integracoes/mercado-pago' => [
+        'GET' => __DIR__ . '/../../backend/super_admin/integracao/consultar_mercado_pago.php',
     ],
 
     // Cobranças manuais do Super Admin
@@ -371,6 +399,9 @@ $routes = [
     ],
     'painel/faturamento/pagamentos' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
+    'painel/faturamento/regularizacao/cobranca' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
     ],
     'painel/faturamento/pagamento/pix/iniciar' => [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
@@ -548,20 +579,29 @@ $handler = $routes[$rota][$verbo];
    especiais, para não poder ser contornado por chamada direta à API. */
 $rotasPublicasSemBloqueioJuridico = [
     '_auth/login',
+    '_auth/selecionar-empresa',
     '_auth/cliente-login',
+    'cadastro-publico/empresa',
+    'webhooks/mercado-pago',
     'documentos-legais/publico',
     'empresa/identidade-visual/publica',
 ];
 $rotasResolucaoPendenciaJuridica = [
     '_auth/session',
     '_auth/logout',
+    'superadmin/suporte/sair',
     'documentos-legais/pendencias',
     'documentos-legais/conteudo',
     'documentos-legais/manifestar',
 ];
+// O handler aplica o guard exclusivo de Super Admin usando somente a sessão.
+$rotasSemConsultaBancoNaFronteira = [
+    'superadmin/integracoes/mercado-pago',
+];
 
 if (!in_array($rota, $rotasPublicasSemBloqueioJuridico, true)
-    && !in_array($rota, $rotasResolucaoPendenciaJuridica, true)) {
+    && !in_array($rota, $rotasResolucaoPendenciaJuridica, true)
+    && !in_array($rota, $rotasSemConsultaBancoNaFronteira, true)) {
     if (session_status() !== PHP_SESSION_ACTIVE) session_start();
     $temIdentidadeNaSessao = (int)($_SESSION['auth']['id_usuario'] ?? 0) > 0
         || (int)($_SESSION['cliente_auth']['id_cliente'] ?? 0) > 0;
@@ -688,7 +728,10 @@ if (!is_file($handler)) {
    sessão autenticada, toda outra API passa pela revalidação autoritativa. */
 $rotasPermitidasComSenhaTemporariaVencida = [
     '_auth/login',
+    '_auth/selecionar-empresa',
     '_auth/cliente-login',
+    'cadastro-publico/empresa',
+    'webhooks/mercado-pago',
     '_auth/session',
     '_auth/logout',
     'perfil/alterar-senha',
@@ -702,7 +745,8 @@ if ($rota === 'perfil/alterar-senha') {
     define('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA', true);
 }
 
-if (!in_array($rota, $rotasPermitidasComSenhaTemporariaVencida, true)) {
+if (!in_array($rota, $rotasPermitidasComSenhaTemporariaVencida, true)
+    && !in_array($rota, $rotasSemConsultaBancoNaFronteira, true)) {
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
     }
@@ -731,6 +775,7 @@ $permissoesPorRota = [
     'painel/faturamento/resumo' => 'faturamento.visualizar',
     'painel/faturamento/cobrancas' => 'faturamento.visualizar',
     'painel/faturamento/pagamentos' => 'faturamento.visualizar',
+    // A regularização valida Proprietário, modo de regularização e CSRF no handler específico.
     'painel/faturamento/pagamento/pix/iniciar' => 'faturamento.pagar',
     'painel/faturamento/pagamento/transacao' => 'faturamento.visualizar',
     'painel/faturamento/pagamento/cartao/configuracao' => 'faturamento.pagar',

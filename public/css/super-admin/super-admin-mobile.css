@@ -109,6 +109,29 @@
     padding-left: 4px;
   }
 
+  #integracoes .integracao-card { border-radius: 14px; }
+  #integracoes .integracao-card__cabecalho {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 18px;
+    padding: 18px;
+  }
+  #integracoes .integracao-card__titulo { align-items: flex-start; }
+  #integracoes .integracao-card__icone { flex-basis: 46px; width: 46px; height: 46px; border-radius: 13px; font-size: 20px; }
+  #integracoes .integracao-card__titulo h2 { font-size: 19px; }
+  #integracoes .integracao-card__cabecalho .botao-geral { width: 100%; justify-content: center; }
+  #integracoes .integracao-resumo {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 16px 0;
+  }
+  #integracoes .integracao-resumo > div { align-items: flex-start; flex-direction: column; gap: 7px; }
+  #integracoes .integracao-feedback { margin: 14px 16px 0; }
+  #integracoes .integracao-grade { grid-template-columns: 1fr; margin: 14px 16px 18px; }
+  #integracoes .integracao-grade__webhook { grid-column: auto; }
+  #integracoes .integracao-card__rodape { align-items: flex-start; padding: 14px 18px; }
+
 /* =========================
    FIM
 ========================= */

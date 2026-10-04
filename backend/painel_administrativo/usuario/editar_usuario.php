@@ -7,20 +7,15 @@ declare(strict_types=1);
  * Rota: painel/usuario/editar
  * Método: POST
  * ----------------------------------------------------------
- * Atualiza:
- * - tabela usuario
- * - tabela empresa_usuario (perfil + status)
- * - tabela profissional (quando perfil = profissional)
+ * Atualiza somente o vínculo da empresa ativa (perfil + status + especialidade).
+ * Cria o cadastro profissional global apenas quando a mudança para o perfil
+ * Profissional exige esse cadastro e a especialidade foi informada.
  *
  * Regras:
  * - id_usuario obrigatório
- * - nome obrigatório
- * - email obrigatório e único
  * - perfil obrigatório
  * - status obrigatório
- * - telefone opcional
- * - senha opcional
- * - especialidade obrigatória somente para perfil "Profissional"
+ * - dados globais e senha não são alterados por este endpoint
  * - edição limitada à empresa da sessão
  * - não permite editar usuário super_admin por este endpoint
  * ==========================================================
@@ -131,6 +126,9 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
+
 $idEmpresaSessao = sessionValue($_SESSION, [
     'auth.id_empresa',
     'id_empresa',
@@ -153,14 +151,9 @@ if ($idEmpresaSessao <= 0) {
    ENTRADAS
 ========================================================== */
 $idUsuario     = intPost('id_usuario');
-$nome          = s($_POST['nome'] ?? '', 140);
-$email         = lower($_POST['email'] ?? '', 160);
-$telefoneRaw   = s($_POST['telefone'] ?? '', 20);
 $idPerfil      = intPost('perfil');
 $status        = lower($_POST['status'] ?? '', 20);
-$especialidade = s($_POST['especialidade'] ?? '', 120);
-$senha         = trim((string)($_POST['senha'] ?? ''));
-$senha2        = trim((string)($_POST['senha2'] ?? ''));
+$especialidade = s($_POST['especialidade'] ?? '');
 
 /* ==========================================================
    VALIDAÇÕES
@@ -169,28 +162,6 @@ $erros = [];
 
 if ($idUsuario === null) {
     $erros['u_e_id'] = 'Usuário inválido.';
-}
-
-if ($nome === '') {
-    $erros['u_e_nome'] = 'Informe o nome do usuário.';
-} elseif (mb_strlen($nome) < 3) {
-    $erros['u_e_nome'] = 'O nome deve ter no mínimo 3 caracteres.';
-}
-
-if ($email === '') {
-    $erros['u_e_email'] = 'Informe o e-mail.';
-} elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    $erros['u_e_email'] = 'Informe um e-mail válido.';
-}
-
-$telefone = null;
-if ($telefoneRaw !== '') {
-    $digits = onlyDigits($telefoneRaw);
-    if (strlen($digits) < 10 || strlen($digits) > 11) {
-        $erros['u_e_tel'] = 'Informe um telefone válido com DDD.';
-    } else {
-        $telefone = $telefoneRaw;
-    }
 }
 
 if ($idPerfil === null) {
@@ -202,32 +173,6 @@ if ($status === '') {
     $erros['u_status'] = 'Selecione o status.';
 } elseif (!in_array($status, $allowedStatus, true)) {
     $erros['u_status'] = 'Status inválido.';
-}
-
-$alterarSenha = false;
-$senhaHash = null;
-
-if ($senha !== '' || $senha2 !== '') {
-    if ($senha === '') {
-        $erros['u_e_senha'] = 'Informe a nova senha.';
-    } elseif (mb_strlen($senha) < 6) {
-        $erros['u_e_senha'] = 'A senha deve ter no mínimo 6 caracteres.';
-    }
-
-    if ($senha2 === '') {
-        $erros['u_e_senha2'] = 'Confirme a nova senha.';
-    } elseif (mb_strlen($senha2) < 6) {
-        $erros['u_e_senha2'] = 'A confirmação deve ter no mínimo 6 caracteres.';
-    }
-
-    if ($senha !== '' && $senha2 !== '' && $senha !== $senha2) {
-        $erros['u_e_senha2'] = 'As senhas não conferem.';
-    }
-
-    if (!isset($erros['u_e_senha']) && !isset($erros['u_e_senha2'])) {
-        $alterarSenha = true;
-        $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
-    }
 }
 
 if (!empty($erros)) {
@@ -245,7 +190,6 @@ if (!empty($erros)) {
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_regras/limites_plano.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
-require_once __DIR__ . '/../../_servicos/notificacao.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -314,8 +258,9 @@ try {
             eu.id_empresa,
             eu.id_perfil,
             eu.status AS status_vinculo,
+            eu.especialidade_profissional AS especialidade_anterior,
             perfil_atual.nome AS perfil_anterior,
-            prof.especialidade AS especialidade_anterior
+            prof.id_profissional
         FROM usuario u
         INNER JOIN empresa_usuario eu
             ON eu.id_usuario = u.id_usuario
@@ -363,35 +308,6 @@ try {
     if ($idEmpresaUsuario <= 0) {
         throw new Exception('Vínculo do usuário inválido.');
     }
-
-    /* ==========================================================
-       EMAIL DUPLICADO
-    ========================================================== */
-    $sqlEmail = "SELECT id_usuario FROM usuario WHERE email = ? AND id_usuario <> ? LIMIT 1";
-    $st = $conexao->prepare($sqlEmail);
-
-    if (!$st) {
-        throw new Exception('Falha ao preparar validação de e-mail.');
-    }
-
-    $st->bind_param('si', $email, $idUsuario);
-    $st->execute();
-    $st->store_result();
-
-    if ($st->num_rows > 0) {
-        $st->close();
-
-        out([
-            'ok' => false,
-            'code' => 'EMAIL_DUPLICADO',
-            'user_msg' => 'Já existe outro usuário com este e-mail.',
-            'fields' => [
-                'u_e_email' => 'Este e-mail já está em uso.',
-            ],
-        ], 409);
-    }
-
-    $st->close();
 
     /* ==========================================================
        PERFIL
@@ -446,16 +362,30 @@ try {
         ], 403);
     }
     $isProfissional = ($nomePerfilNormalizado === 'profissional');
+    $temCadastroProfissional = (int)($usuario['id_profissional'] ?? 0) > 0;
 
-    if ($isProfissional && $especialidade === '') {
-        out([
-            'ok' => false,
-            'code' => 'VALIDATION_ERROR',
-            'user_msg' => 'Revise os campos destacados.',
-            'fields' => [
-                'u_e_especialidade' => 'Informe a especialidade do profissional.',
-            ],
-        ], 422);
+    if ($isProfissional) {
+        if ($especialidade === '') {
+            out([
+                'ok' => false,
+                'code' => 'PROFESSIONAL_DATA_REQUIRED',
+                'user_msg' => 'Informe a especialidade para concluir o cadastro profissional.',
+                'fields' => [
+                    'u_e_especialidade' => 'Informe a especialidade do profissional.',
+                ],
+            ], 422);
+        }
+
+        if (mb_strlen($especialidade) > 120) {
+            out([
+                'ok' => false,
+                'code' => 'VALIDATION_ERROR',
+                'user_msg' => 'Revise os campos destacados.',
+                'fields' => [
+                    'u_e_especialidade' => 'A especialidade deve ter no máximo 120 caracteres.',
+                ],
+            ], 422);
+        }
     }
 
     /* ==========================================================
@@ -480,67 +410,10 @@ try {
     );
     limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
 
-    /* ==========================================================
-       UPDATE usuario
-    ========================================================== */
-    if ($alterarSenha) {
-        $sqlUpdateUsuario = "
-            UPDATE usuario
-               SET nome = ?,
-                   email = ?,
-                   telefone = ?,
-                   senha_hash = ?,
-                   deve_alterar_senha = 1,
-                   data_senha_temporaria = CURRENT_TIMESTAMP
-             WHERE id_usuario = ?
-             LIMIT 1
-        ";
-        $stmt = $conexao->prepare($sqlUpdateUsuario);
-
-        if (!$stmt) {
-            throw new Exception('Falha ao preparar atualização do usuário com senha.');
-        }
-
-        $stmt->bind_param(
-            'ssssi',
-            $nome,
-            $email,
-            $telefone,
-            $senhaHash,
-            $idUsuario
-        );
-    } else {
-        $sqlUpdateUsuario = "
-            UPDATE usuario
-               SET nome = ?,
-                   email = ?,
-                   telefone = ?
-             WHERE id_usuario = ?
-             LIMIT 1
-        ";
-        $stmt = $conexao->prepare($sqlUpdateUsuario);
-
-        if (!$stmt) {
-            throw new Exception('Falha ao preparar atualização do usuário.');
-        }
-
-        $stmt->bind_param(
-            'sssi',
-            $nome,
-            $email,
-            $telefone,
-            $idUsuario
-        );
-    }
-
-    if (!$stmt->execute()) {
-        $err = '[' . $stmt->errno . '] ' . $stmt->error;
-        $stmt->close();
-        throw new Exception('Erro ao atualizar usuário ' . $err);
-    }
-
-    $affectedUsuario = (int)$stmt->affected_rows;
-    $stmt->close();
+    $nome = (string)$usuario['nome'];
+    $email = (string)$usuario['email'];
+    $telefone = $usuario['telefone'] !== null ? (string)$usuario['telefone'] : null;
+    $affectedUsuario = 0;
 
     /* ==========================================================
        UPDATE empresa_usuario
@@ -548,7 +421,11 @@ try {
     $sqlUpdateVinculo = "
         UPDATE empresa_usuario
            SET id_perfil = ?,
-               status = ?
+               status = ?,
+               especialidade_profissional = CASE
+                   WHEN ? = 1 THEN ?
+                   ELSE especialidade_profissional
+               END
          WHERE id_empresa_usuario = ?
          LIMIT 1
     ";
@@ -559,9 +436,11 @@ try {
     }
 
     $stmt->bind_param(
-        'isi',
+        'isisi',
         $idPerfil,
         $status,
+        $isProfissional,
+        $especialidade,
         $idEmpresaUsuario
     );
 
@@ -579,49 +458,7 @@ try {
     ========================================================== */
     $affectedProfissional = 0;
 
-    if ($isProfissional) {
-        $sqlProfissionalExiste = "
-            SELECT id_profissional
-            FROM profissional
-            WHERE id_usuario = ?
-            LIMIT 1
-        ";
-        $stmt = $conexao->prepare($sqlProfissionalExiste);
-
-        if (!$stmt) {
-            throw new Exception('Falha ao preparar consulta de profissional.');
-        }
-
-        $stmt->bind_param('i', $idUsuario);
-        $stmt->execute();
-        $resProf = $stmt->get_result();
-        $profissional = $resProf ? $resProf->fetch_assoc() : null;
-        $stmt->close();
-
-        if ($profissional) {
-            $sqlProfissionalUpdate = "
-                UPDATE profissional
-                   SET especialidade = ?
-                 WHERE id_usuario = ?
-                 LIMIT 1
-            ";
-            $stmt = $conexao->prepare($sqlProfissionalUpdate);
-
-            if (!$stmt) {
-                throw new Exception('Falha ao preparar update de profissional.');
-            }
-
-            $stmt->bind_param('si', $especialidade, $idUsuario);
-
-            if (!$stmt->execute()) {
-                $err = '[' . $stmt->errno . '] ' . $stmt->error;
-                $stmt->close();
-                throw new Exception('Erro ao atualizar profissional ' . $err);
-            }
-
-            $affectedProfissional = (int)$stmt->affected_rows;
-            $stmt->close();
-        } else {
+    if ($isProfissional && !$temCadastroProfissional) {
             $descricao = null;
 
             $sqlProfissionalInsert = "
@@ -644,125 +481,19 @@ try {
 
             $affectedProfissional = (int)$stmt->affected_rows;
             $stmt->close();
-        }
-    } else {
-        $sqlDeleteProfissional = "
-            DELETE FROM profissional
-            WHERE id_usuario = ?
-            LIMIT 1
-        ";
-        $stmt = $conexao->prepare($sqlDeleteProfissional);
-
-        if (!$stmt) {
-            throw new Exception('Falha ao preparar exclusão de profissional.');
-        }
-
-        $stmt->bind_param('i', $idUsuario);
-
-        if (!$stmt->execute()) {
-            $err = '[' . $stmt->errno . '] ' . $stmt->error;
-            $stmt->close();
-            throw new Exception('Erro ao remover profissional ' . $err);
-        }
-
-        $affectedProfissional = (int)$stmt->affected_rows;
-        $stmt->close();
-    }
-
-    if ($alterarSenha) {
-        // Resolve novamente o executor pelo contexto autenticado e validado do backend.
-        $atorOperacao = auditoriaResolverAtorSessao($conexao);
-        $origemTipoNotificacao = (string)$atorOperacao['ator_tipo'];
-        $origemIdNotificacao = (int)$atorOperacao['id_ator'];
-
-        $stmt = $conexao->prepare(
-            "SELECT id_notificacao
-               FROM notificacao
-              WHERE destinatario_tipo = 'usuario'
-                AND destinatario_id = ?
-                AND id_empresa = ?
-                AND codigo = 'seguranca.senha_temporaria'
-                AND concluida_em IS NULL
-                AND cancelada_em IS NULL
-              FOR UPDATE"
-        );
-        if (!$stmt) {
-            throw new Exception('Falha ao preparar busca da notificação de senha anterior.');
-        }
-        $stmt->bind_param('ii', $idUsuario, $idEmpresaSessao);
-        if (!$stmt->execute()) {
-            $stmt->close();
-            throw new Exception('Falha ao buscar a notificação de senha anterior.');
-        }
-        $resNotificacoes = $stmt->get_result();
-        $notificacoesAnteriores = [];
-        while ($resNotificacoes && ($notificacaoAnterior = $resNotificacoes->fetch_assoc())) {
-            $notificacoesAnteriores[] = (int)$notificacaoAnterior['id_notificacao'];
-        }
-        $stmt->close();
-
-        foreach ($notificacoesAnteriores as $idNotificacaoAnterior) {
-            notificacaoCancelar(
-                $conexao,
-                $idNotificacaoAnterior,
-                'usuario',
-                $idUsuario,
-                $idEmpresaSessao
-            );
-        }
-
-        $stmt = $conexao->prepare(
-            'SELECT data_senha_temporaria, DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR) AS prazo_em FROM usuario WHERE id_usuario = ? LIMIT 1 FOR UPDATE'
-        );
-        if (!$stmt) {
-            throw new Exception('Falha ao preparar o prazo da nova senha temporária.');
-        }
-        $stmt->bind_param('i', $idUsuario);
-        if (!$stmt->execute()) {
-            $stmt->close();
-            throw new Exception('Falha ao calcular o prazo da nova senha temporária.');
-        }
-        $resPrazo = $stmt->get_result();
-        $prazoSenha = $resPrazo ? ($resPrazo->fetch_assoc() ?: null) : null;
-        $stmt->close();
-        if (!$prazoSenha || trim((string)($prazoSenha['prazo_em'] ?? '')) === '') {
-            throw new Exception('Prazo da nova senha temporária indisponível.');
-        }
-
-        $chaveOcorrencia = 'seguranca.senha_temporaria:redefinicao:'
-            . $idEmpresaSessao . ':' . $idUsuario . ':' . bin2hex(random_bytes(16));
-        notificacaoCriar($conexao, [
-            'id_empresa' => $idEmpresaSessao,
-            'destinatario_tipo' => 'usuario',
-            'destinatario_id' => $idUsuario,
-            'origem_tipo' => $origemTipoNotificacao,
-            'origem_id' => $origemIdNotificacao,
-            'codigo' => 'seguranca.senha_temporaria',
-            'categoria' => 'seguranca',
-            'titulo' => 'Altere sua senha temporária',
-            'mensagem' => 'Sua senha atual é temporária. Altere-a dentro de 24 horas.',
-            'prioridade' => 'alta',
-            'obrigatoria' => true,
-            'acao_codigo' => 'perfil.alterar_senha',
-            'contexto' => null,
-            'prazo_em' => (string)$prazoSenha['prazo_em'],
-            'chave_deduplicacao' => $chaveOcorrencia,
-        ]);
     }
 
     // Monta diferenças a partir do snapshot empresarial carregado antes da operação.
+    $especialidadeAuditada = $isProfissional
+        ? $especialidade
+        : $usuario['especialidade_anterior'];
     $valoresAuditaveis = [
-        'nome' => [(string)$usuario['nome'], $nome],
-        'email' => [(string)$usuario['email'], $email],
-        'telefone' => [$usuario['telefone'], $telefone],
         'perfil' => [(string)$usuario['perfil_anterior'], (string)$perfil['nome']],
         'status_vinculo' => [(string)$usuario['status_vinculo'], $status],
-        'especialidade' => [$usuario['especialidade_anterior'], $isProfissional ? $especialidade : null],
+        'especialidade' => [$usuario['especialidade_anterior'], $especialidadeAuditada],
     ];
     $diferencas=[];foreach($valoresAuditaveis as $campo=>[$antes,$depois])if(!auditoriaValoresIguais($antes,$depois))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depois];
     if($diferencas!==[])auditoriaRegistrar($conexao,'usuario.editado',['entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,'descricao'=>'Alterou o usuário '.$nome.'.','alteracoes'=>$diferencas,'contexto'=>['origem'=>'painel_administrativo']]);
-    // A redefinição administrativa registra somente o fato, sem qualquer característica da senha.
-    if($alterarSenha)auditoriaRegistrar($conexao,'usuario.senha_redefinida',['entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,'descricao'=>'Redefiniu a senha do usuário '.$nome.'.','alteracoes'=>['senha_alterada'=>['antes'=>false,'depois'=>true]],'contexto'=>['origem'=>'painel_administrativo']]);
     $conexao->commit();
 
     $houveAlteracao = (
@@ -775,7 +506,7 @@ try {
         'ok' => true,
         'code' => 'USUARIO_ATUALIZADO',
         'user_msg' => $houveAlteracao
-            ? ($alterarSenha ? 'Usuário atualizado com sucesso e senha alterada.' : 'Usuário atualizado com sucesso.')
+            ? 'Vínculo do usuário atualizado com sucesso.'
             : 'Nenhuma alteração foi realizada.',
         'data' => [
             'id_usuario'       => $idUsuario,
@@ -789,7 +520,7 @@ try {
             ],
             'status'           => $status,
             'especialidade'    => $isProfissional ? $especialidade : null,
-            'senha_alterada'   => $alterarSenha,
+            'senha_alterada'   => false,
         ],
     ], 200);
 

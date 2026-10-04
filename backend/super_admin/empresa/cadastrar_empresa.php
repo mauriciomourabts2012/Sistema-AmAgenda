@@ -218,6 +218,8 @@ if (!empty($erros)) {
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
+require_once __DIR__ . '/../../_servicos/empresa.php';
+require_once __DIR__ . '/../../_servicos/assinatura.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -344,47 +346,17 @@ try {
 
     $conexao->begin_transaction();
 
-    // insert empresa
-    $sql = "
-        INSERT INTO empresa (
-            nome, cnpj, email, telefone, plano_id, status, endereco, observacao
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ";
-
-    $stmt = $conexao->prepare($sql);
-
-    if (!$stmt) {
-        throw new Exception('Prepare insert empresa falhou.');
-    }
-
-    $stmt->bind_param(
-        'ssssisss',
-        $nome,
-        $cnpj,
-        $email,
-        $telefone,
-        $planoId,
-        $status,
-        $endereco,
-        $observacao
-    );
-
-    $ok = $stmt->execute();
-
-    if (!$ok) {
-        $errno = (int)$stmt->errno;
-        $error = (string)$stmt->error;
-        $stmt->close();
-
-        if ($errno === 1062) {
-            throw new Exception('Registro duplicado ao inserir empresa.');
-        }
-
-        throw new Exception('Não foi possível inserir a empresa. Erro: ' . $error);
-    }
-
-    $idEmpresa = (int)$stmt->insert_id;
-    $stmt->close();
+    $empresaCriada = empresaServicoCriar($conexao, [
+        'nome' => $nome,
+        'cnpj' => $cnpj,
+        'email' => $email,
+        'telefone' => $telefone,
+        'id_plano' => $planoId,
+        'status' => $status,
+        'endereco' => $endereco,
+        'observacao' => $observacao,
+    ]);
+    $idEmpresa = (int)$empresaCriada['id_empresa'];
 
     $dataInicioAssinatura = date('Y-m-d');
     $diaVencimentoAssinatura = 10;
@@ -392,31 +364,17 @@ try {
     $valorContratado = (float)$plano['preco_mensal'];
     $periodicidadeAssinatura = (string)$plano['cobranca'];
 
-    $stmtAssinatura = $conexao->prepare(
-        "INSERT INTO assinatura
-            (id_empresa, id_plano, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim, status)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, ?)"
-    );
-    if (!$stmtAssinatura) {
-        throw new Exception('Prepare insert assinatura falhou.');
-    }
-    $stmtAssinatura->bind_param(
-        'iidsiss',
-        $idEmpresa,
-        $planoId,
-        $valorContratado,
-        $periodicidadeAssinatura,
-        $diaVencimentoAssinatura,
-        $dataInicioAssinatura,
-        $statusAssinatura
-    );
-    if (!$stmtAssinatura->execute()) {
-        $erroAssinatura = (string)$stmtAssinatura->error;
-        $stmtAssinatura->close();
-        throw new Exception('Erro ao criar assinatura. Erro: ' . $erroAssinatura);
-    }
-    $idAssinatura = (int)$stmtAssinatura->insert_id;
-    $stmtAssinatura->close();
+    $assinaturaCriada = assinaturaServicoCriar($conexao, [
+        'id_empresa' => $idEmpresa,
+        'id_plano' => $planoId,
+        'valor_contratado' => $valorContratado,
+        'periodicidade' => $periodicidadeAssinatura,
+        'dia_vencimento' => $diaVencimentoAssinatura,
+        'data_inicio' => $dataInicioAssinatura,
+        'status' => $statusAssinatura,
+        'modalidade' => 'paga',
+    ]);
+    $idAssinatura = (int)$assinaturaCriada['id_assinatura'];
 
     auditoriaRegistrar($conexao, 'assinatura.criada', [
         'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
@@ -435,121 +393,12 @@ try {
         'contexto' => ['origem' => 'painel_super_admin'],
     ]);
 
-    // cria configuração padrão da empresa
-    $sqlConfig = "
-        INSERT INTO configuracao_geral_empresa (
-            id_empresa,
-            inicio_semana,
-            intervalo_padrao_min,
-            observacao_padrao,
-            status
-        ) VALUES (?, 'segunda', 10, ?, 'ativo')
-    ";
-
-    $stmtConfig = $conexao->prepare($sqlConfig);
-
-    if (!$stmtConfig) {
-        throw new Exception('Prepare insert configuracao_geral_empresa falhou.');
-    }
-
-    $stmtConfig->bind_param(
-        'is',
-        $idEmpresa,
-        $observacaoPadraoConfig
-    );
-
-    $okConfig = $stmtConfig->execute();
-
-    if (!$okConfig) {
-        $errorConfig = (string)$stmtConfig->error;
-        $stmtConfig->close();
-        throw new Exception('Erro ao criar configuração padrão da empresa. Erro: ' . $errorConfig);
-    }
-
-    $stmtConfig->close();
-
-    // cria horário padrão da empresa
-    $sqlHorario = "
-        INSERT INTO horario_empresa (
-            id_empresa,
-            dia_semana,
-            hora_inicio,
-            hora_fim,
-            almoco_inicio,
-            almoco_fim,
-            disponivel,
-            status
-        ) VALUES
-        (?, 'domingo', NULL, NULL, NULL, NULL, 0, 'ativo'),
-        (?, 'segunda', '08:00:00', '18:00:00', '12:00:00', '14:00:00', 1, 'ativo'),
-        (?, 'terca',   '08:00:00', '18:00:00', '12:00:00', '14:00:00', 1, 'ativo'),
-        (?, 'quarta',  '08:00:00', '18:00:00', '12:00:00', '14:00:00', 1, 'ativo'),
-        (?, 'quinta',  '08:00:00', '18:00:00', '12:00:00', '14:00:00', 1, 'ativo'),
-        (?, 'sexta',   '08:00:00', '18:00:00', '12:00:00', '14:00:00', 1, 'ativo'),
-        (?, 'sabado',  NULL, NULL, NULL, NULL, 0, 'ativo')
-    ";
-
-    $stmtHorario = $conexao->prepare($sqlHorario);
-
-    if (!$stmtHorario) {
-        throw new Exception('Prepare insert horario_empresa falhou.');
-    }
-
-    $stmtHorario->bind_param(
-        'iiiiiii',
-        $idEmpresa,
-        $idEmpresa,
-        $idEmpresa,
-        $idEmpresa,
-        $idEmpresa,
-        $idEmpresa,
-        $idEmpresa
-    );
-
-    $okHorario = $stmtHorario->execute();
-
-    if (!$okHorario) {
-        $errorHorario = (string)$stmtHorario->error;
-        $stmtHorario->close();
-        throw new Exception('Erro ao criar horário padrão da empresa. Erro: ' . $errorHorario);
-    }
-
-    $stmtHorario->close();
-
-    // cria configuração padrão do WhatsApp da empresa
-    $sqlWhatsapp = "
-        INSERT INTO configuracao_whatsapp_empresa (
-            id_empresa,
-            ddi_padrao,
-            ddd_padrao,
-            mensagem_padrao,
-            status
-        ) VALUES (?, ?, ?, ?, 'ativo')
-    ";
-
-    $stmtWhatsapp = $conexao->prepare($sqlWhatsapp);
-
-    if (!$stmtWhatsapp) {
-        throw new Exception('Prepare insert configuracao_whatsapp_empresa falhou.');
-    }
-
-    $stmtWhatsapp->bind_param(
-        'isss',
-        $idEmpresa,
-        $ddiPadraoWhatsapp,
-        $dddPadraoWhatsapp,
-        $mensagemPadraoWhatsapp
-    );
-
-    $okWhatsapp = $stmtWhatsapp->execute();
-
-    if (!$okWhatsapp) {
-        $errorWhatsapp = (string)$stmtWhatsapp->error;
-        $stmtWhatsapp->close();
-        throw new Exception('Erro ao criar configuração padrão do WhatsApp da empresa. Erro: ' . $errorWhatsapp);
-    }
-
-    $stmtWhatsapp->close();
+    empresaServicoCriarConfiguracoesIniciais($conexao, $idEmpresa, [
+        'observacao_padrao' => $observacaoPadraoConfig,
+        'ddi_padrao' => $ddiPadraoWhatsapp,
+        'ddd_padrao' => $dddPadraoWhatsapp,
+        'mensagem_padrao' => $mensagemPadraoWhatsapp,
+    ]);
 
     auditoriaRegistrar($conexao, 'empresa.criada', [
         'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),

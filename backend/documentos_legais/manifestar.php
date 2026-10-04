@@ -42,104 +42,32 @@ $todas = [];
 $documentoComFalha = null;
 
 try {
-    if (!$conexao->begin_transaction()) throw new RuntimeException('Falha ao iniciar a transação.');
-
-    foreach ($regras as $regra) {
-        $documento = documentosLegaisBuscarPublicado($conexao, $regra['codigo'], true);
-        if ($documento === null) {
-            throw new DomainException('DOCUMENT_NOT_AVAILABLE');
-        }
-        if (!documentosLegaisEscopoAplicavel((string)$contexto['tipo_manifestante'], (string)$documento['escopo'])) {
-            throw new DomainException('DOCUMENT_NOT_APPLICABLE');
-        }
-        if (!documentosLegaisHashValido($documento)) {
-            $documentoComFalha = $documento;
-            throw new UnexpectedValueException('DOCUMENT_INTEGRITY_ERROR');
-        }
-
-        $existente = documentosLegaisManifestacaoExiste($conexao, $contexto, $documento, $regra['tipo_manifestacao'], true);
-        if ($existente !== null) {
-            $todas[] = ['id_manifestacao' => $existente, 'codigo' => $regra['codigo'], 'nova' => false];
-            continue;
-        }
-
-        $sql = "INSERT INTO documento_legal_manifestacao
-                    (id_documento_legal_versao,tipo_manifestacao,tipo_manifestante,id_empresa,id_usuario,id_cliente,
-                     papel_snapshot,nome_manifestante_snapshot,identificador_manifestante_snapshot,empresa_nome_snapshot,
-                     documento_codigo_snapshot,documento_versao_snapshot,documento_hash_snapshot,declaracao_maioridade,
-                     ip,user_agent,origem,request_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,INET6_ATON(?),?,?,?)
-                ON DUPLICATE KEY UPDATE id_documento_legal_manifestacao=LAST_INSERT_ID(id_documento_legal_manifestacao)";
-        $stmt = $conexao->prepare($sql);
-        if (!$stmt) throw new RuntimeException('Falha ao preparar a manifestação.');
-        $idVersao = (int)$documento['id_documento_legal_versao'];
-        $tipoManifestacao = (string)$regra['tipo_manifestacao'];
-        $tipoManifestante = (string)$contexto['tipo_manifestante'];
-        $idEmpresa = $contexto['id_empresa'];
-        $idUsuario = $contexto['id_usuario'];
-        $idCliente = $contexto['id_cliente'];
-        $papel = (string)$contexto['papel'];
-        $nome = (string)$contexto['nome'];
-        $identificador = (string)$contexto['identificador'];
-        $empresaNome = $contexto['empresa_nome'];
-        $codigo = (string)$documento['codigo'];
-        $versao = (string)$documento['versao'];
-        $hash = (string)$documento['hash_sha256'];
-        $origem = (string)$contexto['origem_manifestacao'];
-        $stmt->bind_param(
-            'issiiisssssssissss',
-            $idVersao, $tipoManifestacao, $tipoManifestante, $idEmpresa, $idUsuario, $idCliente,
-            $papel, $nome, $identificador, $empresaNome, $codigo, $versao, $hash, $declaracaoMaioridade,
-            $ip, $userAgent, $origem, $requestId
-        );
-        if (!$stmt->execute()) {
-            $stmt->close();
-            throw new RuntimeException('Falha ao registrar a manifestação.');
-        }
-        $nova = $stmt->affected_rows === 1;
-        $idManifestacao = (int)$conexao->insert_id;
-        $stmt->close();
-        if ($idManifestacao <= 0) throw new RuntimeException('Manifestação sem identificador.');
-
-        $item = ['id_manifestacao' => $idManifestacao, 'codigo' => $codigo, 'nova' => $nova];
-        $todas[] = $item;
-        if ($nova) {
-            $novas[] = $item;
-            $evento = $tipoManifestacao === 'aceite'
-                ? 'documentos_legais.termos_aceitos'
-                : 'documentos_legais.politica_ciencia_registrada';
-            auditoriaRegistrar($conexao, $evento, [
-                'ator' => $contexto['ator_auditoria'],
-                'entidade_id' => $idManifestacao,
-                'entidade_rotulo' => $codigo,
-                'contexto' => [
-                    'documento_codigo' => $codigo,
-                    'documento_versao' => $versao,
-                    'documento_hash' => $hash,
-                    'tipo_manifestacao' => $tipoManifestacao,
-                    'tipo_manifestante' => $tipoManifestante,
-                ],
-            ]);
-        }
+    if (!$conexao->begin_transaction()) {
+        throw new RuntimeException('Falha ao iniciar a transação.');
     }
 
-    if ($novas !== []) {
-        auditoriaRegistrar($conexao, 'documentos_legais.manifestacao_registrada', [
-            'ator' => $contexto['ator_auditoria'],
-            'entidade_id' => (int)$novas[0]['id_manifestacao'],
-            'entidade_rotulo' => 'Termo e Política de Privacidade',
-            'contexto' => [
-                'quantidade_afetada' => count($novas),
-                'tipo_manifestante' => (string)$contexto['tipo_manifestante'],
-            ],
-        ]);
-    }
+    $resultado = documentosLegaisRegistrarManifestacoes(
+        $conexao,
+        $contexto,
+        $regras,
+        $declaracaoMaioridade,
+        $ip,
+        $userAgent,
+        $requestId
+    );
+    $novas = $resultado['novas'];
+    $todas = $resultado['todas'];
 
-    if (!$conexao->commit()) throw new RuntimeException('Falha ao confirmar a transação.');
+    if (!$conexao->commit()) {
+        throw new RuntimeException('Falha ao confirmar a transação.');
+    }
 } catch (Throwable $e) {
     try {
         $conexao->rollback();
     } catch (Throwable) {
+    }
+    if ($e instanceof DocumentosLegaisIntegridadeException) {
+        $documentoComFalha = $e->documento();
     }
     if ($documentoComFalha !== null) {
         documentosLegaisAuditarIntegridade($conexao, $contexto, $documentoComFalha);

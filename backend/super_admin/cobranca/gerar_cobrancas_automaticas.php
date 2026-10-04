@@ -12,6 +12,7 @@ date_default_timezone_set('America/Sao_Paulo');
 
 require_once __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
+require_once __DIR__ . '/../../_servicos/assinatura.php';
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
@@ -76,6 +77,25 @@ function cobrancasAutomaticasAlteracoes(array $dados): array
     return $alteracoes;
 }
 
+/** @return array{ator_tipo: string, id_ator: null, ator_nome: string, ator_perfil: string, id_empresa: int, modo_suporte: bool, origem: string} */
+function cobrancasAutomaticasAtorSistema(int $idEmpresa): array
+{
+    if ($idEmpresa <= 0) {
+        throw new InvalidArgumentException('Empresa inválida para o ator da expiração automática.');
+    }
+
+    // A expiração contratual independe de empresa.status; a assinatura bloqueada define a empresa auditada.
+    return [
+        'ator_tipo' => 'sistema',
+        'id_ator' => null,
+        'ator_nome' => 'Sistema',
+        'ator_perfil' => 'sistema',
+        'id_empresa' => $idEmpresa,
+        'modo_suporte' => false,
+        'origem' => 'empresa',
+    ];
+}
+
 function cobrancasAutomaticasRollback(mysqli $conexao): void
 {
     try {
@@ -109,6 +129,7 @@ function cobrancasAutomaticasPossuiCobrancaDoPeriodo(
 }
 
 $resumo = [
+    'testes_expirados' => 0,
     'assinaturas_analisadas' => 0,
     'cobrancas_geradas' => 0,
     'sem_cobranca_necessaria' => 0,
@@ -122,11 +143,88 @@ try {
     }
 
     $conexao->set_charset('utf8mb4');
+
+    foreach (assinaturaServicoListarTestesExpirados($conexao) as $idAssinaturaExpirada) {
+        try {
+            $conexao->begin_transaction();
+            $expiracao = assinaturaServicoSuspenderTesteExpirado($conexao, $idAssinaturaExpirada);
+
+            if ($expiracao === null) {
+                cobrancasAutomaticasRollback($conexao);
+                continue;
+            }
+
+            $idEmpresaExpirada = (int)$expiracao['id_empresa'];
+            auditoriaRegistrar($conexao, 'assinatura.teste_expirado', [
+                'ator' => cobrancasAutomaticasAtorSistema($idEmpresaExpirada),
+                'entidade_id' => (int)$expiracao['id_assinatura'],
+                'entidade_rotulo' => "Assinatura de teste #{$idAssinaturaExpirada}",
+                'descricao' => "Registrou a expiração do período de teste da assinatura #{$idAssinaturaExpirada}.",
+                'alteracoes' => [
+                    'id_empresa' => [
+                        'antes' => null,
+                        'depois' => $idEmpresaExpirada,
+                    ],
+                    'id_assinatura' => [
+                        'antes' => null,
+                        'depois' => (int)$expiracao['id_assinatura'],
+                    ],
+                    'id_plano' => [
+                        'antes' => null,
+                        'depois' => (int)$expiracao['id_plano'],
+                    ],
+                    'status' => [
+                        'antes' => $expiracao['status_anterior'],
+                        'depois' => $expiracao['status_novo'],
+                    ],
+                    'modalidade' => [
+                        'antes' => null,
+                        'depois' => $expiracao['modalidade'],
+                    ],
+                    'teste_iniciado_em' => [
+                        'antes' => null,
+                        'depois' => $expiracao['teste_iniciado_em'],
+                    ],
+                    'teste_expira_em' => [
+                        'antes' => null,
+                        'depois' => $expiracao['teste_expira_em'],
+                    ],
+                    'motivo_suspensao' => [
+                        'antes' => $expiracao['motivo_suspensao_anterior'],
+                        'depois' => $expiracao['motivo_suspensao'],
+                    ],
+                    'suspensa_em' => [
+                        'antes' => $expiracao['suspensa_em_anterior'],
+                        'depois' => $expiracao['suspensa_em'],
+                    ],
+                ],
+                'contexto' => [
+                    'origem' => 'geracao_automatica',
+                    'id_empresa' => $idEmpresaExpirada,
+                    'id_assinatura' => (int)$expiracao['id_assinatura'],
+                    'id_plano' => (int)$expiracao['id_plano'],
+                    'status_anterior' => $expiracao['status_anterior'],
+                    'status_novo' => $expiracao['status_novo'],
+                ],
+            ]);
+            $conexao->commit();
+            $resumo['testes_expirados']++;
+        } catch (Throwable) {
+            cobrancasAutomaticasRollback($conexao);
+            $resumo['erros']++;
+            fwrite(STDERR, "Erro ao persistir expiração do teste da assinatura #{$idAssinaturaExpirada}.\n");
+        }
+    }
+
     $assinaturasAtivas = $conexao->query(
-        "SELECT id_assinatura, id_empresa
-         FROM assinatura
-         WHERE status = 'ativa'
-         ORDER BY id_empresa ASC, id_assinatura ASC"
+        "SELECT a.id_assinatura, a.id_empresa, a.modalidade,
+                a.teste_iniciado_em, a.teste_expira_em
+         FROM assinatura a
+         INNER JOIN empresa e
+                 ON e.id_empresa = a.id_empresa
+                AND e.status = 'ativo'
+         WHERE a.status = 'ativa'
+         ORDER BY a.id_empresa ASC, a.id_assinatura ASC"
     );
 
     if ($assinaturasAtivas === false) {
@@ -160,6 +258,20 @@ try {
             continue;
         }
 
+        $modalidade = (string) ($referencia['modalidade'] ?? '');
+        if ($modalidade === 'teste') {
+            if ($referencia['teste_iniciado_em'] === null || $referencia['teste_expira_em'] === null) {
+                $resumo['inconsistencias']++;
+            } else {
+                $resumo['sem_cobranca_necessaria']++;
+            }
+            continue;
+        }
+        if ($modalidade !== 'paga') {
+            $resumo['inconsistencias']++;
+            continue;
+        }
+
         $cobrancasGeradasNestaAssinatura = 0;
 
         while (true) {
@@ -173,6 +285,30 @@ try {
             try {
                 $conexao->begin_transaction();
 
+                // Empresa inativa não deve receber novas cobranças; o lock evita mudança concorrente de status.
+                $consultaEmpresa = $conexao->prepare(
+                    "SELECT id_empresa
+                     FROM empresa
+                     WHERE id_empresa = ?
+                       AND status = 'ativo'
+                     LIMIT 1
+                     FOR UPDATE"
+                );
+                $consultaEmpresa->bind_param('i', $idEmpresaReferencia);
+                $consultaEmpresa->execute();
+                $empresaAtiva = $consultaEmpresa->get_result()->fetch_assoc();
+                $consultaEmpresa->close();
+
+                if ($empresaAtiva === null) {
+                    cobrancasAutomaticasRollback($conexao);
+
+                    if ($cobrancasGeradasNestaAssinatura === 0) {
+                        $resumo['sem_cobranca_necessaria']++;
+                    }
+
+                    break;
+                }
+
                 // O bloqueio mantém o cálculo do próximo período consistente entre execuções concorrentes.
                 $consultaAssinatura = $conexao->prepare(
                     "SELECT id_assinatura, id_empresa, valor_contratado, periodicidade, dia_vencimento,
@@ -180,6 +316,7 @@ try {
                      FROM assinatura
                      WHERE id_assinatura = ?
                        AND status = 'ativa'
+                       AND modalidade = 'paga'
                      LIMIT 1
                      FOR UPDATE"
                 );
@@ -195,6 +332,14 @@ try {
                         $resumo['sem_cobranca_necessaria']++;
                     }
 
+                    break;
+                }
+
+                if (!assinaturaServicoPlanoGeraCobranca($conexao, (int)$assinaturaBloqueada['id_assinatura'], true)) {
+                    cobrancasAutomaticasRollback($conexao);
+                    if ($cobrancasGeradasNestaAssinatura === 0) {
+                        $resumo['sem_cobranca_necessaria']++;
+                    }
                     break;
                 }
 
@@ -339,6 +484,7 @@ try {
     exit(1);
 }
 
+echo "Testes expirados: {$resumo['testes_expirados']}\n";
 echo "Assinaturas analisadas: {$resumo['assinaturas_analisadas']}\n";
 echo "Cobranças geradas: {$resumo['cobrancas_geradas']}\n";
 echo "Sem cobrança necessária: {$resumo['sem_cobranca_necessaria']}\n";

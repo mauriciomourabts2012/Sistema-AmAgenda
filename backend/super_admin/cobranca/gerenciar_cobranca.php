@@ -388,12 +388,31 @@ function registrarPagamento(mysqli $conexao): void
             ]),
             'contexto' => ['origem' => 'painel_super_admin', 'id_empresa' => $idEmpresa, 'id_cobranca' => $idCobranca],
         ]);
+        // O contrato é reavaliado após o recálculo da cobrança: converte o trial quando a cobrança de
+        // conversão fica integralmente paga e reativa a assinatura paga suspensa por inadimplência dessa
+        // mesma cobrança. O serviço confirma a finalidade e é idempotente.
+        $conversaoTrial = null;
+        if ($saldoDepois === 0) {
+            $conversaoTrial = assinaturaServicoReavaliarConversaoTrial(
+                $conexao,
+                $idCobranca,
+                auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+                ['origem' => 'painel_super_admin']
+            );
+        }
         $conexao->commit();
+        $dadosResposta = ['id_pagamento' => $idPagamento, 'id_cobranca' => $idCobranca, 'valor_pago' => (float)$valorSql, 'total_pago_confirmado' => (float)pagamentoCentavosDecimal($totalDepois), 'saldo_restante' => (float)pagamentoCentavosDecimal($saldoDepois), 'status_cobranca' => $statusCobranca];
+        if ($conversaoTrial !== null && ($conversaoTrial['convertida'] || $conversaoTrial['requer_atencao'])) {
+            $dadosResposta['trial_convertido'] = (bool)$conversaoTrial['convertida'];
+            if ($conversaoTrial['requer_atencao']) {
+                $dadosResposta['conversao_trial_pendente'] = (string)$conversaoTrial['motivo'];
+            }
+        }
         out([
             'ok' => true,
             'code' => 'PAGAMENTO_REGISTRADO',
             'user_msg' => 'Pagamento registrado com sucesso.',
-            'data' => ['id_pagamento' => $idPagamento, 'id_cobranca' => $idCobranca, 'valor_pago' => (float)$valorSql, 'total_pago_confirmado' => (float)pagamentoCentavosDecimal($totalDepois), 'saldo_restante' => (float)pagamentoCentavosDecimal($saldoDepois), 'status_cobranca' => $statusCobranca],
+            'data' => $dadosResposta,
         ], 201);
     } catch (Throwable $e) {
         try {
@@ -456,6 +475,13 @@ function alterarStatusPagamento(mysqli $conexao): void
         if ((string)$pagamento['status'] !== 'confirmado') {
             cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'PAGAMENTO_NAO_CONFIRMADO', 'user_msg' => 'Somente pagamentos confirmados podem ser cancelados ou estornados.'], 409);
         }
+        if ((string)$pagamento['origem'] === 'gateway') {
+            cobrancaErroTransacional($conexao, [
+                'ok' => false,
+                'code' => 'PAGAMENTO_GATEWAY_AUTORITATIVO',
+                'user_msg' => 'Pagamentos do gateway só podem ser alterados pela conciliação do provedor.',
+            ], 409);
+        }
         $stmtAtualiza = $conexao->prepare('UPDATE pagamento SET status = ?, atualizado_em = NOW() WHERE id_pagamento = ?');
         if (!$stmtAtualiza) {
             throw new RuntimeException('Falha ao preparar alteração do pagamento.');
@@ -503,12 +529,27 @@ function alterarStatusPagamento(mysqli $conexao): void
             'alteracoes' => $alteracoes,
             'contexto' => ['origem' => 'painel_super_admin', 'id_empresa' => (int)$cobranca['id_empresa'], 'id_cobranca' => $idCobranca],
         ]);
+        // Depois do recálculo: se a cobrança de conversão deixou de estar integralmente paga, a assinatura
+        // já convertida é suspensa por inadimplência (nunca volta a teste). Neutro para outras cobranças.
+        $contrato = assinaturaServicoReavaliarConversaoTrial(
+            $conexao,
+            $idCobranca,
+            auditoriaResolverAtorSuperAdmin($conexao, (int)$cobranca['id_empresa']),
+            ['origem' => 'painel_super_admin']
+        );
         $conexao->commit();
+        $dadosPagamento = ['id_pagamento' => $idPagamento, 'id_cobranca' => $idCobranca, 'total_pago_confirmado' => (float)pagamentoCentavosDecimal($totalDepois), 'saldo_restante' => (float)pagamentoCentavosDecimal($saldoDepois), 'status_cobranca' => $statusCobranca];
+        if ($contrato['suspensa']) {
+            $dadosPagamento['assinatura_suspensa_inadimplencia'] = true;
+        }
+        if ($contrato['requer_atencao']) {
+            $dadosPagamento['conversao_trial_pendente'] = (string)$contrato['motivo'];
+        }
         out([
             'ok' => true,
             'code' => strtoupper('PAGAMENTO_' . $novoStatus),
             'user_msg' => $novoStatus === 'estornado' ? 'Pagamento estornado com sucesso.' : 'Pagamento cancelado com sucesso.',
-            'data' => ['id_pagamento' => $idPagamento, 'id_cobranca' => $idCobranca, 'total_pago_confirmado' => (float)pagamentoCentavosDecimal($totalDepois), 'saldo_restante' => (float)pagamentoCentavosDecimal($saldoDepois), 'status_cobranca' => $statusCobranca],
+            'data' => $dadosPagamento,
         ]);
     } catch (Throwable $e) {
         try {
@@ -612,6 +653,7 @@ if (!in_array($metodo, ['GET', 'POST'], true)) {
 require __DIR__ . '/../../_auth/bloquear.php';
 require_once __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
+require_once __DIR__ . '/../../_servicos/assinatura.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
     out(['ok' => false, 'code' => 'DB_CONNECTION_ERROR', 'user_msg' => 'Falha ao conectar no banco.'], 500);
@@ -767,7 +809,8 @@ try {
         cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'EMPRESA_NAO_ENCONTRADA', 'user_msg' => 'Empresa não encontrada.'], 404);
     }
     $stmtAssinaturas = $conexao->prepare("SELECT id_assinatura, id_plano, valor_contratado, periodicidade, dia_vencimento,
-                DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio
+                DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio,
+                modalidade, teste_iniciado_em, teste_expira_em
            FROM assinatura WHERE id_empresa = ? AND status = 'ativa' ORDER BY id_assinatura DESC FOR UPDATE");
     if (!$stmtAssinaturas) {
         throw new RuntimeException('Falha ao preparar assinatura ativa.');
@@ -782,12 +825,58 @@ try {
     $assinaturas = $resAssinaturas ? $resAssinaturas->fetch_all(MYSQLI_ASSOC) : [];
     $stmtAssinaturas->close();
     if (count($assinaturas) === 0) {
+        // Esta tela gera apenas cobranças regulares. Trial expirado é regularizado pelo proprietário, no
+        // Faturamento do painel da empresa, com a cobrança de conversão; aqui nada é gerado.
+        $stmtRegularizacao = $conexao->prepare("SELECT 1 FROM assinatura WHERE id_empresa = ? AND status = 'suspensa' AND modalidade = 'teste' AND motivo_suspensao = 'teste_expirado' LIMIT 1");
+        if (!$stmtRegularizacao) {
+            throw new RuntimeException('Falha ao preparar verificação de regularização.');
+        }
+        $stmtRegularizacao->bind_param('i', $idEmpresa);
+        if (!$stmtRegularizacao->execute()) {
+            $erro = $stmtRegularizacao->error;
+            $stmtRegularizacao->close();
+            throw new RuntimeException('Falha ao verificar regularização: ' . $erro);
+        }
+        $resRegularizacao = $stmtRegularizacao->get_result();
+        $emRegularizacao = $resRegularizacao && $resRegularizacao->fetch_row() !== null;
+        $stmtRegularizacao->close();
+        if ($emRegularizacao) {
+            cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'ASSINATURA_EM_REGULARIZACAO', 'user_msg' => 'O período de teste desta empresa expirou. A cobrança de regularização deve ser gerada pelo proprietário, na aba Faturamento do painel da empresa.'], 409);
+        }
         cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'ASSINATURA_ATIVA_NAO_ENCONTRADA', 'user_msg' => 'A empresa não possui assinatura ativa.'], 409);
     }
     if (count($assinaturas) > 1) {
         cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'MULTIPLAS_ASSINATURAS_ATIVAS', 'user_msg' => 'A empresa possui mais de uma assinatura ativa.'], 409);
     }
     $assinatura = $assinaturas[0];
+    if (!assinaturaServicoPlanoGeraCobranca($conexao, (int)$assinatura['id_assinatura'], true)) {
+        cobrancaErroTransacional($conexao, [
+            'ok' => false,
+            'code' => 'PLANO_SEM_COBRANCA',
+            'user_msg' => 'O plano contratual desta empresa não permite gerar novas cobranças.',
+        ], 409);
+    }
+    if ((string)$assinatura['modalidade'] === 'teste') {
+        if ($assinatura['teste_iniciado_em'] === null || $assinatura['teste_expira_em'] === null) {
+            cobrancaErroTransacional($conexao, [
+                'ok' => false,
+                'code' => 'ASSINATURA_TRIAL_INCONSISTENTE',
+                'user_msg' => 'Os dados do período de teste da assinatura precisam de verificação.',
+            ], 409);
+        }
+        cobrancaErroTransacional($conexao, [
+            'ok' => false,
+            'code' => 'ASSINATURA_TRIAL_SEM_COBRANCA',
+            'user_msg' => 'Não é possível gerar cobrança para uma assinatura em período de teste.',
+        ], 409);
+    }
+    if ((string)$assinatura['modalidade'] !== 'paga') {
+        cobrancaErroTransacional($conexao, [
+            'ok' => false,
+            'code' => 'ASSINATURA_MODALIDADE_INVALIDA',
+            'user_msg' => 'A modalidade da assinatura precisa de verificação.',
+        ], 409);
+    }
     $idAssinatura = (int)$assinatura['id_assinatura'];
     $meses = cobrancaMesesPeriodicidade((string)$assinatura['periodicidade']);
     $dataInicioAssinatura = cobrancaData((string)$assinatura['data_inicio'], 'data_inicio da assinatura');
