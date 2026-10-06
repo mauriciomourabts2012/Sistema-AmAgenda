@@ -31,7 +31,7 @@
     if (manual && tipo !== "confirm") actions.append(botao(opcoes.textoBotao || "OK", "ui-alert__btn--primary", () => { fechar(el); opcoes.aoFechar?.(); }));
     pilha().prepend(el);
     if (!manual) setTimeout(() => { fechar(el); opcoes.aoFechar?.(); }, opcoes.tempo ?? 3200);
-    if (manual) setTimeout(() => actions.querySelector("button")?.focus({ preventScroll: true }), 30);
+    if (manual && opcoes.focar !== false) setTimeout(() => actions.querySelector("button")?.focus({ preventScroll: true }), 30);
     return el;
   }
   function confirmar(mensagem, opcoes = {}) {

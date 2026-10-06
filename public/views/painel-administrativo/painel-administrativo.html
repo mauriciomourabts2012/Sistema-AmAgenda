@@ -5,29 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AmAgenda • Painel Administrativo</title>
   <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.16">
   
   <!--CSS WEB-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=20261004_2"/>
-  <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
-  <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20261003_4"/>
-  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
-  <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
-  <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20260821_2">
+  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.0.16">
   <!--CSS MOBILE-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=20261004_4"/>
-  <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=20261003_4"/>
-  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
-  <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css"/>
+  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.0.16"/>
+  <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css?v=1.0.16"/>
 
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
   
   <!--Verifica se usuario esta logado se não redireciona para tela de login e tabem informa no cabeçalho a data atual e nome da emresa loada-->
-  <script src="/public/_auth/sessao.js?v=20261003_1"></script>
-  <script src="/public/_auth/permissoes.js?v=20260821_1"></script>
-  <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
+  <script src="/public/_auth/sessao.js?v=1.0.16"></script>
+  <script src="/public/_auth/permissoes.js?v=1.0.16"></script>
+  <script src="/public/js/mensagem-universal.js?v=1.0.16"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.0.16"></script>
 </head>
 
 <body data-menu-contexto="painel-administrativo">
@@ -1433,48 +1436,48 @@
   </main>
   </div><!-- /.agenda-app-shell -->
   
-  <script src="../../js/core/lista-core.js?v=20260820_2" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
-  <script src="../../js/menu-lateral/menu-lateral.js?v=20260903_1"></script>
-  <script src="../../js/identidade-visual/identidade-visual.js?v=20260822_1"></script>
+  <script src="../../js/core/lista-core.js?v=1.0.16" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
+  <script src="../../js/menu-lateral/menu-lateral.js?v=1.0.16"></script>
+  <script src="../../js/identidade-visual/identidade-visual.js?v=1.0.16"></script>
 
   <!--Cabeçallho-->
-  <script src="../../js/notificacoes/notificacoes.js?v=20260903_1"></script> <!--Notificações do cabeçalho-->
+  <script src="../../js/notificacoes/notificacoes.js?v=1.0.16"></script> <!--Notificações do cabeçalho-->
 
 
   <!--Modal Perfil-->
-  <script src="/public/_auth/deslogar.js" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-  <script src="../../js/perfil-usuario/alterar_perfil_foto.js" ></script> <!--Alterar Foto de perfil do modal perfil-->
-  <script src="../../js/perfil-usuario/buscar_foto_perfil.js" ></script> <!--Buscar Foto de perfil do usuario logado-->
-  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=20260903_1" ></script> <!--Alterar senha perfil-->
+  <script src="/public/_auth/deslogar.js?v=1.0.16" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.16" ></script> <!--Alterar Foto de perfil do modal perfil-->
+  <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.0.16" ></script> <!--Buscar Foto de perfil do usuario logado-->
+  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.16" ></script> <!--Alterar senha perfil-->
 
   <!--Modal Configuração Geral-->
-  <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-  <script src="../../js/painel-administrativo/configuracao-empresa/salvar-dados-modal-empresa-conf.js" ></script> <!--Salvar dados da configuração geral empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+  <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js?v=1.0.16" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+  <script src="../../js/painel-administrativo/configuracao-empresa/salvar-dados-modal-empresa-conf.js?v=1.0.16" ></script> <!--Salvar dados da configuração geral empresa ABA: (GERAL, HORARIOS e Whatssap)-->
  
 
   <!--ABA RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=20261003_1"></script> <!--DADOS RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=20261001_1"></script>
+  <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=1.0.16"></script> <!--DADOS RESUMO DO DIA -->
+  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=1.0.16"></script>
   <script src="https://sdk.mercadopago.com/js/v2"></script>
-  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=20260917_2"></script>
+  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=1.0.16"></script>
 
   <!--ABA CLIENTES -->
-  <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=20260821_3" ></script> <!-- LISTA DE CLIENTES -->
-  <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js" ></script> <!--Cadastrar Clientes-->
-  <script src="../../js/painel-administrativo/cliente/editar-cliente.js" ></script> <!--Editar cliente-->
+  <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=1.0.16" ></script> <!-- LISTA DE CLIENTES -->
+  <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js?v=1.0.16" ></script> <!--Cadastrar Clientes-->
+  <script src="../../js/painel-administrativo/cliente/editar-cliente.js?v=1.0.16" ></script> <!--Editar cliente-->
   
   <!--ABA USUARIOS - (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=20260821_3" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/permissoes-usuario.js?v=20260821_1"></script>
-  <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/editar-usuario.js" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=1.0.16" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/permissoes-usuario.js?v=1.0.16"></script>
+  <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js?v=1.0.16" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/editar-usuario.js?v=1.0.16" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
 
   <!--ABA AUDITORIA-->
-  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=20260828_5"></script>
+  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=1.0.16"></script>
 
   <!--Universal-->
-  <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
-  <script src="../../js/altear_status_universal.js" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+  <script src="../../js/select-lista-universal.js?v=1.0.16" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+  <script src="../../js/altear_status_universal.js?v=1.0.16" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
   
 
 
@@ -1973,5 +1976,7 @@
   })();
   </script>
 
+  <script src="../../js/PWA/RegistrarServiceWorker.js?v=1.0.16"></script>
+  <script src="../../js/PWA/AtualizarPWA.js?v=1.0.16"></script>
 </body>
 </html>

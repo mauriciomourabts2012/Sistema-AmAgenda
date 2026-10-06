@@ -17,6 +17,12 @@ $empresaId   = (int)($_SESSION['empresa_id'] ?? 0);
 $empresaNome = trim((string)($_SESSION['empresa_nome'] ?? ''));
 $empresaSlug = trim((string)($_SESSION['empresa_slug'] ?? ''));
 $temContextoEmpresa = $empresaId > 0 && ($empresaNome !== '' || $empresaSlug !== '');
+
+// PWA: somente leitura da sessão existente. Super Admin (inclusive em Modo Suporte)
+// nunca registra o Service Worker; a autenticação e a sessão não são alteradas.
+$authExistente = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+$pwaContexto = (mb_strtolower(trim((string)($authExistente['tipo_usuario'] ?? '')), 'UTF-8') === 'super_admin'
+    || ($authExistente['modo_suporte'] ?? false) === true) ? 'bloqueado' : 'login';
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -26,8 +32,8 @@ $temContextoEmpresa = $empresaId > 0 && ($empresaNome !== '' || $empresaSlug !==
     <meta name="description" content="Um sistema de Pedidos" />
 
     <!-- CSS -->
-    <link rel="stylesheet" href="../css/login/login-web.css?v=20261002_1" />
-    <link rel="stylesheet" href="../css/login/login-mobile.css?v=20260818_5" />
+    <link rel="stylesheet" href="../css/login/login-web.css?v=1.0.16" />
+    <link rel="stylesheet" href="../css/login/login-mobile.css?v=1.0.16" />
 
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
@@ -36,7 +42,7 @@ $temContextoEmpresa = $empresaId > 0 && ($empresaNome !== '' || $empresaSlug !==
 
     <!-- Manifesto do PWA -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#003355" />
+    <meta name="theme-color" content="#FFFFFF" />
   </head>
   <body>
     <main>
@@ -199,7 +205,8 @@ $temContextoEmpresa = $empresaId > 0 && ($empresaNome !== '' || $empresaSlug !==
     </script>
 
     <!-- Scripts -->
-    <script src="/public/_auth/login.js?v=20261003_1"></script>
-    <script src="/public/js/identidade-visual/identidade-visual-login.js?v=20260822_1"></script>
+    <script src="/public/_auth/login.js?v=1.0.16"></script>
+    <script src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.16"></script>
+    <script src="../js/PWA/RegistrarServiceWorker.js?v=1.0.16" data-pwa-contexto="<?php echo $pwaContexto; ?>"></script>
   </body>
 </html>

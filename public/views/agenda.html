@@ -5,21 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AmAgenda • Studio</title>
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.16">
   
-    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20261004_2"/>
-    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=20261004_4"/>
-    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=20260903_1"/>
-    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=20260903_1"/>
-    <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=20260818_6"/>
-    <link rel="stylesheet" href="../css/filtro-paginacao-web.css"/>
-    <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=1.0.16"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=1.0.16"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=1.0.16"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=1.0.16"/>
+    <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=1.0.16"/>
+    <link rel="stylesheet" href="../css/filtro-paginacao-web.css?v=1.0.16"/>
+    <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css?v=1.0.16"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
-    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=20260821_2">
+    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=1.0.16">
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
-    <script src="/public/_auth/sessao.js?v=20261003_1"></script>
-    <script src="/public/_auth/permissoes.js?v=20260821_1"></script>
-    <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
+    <script src="/public/_auth/sessao.js?v=1.0.16"></script>
+    <script src="/public/_auth/permissoes.js?v=1.0.16"></script>
+    <script src="/public/js/mensagem-universal.js?v=1.0.16"></script>
+    <script src="/public/js/PWA/InstalarPWA.js?v=1.0.16"></script>
 
   </head>
 
@@ -1353,45 +1356,45 @@
     </div><!-- /.agenda-app-shell -->
 
 
-    <script src="../js/core/lista-core.js" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
-    <script src="../js/menu-lateral/menu-lateral.js?v=20260903_1"></script> <!--Componente universal do menu lateral responsivo-->
-    <script src="../js/notificacoes/notificacoes.js?v=20260903_1"></script> <!--Centro de notificações e experiência de senha temporária-->
-    <script src="../js/identidade-visual/identidade-visual.js?v=20260822_1"></script>
+    <script src="../js/core/lista-core.js?v=1.0.16" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
+    <script src="../js/menu-lateral/menu-lateral.js?v=1.0.16"></script> <!--Componente universal do menu lateral responsivo-->
+    <script src="../js/notificacoes/notificacoes.js?v=1.0.16"></script> <!--Centro de notificações e experiência de senha temporária-->
+    <script src="../js/identidade-visual/identidade-visual.js?v=1.0.16"></script>
 
-    <script src="../js/agenda/lista-agenda.js?v=20261004_2" ></script> <!--Lista Agendamentos-->
-    <script src="../js/agenda/pesquisar-agendamento.js?v=20260828_1" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
-    <script src="../js/agenda/excluir-agendamento.js" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
+    <script src="../js/agenda/lista-agenda.js?v=1.0.16" ></script> <!--Lista Agendamentos-->
+    <script src="../js/agenda/pesquisar-agendamento.js?v=1.0.16" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
+    <script src="../js/agenda/excluir-agendamento.js?v=1.0.16" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
 
     <!--Modal Perfil-->
-    <script src="/public/_auth/deslogar.js" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-    <script src="../../js/perfil-usuario/alterar_perfil_foto.js" ></script> <!--Alterar Foto de perfil do modal perfil-->
-    <script src="../../js/perfil-usuario/buscar_foto_perfil.js" ></script> <!--Buscar Foto de perfil do usuario logado-->
-    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=20260903_1" ></script> <!--Alterar senha perfil-->
+    <script src="/public/_auth/deslogar.js?v=1.0.16" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.16" ></script> <!--Alterar Foto de perfil do modal perfil-->
+    <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.0.16" ></script> <!--Buscar Foto de perfil do usuario logado-->
+    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.16" ></script> <!--Alterar senha perfil-->
 
     <!--Modal Configuração Geral-->
-    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=20260821_2" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=20260821_2" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js" ></script> <!--Script para resetar as configurações padrão da empresa-->
-    <script src="../js/agenda/servico-profissional/cadastrar-servico.js" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
-    <script src="../js/agenda/servico-profissional/lista-servico.js" ></script> <!--Lista Serviço do Modal Configurações-->
-    <script src="../js/agenda/servico-profissional/excluir-servico.js" ></script> <!--Excluir servico no modal configurações-->
+    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=1.0.16" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=1.0.16" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js?v=1.0.16" ></script> <!--Script para resetar as configurações padrão da empresa-->
+    <script src="../js/agenda/servico-profissional/cadastrar-servico.js?v=1.0.16" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
+    <script src="../js/agenda/servico-profissional/lista-servico.js?v=1.0.16" ></script> <!--Lista Serviço do Modal Configurações-->
+    <script src="../js/agenda/servico-profissional/excluir-servico.js?v=1.0.16" ></script> <!--Excluir servico no modal configurações-->
   
     
     <!--Modal Novo Agendamento-->
-    <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js" ></script> <!--Lista de clientes no modal novo agendamento-->
-    <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js" ></script> <!--Busca de clientes no modal editar agendamento-->
-    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js?v=20260821_1" ></script>
-    <script src="../js/agenda/cadastrar-agendamento.js?v=20260821_1"></script> <!--Valida e salva o Novo Agendamento-->
-    <script src="../js/agenda/editar-agendamento.js?v=20260821_1" ></script> <!--Carrega e atualiza o agendamento-->
+    <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js?v=1.0.16" ></script> <!--Lista de clientes no modal novo agendamento-->
+    <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js?v=1.0.16" ></script> <!--Busca de clientes no modal editar agendamento-->
+    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js?v=1.0.16" ></script>
+    <script src="../js/agenda/cadastrar-agendamento.js?v=1.0.16"></script> <!--Valida e salva o Novo Agendamento-->
+    <script src="../js/agenda/editar-agendamento.js?v=1.0.16" ></script> <!--Carrega e atualiza o agendamento-->
 
     <!--Modal Novo CLiente-->
-    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js" ></script> <!--Cadastrar Clientes-->
-    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=20260821_1" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
+    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js?v=1.0.16" ></script> <!--Cadastrar Clientes-->
+    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=1.0.16" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
 
 
     <!--Universal-->
-    <script src="../../js/select-lista-universal.js" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
-    <script src="../../js/altear_status_universal.js" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+    <script src="../../js/select-lista-universal.js?v=1.0.16" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+    <script src="../../js/altear_status_universal.js?v=1.0.16" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
 
     <script> //Abrir e ferchar todos os modal
     (() => {
@@ -2040,5 +2043,7 @@
   })();
   </script>
 
+  <script src="../js/PWA/RegistrarServiceWorker.js?v=1.0.16"></script>
+  <script src="../js/PWA/AtualizarPWA.js?v=1.0.16"></script>
   </body>
 </html>

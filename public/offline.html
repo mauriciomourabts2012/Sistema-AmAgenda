@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>AmAgenda • Sem conexão</title>
+  <!-- Página neutra de fallback do Service Worker: sem sessão, sem dados, sem recursos externos. -->
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: #F8FAFC;
+      color: #0F172A;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      width: 100%;
+      max-width: 420px;
+      padding: 32px 24px;
+      text-align: center;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+    }
+    .icone {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: #EFF6FF;
+      color: #1163DD;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.375rem; font-weight: 700; }
+    p { margin: 0 0 24px; color: #334155; font-size: 1rem; }
+    button {
+      min-width: 180px;
+      min-height: 48px;
+      padding: 0 24px;
+      border: 0;
+      border-radius: 10px;
+      background: #1163DD;
+      color: #FFFFFF;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #0F57C5; }
+    button:focus-visible { outline: 3px solid #0F172A; outline-offset: 3px; }
+    .marca { margin: 24px 0 0; font-size: .875rem; font-weight: 600; color: #1163DD; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="icone" aria-hidden="true">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+        <path d="M2 2l20 20"/>
+        <path d="M8.5 16.5a5 5 0 0 1 7 0"/>
+        <path d="M2 8.82a15 15 0 0 1 4.17-2.65"/>
+        <path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/>
+        <path d="M16.85 11.25a10 10 0 0 1 2.22 1.68"/>
+        <path d="M5 13a10 10 0 0 1 5.24-2.76"/>
+        <path d="M12 20h.01"/>
+      </svg>
+    </div>
+    <h1>Você está sem conexão</h1>
+    <p>Não foi possível acessar o AmAgenda agora. Verifique sua internet e tente novamente.</p>
+    <button type="button" onclick="location.reload()">Tentar novamente</button>
+    <p class="marca">AmAgenda</p>
+  </main>
+</body>
+</html>

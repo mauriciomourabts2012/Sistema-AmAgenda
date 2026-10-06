@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AmAgenda • Agendamento</title>
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
+    <link rel="manifest" href="/public/manifest-agenda-online.php" crossorigin="use-credentials">
 
     <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=20260818_2"/>
     <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=20260818_1"/>
@@ -17,10 +18,12 @@
     <link rel="stylesheet" href="../css/agenda/cliente-agendamento-mobile.css"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
     <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=20260821_2">
+    <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.16">
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
     <script src="/public/_auth/sessao.js" ></script>
     <script src="/public/js/mensagem-universal.js?v=20260821_1"></script>
+    <script src="/public/js/PWA/InstalarPWA.js?v=1.0.16"></script>
   </head>
 
   <body data-menu-contexto="cliente">
@@ -504,6 +507,7 @@
 
     <!-- LOGOUT -->
     <script src="/public/_auth/deslogar.js"></script>
+    <script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.0.16" data-pwa-contexto="cliente"></script>
 
     <script> // Abrir e fechar todos os modais da página
       (() => {
