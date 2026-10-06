@@ -3,8 +3,8 @@
    - Botão: #btnSair
    - Endpoint: /api/api_central.php?path=_auth/logout
    - Redirecionamento definido pelo PHP:
-       • super admin   -> /public/views/login-super-admin.html
-       • demais perfis -> /login.php?empresa=ID&nome=slug-da-empresa
+       • super admin   -> /public/views/login-empresa.php
+       • demais perfis -> destino preservado conforme o contexto da sessão
    - Confirmação reutiliza o componente central window.MensagemSistema
      (mesmo padrão visual usado nas demais confirmações do AmAgenda)
 ========================================================== */
@@ -12,7 +12,7 @@
   "use strict";
 
   const API_BASE = "/api/api_central.php";
-  const LOGIN_FALLBACK = "/public/views/login-super-admin.html";
+  const LOGIN_FALLBACK = "/public/views/login-empresa.php";
 
   const btn = document.getElementById("btnSair");
   if (!btn) return;

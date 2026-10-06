@@ -89,14 +89,17 @@ function detectarRedirectLogout(array $session, ?mysqli $conexaoEmpresa = null):
 {
     // SUPER ADMIN
     if (!empty($session['superadmin_id'])) {
-        return '/public/views/login-super-admin.html';
+        return '/public/views/login-empresa.php';
     }
 
     // USUÁRIO INTERNO (não super admin, não cliente): volta ao login central,
     // sem depender de link de empresa. Cliente OTP mantém o fluxo anterior.
     $authSessao = is_array($session['auth'] ?? null) ? $session['auth'] : [];
+    if (mb_strtolower(trim((string)($authSessao['tipo_usuario'] ?? '')), 'UTF-8') === 'super_admin') {
+        return '/public/views/login-empresa.php';
+    }
+
     if ((int)($authSessao['id_usuario'] ?? 0) > 0
-        && mb_strtolower(trim((string)($authSessao['tipo_usuario'] ?? '')), 'UTF-8') !== 'super_admin'
         && empty($session['cliente_auth'])) {
         return '/public/views/login-empresa.php';
     }

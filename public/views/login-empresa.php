@@ -32,8 +32,8 @@ $pwaContexto = (mb_strtolower(trim((string)($authExistente['tipo_usuario'] ?? ''
     <meta name="description" content="Um sistema de Pedidos" />
 
     <!-- CSS -->
-    <link rel="stylesheet" href="../css/login/login-web.css?v=1.0.16" />
-    <link rel="stylesheet" href="../css/login/login-mobile.css?v=1.0.16" />
+    <link rel="stylesheet" href="../css/login/login-web.css?v=1.0.17" />
+    <link rel="stylesheet" href="../css/login/login-mobile.css?v=1.0.17" />
 
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
@@ -205,8 +205,8 @@ $pwaContexto = (mb_strtolower(trim((string)($authExistente['tipo_usuario'] ?? ''
     </script>
 
     <!-- Scripts -->
-    <script src="/public/_auth/login.js?v=1.0.16"></script>
-    <script src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.16"></script>
-    <script src="../js/PWA/RegistrarServiceWorker.js?v=1.0.16" data-pwa-contexto="<?php echo $pwaContexto; ?>"></script>
+    <script src="/public/_auth/login.js?v=1.0.17"></script>
+    <script src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.17"></script>
+    <script src="../js/PWA/RegistrarServiceWorker.js?v=1.0.17" data-pwa-contexto="<?php echo $pwaContexto; ?>"></script>
   </body>
 </html>

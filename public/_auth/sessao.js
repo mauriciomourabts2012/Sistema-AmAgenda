@@ -1,7 +1,7 @@
 /* ==========================================================
    sessao.js — Verifica sessão (AmAgenda) ✅
    - Se NÃO estiver logado: redireciona para o login interno central
-     (/public/views/login-empresa.php). Páginas de Super Admin mantêm o destino anterior.
+     (/public/views/login-empresa.php), inclusive nas páginas de Super Admin.
    - Endpoint: /api/api_central.php?path=_auth/session
    - IMPORTANTE: credentials: "include" (cookie PHPSESSID)
    - Expõe dados da sessão e mostra nome da empresa no header
@@ -15,11 +15,8 @@
   "use strict";
 
   const API_BASE = "/api/api_central.php";
-  // Páginas internas do usuário usam o login central (sem exigir link de empresa).
-  // As páginas de Super Admin preservam o destino anterior.
-  const LOGIN_URL = String(window.location.pathname || "").toLowerCase().includes("/super-admin/")
-    ? "/public/views/login-super-admin.html"
-    : "/public/views/login-empresa.php";
+  // Todas as páginas internas usam o login central (sem exigir link de empresa).
+  const LOGIN_URL = "/public/views/login-empresa.php";
   const ACEITE_URL = "/views/documentos-legais/aceite-documentos.html";
 
   function caminhoAtual() {

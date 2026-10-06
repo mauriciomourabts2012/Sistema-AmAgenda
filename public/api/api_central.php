@@ -661,6 +661,13 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
     }
 
     if ($handler === '@notificacoes_listar') {
+        // A sincronização aplica agenda.visualizar (notificacaoUsuarioAcessaAgenda): sem acesso,
+        // nada é projetado e pendências ativas anteriores são canceladas.
+        if ($destinatarioTipo === 'usuario'
+            && ($contextoNotificacoes['perfil'] ?? '') === 'profissional') {
+            notificacaoSincronizarAgendamentosPendentesProfissional($conexao, $contextoNotificacoes);
+        }
+
         $pendentes = notificacaoListarPendentes(
             $conexao,
             $destinatarioTipo,
@@ -668,19 +675,30 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
             $idEmpresaNotificacoes,
             100
         );
-        $itens = array_map(static fn(array $item): array => [
-            'id_notificacao' => (int)$item['id_notificacao'],
-            'codigo' => (string)$item['codigo'],
-            'categoria' => (string)$item['categoria'],
-            'titulo' => (string)$item['titulo'],
-            'mensagem' => (string)$item['mensagem'],
-            'prioridade' => (string)$item['prioridade'],
-            'obrigatoria' => (bool)$item['obrigatoria'],
-            'acao_codigo' => $item['acao_codigo'] === null ? null : (string)$item['acao_codigo'],
-            'prazo_em' => $item['prazo_em'] === null ? null : (string)$item['prazo_em'],
-            'lida' => $item['lida_em'] !== null,
-            'criada_em' => (string)$item['criado_em'],
-        ], $pendentes);
+        $itens = array_map(static function (array $item): array {
+            $contextoSeguro = null;
+            if ((string)$item['codigo'] === 'agenda.agendamento_pendente'
+                && is_array($item['contexto'] ?? null)
+                && is_int($item['contexto']['id_agendamento'] ?? null)
+                && $item['contexto']['id_agendamento'] > 0) {
+                $contextoSeguro = ['id_agendamento' => $item['contexto']['id_agendamento']];
+            }
+
+            return [
+                'id_notificacao' => (int)$item['id_notificacao'],
+                'codigo' => (string)$item['codigo'],
+                'categoria' => (string)$item['categoria'],
+                'titulo' => (string)$item['titulo'],
+                'mensagem' => (string)$item['mensagem'],
+                'prioridade' => (string)$item['prioridade'],
+                'obrigatoria' => (bool)$item['obrigatoria'],
+                'acao_codigo' => $item['acao_codigo'] === null ? null : (string)$item['acao_codigo'],
+                'contexto' => $contextoSeguro,
+                'prazo_em' => $item['prazo_em'] === null ? null : (string)$item['prazo_em'],
+                'lida' => $item['lida_em'] !== null,
+                'criada_em' => (string)$item['criado_em'],
+            ];
+        }, $pendentes);
 
         out([
             'ok' => true,
@@ -688,6 +706,10 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
             'data' => ['quantidade' => count($itens), 'itens' => $itens],
         ]);
     }
+
+    // Escrita autenticada: exige o token CSRF da sessão (mecanismo existente).
+    require_once __DIR__ . '/../../backend/_auth/csrf.php';
+    csrfValidarSessao();
 
     $idNotificacaoRaw = $_POST['id_notificacao'] ?? null;
     if (!is_scalar($idNotificacaoRaw) || !preg_match('/^[1-9]\d*$/', trim((string)$idNotificacaoRaw))) {

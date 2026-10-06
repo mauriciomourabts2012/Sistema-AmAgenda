@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../_regras/permissoes_usuario.php';
+
 const NOTIFICACAO_CODIGO_MAX = 100;
 const NOTIFICACAO_CATEGORIA_MAX = 60;
 const NOTIFICACAO_TITULO_MAX = 160;
@@ -285,6 +287,388 @@ function notificacaoCriar(mysqli $conexao, array $dados): array
     }
 
     return ['id_notificacao' => (int)$existente['id_notificacao'], 'criada' => false, 'ja_existia' => true];
+}
+
+const NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO = 'agenda.agendamento_pendente';
+
+function notificacaoChaveAgendamentoPendente(int $idEmpresa, int $idAgendamento, int $idUsuario): string
+{
+    return NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO . ':empresa:' . $idEmpresa
+        . ':agendamento:' . $idAgendamento
+        . ':usuario:' . $idUsuario;
+}
+
+/**
+ * Acesso real do destinatário à Agenda, pela mesma regra de permissões do sistema
+ * (empresa/usuário/vínculo/perfil ativos, sem bloqueio de plano, agenda.visualizar
+ * com as exceções por empresa). Sem acesso, não há pendência operacional ativa.
+ */
+function notificacaoUsuarioAcessaAgenda(mysqli $conexao, int $idEmpresa, int $idUsuario): bool
+{
+    return usuarioTemPermissao($conexao, 'agenda.visualizar', ['id_usuario' => $idUsuario, 'id_empresa' => $idEmpresa]);
+}
+
+function notificacaoPrefixoAgendamentoPendente(int $idEmpresa, int $idAgendamento): string
+{
+    return NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO . ':empresa:' . $idEmpresa
+        . ':agendamento:' . $idAgendamento
+        . ':usuario:';
+}
+
+/**
+ * Cria ou atualiza a MESMA notificação (mesma chave de deduplicação) de um
+ * agendamento pendente. Se ela estava concluída/cancelada, é reativada como
+ * não lida; se estava ativa, preserva lida_em e atualiza título, mensagem,
+ * prioridade e prazo somente quando algo mudou.
+ */
+function notificacaoProjetarAgendamentoPendente(
+    mysqli $conexao,
+    int $idEmpresa,
+    int $idAgendamento,
+    int $idUsuario,
+    string $prazoEm,
+    DateTimeImmutable $agoraSaoPaulo
+): array {
+    $inicio = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $prazoEm, new DateTimeZone('America/Sao_Paulo'));
+    if ($inicio === false) {
+        throw new InvalidArgumentException('Prazo inválido para a notificação do agendamento.');
+    }
+    $atrasado = $inicio < $agoraSaoPaulo;
+    $titulo = $atrasado ? 'Agendamento pendente atrasado' : 'Agendamento pendente';
+    $mensagem = $atrasado
+        ? 'Um agendamento pendente ultrapassou o horário de início e precisa de revisão.'
+        : 'Um agendamento está pendente e precisa de revisão.';
+    $prioridade = 'alta';
+
+    $projecao = notificacaoCriar($conexao, [
+        'id_empresa' => $idEmpresa,
+        'destinatario_tipo' => 'usuario',
+        'destinatario_id' => $idUsuario,
+        'origem_tipo' => 'sistema',
+        'origem_id' => null,
+        'codigo' => NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO,
+        'categoria' => 'agenda',
+        'titulo' => $titulo,
+        'mensagem' => $mensagem,
+        'prioridade' => $prioridade,
+        'obrigatoria' => false,
+        'acao_codigo' => 'agenda.abrir_agendamento',
+        'contexto' => ['id_agendamento' => $idAgendamento],
+        'prazo_em' => $prazoEm,
+        'chave_deduplicacao' => notificacaoChaveAgendamentoPendente($idEmpresa, $idAgendamento, $idUsuario),
+    ]);
+    if ($projecao['criada']) {
+        return $projecao + ['atualizada' => false];
+    }
+
+    // lida_em é avaliado antes de limpar concluida_em/cancelada_em (ordem do SET).
+    $stmt = notificacaoPreparar($conexao, "UPDATE notificacao
+           SET lida_em = IF(concluida_em IS NULL AND cancelada_em IS NULL, lida_em, NULL),
+               concluida_em = NULL,
+               cancelada_em = NULL,
+               titulo = ?,
+               mensagem = ?,
+               prioridade = ?,
+               prazo_em = ?
+         WHERE id_notificacao = ?
+           AND id_empresa = ?
+           AND destinatario_tipo = 'usuario'
+           AND destinatario_id = ?
+           AND codigo = ?
+           AND (concluida_em IS NOT NULL
+                OR cancelada_em IS NOT NULL
+                OR NOT (titulo <=> ?)
+                OR NOT (mensagem <=> ?)
+                OR NOT (prioridade <=> ?)
+                OR NOT (prazo_em <=> ?))");
+    $idNotificacao = (int)$projecao['id_notificacao'];
+    $codigo = NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO;
+    $stmt->bind_param(
+        'ssssiiisssss',
+        $titulo,
+        $mensagem,
+        $prioridade,
+        $prazoEm,
+        $idNotificacao,
+        $idEmpresa,
+        $idUsuario,
+        $codigo,
+        $titulo,
+        $mensagem,
+        $prioridade,
+        $prazoEm
+    );
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível atualizar a notificação do agendamento.');
+        $atualizada = $stmt->affected_rows === 1;
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível atualizar a notificação do agendamento.');
+    } finally {
+        $stmt->close();
+    }
+
+    return $projecao + ['atualizada' => $atualizada];
+}
+
+/**
+ * Notificações ativas (não concluídas e não canceladas) de um agendamento,
+ * de qualquer destinatário da mesma empresa.
+ */
+function notificacaoAtivasAgendamentoPendente(mysqli $conexao, int $idEmpresa, int $idAgendamento): array
+{
+    $prefixo = addcslashes(notificacaoPrefixoAgendamentoPendente($idEmpresa, $idAgendamento), '\\%_') . '%';
+    $codigo = NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO;
+    $stmt = notificacaoPreparar($conexao, "SELECT id_notificacao, destinatario_id
+          FROM notificacao
+         WHERE id_empresa = ?
+           AND destinatario_tipo = 'usuario'
+           AND codigo = ?
+           AND chave_deduplicacao LIKE ?
+           AND concluida_em IS NULL
+           AND cancelada_em IS NULL
+         FOR UPDATE");
+    $stmt->bind_param('iss', $idEmpresa, $codigo, $prefixo);
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível consultar as notificações do agendamento.');
+        $resultado = $stmt->get_result();
+        $ativas = [];
+        while ($resultado && ($linha = $resultado->fetch_assoc())) {
+            $ativas[] = ['id_notificacao' => (int)$linha['id_notificacao'], 'destinatario_id' => (int)$linha['destinatario_id']];
+        }
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível consultar as notificações do agendamento.');
+    } finally {
+        $stmt->close();
+    }
+    return $ativas;
+}
+
+/**
+ * Reflete na central o estado atual (fonte da verdade) de um agendamento:
+ * - pendente: mantém/reativa/atualiza a notificação do profissional elegível
+ *   e cancela a de destinatários que deixaram de ser responsáveis;
+ * - outro status: conclui as notificações ativas;
+ * - inexistente na empresa: cancela as notificações ativas.
+ * Usa a conexão/transação do chamador e lança exceção em qualquer falha.
+ */
+function notificacaoReconciliarAgendamentoPendente(mysqli $conexao, int $idEmpresa, int $idAgendamento): array
+{
+    notificacaoInteiroPositivo($idEmpresa, 'id_empresa');
+    notificacaoInteiroPositivo($idAgendamento, 'id_agendamento');
+
+    $stmt = notificacaoPreparar($conexao, "SELECT a.status,
+                   DATE_FORMAT(a.data_agendamento, '%Y-%m-%d') AS data_agendamento,
+                   TIME_FORMAT(a.hora_inicio, '%H:%i:%s') AS hora_inicio,
+                   (SELECT u.id_usuario
+                      FROM profissional p
+                INNER JOIN usuario u
+                        ON u.id_usuario = p.id_usuario
+                       AND u.status = 'ativo'
+                INNER JOIN empresa_usuario eu
+                        ON eu.id_usuario = u.id_usuario
+                       AND eu.status = 'ativo'
+                       AND eu.bloqueado_plano = 0
+                INNER JOIN empresa e
+                        ON e.id_empresa = eu.id_empresa
+                       AND e.status = 'ativo'
+                INNER JOIN perfil pf
+                        ON pf.id_perfil = eu.id_perfil
+                       AND pf.status = 'ativo'
+                     WHERE p.id_profissional = a.id_profissional
+                       AND eu.id_empresa = a.id_empresa
+                       AND LOWER(TRIM(pf.nome)) IN ('profissional', 'profissionais')
+                     LIMIT 1) AS id_usuario_destino
+              FROM agendamento a
+             WHERE a.id_agendamento = ?
+               AND a.id_empresa = ?
+             LIMIT 1");
+    $stmt->bind_param('ii', $idAgendamento, $idEmpresa);
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível consultar o agendamento da notificação.');
+        $resultado = $stmt->get_result();
+        $agendamento = $resultado ? ($resultado->fetch_assoc() ?: null) : null;
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível consultar o agendamento da notificação.');
+    } finally {
+        $stmt->close();
+    }
+
+    $ativas = notificacaoAtivasAgendamentoPendente($conexao, $idEmpresa, $idAgendamento);
+    $retorno = ['concluidas' => 0, 'canceladas' => 0, 'projetada' => false];
+
+    if ($agendamento === null) {
+        foreach ($ativas as $ativa) {
+            if (notificacaoCancelar($conexao, $ativa['id_notificacao'], 'usuario', $ativa['destinatario_id'], $idEmpresa)['alterada']) {
+                $retorno['canceladas']++;
+            }
+        }
+        return $retorno;
+    }
+
+    if ((string)$agendamento['status'] !== 'pendente') {
+        foreach ($ativas as $ativa) {
+            if (notificacaoConcluir($conexao, $ativa['id_notificacao'], 'usuario', $ativa['destinatario_id'], $idEmpresa)['alterada']) {
+                $retorno['concluidas']++;
+            }
+        }
+        return $retorno;
+    }
+
+    $idUsuarioDestino = (int)($agendamento['id_usuario_destino'] ?? 0);
+    if ($idUsuarioDestino > 0 && !notificacaoUsuarioAcessaAgenda($conexao, $idEmpresa, $idUsuarioDestino)) {
+        $idUsuarioDestino = 0;
+    }
+    foreach ($ativas as $ativa) {
+        if ($ativa['destinatario_id'] === $idUsuarioDestino) continue;
+        if (notificacaoCancelar($conexao, $ativa['id_notificacao'], 'usuario', $ativa['destinatario_id'], $idEmpresa)['alterada']) {
+            $retorno['canceladas']++;
+        }
+    }
+
+    if ($idUsuarioDestino > 0) {
+        notificacaoProjetarAgendamentoPendente(
+            $conexao,
+            $idEmpresa,
+            $idAgendamento,
+            $idUsuarioDestino,
+            (string)$agendamento['data_agendamento'] . ' ' . (string)$agendamento['hora_inicio'],
+            new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'))
+        );
+        $retorno['projetada'] = true;
+    }
+
+    return $retorno;
+}
+
+/**
+ * Projeta os agendamentos pendentes do profissional autenticado na
+ * central existente. O contexto deve ter sido obtido por permissoesContexto().
+ */
+function notificacaoSincronizarAgendamentosPendentesProfissional(
+    mysqli $conexao,
+    array $contextoAutorizado
+): array {
+    if (!($contextoAutorizado['valido'] ?? false)
+        || ($contextoAutorizado['super_admin_suporte'] ?? false)
+        || ($contextoAutorizado['perfil'] ?? '') !== 'profissional') {
+        return ['elegiveis' => 0, 'criadas' => 0, 'existentes' => 0];
+    }
+
+    $idEmpresa = (int)($contextoAutorizado['id_empresa'] ?? 0);
+    $idUsuario = (int)($contextoAutorizado['id_usuario'] ?? 0);
+    $idProfissional = (int)($contextoAutorizado['id_profissional'] ?? 0);
+    if ($idEmpresa <= 0 || $idUsuario <= 0 || $idProfissional <= 0) {
+        throw new InvalidArgumentException('Contexto profissional inválido para sincronizar notificações.');
+    }
+
+    $agoraSaoPaulo = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+    // Sem acesso à Agenda: nada é projetado e as ativas são reconciliadas (canceladas) abaixo.
+    $acessaAgenda = notificacaoUsuarioAcessaAgenda($conexao, $idEmpresa, $idUsuario);
+    $sql = "SELECT a.id_agendamento,
+                   DATE_FORMAT(a.data_agendamento, '%Y-%m-%d') AS data_agendamento,
+                   TIME_FORMAT(a.hora_inicio, '%H:%i:%s') AS hora_inicio
+              FROM agendamento a
+        INNER JOIN profissional p
+                ON p.id_profissional = a.id_profissional
+               AND p.id_usuario = ?
+        INNER JOIN usuario u
+                ON u.id_usuario = p.id_usuario
+               AND u.status = 'ativo'
+        INNER JOIN empresa e
+                ON e.id_empresa = a.id_empresa
+               AND e.status = 'ativo'
+        INNER JOIN empresa_usuario eu
+                ON eu.id_empresa = a.id_empresa
+               AND eu.id_usuario = u.id_usuario
+               AND eu.status = 'ativo'
+               AND eu.bloqueado_plano = 0
+        INNER JOIN perfil pf
+                ON pf.id_perfil = eu.id_perfil
+               AND pf.status = 'ativo'
+             WHERE a.id_empresa = ?
+               AND a.id_profissional = ?
+               AND a.status = 'pendente'
+               AND LOWER(TRIM(pf.nome)) IN ('profissional', 'profissionais')
+          ORDER BY a.data_agendamento ASC, a.hora_inicio ASC, a.id_agendamento ASC";
+    $agendamentos = [];
+    if ($acessaAgenda) {
+        $stmt = notificacaoPreparar($conexao, $sql);
+        $stmt->bind_param('iii', $idUsuario, $idEmpresa, $idProfissional);
+
+        try {
+            if (!$stmt->execute()) {
+                throw new RuntimeException('Não foi possível identificar os agendamentos pendentes.');
+            }
+            $resultado = $stmt->get_result();
+            while ($resultado && ($linha = $resultado->fetch_assoc())) {
+                $agendamentos[] = [
+                    'id_agendamento' => (int)$linha['id_agendamento'],
+                    'prazo_em' => (string)$linha['data_agendamento'] . ' ' . (string)$linha['hora_inicio'],
+                ];
+            }
+        } catch (mysqli_sql_exception) {
+            throw new RuntimeException('Não foi possível identificar os agendamentos pendentes.');
+        } finally {
+            $stmt->close();
+        }
+    }
+
+    $criadas = 0;
+    $existentes = 0;
+    $idsPendentes = [];
+    foreach ($agendamentos as $agendamento) {
+        $idsPendentes[$agendamento['id_agendamento']] = true;
+        // Reativa/atualiza a mesma linha e promove para atrasado quando o horário passou.
+        $projecao = notificacaoProjetarAgendamentoPendente(
+            $conexao,
+            $idEmpresa,
+            $agendamento['id_agendamento'],
+            $idUsuario,
+            $agendamento['prazo_em'],
+            $agoraSaoPaulo
+        );
+        if ($projecao['criada']) {
+            $criadas++;
+        } else {
+            $existentes++;
+        }
+    }
+
+    // Notificações ativas deste usuário cujo agendamento não está mais pendente
+    // para ele (alterado por outro fluxo): reconcilia com o estado real.
+    $codigo = NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO;
+    $stmt = notificacaoPreparar($conexao, "SELECT chave_deduplicacao
+          FROM notificacao
+         WHERE id_empresa = ?
+           AND destinatario_tipo = 'usuario'
+           AND destinatario_id = ?
+           AND codigo = ?
+           AND concluida_em IS NULL
+           AND cancelada_em IS NULL");
+    $stmt->bind_param('iis', $idEmpresa, $idUsuario, $codigo);
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível conferir as notificações pendentes.');
+        $resultado = $stmt->get_result();
+        $orfas = [];
+        $padrao = '/^' . preg_quote(NOTIFICACAO_AGENDAMENTO_PENDENTE_CODIGO, '/') . ':empresa:' . $idEmpresa . ':agendamento:(\d+):usuario:' . $idUsuario . '$/';
+        while ($resultado && ($linha = $resultado->fetch_assoc())) {
+            if (preg_match($padrao, (string)$linha['chave_deduplicacao'], $m) !== 1) continue;
+            $idAgendamento = (int)$m[1];
+            if ($idAgendamento > 0 && !isset($idsPendentes[$idAgendamento])) {
+                $orfas[$idAgendamento] = true;
+            }
+        }
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível conferir as notificações pendentes.');
+    } finally {
+        $stmt->close();
+    }
+
+    foreach (array_keys($orfas) as $idAgendamento) {
+        notificacaoReconciliarAgendamentoPendente($conexao, $idEmpresa, (int)$idAgendamento);
+    }
+
+    return ['elegiveis' => count($agendamentos), 'criadas' => $criadas, 'existentes' => $existentes];
 }
 
 function notificacaoListarPendentes(

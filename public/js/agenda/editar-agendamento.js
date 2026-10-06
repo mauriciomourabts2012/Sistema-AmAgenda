@@ -23,6 +23,7 @@
   let mesAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let carregandoRegistro = false;
   let semanaRecorrente = null;
+  let horarioOriginal = null; // data/hora do registro aberto (o backend confere contra o banco)
   const texto = (v) => String(v ?? "").trim();
   const lista = (j) => Array.isArray(j?.data?.items) ? j.data.items : Array.isArray(j?.data?.servicos) ? j.data.servicos : Array.isArray(j?.data?.profissionais) ? j.data.profissionais : Array.isArray(j?.data) ? j.data : [];
   const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
@@ -81,17 +82,44 @@
     el.horarios.innerHTML = `<span class="ag-disponibilidade-vazio">${esc(msg)}</span>`;
   }
 
+  // Agendamento que já começou: mantém somente o horário original para permitir
+  // alterar apenas o status. Reagendar continua exigindo um horário disponível.
+  function inicioJaPassou(data, hora) {
+    const inicio = new Date(`${texto(data)}T${texto(hora).slice(0,5)}:00`);
+    return !Number.isNaN(inicio.getTime()) && inicio <= new Date();
+  }
+
+  // Registro já iniciado cujo profissional/serviço não está mais entre os ativos:
+  // mantém o valor original selecionado só para permitir alterar o status.
+  function manterOpcaoOriginal(select, valor, rotulo) {
+    const v = texto(valor);
+    if (!v || select.value === v) return false;
+    const opcao = document.createElement("option"); opcao.value = v; opcao.textContent = rotulo;
+    select.appendChild(opcao); select.value = v;
+    return true;
+  }
+
+  function manterHorarioOriginal(data, horaAtual) {
+    const hora = String(horaAtual || "").slice(0,5);
+    if (!horarioOriginal || data !== horarioOriginal.data || hora !== horarioOriginal.hora) return false;
+    if (!inicioJaPassou(data, hora)) return false;
+    el.hora.innerHTML = `<option value="${esc(hora)}">${esc(hora)}</option>`; el.hora.disabled = false; el.hora.value = hora;
+    el.horarios.innerHTML = `<button type="button" class="ag-horario-opcao selecionado" data-hora="${esc(hora)}">${esc(hora)}</button>`;
+    return true;
+  }
+
   async function carregarGrade(data, horaAtual = "") {
     limparHorario("Carregando horários disponíveis...");
     try {
       const j = await api("agenda/horarios-disponiveis", { id_profissional: el.profissional.value, id_servico: el.servico.value, duracao: el.duracao.value, data, id_agendamento: el.id.value });
       diasAtendimento = j.data?.dias_atendimento || []; renderCalendario();
+      if (manterHorarioOriginal(data, horaAtual)) return;
       const horarios = j.data?.horarios || [];
       if (!horarios.length) { limparHorario("Nenhum horário disponível para esta data."); return; }
       el.hora.innerHTML = '<option value="">Selecione o horário</option>' + horarios.map(h => `<option value="${esc(h.hora_inicio)}" data-hora-fim="${esc(h.hora_fim)}">${esc(h.hora_inicio)} às ${esc(h.hora_fim)}</option>`).join("");
       el.hora.disabled = false; el.hora.value = horaAtual.slice(0,5);
       el.horarios.innerHTML = horarios.map(h => `<button type="button" class="ag-horario-opcao ${h.hora_inicio === horaAtual.slice(0,5) ? "selecionado" : ""}" data-hora="${esc(h.hora_inicio)}">${esc(h.hora_inicio)}</button>`).join("");
-    } catch (e) { limparHorario(e.message); }
+    } catch (e) { if (!manterHorarioOriginal(data, horaAtual)) limparHorario(e.message); }
   }
 
   async function carregarProfissionais(selecionar = "") {
@@ -122,6 +150,7 @@
     if (conteudoModal) conteudoModal.scrollTop = 0;
     try {
       const j = await api("agenda/agendamento/detalhar", { id_agendamento: id }); const a = j.data;
+      horarioOriginal = { data: texto(a.data_agendamento), hora: texto(a.hora_inicio).slice(0,5) };
       el.id.value = a.id_agendamento; el.status.value = a.status; el.obs.value = a.observacao || "";
       semanaRecorrente = texto(a.grupo_recorrencia) ? intervaloDaSemana(a.data_agendamento) : null;
       el.repetir.checked = Number(a.repetir_semanalmente) === 1; el.recorrenciaFim.value = a.recorrencia_data_fim || ""; atualizarRecorrencia();
@@ -134,7 +163,13 @@
           : "";
       }
       await Promise.all([carregarClientes(a.id_cliente, a.cliente_nome, a.cliente_telefone), carregarProfissionais(a.id_profissional)]);
-      await carregarServicos(a.id_servico);
+      const registroIniciado = inicioJaPassou(a.data_agendamento, a.hora_inicio);
+      if (registroIniciado && manterOpcaoOriginal(el.profissional, a.id_profissional, "Profissional do agendamento (indisponível)")) {
+        el.servico.innerHTML = ""; manterOpcaoOriginal(el.servico, a.id_servico, "Serviço do agendamento (indisponível)");
+      } else {
+        await carregarServicos(a.id_servico);
+        if (registroIniciado) manterOpcaoOriginal(el.servico, a.id_servico, "Serviço do agendamento (indisponível)");
+      }
       el.data.value = a.data_agendamento; mesAtual = new Date(`${a.data_agendamento}T12:00:00`); mesAtual = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1);
       el.disponibilidade.hidden = false; el.duracao.value = texto(a.duracao_min_aplicada); renderCalendario();
       el.instrucao.textContent = semanaRecorrente
@@ -176,11 +211,12 @@
     const body = new FormData(form); body.set("repetir_semanalmente", el.repetir.checked ? "1" : "0");
     el.salvar.disabled = true; const original = el.salvar.textContent; el.salvar.textContent = "Salvando...";
     try {
-      const j = await api("agenda/agendamento/editar", {}, { method:"POST", body });
+      const j = await api("agenda/agendamento/editar", {}, { method:"POST", body, headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") } });
       toast("success", j.user_msg || "Agendamento atualizado com sucesso.");
       const avisosPlano = Array.isArray(j.data?.avisos_plano) ? j.data.avisos_plano : [];
       avisosPlano.forEach((aviso) => toast("warning", aviso?.mensagem || "O consumo mensal do plano está próximo do limite."));
       document.dispatchEvent(new CustomEvent("agenda:agendamento:atualizado", { detail:j.data }));
+      window.CentroNotificacoes?.carregar?.(); // reflete a pendência resolvida/atualizada na central
       setTimeout(() => { window.fecharModal?.("modalEditarAgendamento"); window.location.reload(); }, avisosPlano.length ? 5200 : 1200);
     } catch(e) { toast("danger", e.message); } finally { el.salvar.disabled = false; el.salvar.textContent = original; }
   });

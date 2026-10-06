@@ -844,10 +844,8 @@
 
     // Recebe um resultado da pesquisa geral, abre sua página dentro da aba
     // correta e destaca somente o card localizado.
-    document.addEventListener("agenda:localizar-agendamento", async (evento) => {
-      const id = String(evento.detail?.id_agendamento || "");
-      const data = String(evento.detail?.data_agendamento || "");
-      if (!id || !data) return;
+    async function localizarAgendamento(id, data) {
+      if (!id || !data) return null;
 
       PESQUISA_GLOBAL = "";
       FILTRO_GLOBAL.status = "";
@@ -858,7 +856,7 @@
       const dataLocal = new Date(`${data}T12:00:00`);
       const dia = mapa[dataLocal.getDay()];
       const config = DIAS.find((item) => item.dia === dia);
-      if (!config) return;
+      if (!config) return null;
 
       // Carrega a semana específica diretamente da API. Assim, até um registro
       // fora do limite da listagem inicial pode ser localizado corretamente.
@@ -883,7 +881,7 @@
       } catch (erro) {
         console.error("[lista-agenda:localizar-semana]", erro);
         uiToast("danger", "Pesquisa", erro.message || "Não foi possível abrir a semana do agendamento.");
-        return;
+        return null;
       }
 
       renderizarTodasAbas(dadosSemana);
@@ -895,14 +893,102 @@
       PAGINA_ATUAL[dia] = indice >= 0 ? Math.floor(indice / CFG.itensPorPagina) + 1 : 1;
       renderDia(dia, config.box, config.pag, dadosSemana);
 
-      requestAnimationFrame(() => {
+      return new Promise((resolve) => requestAnimationFrame(() => {
         const card = document.querySelector(`#${config.box} .agenda-card[data-id="${CSS.escape(id)}"]`);
-        if (!card) return;
+        if (!card) { resolve(null); return; }
         card.classList.add("agenda-card-localizado");
         card.scrollIntoView({ behavior: "smooth", block: "center" });
         setTimeout(() => card.classList.remove("agenda-card-localizado"), 3500);
-      });
+        resolve(card);
+      }));
+    }
+
+    document.addEventListener("agenda:localizar-agendamento", (evento) => {
+      localizarAgendamento(String(evento.detail?.id_agendamento || ""), String(evento.detail?.data_agendamento || ""));
     });
+
+    // ------------------------------------------------------------------
+    // Notificação de agendamento pendente → Agenda → dia → card → edição.
+    // O id é apenas uma referência: data, empresa e permissão vêm do backend
+    // (agenda/agendamento/detalhar valida empresa da sessão, perfil e o
+    // vínculo do profissional). Nenhum dado da notificação é usado como autoridade.
+    // ------------------------------------------------------------------
+    let abrindoAgendamento = false;
+
+    async function detalharAgendamentoAutorizado(id) {
+      const url = new URL("/public/api/api_central.php", window.location.origin);
+      url.searchParams.set("path", "agenda/agendamento/detalhar");
+      url.searchParams.set("id_agendamento", String(id));
+      const resposta = await fetch(url.toString(), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+      const json = await resposta.json().catch(() => null);
+      if (!resposta.ok || !json || json.ok !== true || !json.data) {
+        if (resposta.status === 403) throw new Error("Você não tem permissão para acessar este agendamento.");
+        if (resposta.status === 401) throw new Error("Sessão expirada. Faça login novamente.");
+        throw new Error("Agendamento não encontrado ou você não tem acesso a ele.");
+      }
+      return json.data;
+    }
+
+    async function abrirAgendamentoPorId(idBruto) {
+      const id = Number(idBruto);
+      if (!Number.isInteger(id) || id <= 0 || abrindoAgendamento) return false;
+      abrindoAgendamento = true;
+      try {
+        let registro;
+        try {
+          registro = await detalharAgendamentoAutorizado(id);
+        } catch (erro) {
+          uiToast("warning", "Agendamento", erro.message);
+          return false;
+        }
+
+        const data = String(registro.data_agendamento || "");
+        if (String(registro.id_agendamento) !== String(id) || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+          uiToast("warning", "Agendamento", "Não foi possível abrir este agendamento.");
+          return false;
+        }
+
+        // Semana e aba do dia vêm do registro autorizado; depois a lista carrega
+        // a semana pela API e posiciona o card (mesmo fluxo da pesquisa geral).
+        window.AgendaSemana?.irParaData(data, true);
+        await localizarAgendamento(String(id), data);
+
+        const item = Object.values(dadosSemana || {}).flat()
+          .find((registroLista) => String(registroLista.id_agendamento ?? registroLista.id) === String(id));
+
+        // Mesma regra do menu do card: agendamento pago não oferece edição.
+        if (item?.pagamento_confirmado === true) {
+          preencherModalVisualizar(item);
+          const modalVisualizar = document.getElementById("modalVisualizarAgendamento");
+          modalVisualizar?.classList.add("ativo");
+          modalVisualizar?.setAttribute("aria-hidden", "false");
+          return true;
+        }
+
+        const modalEditar = document.getElementById("modalEditarAgendamento");
+        if (!modalEditar || modalEditar.classList.contains("ativo")) return false;
+        modalEditar.classList.add("ativo");
+        modalEditar.setAttribute("aria-hidden", "false");
+        document.dispatchEvent(new CustomEvent("agenda:editar:selecionado", {
+          detail: { id_agendamento: String(id), agendamento: item || null }
+        }));
+
+        if (normalizarStatus(registro.status) !== "pendente") {
+          uiToast("info", "Agendamento", "Este agendamento não está mais pendente.");
+        }
+        return true;
+      } finally {
+        abrindoAgendamento = false;
+      }
+    }
+
+    // Usado pela central de notificações quando a Agenda já está aberta.
+    window.AgendaNotificacao = Object.freeze({ abrirAgendamento: abrirAgendamentoPorId });
 
     // Após uma exclusão, consulta novamente a API e atualiza somente a lista.
     // A página, a semana ativa, a pesquisa e o filtro permanecem como estão.
@@ -918,6 +1004,18 @@
 
     setTimeout(pesquisa_aplicar, 0);
     setInterval(atualizarEstadosTemporais, 60000);
+
+    // Deep link: agenda.html?acao=abrir_agendamento&id_agendamento=ID.
+    // Os parâmetros são removidos antes de processar, para que recarregar a
+    // página não reabra o modal.
+    const urlAtual = new URL(window.location.href);
+    if (urlAtual.searchParams.get("acao") === "abrir_agendamento") {
+      const idDeepLink = urlAtual.searchParams.get("id_agendamento");
+      urlAtual.searchParams.delete("acao");
+      urlAtual.searchParams.delete("id_agendamento");
+      window.history.replaceState(window.history.state, "", `${urlAtual.pathname}${urlAtual.search}${urlAtual.hash}`);
+      if (/^\d{1,10}$/.test(String(idDeepLink || ""))) abrirAgendamentoPorId(idDeepLink);
+    }
   }
 
   document.addEventListener("DOMContentLoaded", init);

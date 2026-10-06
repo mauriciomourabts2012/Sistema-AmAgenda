@@ -63,7 +63,7 @@
     const dados = new FormData();
     dados.append("id_agendamento", String(idAgendamento));
     dados.append("escopo", escopo);
-    const resposta = await fetch(API, { method: "POST", body: dados, credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest", Accept: "application/json" } });
+    const resposta = await fetch(API, { method: "POST", body: dados, credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest", Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") } });
     const json = await resposta.json().catch(() => null);
     if (!resposta.ok || !json?.ok) throw new Error(json?.user_msg || "Não foi possível excluir o agendamento.");
     return json;

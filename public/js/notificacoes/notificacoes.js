@@ -10,7 +10,8 @@
 
   const API_NOTIFICACOES = "/public/api/api_central.php?path=notificacoes/listar";
   const API_MARCAR_LIDA = "/public/api/api_central.php?path=notificacoes/marcar-lida";
-  const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto"]);
+  const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto", "agenda.abrir_agendamento"]);
+  const PAGINA_AGENDA = "/public/views/agenda.html";
 
   const estadoNotificacoes = {
     itens: [],
@@ -168,7 +169,11 @@
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
-      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
+      },
       body: corpo.toString(),
     });
     const dados = await resposta.json().catch(() => null);
@@ -177,11 +182,27 @@
     return true;
   }
 
-  function executarAcaoNotificacao(codigo) {
+  // Agendamento pendente: só o id do contexto segue adiante, como referência.
+  // A Agenda consulta o backend (empresa da sessão + permissões) antes de abrir.
+  function abrirAgendamentoDaNotificacao(item) {
+    const id = Number(item?.contexto?.id_agendamento);
+    if (!Number.isInteger(id) || id <= 0) return;
+    if (typeof window.AgendaNotificacao?.abrirAgendamento === "function") {
+      window.AgendaNotificacao.abrirAgendamento(id);
+      return;
+    }
+    const destino = new URL(PAGINA_AGENDA, window.location.origin);
+    destino.searchParams.set("acao", "abrir_agendamento");
+    destino.searchParams.set("id_agendamento", String(id));
+    window.location.assign(destino.toString());
+  }
+
+  function executarAcaoNotificacao(codigo, item = null) {
     if (!ACOES_NOTIFICACAO.has(codigo)) return;
     fecharDropdownNotificacoes(false);
     if (codigo === "perfil.alterar_senha") abrirPerfilNaArea("senha", false);
     if (codigo === "perfil.alterar_foto") abrirPerfilNaArea("foto", false);
+    if (codigo === "agenda.abrir_agendamento") abrirAgendamentoDaNotificacao(item);
   }
 
   function renderizarNotificacoes() {
@@ -222,7 +243,10 @@
       const rodape = document.createElement("span");
       rodape.className = "notificacao-item-rodape";
       const data = document.createElement("time");
-      data.textContent = formatarDataNotificacao(item.criada_em);
+      const dataReferencia = item.categoria === "agenda" && item.prazo_em
+        ? item.prazo_em
+        : item.criada_em;
+      data.textContent = formatarDataNotificacao(dataReferencia);
       rodape.appendChild(data);
       const estadoLeitura = document.createElement("span");
       estadoLeitura.textContent = item.lida ? "Lida · pendente" : "Não lida";
@@ -235,7 +259,7 @@
         try {
           await marcarNotificacaoComoLida(item);
           renderizarNotificacoes();
-          executarAcaoNotificacao(item.acao_codigo);
+          executarAcaoNotificacao(item.acao_codigo, item);
         } catch (erro) {
           botaoItem.disabled = false;
           criarTextoEstado(erro?.message || "Não foi possível abrir a notificação.", "erro");

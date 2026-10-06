@@ -69,7 +69,7 @@
         home: user.modo_suporte === true
           ? "/views/painel-administrativo/painel-administrativo.html"
           : "/views/super-admin/painel-super-admin.html",
-        logout: "/public/views/login-super-admin.html"
+        logout: "/public/views/login-empresa.php"
       };
     }
     if (profile === "proprietario") {
@@ -85,7 +85,7 @@
     if (typeof value !== "string" || !value.startsWith("/")) return null;
     const url = new URL(value, window.location.origin);
     if (url.origin !== window.location.origin) return null;
-    if (url.pathname === "/public/views/login-super-admin.html") return url.href;
+    if (url.pathname === "/public/views/login-empresa.php") return url.href;
     if (url.pathname === "/login.php") return url.href;
     return null;
   }

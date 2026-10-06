@@ -5,7 +5,7 @@
   if (!tab) return;
 
   const API = "../../api/api_central.php";
-  const LOGIN = "/public/views/login-super-admin.html";
+  const LOGIN = "/public/views/login-empresa.php";
   const STATUS_LABELS = {
     ativo: "Ativo",
     rascunho: "Rascunho",

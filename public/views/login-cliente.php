@@ -27,7 +27,7 @@ $empresaId = (int)$_SESSION['empresa_id'];
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.16" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.17" />
 
   <link
     rel="stylesheet"
@@ -55,7 +55,7 @@ $empresaId = (int)$_SESSION['empresa_id'];
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.0.16"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.0.17"></script>
 
 </head>
 
@@ -1353,7 +1353,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.0.16" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.0.17" data-pwa-contexto="agenda-online"></script>
 
 <script
   src="/public/js/identidade-visual/identidade-visual-login.js?v=20260822_1"

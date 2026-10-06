@@ -35,12 +35,16 @@ try {
 
     if ($idUsuario <= 0) out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
     if ($idEmpresa <= 0) out(['ok' => false, 'code' => 'SESSION_WITHOUT_COMPANY', 'user_msg' => 'Não foi possível identificar a empresa da sessão.'], 403);
+    // Escrita autenticada: exige o token CSRF da sessão (mecanismo existente).
+    require_once __DIR__ . '/../_auth/csrf.php';
+    csrfValidarSessao();
     if ($idAgendamento <= 0 || !in_array($escopo, ['somente_este', 'este_e_proximos', 'toda_recorrencia'], true)) {
         out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Informe um agendamento e uma opção de exclusão válidos.'], 422);
     }
 
     require __DIR__ . '/../_config/conexao.php';
     require_once __DIR__ . '/../_servicos/auditoria.php';
+    require_once __DIR__ . '/../_servicos/notificacao.php';
     $conexao->set_charset('utf8mb4');
 
     $stmt = $conexao->prepare("SELECT pf.nome,p.id_profissional FROM empresa_usuario eu INNER JOIN empresa e ON e.id_empresa=eu.id_empresa INNER JOIN perfil pf ON pf.id_perfil=eu.id_perfil LEFT JOIN profissional p ON p.id_usuario=eu.id_usuario WHERE eu.id_empresa=? AND eu.id_usuario=? AND eu.status='ativo' AND e.status='ativo' LIMIT 1");
@@ -76,6 +80,23 @@ try {
         out(['ok' => false, 'code' => 'APPOINTMENT_NOT_RECURRENT', 'user_msg' => 'Este agendamento não pertence a uma recorrência.'], 422);
     }
 
+    // IDs atingidos pelo mesmo critério do DELETE, para não deixar notificações órfãs.
+    if ($escopo === 'somente_este') {
+        $stmt = $conexao->prepare("SELECT id_agendamento FROM agendamento WHERE id_agendamento=? AND id_empresa=? FOR UPDATE");
+        $stmt->bind_param('ii', $idAgendamento, $idEmpresa);
+    } elseif ($escopo === 'este_e_proximos') {
+        $stmt = $conexao->prepare("SELECT id_agendamento FROM agendamento WHERE id_empresa=? AND grupo_recorrencia=? AND data_agendamento>=? FOR UPDATE");
+        $stmt->bind_param('iss', $idEmpresa, $grupoRecorrencia, $dataSelecionada);
+    } else {
+        $stmt = $conexao->prepare("SELECT id_agendamento FROM agendamento WHERE id_empresa=? AND grupo_recorrencia=? FOR UPDATE");
+        $stmt->bind_param('is', $idEmpresa, $grupoRecorrencia);
+    }
+    $stmt->execute();
+    $stmt->bind_result($idAtingido);
+    $idsExcluidos = [];
+    while ($stmt->fetch()) $idsExcluidos[] = (int)$idAtingido;
+    $stmt->close();
+
     if ($escopo === 'somente_este') {
         $stmt = $conexao->prepare("DELETE FROM agendamento WHERE id_agendamento=? AND id_empresa=? LIMIT 1");
         $stmt->bind_param('ii', $idAgendamento, $idEmpresa);
@@ -93,6 +114,12 @@ try {
     if ($quantidade < 1) {
         $conexao->rollback();
         out(['ok' => false, 'code' => 'NOTHING_DELETED', 'user_msg' => 'Nenhum agendamento foi excluído.'], 409);
+    }
+
+    // Registro removido: as notificações ativas desses agendamentos são canceladas
+    // na mesma transação (falha desfaz a exclusão).
+    foreach ($idsExcluidos as $idExcluido) {
+        notificacaoReconciliarAgendamentoPendente($conexao, $idEmpresa, $idExcluido);
     }
 
     $escoposAuditoria=['somente_este'=>'ocorrencia_unica','este_e_proximos'=>'esta_e_proximas','toda_recorrencia'=>'toda_recorrencia'];

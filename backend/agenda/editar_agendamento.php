@@ -24,6 +24,9 @@ try {
     $idEmpresa=(int)($auth['id_empresa'] ?? $_SESSION['empresa_id'] ?? $_SESSION['id_empresa'] ?? $_SESSION['empresa']['id_empresa'] ?? 0);
     if ($idUsuario<=0) out(['ok'=>false,'code'=>'NOT_AUTHENTICATED','user_msg'=>'Sessão expirada. Faça login novamente.'],401);
     if ($idEmpresa<=0) out(['ok'=>false,'code'=>'SESSION_WITHOUT_COMPANY','user_msg'=>'Não foi possível identificar a empresa da sessão.'],403);
+    // Escrita autenticada: exige o token CSRF da sessão (mecanismo existente).
+    require_once __DIR__ . '/../_auth/csrf.php';
+    csrfValidarSessao();
 
     $id=filter_input(INPUT_POST,'id_agendamento',FILTER_VALIDATE_INT) ?: 0;
     $idCliente=filter_input(INPUT_POST,'id_cliente',FILTER_VALIDATE_INT) ?: 0;
@@ -41,7 +44,8 @@ try {
     if ($idServico<=0) $erros['id_servico']='Selecione o serviço.';
     $duracoesPermitidas=[15,30,45,60,75,90,105,120,150,180,210,240];
     if (!in_array($duracaoSolicitada,$duracoesPermitidas,true)) $erros['duracao']='Selecione uma duração válida.';
-    if (!$data || $data < new DateTimeImmutable('today')) $erros['data_agendamento']='Não é permitido agendar em uma data passada.';
+    // Data passada é decidida após o snapshot do banco (exceção de alteração somente de status).
+    if (!$data) $erros['data_agendamento']='Selecione uma data válida.';
     if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/',$horaTexto)) $erros['hora_inicio']='Selecione um horário válido.';
     if (!in_array($status,['pendente','confirmado','concluido','cancelado','faltou'],true)) $erros['status']='Status inválido.';
     if (mb_strlen($obs)>220) $erros['observacao']='A observação deve ter no máximo 220 caracteres.';
@@ -51,43 +55,71 @@ try {
     require_once __DIR__ . '/../_regras/permissoes_usuario.php';
     require_once __DIR__ . '/../_regras/limites_plano.php';
     require_once __DIR__ . '/../_servicos/auditoria.php';
+    require_once __DIR__ . '/../_servicos/notificacao.php';
     $conexao->set_charset('utf8mb4');
     $contexto=permissoesContexto($conexao);
     if (!($contexto['valido'] ?? false)) out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Acesso à empresa não autorizado.'],403);
     if (!($contexto['super_admin_suporte'] ?? false) && ($contexto['perfil'] ?? '') === 'profissional' && (int)($contexto['id_profissional'] ?? 0)!==$idProfissional) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode editar os próprios agendamentos.'],403);
 
     // Snapshot mínimo com rótulos históricos, sempre limitado à empresa da sessão.
-    $stmt=$conexao->prepare("SELECT a.id_agendamento,a.id_cliente,c.nome_completo,a.id_profissional,up.nome,a.id_servico,s.nome,a.data_agendamento,a.hora_inicio,a.hora_fim,a.duracao_min_aplicada,a.valor_aplicado,a.status,a.repetir_semanalmente,a.recorrencia_data_fim,a.grupo_recorrencia FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario up ON up.id_usuario=p.id_usuario INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_empresa=a.id_empresa WHERE a.id_agendamento=? AND a.id_empresa=? LIMIT 1");
+    $stmt=$conexao->prepare("SELECT a.id_agendamento,a.id_cliente,c.nome_completo,a.id_profissional,up.nome,a.id_servico,s.nome,a.data_agendamento,a.hora_inicio,a.hora_fim,a.duracao_min_aplicada,a.valor_aplicado,a.status,a.observacao,a.repetir_semanalmente,a.recorrencia_data_fim,a.grupo_recorrencia FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario up ON up.id_usuario=p.id_usuario INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_empresa=a.id_empresa WHERE a.id_agendamento=? AND a.id_empresa=? LIMIT 1");
     $stmt->bind_param('ii',$id,$idEmpresa); $stmt->execute();
-    $stmt->bind_result($idDb,$clienteAnteriorId,$clienteAnteriorNome,$profAnteriorId,$profAnteriorNome,$servicoAnteriorId,$servicoAnteriorNome,$dataOriginalTexto,$horaOriginalTexto,$horaFimAnterior,$duracaoAnterior,$valorAnterior,$statusAnterior,$repetirDb,$fimRecDbOriginal,$grupoDb); $existe=$stmt->fetch(); $stmt->close();
+    $stmt->bind_result($idDb,$clienteAnteriorId,$clienteAnteriorNome,$profAnteriorId,$profAnteriorNome,$servicoAnteriorId,$servicoAnteriorNome,$dataOriginalTexto,$horaOriginalTexto,$horaFimAnterior,$duracaoAnterior,$valorAnterior,$statusAnterior,$obsAnterior,$repetirDb,$fimRecDbOriginal,$grupoDb); $existe=$stmt->fetch(); $stmt->close();
     if (!$existe) out(['ok'=>false,'code'=>'APPOINTMENT_NOT_FOUND','user_msg'=>'Agendamento não encontrado.'],404);
+    // O profissional também precisa ser o responsável atual pelo registro.
+    if (!($contexto['super_admin_suporte'] ?? false) && ($contexto['perfil'] ?? '') === 'profissional' && (int)($contexto['id_profissional'] ?? 0)!==(int)$profAnteriorId) out(['ok'=>false,'code'=>'PROFESSIONAL_ACCESS_DENIED','user_msg'=>'O profissional só pode editar os próprios agendamentos.'],403);
+
+    // Agendamento que já começou: permite alterar SOMENTE o status, mantendo
+    // exatamente data, hora, cliente, profissional, serviço, duração e observação
+    // originais. A comparação é feita contra o banco, nunca contra o frontend.
+    $inicioOriginal=DateTimeImmutable::createFromFormat('!Y-m-d H:i',(string)$dataOriginalTexto.' '.substr((string)$horaOriginalTexto,0,5));
+    $somenteStatusPassado=$inicioOriginal!==false && $inicioOriginal<=new DateTimeImmutable('now')
+        && $dataTexto===(string)$dataOriginalTexto && $horaTexto===substr((string)$horaOriginalTexto,0,5)
+        && $idCliente===(int)$clienteAnteriorId && $idProfissional===(int)$profAnteriorId
+        && $idServico===(int)$servicoAnteriorId && $duracaoSolicitada===(int)$duracaoAnterior
+        && $obs===trim((string)$obsAnterior);
+    if ($data < new DateTimeImmutable('today') && !$somenteStatusPassado) out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Revise os dados do agendamento.','fields'=>['data_agendamento'=>'Não é permitido agendar em uma data passada.']],422);
 
     $ocorrenciaRecorrente=trim((string)$grupoDb)!=='';
     if ($ocorrenciaRecorrente && $data && $data->format('o-W')!==(new DateTimeImmutable((string)$dataOriginalTexto))->format('o-W')) {
         out(['ok'=>false,'code'=>'RECURRENCE_WEEK_CHANGE_NOT_ALLOWED','user_msg'=>'Esta ocorrência recorrente só pode ser reagendada dentro da própria semana. As demais semanas não serão alteradas.'],422);
     }
-    if (!$ocorrenciaRecorrente && $repetir && (!$fimRec || ($data && $fimRec<$data))) {
+    if (!$ocorrenciaRecorrente && !$somenteStatusPassado && $repetir && (!$fimRec || ($data && $fimRec<$data))) {
         out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Informe uma data final válida para a recorrência.','fields'=>['recorrencia_data_fim'=>'Informe uma data final válida.']],422);
     }
 
-    $stmt=$conexao->prepare("SELECT id_cliente,nome_completo FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
-    $stmt->bind_param('ii',$idCliente,$idEmpresa); $stmt->execute(); $stmt->bind_result($clienteNovoId,$clienteNovoNome); $ok=$stmt->fetch(); $stmt->close();
-    if (!$ok) out(['ok'=>false,'code'=>'CLIENT_NOT_FOUND','user_msg'=>'Cliente não encontrado ou inativo.'],404);
+    if ($somenteStatusPassado) {
+        // Resolução histórica: o cliente é o original gravado (conferido acima) e pode estar
+        // inativo hoje. Cliente diferente do original segue a validação normal (somente ativo).
+        $clienteNovoNome=$clienteAnteriorNome;
+    } else {
+        $stmt=$conexao->prepare("SELECT id_cliente,nome_completo FROM cliente WHERE id_cliente=? AND id_empresa=? AND status='ativo' LIMIT 1");
+        $stmt->bind_param('ii',$idCliente,$idEmpresa); $stmt->execute(); $stmt->bind_result($clienteNovoId,$clienteNovoNome); $ok=$stmt->fetch(); $stmt->close();
+        if (!$ok) out(['ok'=>false,'code'=>'CLIENT_NOT_FOUND','user_msg'=>'Cliente não encontrado ou inativo.'],404);
+    }
 
-    $stmt=$conexao->prepare("SELECT s.duracao_min,s.valor,s.nome,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
-    $stmt->bind_param('iii',$idServico,$idProfissional,$idEmpresa); $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb,$servicoNovoNome,$profNovoNome); $servico=$stmt->fetch(); $stmt->close();
-    if (!$servico || (int)$duracaoDb<=0) out(['ok'=>false,'code'=>'SERVICE_NOT_FOUND','user_msg'=>'Serviço não encontrado para o profissional selecionado.'],404);
+    if ($somenteStatusPassado) {
+        // Resolução histórica do registro existente: serviço/profissional são os originais
+        // (conferidos contra o banco acima) e podem estar inativos hoje. Não vale para
+        // criação, reagendamento ou troca de serviço/profissional, que seguem a regra normal.
+        $duracaoDb=(int)$duracaoAnterior; $valorDb=$valorAnterior; $servicoNovoNome=$servicoAnteriorNome; $profNovoNome=$profAnteriorNome;
+    } else {
+        $stmt=$conexao->prepare("SELECT s.duracao_min,s.valor,s.nome,u.nome FROM servico s INNER JOIN profissional p ON p.id_profissional=s.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eu ON eu.id_usuario=p.id_usuario AND eu.id_empresa=s.id_empresa WHERE s.id_servico=? AND s.id_profissional=? AND s.id_empresa=? AND s.status='ativo' AND eu.status='ativo' LIMIT 1");
+        $stmt->bind_param('iii',$idServico,$idProfissional,$idEmpresa); $stmt->execute(); $stmt->bind_result($duracaoDb,$valorDb,$servicoNovoNome,$profNovoNome); $servico=$stmt->fetch(); $stmt->close();
+        if (!$servico || (int)$duracaoDb<=0) out(['ok'=>false,'code'=>'SERVICE_NOT_FOUND','user_msg'=>'Serviço não encontrado para o profissional selecionado.'],404);
+    }
     $duracao=$duracaoSolicitada;
     $inicio=DateTimeImmutable::createFromFormat('!H:i',$horaTexto); $fim=$inicio?->modify('+'.$duracao.' minutes');
     if (!$inicio || !$fim || $fim->format('Y-m-d')!=='1970-01-01') out(['ok'=>false,'code'=>'INVALID_END_TIME','user_msg'=>'A duração do serviço ultrapassa o fim do dia.'],422);
-    $horaInicio=$inicio->format('H:i:s'); $horaFim=$fim->format('H:i:s'); $valor=(float)$valorDb;
+    $horaInicio=$inicio->format('H:i:s'); $horaFim=$fim->format('H:i:s'); $valor=$somenteStatusPassado?(float)$valorAnterior:(float)$valorDb;
     $dataHoraInicio=DateTimeImmutable::createFromFormat('!Y-m-d H:i',$dataTexto.' '.$horaTexto);
     $mantemHorarioOriginal=$dataTexto===(string)$dataOriginalTexto && $horaTexto===substr((string)$horaOriginalTexto,0,5);
-    if (in_array($status,['pendente','confirmado'],true) && !$mantemHorarioOriginal && (!$dataHoraInicio || $dataHoraInicio<=new DateTimeImmutable('now'))) out(['ok'=>false,'code'=>'PAST_START_TIME','user_msg'=>'Selecione um horário que ainda não tenha começado.'],422);
+    // Nenhum status permite mover o agendamento para outra data/hora já passada.
+    if (!$mantemHorarioOriginal && (!$dataHoraInicio || $dataHoraInicio<=new DateTimeImmutable('now'))) out(['ok'=>false,'code'=>'PAST_START_TIME','user_msg'=>'Selecione um horário que ainda não tenha começado.'],422);
     $obsDb=$obs!==''?$obs:null;
     // Preserva os metadados da série: mover esta ocorrência nunca reprograma
     // nem desvincula silenciosamente as ocorrências das outras semanas.
-    if ($ocorrenciaRecorrente) {
+    if ($ocorrenciaRecorrente || $somenteStatusPassado) {
         $rep=(int)$repetirDb;
         $fimRecDb=$fimRecDbOriginal;
         $grupo=$grupoDb;
@@ -99,7 +131,8 @@ try {
 
     // Cancelar/concluir/falta não ocupa a grade; reagendamento ativo recalcula e valida tudo.
     $statusBloqueiaHorario=in_array($status,['pendente','confirmado'],true);
-    if ($statusBloqueiaHorario) {
+    // Somente status em agendamento já iniciado: a grade/jornada atual não reavalia o horário original.
+    if ($statusBloqueiaHorario && !$somenteStatusPassado) {
         require_once __DIR__.'/validar_horario_agendamento.php';
         $erroHorario=validarHorarioAgendamento($conexao,$idEmpresa,$idProfissional,$data,$horaInicio,$duracao);
         if ($erroHorario!==null) out(['ok'=>false,'code'=>'INVALID_SCHEDULE','user_msg'=>$erroHorario],422);
@@ -127,6 +160,9 @@ try {
     $campos=['cliente'=>[['id'=>(int)$clienteAnteriorId,'rotulo'=>$clienteAnteriorNome],['id'=>$idCliente,'rotulo'=>$clienteNovoNome]],'profissional'=>[['id'=>(int)$profAnteriorId,'rotulo'=>$profAnteriorNome],['id'=>$idProfissional,'rotulo'=>$profNovoNome]],'servico'=>[['id'=>(int)$servicoAnteriorId,'rotulo'=>$servicoAnteriorNome],['id'=>$idServico,'rotulo'=>$servicoNovoNome]],'data_agendamento'=>[$dataOriginalTexto,$dataTexto],'hora_inicio'=>[$horaOriginalTexto,$horaInicio],'hora_fim'=>[$horaFimAnterior,$horaFim],'duracao_min_aplicada'=>[(int)$duracaoAnterior,$duracao],'valor_aplicado'=>[(float)$valorAnterior,(float)$valor],'status'=>[$statusAnterior,$status],'recorrencia'=>[['grupo'=>$grupoDb,'data_fim'=>$fimRecDbOriginal],['grupo'=>$grupo,'data_fim'=>$fimRecDb]]];
     $diferencas=[];foreach($campos as $campo=>[$antes,$depois])if(!auditoriaValoresIguais($antes,$depois))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depois];
     if($diferencas!==[]){$somenteStatus=array_keys($diferencas)===['status'];$eventoStatus=['confirmado'=>'agendamento.confirmado','cancelado'=>'agendamento.cancelado','concluido'=>'agendamento.concluido'];$evento=$somenteStatus&&isset($eventoStatus[$status])?$eventoStatus[$status]:'agendamento.editado';auditoriaRegistrar($conexao,$evento,['entidade_id'=>$id,'entidade_rotulo'=>(string)$clienteNovoNome,'descricao'=>($evento==='agendamento.confirmado'?'Confirmou':($evento==='agendamento.cancelado'?'Cancelou':($evento==='agendamento.concluido'?'Concluiu':'Alterou'))).' o agendamento de '.$clienteNovoNome.'.','alteracoes'=>$diferencas,'contexto'=>['origem'=>'agenda','escopo'=>'ocorrencia_unica','grupo_recorrencia'=>$grupo]]);}
+    // A central reflete o status já gravado nesta transação (pendente mantém/reativa/atualiza;
+    // outro status conclui; troca de profissional cancela a do anterior). Falha desfaz a edição.
+    notificacaoReconciliarAgendamentoPendente($conexao,$idEmpresa,$id);
     $conexao->commit();
     out(['ok'=>true,'code'=>'APPOINTMENT_UPDATED','user_msg'=>$ocorrenciaRecorrente?'Ocorrência reagendada sem alterar as demais semanas.':'Agendamento atualizado com sucesso.','data'=>['id_agendamento'=>$id,'ocorrencia_recorrente'=>$ocorrenciaRecorrente,'avisos_plano'=>$avisosPlano]],200);
 } catch (Throwable $e) { if ($conexao instanceof mysqli) { try{$conexao->rollback();}catch(Throwable $x){} } error_log('[editar_agendamento] '.$e->getMessage()); out(['ok'=>false,'code'=>'INTERNAL_ERROR','user_msg'=>'Não foi possível atualizar o agendamento.'],500); }
