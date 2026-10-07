@@ -62,7 +62,13 @@ try {
     // Banco e auditoria pertencem à mesma transação; qualquer falha remove também os novos arquivos no catch.
     $conexao->commit();
 
-    if ($logoNovo) identidadeRemoverArquivoSeguro($atual['logo_empresa'] ?? null, $idEmpresa);
+    if ($logoNovo) {
+        identidadeRemoverIconesPwa($atual['logo_empresa'] ?? null, $idEmpresa);
+        identidadeRemoverArquivoSeguro($atual['logo_empresa'] ?? null, $idEmpresa);
+    }
+    // Ícones do PWA contextual derivados do logo salvo; falha não desfaz o salvamento
+    // (o manifesto usa os ícones oficiais do AmAgenda até a geração ocorrer).
+    if ($logoDb) identidadeGarantirIconesPwa($idEmpresa, $logoDb);
     if ($loginNovo) identidadeRemoverArquivoSeguro($atual['imagem_login'] ?? null, $idEmpresa);
 
     $data = identidadeFallback(['nome_exibicao' => $nomeDb, 'logo_empresa' => $logoDb, 'imagem_login' => $loginDb, 'imagem_login_escala' => $escala, 'imagem_login_pos_x' => $posX, 'imagem_login_pos_y' => $posY, 'cor_primaria' => $corDb]);

@@ -22,6 +22,8 @@
   function exibir(tipo, mensagem, opcoes = {}) {
     const cfg = TIPOS[tipo] || TIPOS.info;
     const el = document.createElement("section"); el.className = `ui-alert ${cfg[0]}`; el.setAttribute("role", ["danger", "warning"].includes(tipo) ? "alert" : "status");
+    // Confirmação destrutiva: mesmo componente, variante de perigo (vermelha).
+    if (tipo === "confirm" && opcoes.perigoso === true) el.classList.add("ui-alert--confirm-perigo");
     const icon = document.createElement("div"); icon.className = "ui-alert__icon"; icon.setAttribute("aria-hidden", "true"); icon.textContent = cfg[1];
     const content = document.createElement("div"); content.className = "ui-alert__content";
     const title = document.createElement("div"); title.className = "ui-alert__title"; title.textContent = opcoes.titulo || cfg[2];

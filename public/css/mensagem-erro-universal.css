@@ -229,6 +229,42 @@
 .ui-alert--info .ui-alert__icon { background: rgba(17,99,221,.10); border: 1px solid rgba(17,99,221,.20); color: #1163dd; }
 
 /* ==========================================================
+   MARCA DA EMPRESA EM MENSAGENS NEUTRAS (confirm neutro e info)
+   Tokens --am-marca-* só existem com cor personalizada; os
+   fallbacks são os valores atuais (visual idêntico sem cor).
+   Fora daqui: confirm-perigo, success, warning, danger e o
+   aviso de atualização do PWA (identidade oficial AmAgenda).
+========================================================== */
+.ui-alert--confirm:not(.ui-alert--confirm-perigo):not(.ui-alert--pwa-atualizacao),
+.ui-alert--info:not(.ui-alert--pwa-atualizacao){
+  border-color: rgba(var(--am-marca-rgb, 17,99,221), .20);
+}
+.ui-alert--confirm:not(.ui-alert--confirm-perigo):not(.ui-alert--pwa-atualizacao)::before,
+.ui-alert--info:not(.ui-alert--pwa-atualizacao)::before{
+  background: var(--am-marca, #1163dd);
+}
+.ui-alert--confirm:not(.ui-alert--confirm-perigo):not(.ui-alert--pwa-atualizacao) .ui-alert__icon,
+.ui-alert--info:not(.ui-alert--pwa-atualizacao) .ui-alert__icon{
+  background: rgba(var(--am-marca-rgb, 17,99,221), .10);
+  border: 1px solid rgba(var(--am-marca-rgb, 17,99,221), .20);
+  color: var(--am-marca-texto, #1163dd);
+}
+.ui-alert--confirm:not(.ui-alert--confirm-perigo):not(.ui-alert--pwa-atualizacao) .ui-alert__btn--primary,
+.ui-alert--info:not(.ui-alert--pwa-atualizacao) .ui-alert__btn--primary{
+  background: var(--am-marca, #1163dd);
+  border-color: var(--am-marca, #1163dd);
+  color: var(--am-marca-contraste, #fff);
+}
+.ui-alert--confirm:not(.ui-alert--confirm-perigo):not(.ui-alert--pwa-atualizacao) .ui-alert__btn--primary:hover,
+.ui-alert--info:not(.ui-alert--pwa-atualizacao) .ui-alert__btn--primary:hover{
+  background: var(--am-marca-hover, #0f57c5);
+}
+.ui-alert--confirm:not(.ui-alert--confirm-perigo):not(.ui-alert--pwa-atualizacao) .ui-alert__btn:focus-visible,
+.ui-alert--info:not(.ui-alert--pwa-atualizacao) .ui-alert__btn:focus-visible{
+  outline-color: rgba(var(--am-marca-rgb, 17,99,221), .28);
+}
+
+/* ==========================================================
    SUCCESS
 ========================================================== */
 .ui-alert--success{
@@ -271,6 +307,34 @@
   background: rgba(220,38,38,.10);
   border: 1px solid rgba(220,38,38,.20);
   color:#b91c1c;
+}
+
+/* ==========================================================
+   CONFIRMAÇÃO DESTRUTIVA (ui-alert--confirm + ui-alert--confirm-perigo)
+   Mesma estrutura da confirmação neutra; cores fixas de perigo,
+   nunca a cor principal da empresa (excluir, restaurar etc.).
+========================================================== */
+.ui-alert--confirm.ui-alert--confirm-perigo{
+  border: 1px solid rgba(220,38,38,.25);
+}
+.ui-alert--confirm.ui-alert--confirm-perigo::before{
+  background:#b91c1c;
+}
+.ui-alert--confirm.ui-alert--confirm-perigo .ui-alert__icon{
+  background: rgba(220,38,38,.10);
+  border: 1px solid rgba(220,38,38,.20);
+  color:#b91c1c;
+}
+.ui-alert--confirm-perigo .ui-alert__btn--primary{
+  background:#b91c1c;
+  border-color:#b91c1c;
+  color:#fff;
+}
+.ui-alert--confirm-perigo .ui-alert__btn--primary:hover{
+  background:#991b1b;
+}
+.ui-alert--confirm-perigo .ui-alert__btn:focus-visible{
+  outline-color: rgba(185,28,28,.30);
 }
 
 /* ==========================================================

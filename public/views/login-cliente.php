@@ -18,6 +18,11 @@ $empresaId = (int)$_SESSION['empresa_id'];
 // Nome cadastrado da empresa do contexto (definido pelo link validado); o nome
 // exibido personalizado, quando houver, é aplicado por identidade-visual-login.js.
 $empresaNomeContexto = trim((string)($_SESSION['empresa_nome'] ?? ''));
+// Slug do contexto validado da sessão: o manifesto só personaliza se conferir com a sessão.
+$empresaSlugContexto = trim((string)($_SESSION['empresa_slug'] ?? ''));
+if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
+    $empresaSlugContexto = '';
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -29,28 +34,28 @@ $empresaNomeContexto = trim((string)($_SESSION['empresa_nome'] ?? ''));
 
   <title>AmAgenda • Login Cliente</title>
 
-  <link rel="manifest" href="/public/manifest-agenda-online.php" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.17" />
+  <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.19" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.0.17"
+    href="../css/login/login-web.css?v=1.0.19"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.0.17"
+    href="../css/login/login-mobile.css?v=1.0.19"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.0.17"
+    href="../css/login/login-cliente.css?v=1.0.19"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.0.17"
+    href="../css/identidade-visual/identidade-visual.css?v=1.0.19"
   />
 
   <link
@@ -64,7 +69,7 @@ $empresaNomeContexto = trim((string)($_SESSION['empresa_nome'] ?? ''));
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.0.17"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.0.19"></script>
 
 </head>
 
@@ -1254,10 +1259,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.0.17" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.0.19" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.17"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.19"
 ></script>
 
 </body>

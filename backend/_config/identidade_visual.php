@@ -346,7 +346,7 @@ function identidadeRemoverArquivoSeguro(?string $url, int $idEmpresa): void
     }
 
     $nome = basename(parse_url($url, PHP_URL_PATH) ?: '');
-    if ($nome === '' || !preg_match('/^(logo|login)_[a-f0-9]{16}\.(jpg|png|webp)$/', $nome)) {
+    if ($nome === '' || !preg_match('/^(?:(?:logo|login)_[a-f0-9]{16}\.(?:jpg|png|webp)|pwa_[a-f0-9]{16}(?:_maskable)?_(?:192|512)\.png)$/', $nome)) {
         return;
     }
 
@@ -356,4 +356,141 @@ function identidadeRemoverArquivoSeguro(?string $url, int $idEmpresa): void
     if ($diretorioReal && $arquivoReal && str_starts_with($arquivoReal, $diretorioReal . DIRECTORY_SEPARATOR) && is_file($arquivoReal)) {
         @unlink($arquivoReal);
     }
+}
+
+/* ==========================================================
+   ÍCONES DO PWA CONTEXTUAL (Agenda Online / Área do Cliente)
+   Derivados do logo atual: pwa_<id-do-logo>[_maskable]_<192|512>.png,
+   na mesma pasta da empresa. O nome muda quando o logo muda
+   (invalidação natural de cache) e nunca é compartilhado entre empresas.
+========================================================== */
+const AMAGENDA_PWA_ICONE_PIXELS_MAX = 16000000; // limite de memória para decodificar o logo
+
+/** Identificador (16 hex) do logo da própria empresa, ou null se o valor não for um logo válido dela. */
+function identidadeIdLogoEmpresa(?string $logoUrl, int $idEmpresa): ?string
+{
+    $logoUrl = trim((string)$logoUrl);
+    $prefixo = AMAGENDA_UPLOAD_EMPRESAS_URL . '/' . $idEmpresa . '/identidade/';
+    if ($idEmpresa <= 0 || $logoUrl === '' || !str_starts_with($logoUrl, $prefixo)) {
+        return null;
+    }
+    $nome = substr($logoUrl, strlen($prefixo));
+    return preg_match('/^logo_([a-f0-9]{16})\.(?:jpg|png|webp)$/D', $nome, $m) === 1 ? $m[1] : null;
+}
+
+/** Nomes dos 4 ícones derivados de um logo: chave => [arquivo, tamanho, purpose]. */
+function identidadeNomesIconesPwa(string $idLogo): array
+{
+    return [
+        'any_192' => ["pwa_{$idLogo}_192.png", 192, 'any'],
+        'any_512' => ["pwa_{$idLogo}_512.png", 512, 'any'],
+        'maskable_192' => ["pwa_{$idLogo}_maskable_192.png", 192, 'maskable'],
+        'maskable_512' => ["pwa_{$idLogo}_maskable_512.png", 512, 'maskable'],
+    ];
+}
+
+/**
+ * Gera (se ainda não existirem) os 4 ícones PNG a partir do logo atual da empresa.
+ * Fundo branco; logo inteiro, proporcional e centralizado:
+ *  - normal ("any"): até 80% do quadro;
+ *  - maskable: até 60% do quadro (dentro da área segura de 80% do círculo).
+ * Retorna true quando os 4 arquivos existem ao final. Nunca lança: falhas são
+ * registradas e o manifesto usa os ícones oficiais do AmAgenda.
+ */
+function identidadeGarantirIconesPwa(int $idEmpresa, ?string $logoUrl): bool
+{
+    $idLogo = identidadeIdLogoEmpresa($logoUrl, $idEmpresa);
+    if ($idLogo === null) return false;
+
+    try {
+        $diretorio = realpath(identidadeDiretorioEmpresa($idEmpresa));
+        if ($diretorio === false) return false;
+        $nomes = identidadeNomesIconesPwa($idLogo);
+        $faltando = array_filter($nomes, static fn(array $n): bool => !is_file($diretorio . DIRECTORY_SEPARATOR . $n[0]));
+        if ($faltando === []) return true;
+
+        if (!function_exists('imagecreatetruecolor')) {
+            throw new RuntimeException('Extensão GD indisponível.');
+        }
+        $origem = realpath($diretorio . DIRECTORY_SEPARATOR . basename((string)parse_url((string)$logoUrl, PHP_URL_PATH)));
+        if ($origem === false || !str_starts_with($origem, $diretorio . DIRECTORY_SEPARATOR) || !is_file($origem)) {
+            throw new RuntimeException('Logo da empresa não encontrado.');
+        }
+        $info = @getimagesize($origem);
+        if (!$info || (int)$info[0] <= 0 || (int)$info[1] <= 0 || (int)$info[0] * (int)$info[1] > AMAGENDA_PWA_ICONE_PIXELS_MAX) {
+            throw new RuntimeException('Logo inválido ou grande demais para gerar os ícones.');
+        }
+        $logo = match ((int)$info[2]) {
+            IMAGETYPE_PNG => function_exists('imagecreatefrompng') ? @imagecreatefrompng($origem) : false,
+            IMAGETYPE_JPEG => function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($origem) : false,
+            IMAGETYPE_WEBP => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($origem) : false,
+            default => false,
+        };
+        if (!$logo) throw new RuntimeException('Formato do logo não suportado pela GD.');
+
+        try {
+            $larguraLogo = imagesx($logo);
+            $alturaLogo = imagesy($logo);
+            foreach ($faltando as [$arquivo, $tamanho, $purpose]) {
+                $area = $tamanho * ($purpose === 'maskable' ? 0.60 : 0.80);
+                $escala = min($area / $larguraLogo, $area / $alturaLogo); // proporção preservada, sem corte
+                $largura = max(1, (int)round($larguraLogo * $escala));
+                $altura = max(1, (int)round($alturaLogo * $escala));
+
+                $icone = imagecreatetruecolor($tamanho, $tamanho);
+                if (!$icone) throw new RuntimeException('Falha ao criar o ícone.');
+                try {
+                    imagealphablending($icone, true);
+                    imagefilledrectangle($icone, 0, 0, $tamanho - 1, $tamanho - 1, imagecolorallocate($icone, 255, 255, 255));
+                    // Composição com alpha: a transparência do logo é mesclada sobre o fundo branco.
+                    imagecopyresampled($icone, $logo, intdiv($tamanho - $largura, 2), intdiv($tamanho - $altura, 2), 0, 0, $largura, $altura, $larguraLogo, $alturaLogo);
+
+                    $destino = $diretorio . DIRECTORY_SEPARATOR . $arquivo;
+                    $temporario = $destino . '.' . bin2hex(random_bytes(4)) . '.tmp';
+                    if (!imagepng($icone, $temporario, 9) || !@rename($temporario, $destino)) {
+                        if (is_file($temporario)) @unlink($temporario);
+                        throw new RuntimeException('Falha ao gravar o ícone ' . $arquivo . '.');
+                    }
+                    @chmod($destino, 0644);
+                } finally {
+                    imagedestroy($icone);
+                }
+            }
+        } finally {
+            imagedestroy($logo);
+        }
+        return true;
+    } catch (Throwable $e) {
+        error_log('[identidade_visual] Ícones do PWA não gerados para a empresa ' . $idEmpresa . ': ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** Remove somente os ícones derivados do logo informado (mesma validação/confinamento dos uploads). */
+function identidadeRemoverIconesPwa(?string $logoUrl, int $idEmpresa): void
+{
+    $idLogo = identidadeIdLogoEmpresa($logoUrl, $idEmpresa);
+    if ($idLogo === null) return;
+    foreach (identidadeNomesIconesPwa($idLogo) as [$arquivo]) {
+        identidadeRemoverArquivoSeguro(AMAGENDA_UPLOAD_EMPRESAS_URL . '/' . $idEmpresa . '/identidade/' . $arquivo, $idEmpresa);
+    }
+}
+
+/** Entradas "icons" do manifesto quando os 4 ícones da empresa existem; null para usar o fallback oficial. */
+function identidadeIconesPwaManifesto(int $idEmpresa, ?string $logoUrl): ?array
+{
+    $idLogo = identidadeIdLogoEmpresa($logoUrl, $idEmpresa);
+    if ($idLogo === null) return null;
+    $diretorio = identidadeDiretorioEmpresa($idEmpresa);
+    $icones = [];
+    foreach (identidadeNomesIconesPwa($idLogo) as [$arquivo, $tamanho, $purpose]) {
+        if (!is_file($diretorio . DIRECTORY_SEPARATOR . $arquivo)) return null;
+        $icones[] = [
+            'src' => AMAGENDA_UPLOAD_EMPRESAS_URL . '/' . $idEmpresa . '/identidade/' . $arquivo,
+            'sizes' => $tamanho . 'x' . $tamanho,
+            'type' => 'image/png',
+            'purpose' => $purpose,
+        ];
+    }
+    return $icones;
 }

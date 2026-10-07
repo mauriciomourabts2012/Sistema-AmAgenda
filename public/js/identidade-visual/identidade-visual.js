@@ -175,7 +175,7 @@
       let stack = document.querySelector(".ui-toast-stack");
       if (!stack) { stack = document.createElement("div"); stack.className = "ui-toast-stack"; document.body.appendChild(stack); }
       const box = document.createElement("div");
-      box.className = "ui-alert ui-alert--confirm";
+      box.className = "ui-alert ui-alert--confirm ui-alert--confirm-perigo";
       box.innerHTML = '<div class="ui-alert__icon" aria-hidden="true">?</div><div class="ui-alert__content"><p class="ui-alert__title">Restaurar identidade visual?</p><div class="ui-alert__msg">O nome, a logo, a cor principal e a imagem de login personalizados serão removidos. A identidade padrão do AmAgenda voltará a ser utilizada.</div></div><div class="ui-alert__actions"><button type="button" class="ui-alert__btn js-cancelar">Cancelar</button><button type="button" class="ui-alert__btn ui-alert__btn--primary js-confirmar">Restaurar</button></div>';
       let finalizado = false;
       const fechar = valor => { if (finalizado) return; finalizado = true; document.removeEventListener("keydown", tecla); box.remove(); resolve(valor); };

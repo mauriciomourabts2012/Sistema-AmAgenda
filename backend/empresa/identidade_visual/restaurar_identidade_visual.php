@@ -24,6 +24,7 @@ try {
     if($alteracoes!==[])auditoriaRegistrar($conexao,'empresa.identidade_visual_restaurada',['entidade_id'=>$idEmpresa,'entidade_rotulo'=>(string)($atual['nome_exibicao']??'Empresa'),'descricao'=>'Restaurou a identidade visual padrão da empresa.','alteracoes'=>$alteracoes,'contexto'=>['origem'=>'configuracoes_empresa']]);
     $conexao->commit();
 
+    identidadeRemoverIconesPwa($atual['logo_empresa'] ?? null, $idEmpresa);
     identidadeRemoverArquivoSeguro($atual['logo_empresa'] ?? null, $idEmpresa);
     identidadeRemoverArquivoSeguro($atual['imagem_login'] ?? null, $idEmpresa);
     out(['ok' => true, 'code' => 'IDENTIDADE_VISUAL_RESTORED', 'user_msg' => 'Identidade padrão do AmAgenda restaurada.', 'data' => identidadeFallback()], 200);

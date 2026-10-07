@@ -431,6 +431,35 @@
   }
 }
 
+/* Desktop/tablet (o mobile até 720px permanece como validado):
+   a lista de horários rola dentro do card e Voltar/Continuar ficam
+   sempre visíveis, sem position: fixed sobre a janela. */
+@media (min-width: 721px){
+  #tab-horario .u-horarios{
+    /* ~ altura livre abaixo de cabeçalho, abas, mês e dias; nunca menos que 3 linhas */
+    max-height: max(156px, calc(100vh - 500px));
+    max-height: max(156px, calc(100dvh - 500px));
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    /* respiro para o hover/destaque dos horários não ser cortado pela rolagem */
+    padding: 4px 4px 8px;
+    margin-left: -4px;
+    margin-right: -4px;
+  }
+
+  /* Rede de segurança para janelas baixas: o rodapé acompanha a rolagem da página. */
+  #tab-horario .u-actions{
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin-top: 10px;
+    padding: 10px 0 2px;
+    background: var(--card, #fff);
+    border-top: 1px solid rgba(0,0,0,.06);
+  }
+}
+
 
 /* ==========================================================
    FIM

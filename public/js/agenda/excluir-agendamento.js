@@ -35,7 +35,7 @@
   function escolherEscopo(recorrente) {
     return new Promise((resolve) => {
       const alerta = document.createElement("div");
-      alerta.className = "ui-alert ui-alert--confirm agenda-exclusao-confirmacao";
+      alerta.className = "ui-alert ui-alert--confirm ui-alert--confirm-perigo agenda-exclusao-confirmacao";
       alerta.setAttribute("role", "dialog");
       alerta.setAttribute("aria-modal", "true");
       alerta.innerHTML = `

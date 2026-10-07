@@ -451,6 +451,6 @@ test("manifest dinâmico da Agenda Online é buscado com cookies da sessão", ()
   // o navegador busca o manifest sem cookies, recebe 404 e nunca dispara beforeinstallprompt.
   for (const pagina of [LOGIN_CLIENTE_PATH, CLIENTE_AGENDAMENTO_PATH, CLIENTE_PERFIL_PATH]) {
     const html = fs.readFileSync(pagina, "utf8");
-    assert.match(html, /<link rel="manifest" href="\/public\/manifest-agenda-online\.php" crossorigin="use-credentials"/, pagina);
+    assert.match(html, /<link rel="manifest" href="\/public\/manifest-agenda-online\.php[^"]*" crossorigin="use-credentials"/, pagina);
   }
 });
