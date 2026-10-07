@@ -195,7 +195,7 @@
 
   .menu-principal-abas button.ativa,
   .menu-principal-abas button.hoje.ativa {
-    box-shadow: 0 7px 16px rgba(17, 99, 221, .22), inset 0 0 0 1px rgba(255, 255, 255, .24);
+    box-shadow: 0 7px 16px rgba(var(--am-marca-rgb, 17, 99, 221), .22), inset 0 0 0 1px rgba(255, 255, 255, .24);
   }
 
   .menu-principal-abas button.feriado,
@@ -1061,7 +1061,7 @@
   :is(#modalNovoAgendamento, #modalEditarAgendamento) .modal-topo {
     min-height: 62px;
     padding: 11px 13px 11px 16px;
-    background: linear-gradient(135deg, #1769d8 0%, #0756bb 100%);
+    background: linear-gradient(135deg, var(--am-marca, #1769d8) 0%, var(--am-marca-hover, #0756bb) 100%);
   }
 
   .modal-geral .modal-topo h2 {

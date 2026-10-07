@@ -1,11 +1,11 @@
 :root {
   --bg-page: #f3f7fc; --card-bg: #fff; --text: #101a31; --muted: #66738b;
-  --primary: #1163dd; --primary-dark: #0756c8; --primary-weak: #eef5ff;
+  --primary: var(--am-marca, #1163dd); --primary-dark: var(--am-marca-hover, #0756c8); --primary-weak: var(--am-marca-suave, #eef5ff);
   --border: #dfe7f1; --shadow: 0 24px 70px rgba(31,72,130,.18); --radius: 28px;
 }
 * { box-sizing: border-box; }
 html, body { min-height: 100%; }
-body { margin: 0; color: var(--text); font-family: 'Poppins', Arial, sans-serif; background: radial-gradient(circle at 12% 18%, rgba(17,99,221,.08), transparent 31%), radial-gradient(circle at 88% 80%, rgba(17,99,221,.06), transparent 28%), linear-gradient(145deg, #f8fbff, var(--bg-page)); }
+body { margin: 0; color: var(--text); font-family: 'Poppins', Arial, sans-serif; background: radial-gradient(circle at 12% 18%, rgba(var(--am-marca-rgb, 17,99,221), .08), transparent 31%), radial-gradient(circle at 88% 80%, rgba(var(--am-marca-rgb, 17,99,221), .06), transparent 28%), linear-gradient(145deg, #f8fbff, var(--bg-page)); }
 .login-fundo { min-height: 100vh; display: grid; place-items: center; padding: 34px; }
 .login { width: min(1120px, 100%); border: 8px solid rgba(255,255,255,.86); border-radius: var(--radius); background: var(--card-bg); box-shadow: var(--shadow); overflow: hidden; }
 .login-container { display: grid; grid-template-columns: minmax(0, 48%) minmax(0, 52%); min-height: min(680px, calc(100vh - 84px)); }
@@ -32,22 +32,22 @@ body { margin: 0; color: var(--text); font-family: 'Poppins', Arial, sans-serif;
 label { color: #44536b; font-size: 12px; font-weight: 600; }
 input[type="email"], input[type="password"], #recuperacaoCodigo { width: 100%; box-sizing: border-box; min-height: 50px; padding: 13px 15px; color: var(--text); border: 1px solid var(--border); border-radius: 12px; outline: none; background: #fff; font: inherit; font-size: 14px; transition: border-color .2s, box-shadow .2s; }
 input::placeholder { color: #9aa5b5; }
-input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(17,99,221,.13); }
+input:focus { border-color: var(--am-marca-foco, var(--primary)); box-shadow: 0 0 0 4px rgba(var(--am-marca-rgb, 17,99,221), .13); }
 .lembrar-container { display: flex; align-items: center; gap: 9px; margin: -7px 0 0; color: var(--muted); }
 .lembrar-container input { width: 17px; height: 17px; accent-color: var(--primary); }
 .lembrar-container label, .lembrar-container input { cursor: pointer; }
-.botao-entrar { width: 100%; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; margin-top: 2px; padding: 14px 18px; color: #fff; border: 0; border-radius: 12px; background: linear-gradient(135deg, var(--primary), #0879ff); box-shadow: 0 10px 22px rgba(17,99,221,.24); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: transform .15s, filter .2s, box-shadow .2s; }
-.botao-entrar:hover:not(:disabled) { filter: brightness(1.04); box-shadow: 0 13px 28px rgba(17,99,221,.3); transform: translateY(-1px); }
+.botao-entrar { width: 100%; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; margin-top: 2px; padding: 14px 18px; color: var(--am-marca-contraste, #fff); border: 0; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--am-marca-hover, #0879ff)); box-shadow: 0 10px 22px rgba(var(--am-marca-rgb, 17,99,221), .24); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: transform .15s, filter .2s, box-shadow .2s; }
+.botao-entrar:hover:not(:disabled) { filter: brightness(1.04); box-shadow: 0 13px 28px rgba(var(--am-marca-rgb, 17,99,221), .3); transform: translateY(-1px); }
 .botao-entrar:active:not(:disabled) { transform: translateY(0); }
 .botao-entrar:disabled { cursor: not-allowed; opacity: .58; box-shadow: none; }
 .login-icone { width: 20px; height: 20px; flex: 0 0 20px; display: block; }
-.botao-entrar:focus-visible, .voltar-cliente:focus-visible { outline: 3px solid rgba(17,99,221,.28); outline-offset: 3px; }
+.botao-entrar:focus-visible, .voltar-cliente:focus-visible { outline: 3px solid rgba(var(--am-marca-rgb, 17,99,221), .28); outline-offset: 3px; }
 .login-divisor { display: flex; align-items: center; gap: 14px; margin: 20px 0 3px; color: #75839a; font-size: 12px; }
 .login-divisor::before, .login-divisor::after { content: ""; height: 1px; flex: 1; background: #dce4ee; }
 .mensagem { min-height: 20px; margin: 0; color: #b45309; font-size: 12px; }
 .login-links-legais { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 12px; text-align: center; }
 .login-links-legais a { color: #66758c; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; text-decoration: none; }
-.login-links-legais a:hover { color: var(--primary); text-decoration: underline; }
+.login-links-legais a:hover { color: var(--am-marca-texto, var(--primary)); text-decoration: underline; }
 .login-links-legais--cliente { width: min(100% - 32px, 560px); margin: 14px auto 24px; }
 .voltar-cliente { position: absolute; top: 24px; left: 24px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); border: 1px solid var(--border); border-radius: 10px; background: #fff; text-decoration: none; font-size: 18px; font-weight: 700; transition: background .2s, transform .15s; }
 .voltar-cliente:hover { background: var(--primary-weak); transform: translateX(-1px); }
@@ -58,18 +58,18 @@ input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(17,99,221
 .empresa-lista { display: flex; flex-direction: column; gap: 12px; max-height: min(48vh, 380px); padding: 3px; margin: -3px; overflow-x: hidden; overflow-y: auto; }
 .empresa-opcao { width: 100%; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; color: var(--text); text-align: left; border: 1px solid var(--border); border-radius: 12px; background: #fff; font: inherit; cursor: pointer; transition: border-color .2s, background .2s, box-shadow .2s; }
 .empresa-opcao:hover:not(:disabled) { border-color: var(--primary); background: var(--primary-weak); }
-.empresa-opcao:focus-visible { outline: 3px solid rgba(17,99,221,.28); outline-offset: 2px; border-color: var(--primary); }
+.empresa-opcao:focus-visible { outline: 3px solid rgba(var(--am-marca-rgb, 17,99,221), .28); outline-offset: 2px; border-color: var(--primary); }
 .empresa-opcao:disabled { cursor: not-allowed; opacity: .6; }
 .empresa-opcao.is-loading { opacity: 1; border-color: var(--primary); background: var(--primary-weak); }
 .empresa-opcao-textos { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .empresa-opcao-nome { font-size: 15px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .empresa-opcao-perfil { color: var(--muted); font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
 .empresa-opcao::after { content: ""; flex: 0 0 8px; width: 8px; height: 8px; border-top: 2px solid #8a98ad; border-right: 2px solid #8a98ad; transform: rotate(45deg); }
-.empresa-opcao.is-loading::after { flex-basis: 16px; width: 16px; height: 16px; border: 2px solid rgba(17,99,221,.25); border-top-color: var(--primary); border-radius: 50%; transform: none; animation: empresa-giro .7s linear infinite; }
+.empresa-opcao.is-loading::after { flex-basis: 16px; width: 16px; height: 16px; border: 2px solid rgba(var(--am-marca-rgb, 17,99,221), .25); border-top-color: var(--primary); border-radius: 50%; transform: none; animation: empresa-giro .7s linear infinite; }
 @keyframes empresa-giro { to { transform: rotate(360deg); } }
 .botao-voltar-etapa { align-self: flex-start; min-height: 40px; padding: 8px 4px; color: var(--muted); border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.botao-voltar-etapa:hover:not(:disabled) { color: var(--primary); }
-.botao-voltar-etapa:focus-visible { outline: 3px solid rgba(17,99,221,.28); outline-offset: 3px; border-radius: 8px; }
+.botao-voltar-etapa:hover:not(:disabled) { color: var(--am-marca-texto, var(--primary)); }
+.botao-voltar-etapa:focus-visible { outline: 3px solid rgba(var(--am-marca-rgb, 17,99,221), .28); outline-offset: 3px; border-radius: 8px; }
 .botao-voltar-etapa:disabled { cursor: not-allowed; opacity: .55; }
 #empresaTitulo:focus { outline: none; }
 @media (min-width: 961px) {

@@ -340,13 +340,13 @@
 }
 
 .u-dia.is-active{
-  background: rgba(35, 80, 255, .10);
-  border-color: rgba(35, 80, 255, .35);
-  box-shadow: 0 0 0 4px rgba(35, 80, 255, .12), 0 10px 22px rgba(0,0,0,.06);
+  background: rgba(var(--am-marca-rgb, 35, 80, 255), .10);
+  border-color: rgba(var(--am-marca-rgb, 35, 80, 255), .35);
+  box-shadow: 0 0 0 4px rgba(var(--am-marca-rgb, 35, 80, 255), .12), 0 10px 22px rgba(0,0,0,.06);
 }
 
 .u-dia.is-active .u-dia-num{
-  color: var(--primary, #2350ff);
+  color: var(--am-marca-texto, var(--primary, #2350ff));
 }
 
 /* dia desabilitado */
@@ -399,7 +399,7 @@
 
 .u-hora.is-active{
   background: var(--primary, #2350ff);
-  color: #fff;
+  color: var(--am-marca-contraste, #fff);
   border-color: var(--primary, #2350ff);
   box-shadow: 0 10px 22px rgba(35,80,255,.35);
 }

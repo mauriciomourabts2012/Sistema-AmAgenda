@@ -12,6 +12,15 @@ const AMAGENDA_UPLOAD_EMPRESAS_URL = '/uploads/empresas';
 const AMAGENDA_IDENTIDADE_MAX_BYTES = 5242880; // 5 MB
 const AMAGENDA_LOGIN_LADO_MENOR_MIN = 400;
 const AMAGENDA_LOGIN_LADO_MAIOR_MIN = 800;
+// Cor oficial do AmAgenda: usada quando configuracao_geral_empresa.cor_primaria é NULL.
+const AMAGENDA_COR_PRIMARIA_PADRAO = '#1163DD';
+// Variações oficiais já usadas pelo Design System (mantêm a aparência atual sem cor personalizada).
+const AMAGENDA_COR_HOVER_PADRAO = '#0F57C5';
+const AMAGENDA_COR_SUAVE_PADRAO = '#EEF5FF';
+// Texto escuro oficial do projeto (navy), preferido ao preto puro.
+const AMAGENDA_COR_TEXTO_ESCURO = '#0F172A';
+const AMAGENDA_CONTRASTE_TEXTO_MIN = 4.5;
+const AMAGENDA_CONTRASTE_GRAFICO_MIN = 3.0;
 
 function identidadeBaseProjeto(): string
 {
@@ -23,10 +32,157 @@ function identidadeUploadEmpresasDir(): string
     return identidadeBaseProjeto() . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'empresas';
 }
 
+/**
+ * Empresa cuja identidade vale para a requisição, sempre pelo contexto da sessão
+ * (nunca por parâmetro do navegador). 0 = sem contexto empresarial (identidade oficial).
+ * - Usuário interno: empresa da sessão autenticada (mesma precedência de require_auth.php);
+ *   se divergir da empresa do contexto da sessão, falha de forma segura.
+ * - Super Admin: somente em Modo Suporte (empresa validada ao entrar no suporte).
+ * - Cliente: cliente_auth.id_empresa precisa coincidir com a empresa do link (empresa_id);
+ *   divergência falha de forma segura (identidade oficial).
+ * - Sem login: empresa do link público já resolvida na sessão.
+ */
 function identidadeEmpresaIdSessao(): int
 {
-    $auth = $_SESSION['auth'] ?? [];
-    return (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? $_SESSION['empresa_id'] ?? 0);
+    $auth = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+    $empresaContexto = (int)($_SESSION['empresa_id'] ?? 0);
+
+    if ((int)($auth['id_usuario'] ?? 0) > 0) {
+        $tipoUsuario = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8');
+        if ($tipoUsuario === 'super_admin' && !(bool)($auth['modo_suporte'] ?? false)) {
+            return 0;
+        }
+        $empresaAuth = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? $empresaContexto);
+        // Divergência entre a empresa autenticada e a do contexto (ex.: link de outra empresa).
+        if ($empresaAuth <= 0 || ($empresaContexto > 0 && $empresaContexto !== $empresaAuth)) return 0;
+        return $empresaAuth;
+    }
+
+    $clienteAuth = is_array($_SESSION['cliente_auth'] ?? null) ? $_SESSION['cliente_auth'] : [];
+    if ($clienteAuth !== []) {
+        $empresaCliente = (int)($clienteAuth['id_empresa'] ?? 0);
+        return $empresaCliente > 0 && $empresaCliente === $empresaContexto ? $empresaCliente : 0;
+    }
+
+    return max(0, $empresaContexto);
+}
+
+/** Normaliza #RRGGBB (maiúsculas) ou retorna null quando o valor não está no formato. */
+function identidadeCorNormalizar(mixed $valor): ?string
+{
+    if (!is_string($valor)) return null;
+    $valor = trim($valor);
+    return preg_match('/^#[0-9A-Fa-f]{6}$/', $valor) === 1 ? strtoupper($valor) : null;
+}
+
+/** @return array{0:int,1:int,2:int} */
+function identidadeCorRgb(string $hex): array
+{
+    return [hexdec(substr($hex, 1, 2)), hexdec(substr($hex, 3, 2)), hexdec(substr($hex, 5, 2))];
+}
+
+function identidadeCorHex(array $rgb): string
+{
+    return sprintf('#%02X%02X%02X', ...array_map(static fn($c) => max(0, min(255, (int)round($c))), $rgb));
+}
+
+/** Mistura determinística: $peso de $cor sobre a cor base (0..1). */
+function identidadeCorMisturar(string $cor, string $base, float $peso): string
+{
+    $a = identidadeCorRgb($cor);
+    $b = identidadeCorRgb($base);
+    return identidadeCorHex([
+        $a[0] * $peso + $b[0] * (1 - $peso),
+        $a[1] * $peso + $b[1] * (1 - $peso),
+        $a[2] * $peso + $b[2] * (1 - $peso),
+    ]);
+}
+
+function identidadeCorLuminancia(string $hex): float
+{
+    $canais = array_map(static function (int $c): float {
+        $v = $c / 255;
+        return $v <= 0.03928 ? $v / 12.92 : (($v + 0.055) / 1.055) ** 2.4;
+    }, identidadeCorRgb($hex));
+    return 0.2126 * $canais[0] + 0.7152 * $canais[1] + 0.0722 * $canais[2];
+}
+
+/** Razão de contraste WCAG 2.x entre duas cores. */
+function identidadeCorContraste(string $a, string $b): float
+{
+    $la = identidadeCorLuminancia($a);
+    $lb = identidadeCorLuminancia($b);
+    return (max($la, $lb) + 0.05) / (min($la, $lb) + 0.05);
+}
+
+/**
+ * Escurece em passos fixos de 5% até atingir o contraste mínimo contra todos os fundos.
+ * Determinístico; no limite chega ao preto, que atende a qualquer fundo claro.
+ */
+function identidadeCorEscurecerAte(string $cor, array $fundos, float $minimo): string
+{
+    for ($passo = 0; $passo <= 20; $passo++) {
+        $candidata = identidadeCorMisturar('#000000', $cor, $passo * 0.05);
+        $ok = true;
+        foreach ($fundos as $fundo) {
+            if (identidadeCorContraste($candidata, $fundo) < $minimo) { $ok = false; break; }
+        }
+        if ($ok) return $candidata;
+    }
+    return '#000000';
+}
+
+/** Texto sobre a cor principal: branco, depois o navy oficial; preto só se necessário. */
+function identidadeCorContrastePara(string $fundo): string
+{
+    foreach (['#FFFFFF', AMAGENDA_COR_TEXTO_ESCURO] as $opcao) {
+        if (identidadeCorContraste($opcao, $fundo) >= AMAGENDA_CONTRASTE_TEXTO_MIN) return $opcao;
+    }
+    $opcoes = ['#FFFFFF', AMAGENDA_COR_TEXTO_ESCURO, '#000000'];
+    usort($opcoes, static fn($x, $y) => identidadeCorContraste($y, $fundo) <=> identidadeCorContraste($x, $fundo));
+    return $opcoes[0];
+}
+
+/**
+ * Tokens de cor derivados no backend (sem color-mix/filter no navegador).
+ * A cor principal nunca é alterada; quem compensa o contraste são as derivações.
+ */
+function identidadeCorTokens(?string $corPersistida): array
+{
+    $cor = identidadeCorNormalizar($corPersistida);
+    $personalizada = $cor !== null && $cor !== AMAGENDA_COR_PRIMARIA_PADRAO;
+    $cor ??= AMAGENDA_COR_PRIMARIA_PADRAO;
+
+    $contraste = identidadeCorContrastePara($cor);
+    if ($personalizada) {
+        $suave = identidadeCorMisturar($cor, '#FFFFFF', 0.10);
+        // Hover um pouco mais escuro; se o texto sobre a cor for escuro e perder contraste, clareia.
+        $hover = identidadeCorMisturar('#000000', $cor, 0.12);
+        if (identidadeCorContraste($contraste, $hover) < AMAGENDA_CONTRASTE_TEXTO_MIN) {
+            $hover = identidadeCorMisturar($cor, '#FFFFFF', 0.85);
+            if (identidadeCorContraste($contraste, $hover) < AMAGENDA_CONTRASTE_TEXTO_MIN) $hover = $cor;
+        }
+    } else {
+        $suave = AMAGENDA_COR_SUAVE_PADRAO;
+        $hover = AMAGENDA_COR_HOVER_PADRAO;
+    }
+
+    [$r, $g, $b] = identidadeCorRgb($cor);
+    return [
+        'cor_primaria' => $cor,
+        'cor_personalizada' => $personalizada,
+        'cor_hover' => $hover,
+        'cor_suave' => $suave,
+        // Elementos gráficos (borda/foco): mínimo 3:1.
+        // Borda: tom mais leve (60% da cor sobre branco), escurecido só o necessário.
+        'cor_borda' => identidadeCorEscurecerAte(identidadeCorMisturar($cor, '#FFFFFF', 0.60), ['#FFFFFF'], AMAGENDA_CONTRASTE_GRAFICO_MIN),
+        'cor_foco' => identidadeCorEscurecerAte($cor, ['#FFFFFF', $suave], AMAGENDA_CONTRASTE_GRAFICO_MIN),
+        'cor_contraste' => $contraste,
+        // Texto/link: mínimo 4,5:1 contra o branco e o fundo suave.
+        'cor_texto' => identidadeCorEscurecerAte($cor, ['#FFFFFF', $suave], AMAGENDA_CONTRASTE_TEXTO_MIN),
+        // Componentes RGB para transparências no CSS (ex.: rgba(var(--x), .24)).
+        'cor_rgb' => $r . ', ' . $g . ', ' . $b,
+    ];
 }
 
 function identidadeExigirProprietario(mysqli $conexao): array
@@ -99,13 +255,14 @@ function identidadeFallback(array $row = []): array
         'imagem_login_escala' => $escala,
         'imagem_login_pos_x' => $posX,
         'imagem_login_pos_y' => $posY,
+        // Mantém o significado atual (nome/logo/imagem); a cor tem indicador próprio.
         'personalizada' => $nome !== '' || $logo !== '' || $login !== '',
-    ];
+    ] + identidadeCorTokens(isset($row['cor_primaria']) ? (string)$row['cor_primaria'] : null);
 }
 
 function identidadeBuscar(mysqli $conexao, int $idEmpresa): array
 {
-    $stmt = $conexao->prepare('SELECT nome_exibicao, logo_empresa, imagem_login, imagem_login_escala, imagem_login_pos_x, imagem_login_pos_y FROM configuracao_geral_empresa WHERE id_empresa = ? LIMIT 1');
+    $stmt = $conexao->prepare('SELECT nome_exibicao, logo_empresa, imagem_login, imagem_login_escala, imagem_login_pos_x, imagem_login_pos_y, cor_primaria FROM configuracao_geral_empresa WHERE id_empresa = ? LIMIT 1');
     if (!$stmt) {
         throw new RuntimeException('Falha ao preparar consulta da identidade visual.');
     }

@@ -13,7 +13,7 @@ if ($idEmpresa <= 0) {
 }
 
 try {
-    $stmt = $conexao->prepare("SELECT c.nome_exibicao, c.logo_empresa, c.imagem_login, c.imagem_login_escala, c.imagem_login_pos_x, c.imagem_login_pos_y FROM empresa e LEFT JOIN configuracao_geral_empresa c ON c.id_empresa = e.id_empresa WHERE e.id_empresa = ? AND e.status = 'ativo' LIMIT 1");
+    $stmt = $conexao->prepare("SELECT c.nome_exibicao, c.logo_empresa, c.imagem_login, c.imagem_login_escala, c.imagem_login_pos_x, c.imagem_login_pos_y, c.cor_primaria FROM empresa e LEFT JOIN configuracao_geral_empresa c ON c.id_empresa = e.id_empresa WHERE e.id_empresa = ? AND e.status = 'ativo' LIMIT 1");
     if (!$stmt) {
         throw new RuntimeException('Falha ao preparar consulta pública.');
     }

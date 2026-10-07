@@ -12,7 +12,26 @@
     imagem_login_escala: 100,
     imagem_login_pos_x: 0,
     imagem_login_pos_y: 0,
+    cor_primaria: "#1163DD",
+    cor_personalizada: false,
+    cor_hover: "#0F57C5",
+    cor_suave: "#EEF5FF",
+    cor_borda: "#6591D4",
+    cor_foco: "#1163DD",
+    cor_contraste: "#FFFFFF",
+    cor_texto: "#1163DD",
+    cor_rgb: "17, 99, 221",
     personalizada: false
+  };
+  const TOKENS_CSS = {
+    cor_primaria: "--am-marca",
+    cor_hover: "--am-marca-hover",
+    cor_suave: "--am-marca-suave",
+    cor_borda: "--am-marca-borda",
+    cor_foco: "--am-marca-foco",
+    cor_contraste: "--am-marca-contraste",
+    cor_texto: "--am-marca-texto",
+    cor_rgb: "--am-marca-rgb"
   };
   const MAX_BYTES = 5 * 1024 * 1024;
   const TIPOS = ["image/jpeg", "image/png", "image/webp"];
@@ -23,6 +42,25 @@
   let auth = window.__AUTH__ || null;
   let urlsTemporarias = [];
   let focoAnterior = null;
+  let corPadraoPendente = true;
+
+  function contextoEmpresarialValido() {
+    const sessaoAtual = window.__AUTH__ || auth || {};
+    const idEmpresa = Number(sessaoAtual.empresa_id || sessaoAtual.id_empresa || 0);
+    return idEmpresa > 0 && !superAdminForaDeEmpresa();
+  }
+
+  function aplicarTokens(data, permitido = contextoEmpresarialValido()) {
+    const estilo = document.documentElement.style;
+    Object.values(TOKENS_CSS).forEach(token => estilo.removeProperty(token));
+    // Sem cor personalizada, nenhum token é aplicado: os fallbacks do CSS mantêm
+    // exatamente a aparência oficial atual (inclusive tons de azul não idênticos a #1163DD).
+    if (!permitido || data?.cor_personalizada !== true) return;
+    Object.entries(TOKENS_CSS).forEach(([campo, token]) => {
+      const valor = String(data?.[campo] || "").trim();
+      if (valor !== "") estilo.setProperty(token, valor);
+    });
+  }
 
   function urlSemCache(url) {
     const valor = String(url || "");
@@ -97,6 +135,7 @@
 
   function aplicar(data) {
     identidade = { ...PADRAO, ...(data || {}) };
+    aplicarTokens(identidade);
     document.querySelectorAll("[data-identidade-nome]").forEach(el => { el.textContent = identidade.nome_exibicao; });
     document.querySelectorAll("[data-identidade-logo]").forEach(img => {
       img.src = urlSemCache(identidade.logo_url);
@@ -137,7 +176,7 @@
       if (!stack) { stack = document.createElement("div"); stack.className = "ui-toast-stack"; document.body.appendChild(stack); }
       const box = document.createElement("div");
       box.className = "ui-alert ui-alert--confirm";
-      box.innerHTML = '<div class="ui-alert__icon" aria-hidden="true">?</div><div class="ui-alert__content"><p class="ui-alert__title">Restaurar identidade visual?</p><div class="ui-alert__msg">O nome, a logo e a imagem de login personalizados serão removidos. A identidade padrão do AmAgenda voltará a ser utilizada.</div></div><div class="ui-alert__actions"><button type="button" class="ui-alert__btn js-cancelar">Cancelar</button><button type="button" class="ui-alert__btn ui-alert__btn--primary js-confirmar">Restaurar</button></div>';
+      box.innerHTML = '<div class="ui-alert__icon" aria-hidden="true">?</div><div class="ui-alert__content"><p class="ui-alert__title">Restaurar identidade visual?</p><div class="ui-alert__msg">O nome, a logo, a cor principal e a imagem de login personalizados serão removidos. A identidade padrão do AmAgenda voltará a ser utilizada.</div></div><div class="ui-alert__actions"><button type="button" class="ui-alert__btn js-cancelar">Cancelar</button><button type="button" class="ui-alert__btn ui-alert__btn--primary js-confirmar">Restaurar</button></div>';
       let finalizado = false;
       const fechar = valor => { if (finalizado) return; finalizado = true; document.removeEventListener("keydown", tecla); box.remove(); resolve(valor); };
       const tecla = e => { if (e.key === "Escape") fechar(false); };
@@ -163,11 +202,32 @@
           <form id="formIdentidadeVisual" novalidate>
             <div class="modal-campo identidade-visual__nome"><input id="identidadeNome" name="nome_exibicao" maxlength="80" placeholder=" "><label for="identidadeNome">Nome exibido</label><small class="msg-erro" data-identidade-erro></small></div>
             <div class="identidade-visual__grade">
-              <section class="identidade-visual__bloco"><h3>Logo da empresa</h3><div class="identidade-visual__logo-linha"><img id="identidadePreviewLogo" class="identidade-visual__preview-logo" alt="Prévia da logo"><label class="botao-geral identidade-visual__upload" for="identidadeLogo">Alterar imagem</label><input id="identidadeLogo" name="logo_empresa" type="file" accept="image/png,image/jpeg,image/webp" hidden></div><small>PNG, JPG ou WebP • máximo 5 MB</small></section>
-              <section class="identidade-visual__bloco identidade-visual__bloco-login"><h3>Imagem da tela de login</h3><div class="identidade-visual__preview-login-moldura"><img id="identidadePreviewLogin" class="identidade-visual__preview-login" alt="Prévia da imagem de login"><span>Prévia do enquadramento</span></div><div class="identidade-visual__ajustes"><label>Zoom <output id="identidadeEscalaValor">100%</output><input id="identidadeEscala" name="imagem_login_escala" type="range" min="60" max="150" value="100"></label><label>Posição horizontal <output id="identidadePosXValor">0</output><input id="identidadePosX" name="imagem_login_pos_x" type="range" min="-30" max="30" value="0"></label><label>Posição vertical <output id="identidadePosYValor">0</output><input id="identidadePosY" name="imagem_login_pos_y" type="range" min="-30" max="30" value="0"></label><button id="identidadeResetarEnquadramento" class="identidade-visual__reset-enquadramento" type="button">Restaurar enquadramento</button></div><label class="botao-geral identidade-visual__upload" for="identidadeLogin">Alterar imagem</label><input id="identidadeLogin" name="imagem_login" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="identidade-visual__requisitos"><b>Aceita imagem vertical, horizontal ou quadrada.</b> O lado menor deve ter pelo menos 400 px e o maior pelo menos 800 px. JPG, PNG ou WebP, máximo 5 MB. A imagem ocupará o espaço do mascote, preservando o fundo, o slogan e os benefícios do layout padrão.</small><small id="identidadeLoginDimensoes" class="identidade-visual__dimensoes" aria-live="polite"></small></section>
+              <section class="identidade-visual__bloco identidade-visual__bloco-marca">
+                <h3>Logo da empresa</h3>
+                <div class="identidade-visual__logo-linha"><img id="identidadePreviewLogo" class="identidade-visual__preview-logo" alt="Prévia da logo"><label class="botao-geral identidade-visual__upload" for="identidadeLogo">Alterar imagem</label><input id="identidadeLogo" name="logo_empresa" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
+                <small>PNG, JPG ou WebP • máximo 5 MB</small>
+                <div class="identidade-visual__cor">
+                  <h3>Cor principal</h3>
+                  <div class="identidade-visual__cor-controles">
+                    <input id="identidadeCorPicker" class="identidade-visual__cor-picker" type="color" value="#1163dd" aria-label="Selecionar cor principal">
+                    <div class="modal-campo identidade-visual__cor-hex"><input id="identidadeCorHex" name="cor_primaria" type="text" maxlength="7" value="#1163DD" placeholder=" " autocomplete="off" spellcheck="false"><label for="identidadeCorHex">Hexadecimal</label></div>
+                  </div>
+                  <small id="identidadeCorErro" class="msg-erro identidade-visual__cor-erro" aria-live="polite"></small>
+                  <button id="identidadeRestaurarCor" class="identidade-visual__reset-cor" type="button">Restaurar padrão</button>
+                </div>
+                <div id="identidadePreviewCor" class="identidade-visual__preview-cor" aria-label="Pré-visualização da cor principal">
+                  <span>Preview</span>
+                  <div class="identidade-visual__preview-componentes">
+                    <span class="identidade-visual__preview-botao">Botão principal</span>
+                    <span class="identidade-visual__preview-item"><i aria-hidden="true"></i>Item ativo</span>
+                    <span class="identidade-visual__preview-link">Link</span>
+                  </div>
+                </div>
+              </section>
+              <section class="identidade-visual__bloco identidade-visual__bloco-login"><h3>Imagem da tela de login</h3><div class="identidade-visual__preview-login-moldura"><img id="identidadePreviewLogin" class="identidade-visual__preview-login" alt="Prévia da imagem de login"><span>Prévia do enquadramento</span></div><div class="identidade-visual__ajustes"><label>Zoom <output id="identidadeEscalaValor">100%</output><input id="identidadeEscala" name="imagem_login_escala" type="range" min="60" max="150" value="100"></label><label>Posição horizontal <output id="identidadePosXValor">0</output><input id="identidadePosX" name="imagem_login_pos_x" type="range" min="-30" max="30" value="0"></label><label>Posição vertical <output id="identidadePosYValor">0</output><input id="identidadePosY" name="imagem_login_pos_y" type="range" min="-30" max="30" value="0"></label><button id="identidadeResetarEnquadramento" class="identidade-visual__reset-enquadramento" type="button">Restaurar enquadramento</button></div><label class="botao-geral identidade-visual__upload" for="identidadeLogin">Alterar imagem</label><input id="identidadeLogin" name="imagem_login" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="identidade-visual__requisitos"><b>Aceita imagem vertical, horizontal ou quadrada.</b> O lado menor deve ter pelo menos 400 px e o maior pelo menos 800 px. JPG, PNG ou WebP, máximo 5 MB. No login do cliente a imagem preenche a área lateral exatamente como nesta prévia; em telas de outras proporções o recorte se ajusta mantendo o mesmo centro.</small><small id="identidadeLoginDimensoes" class="identidade-visual__dimensoes" aria-live="polite"></small></section>
             </div>
             <section class="identidade-visual__resultado" aria-label="Pré-visualização da marca"><span>Pré-visualização</span><div><img id="identidadePreviewMarcaLogo" alt=""><strong id="identidadePreviewMarcaNome">AmAgenda</strong></div></section>
-            <div class="modal-acoes identidade-visual__acoes"><button id="identidadeRestaurar" class="botao-geral identidade-visual__restaurar" type="button">Restaurar padrão</button><span class="identidade-visual__acoes-direita"><button class="botao-geral" type="button" data-identidade-fechar>Cancelar</button><button id="identidadeSalvar" class="botao-geral destaque" type="submit">Salvar alterações</button></span></div>
+            <div class="modal-acoes identidade-visual__acoes"><button id="identidadeRestaurar" class="botao-geral identidade-visual__restaurar" type="button">Restaurar identidade completa</button><span class="identidade-visual__acoes-direita"><button class="botao-geral" type="button" data-identidade-fechar>Cancelar</button><button id="identidadeSalvar" class="botao-geral destaque" type="submit">Salvar alterações</button></span></div>
           </form>
         </div>
       </div>`;
@@ -178,6 +238,10 @@
       if (e.target === modal) e.stopPropagation();
     });
     modal.querySelector("#identidadeNome").addEventListener("input", atualizarPreviewMarca);
+    modal.querySelector("#identidadeCorPicker").addEventListener("input", sincronizarCorDoPicker);
+    modal.querySelector("#identidadeCorHex").addEventListener("input", sincronizarCorDoHex);
+    modal.querySelector("#identidadeCorHex").addEventListener("blur", validarCorFormulario);
+    modal.querySelector("#identidadeRestaurarCor").addEventListener("click", restaurarCorPadrao);
     modal.querySelector("#identidadeLogo").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogo", true));
     modal.querySelector("#identidadeLogin").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogin", false, true));
     modal.querySelector("#identidadePreviewLogin").addEventListener("load", atualizarDimensoesPreviewLogin);
@@ -204,8 +268,63 @@
     modal.querySelector("#identidadeEscala").value = String(identidade.imagem_login_escala ?? 100);
     modal.querySelector("#identidadePosX").value = String(identidade.imagem_login_pos_x ?? 0);
     modal.querySelector("#identidadePosY").value = String(identidade.imagem_login_pos_y ?? 0);
+    corPadraoPendente = identidade.cor_personalizada !== true;
+    definirCorFormulario(identidade.cor_primaria || PADRAO.cor_primaria, corPadraoPendente);
     aplicarAjustePreview();
     atualizarPreviewMarca();
+  }
+
+  function corHexValida(valor) {
+    return /^#[0-9A-F]{6}$/.test(String(valor || "").trim().toUpperCase());
+  }
+
+  function normalizarCorDigitada(valor) {
+    let texto = String(valor || "").trim().toUpperCase();
+    if (/^[0-9A-F]{1,6}$/.test(texto)) texto = `#${texto}`;
+    return texto.slice(0, 7);
+  }
+
+  function atualizarPreviewCor(cor) {
+    const preview = document.getElementById("identidadePreviewCor");
+    if (!preview || !corHexValida(cor)) return;
+    preview.style.setProperty("--am-preview-marca", cor);
+  }
+
+  function definirCorFormulario(cor, usaPadrao) {
+    const modal = document.getElementById("modalIdentidadeVisual");
+    if (!modal) return;
+    const normalizada = corHexValida(cor) ? String(cor).toUpperCase() : PADRAO.cor_primaria;
+    corPadraoPendente = Boolean(usaPadrao);
+    modal.querySelector("#identidadeCorPicker").value = normalizada.toLowerCase();
+    modal.querySelector("#identidadeCorHex").value = normalizada;
+    modal.querySelector("#identidadeCorErro").textContent = "";
+    atualizarPreviewCor(normalizada);
+  }
+
+  function sincronizarCorDoPicker(e) {
+    definirCorFormulario(String(e.currentTarget.value || PADRAO.cor_primaria).toUpperCase(), false);
+  }
+
+  function sincronizarCorDoHex(e) {
+    const campo = e.currentTarget;
+    const valor = normalizarCorDigitada(campo.value);
+    campo.value = valor;
+    document.getElementById("identidadeCorErro").textContent = "";
+    if (!corHexValida(valor)) return;
+    corPadraoPendente = false;
+    document.getElementById("identidadeCorPicker").value = valor.toLowerCase();
+    atualizarPreviewCor(valor);
+  }
+
+  function validarCorFormulario() {
+    const campo = document.getElementById("identidadeCorHex");
+    const valida = corPadraoPendente || corHexValida(campo?.value);
+    document.getElementById("identidadeCorErro").textContent = valida ? "" : "Use o formato #RRGGBB.";
+    return valida;
+  }
+
+  function restaurarCorPadrao() {
+    definirCorFormulario(PADRAO.cor_primaria, true);
   }
 
   function atualizarPreviewMarca() {
@@ -220,6 +339,10 @@
     const modal = document.getElementById("modalIdentidadeVisual");
     const imagem = modal?.querySelector("#identidadePreviewLogin");
     const saida = modal?.querySelector("#identidadeLoginDimensoes");
+    // Proporção natural usada pela regra única de enquadramento (identidade-visual.css).
+    if (imagem?.naturalWidth && imagem.naturalHeight) {
+      imagem.style.setProperty("--login-img-ratio", String(imagem.naturalWidth / imagem.naturalHeight));
+    }
     if (!imagem || !saida) return;
     saida.textContent = imagem.naturalWidth && imagem.naturalHeight
       ? `Imagem atual: ${imagem.naturalWidth} × ${imagem.naturalHeight} px`
@@ -232,7 +355,13 @@
     const escala = Number(modal.querySelector("#identidadeEscala").value || 100);
     const posX = Number(modal.querySelector("#identidadePosX").value || 0);
     const posY = Number(modal.querySelector("#identidadePosY").value || 0);
-    modal.querySelector("#identidadePreviewLogin").style.transform = `translate(${posX}%, ${posY}%) scale(${escala / 100})`;
+    // Mesmas variáveis que identidade-visual-login.js aplica no login do cliente;
+    // a regra única de enquadramento fica em identidade-visual.css.
+    const moldura = modal.querySelector(".identidade-visual__preview-login-moldura");
+    modal.querySelector("#identidadePreviewLogin").style.removeProperty("transform");
+    moldura?.style.setProperty("--login-img-scale", String(escala / 100));
+    moldura?.style.setProperty("--login-img-pos-x", `${posX}%`);
+    moldura?.style.setProperty("--login-img-pos-y", `${posY}%`);
     modal.querySelector("#identidadeEscalaValor").value = `${escala}%`;
     modal.querySelector("#identidadePosXValor").value = String(posX);
     modal.querySelector("#identidadePosYValor").value = String(posY);
@@ -303,11 +432,13 @@
     const form = e.currentTarget;
     const nome = form.querySelector("#identidadeNome").value.trim();
     if (nome.length > 80) { toast("O nome exibido deve ter no máximo 80 caracteres.", "danger"); return; }
+    if (!validarCorFormulario()) { toast("Informe a cor principal no formato #RRGGBB.", "danger"); return; }
     // FormData deve ser criado antes de desabilitar os inputs; controles disabled não são enviados.
     const dados = new FormData(form);
+    dados.set("cor_primaria", corPadraoPendente ? "" : form.querySelector("#identidadeCorHex").value.toUpperCase());
     setBusy(true);
     try {
-      const resposta = await fetch(`${API}empresa/identidade-visual/salvar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json" }, body: dados });
+      const resposta = await fetch(`${API}empresa/identidade-visual/salvar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") }, body: dados });
       const json = await resposta.json();
       if (!resposta.ok || !json?.ok) throw new Error(json?.user_msg || "Não foi possível salvar.");
       aplicar(json.data); document.dispatchEvent(new CustomEvent("amagenda:identidade-atualizada", { detail: identidade }));
@@ -320,7 +451,7 @@
     if (!(await confirmarRestauracao())) return;
     setBusy(true, "Restaurando...");
     try {
-      const resposta = await fetch(`${API}empresa/identidade-visual/restaurar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json" } });
+      const resposta = await fetch(`${API}empresa/identidade-visual/restaurar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") } });
       const json = await resposta.json();
       if (!resposta.ok || !json?.ok) throw new Error(json?.user_msg || "Não foi possível restaurar.");
       aplicar(json.data); document.dispatchEvent(new CustomEvent("amagenda:identidade-atualizada", { detail: identidade }));
@@ -358,8 +489,9 @@
   document.addEventListener("amagenda:sessao-carregada", e => {
     auth = e.detail;
     if (superAdminForaDeEmpresa()) aplicar(PADRAO);
+    else aplicarTokens(identidade);
     atualizarPermissaoMarca();
   });
-  document.addEventListener("DOMContentLoaded", () => { criarModal(); carregar(); garantirAuth(); atualizarPermissaoMarca(); });
+  document.addEventListener("DOMContentLoaded", async () => { criarModal(); await garantirAuth(); await carregar(); atualizarPermissaoMarca(); });
   window.AmAgendaIdentidade = { carregar, obter: () => ({ ...identidade }) };
 })();

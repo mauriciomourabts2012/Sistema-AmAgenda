@@ -15,6 +15,9 @@ if (empty($_SESSION['empresa_id']) || (int)$_SESSION['empresa_id'] <= 0) {
 }
 
 $empresaId = (int)$_SESSION['empresa_id'];
+// Nome cadastrado da empresa do contexto (definido pelo link validado); o nome
+// exibido personalizado, quando houver, é aplicado por identidade-visual-login.js.
+$empresaNomeContexto = trim((string)($_SESSION['empresa_nome'] ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -31,17 +34,23 @@ $empresaId = (int)$_SESSION['empresa_id'];
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=20260818_15"
+    href="../css/login/login-web.css?v=1.0.17"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=20260818_5"
+    href="../css/login/login-mobile.css?v=1.0.17"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=20260818_3"
+    href="../css/login/login-cliente.css?v=1.0.17"
+  />
+
+  <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
+  <link
+    rel="stylesheet"
+    href="../css/identidade-visual/identidade-visual.css?v=1.0.17"
   />
 
   <link
@@ -77,122 +86,10 @@ $empresaId = (int)$_SESSION['empresa_id'];
 
           <img
             src="../imagens/logo.png"
-            alt="Imagem institucional"
+            alt="Imagem da empresa"
             class="imagem-desktop"
             data-identidade-login
           />
-
-          <div
-            class="login-hero-brand"
-            aria-hidden="true"
-          >
-            <img
-              src="/public/imagens/logo-menu.png"
-              alt=""
-              data-identidade-login-logo
-            />
-
-            <b data-identidade-login-nome>
-              AmAgenda
-            </b>
-          </div>
-
-          <div
-            class="login-hero-texto"
-            aria-hidden="true"
-          >
-            <strong>
-              Organize sua agenda,<br>
-              <em>encante</em> seus clientes.
-            </strong>
-
-            <span>
-              Simples, rápido e feito para<br>
-              o seu negócio.
-            </span>
-          </div>
-
-          <div
-            class="login-hero-beneficios"
-            aria-hidden="true"
-          >
-
-            <div>
-              <i>
-                <svg viewBox="0 0 24 24" fill="none">
-                  <rect
-                    x="4"
-                    y="5"
-                    width="16"
-                    height="15"
-                    rx="2"
-                  />
-                  <path
-                    d="M8 3v4M16 3v4M4 9h16M8 13h2M14 13h2M8 17h2M14 17h2"
-                  />
-                </svg>
-              </i>
-
-              <span>
-                <b>Agenda organizada</b>
-                <small>
-                  Mais controle do seu dia a dia.
-                </small>
-              </span>
-            </div>
-
-            <div>
-              <i>
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M16 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM17 11a4 4 0 0 1 4 4v2M16 3.2a4 4 0 0 1 0 7.6"
-                  />
-                </svg>
-              </i>
-
-              <span>
-                <b>Clientes em um só lugar</b>
-                <small>
-                  Histórico, contatos e muito mais.
-                </small>
-              </span>
-            </div>
-
-            <div>
-              <i>
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"
-                  />
-                </svg>
-              </i>
-
-              <span>
-                <b>Confirmação automática</b>
-                <small>
-                  Reduza faltas e melhore sua agenda.
-                </small>
-              </span>
-            </div>
-
-            <div>
-              <i>
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M4 20V10M10 20V4M16 20v-7M22 20H2M3 9l6-5 6 5 6-6"
-                  />
-                </svg>
-              </i>
-
-              <span>
-                <b>Gestão simplificada</b>
-                <small>
-                  Relatórios e insights em poucos cliques.
-                </small>
-              </span>
-            </div>
-
-          </div>
 
         </div>
 
@@ -224,11 +121,11 @@ $empresaId = (int)$_SESSION['empresa_id'];
           <div class="login-boas-vindas">
 
             <h2 class="h2-titulo">
-              Bem-vindo(a)!
+              Acesse seus agendamentos
             </h2>
 
             <p>
-              Acesse seus agendamentos como cliente
+              Entre com seu telefone para consultar e gerenciar seus horários<?php if ($empresaNomeContexto !== ''): ?> com <span data-identidade-login-empresa><?php echo htmlspecialchars($empresaNomeContexto, ENT_QUOTES, 'UTF-8'); ?></span><?php endif; ?>.
             </p>
 
           </div>
@@ -500,6 +397,10 @@ $empresaId = (int)$_SESSION['empresa_id'];
             ></p>
 
           </section>
+
+          <p class="login-tecnologia">
+            Tecnologia <strong>AmAgenda</strong>
+          </p>
 
         </div>
 
@@ -1356,7 +1257,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 <script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.0.17" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=20260822_1"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.17"
 ></script>
 
 </body>

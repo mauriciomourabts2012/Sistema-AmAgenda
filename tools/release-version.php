@@ -26,8 +26,9 @@ const RV_BOM = "\xEF\xBB\xBF";
  * Arquivos controlados (caminhos relativos à raiz do projeto, com "/").
  *  - "todos": todas as referências locais .js/.css de <script>/<link>
  *    (mesmo escopo de tools/aplicar-versao-assets.ps1);
- *  - "pwa": somente assets em /PWA/ (páginas de cliente e Agenda Online, cujos
- *    demais assets usam versões próprias por data e não são controlados aqui).
+ *  - "pwa": somente assets em /PWA/ (escopo restrito mantido para uso pontual).
+ * Login do cliente, Agenda Online e Área do Cliente usam "todos": todos os seus
+ * assets locais seguem a versão central (invalidação previsível de cache/PWA).
  */
 function rvArquivosPadrao(): array
 {
@@ -35,9 +36,9 @@ function rvArquivosPadrao(): array
         'public/views/login-empresa.php' => 'todos',
         'public/views/agenda.html' => 'todos',
         'public/views/painel-administrativo/painel-administrativo.html' => 'todos',
-        'public/views/login-cliente.php' => 'pwa',
-        'public/views/cliente-agendamento.html' => 'pwa',
-        'public/views/cliente-perfil.html' => 'pwa',
+        'public/views/login-cliente.php' => 'todos',
+        'public/views/cliente-agendamento.html' => 'todos',
+        'public/views/cliente-perfil.html' => 'todos',
     ];
 }
 

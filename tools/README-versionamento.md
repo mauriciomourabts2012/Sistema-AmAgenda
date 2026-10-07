@@ -14,9 +14,9 @@ Arquivos controlados (lista em `rvArquivosPadrao()`):
 | `public/views/login-empresa.php` | todos os `.js`/`.css` locais |
 | `public/views/agenda.html` | todos os `.js`/`.css` locais |
 | `public/views/painel-administrativo/painel-administrativo.html` | todos os `.js`/`.css` locais |
-| `public/views/login-cliente.php` | somente assets em `/PWA/` |
-| `public/views/cliente-agendamento.html` | somente assets em `/PWA/` |
-| `public/views/cliente-perfil.html` | somente assets em `/PWA/` |
+| `public/views/login-cliente.php` | todos os `.js`/`.css` locais |
+| `public/views/cliente-agendamento.html` | todos os `.js`/`.css` locais |
+| `public/views/cliente-perfil.html` | todos os `.js`/`.css` locais |
 
 ## 2–4. Nova versão
 

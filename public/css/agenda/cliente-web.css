@@ -5,10 +5,11 @@
    ========================================================== */
 
 body[data-menu-contexto="cliente"] {
-  --primary: #1163dd;
-  --primary-soft: rgba(17, 99, 221, .14);
-  --primary-border: #b9d3f3;
-  --primary-focus: rgba(17, 99, 221, .25);
+  /* Identidade da empresa; sem cor personalizada, os fallbacks mantêm os tons originais. */
+  --primary: var(--am-marca, #1163dd);
+  --primary-soft: rgba(var(--am-marca-rgb, 17, 99, 221), .14);
+  --primary-border: var(--am-marca-borda, #b9d3f3);
+  --primary-focus: rgba(var(--am-marca-rgb, 17, 99, 221), .25);
   padding-bottom: 0;
   overflow-x: hidden;
 }
@@ -66,7 +67,7 @@ body[data-menu-contexto="cliente"] {
 
 .cadastro-cliente .tab-btn:hover,
 .cadastro-cliente .tab-btn:focus-visible {
-  background: #eef5ff;
+  background: var(--am-marca-suave, #eef5ff);
   outline: none;
 }
 
@@ -75,9 +76,9 @@ body[data-menu-contexto="cliente"] {
 }
 
 .cadastro-cliente .tab-btn.active {
-  color: #fff;
-  background: linear-gradient(180deg, #1972ea 0%, #1163dd 100%);
-  box-shadow: 0 8px 18px rgba(17, 99, 221, .22);
+  color: var(--am-marca-contraste, #fff);
+  background: linear-gradient(180deg, var(--am-marca, #1972ea) 0%, var(--am-marca, #1163dd) 100%);
+  box-shadow: 0 8px 18px rgba(var(--am-marca-rgb, 17, 99, 221), .22);
 }
 
 .cadastro-cliente .tabs-content {
@@ -343,8 +344,8 @@ body[data-menu-contexto="cliente"] {
 .ma-limpar-pesquisa[hidden] { display: none; }
 
 .ma-limpar-pesquisa:hover:not(:disabled) {
-  color: var(--primary);
-  background: #eef5ff;
+  color: var(--am-marca-texto, var(--primary));
+  background: var(--am-marca-suave, #eef5ff);
 }
 
 .ma-limpar-pesquisa:focus-visible {
@@ -386,9 +387,9 @@ body[data-menu-contexto="cliente"] {
 
 .ma-paginacao > .botao-geral:hover:not(:disabled) {
   border-color: var(--primary-border);
-  color: var(--primary);
-  background: #eef5ff;
-  box-shadow: 0 6px 14px rgba(17, 99, 221, .12);
+  color: var(--am-marca-texto, var(--primary));
+  background: var(--am-marca-suave, #eef5ff);
+  box-shadow: 0 6px 14px rgba(var(--am-marca-rgb, 17, 99, 221), .12);
 }
 
 .ma-paginacao > .botao-geral:focus-visible {
@@ -563,9 +564,9 @@ body[data-menu-contexto="cliente"] {
 }
 
 .cadastro-modal-tabs .tab-btn.active {
-  color: #fff;
-  background: linear-gradient(180deg, #1972ea 0%, #1163dd 100%);
-  box-shadow: 0 6px 14px rgba(17, 99, 221, .2);
+  color: var(--am-marca-contraste, #fff);
+  background: linear-gradient(180deg, var(--am-marca, #1972ea) 0%, var(--am-marca, #1163dd) 100%);
+  box-shadow: 0 6px 14px rgba(var(--am-marca-rgb, 17, 99, 221), .2);
 }
 
 .modal-cadastro-cliente .tab-pane { display: none; }

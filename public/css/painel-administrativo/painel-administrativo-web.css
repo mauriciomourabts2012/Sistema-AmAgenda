@@ -130,6 +130,19 @@
 .cartao-consentimento p { margin:0; color:#405873; font-size:12px; line-height:1.5; }
 .cartao-brick { width:100%; min-width:0; overflow:hidden; }
 .cartao-brick iframe { max-width:100% !important; }
+.faturamento-cartao-modal .cartao-brick form :is(button:not([type]), button[type="submit"], input[type="submit"]) {
+  --base-color: var(--am-marca, #3483FA);
+  --base-color-first-variant: var(--am-marca-hover, #2968C8);
+  --button-text-color: var(--am-marca-contraste, #FFFFFF);
+  display:block;
+  margin-inline-start:auto;
+}
+/* Alinha à direita o contêiner real do botão de envio do Brick (pai direto do submit),
+   sem classes internas do Mercado Pago e sem mudar o tamanho do botão. */
+.faturamento-cartao-modal .cartao-brick form :has(> :is(button:not([type]), button[type="submit"], input[type="submit"])) {
+  display:flex;
+  justify-content:flex-end;
+}
 .faturamento-pix-modal { width:min(620px,94vw); }
 .faturamento-pix-modal .modal-topo p { margin:4px 0 0; color:#64748b; font-size:13px; }
 .faturamento-pix-modal .modal-corpo { max-height:calc(100dvh - 170px); overflow-y:auto; }
@@ -391,8 +404,8 @@
 }
 
 #resumo .resumo-filtro-input:focus{
-  border-color: #1163dd;
-  box-shadow: 0 0 0 3px rgba(17, 99, 221, .18);
+  border-color: var(--am-marca-foco, #1163dd);
+  box-shadow: 0 0 0 3px rgba(var(--am-marca-rgb, 17, 99, 221), .18);
   outline: none;
 }
 
@@ -406,7 +419,7 @@
 }
 
 #resumo .resumo-filtro-hoje:hover{ border-color: #acc7e6; background: #f5f9ff; }
-#resumo .resumo-filtro-hoje[aria-pressed="true"]{ border-color: #acc7e6; background: #eef5ff; color: #1163dd; }
+#resumo .resumo-filtro-hoje[aria-pressed="true"]{ border-color: var(--am-marca-borda, #acc7e6); background: var(--am-marca-suave, #eef5ff); color: var(--am-marca-texto, #1163dd); }
 
 /* ===== KPIs (cards) ===== */
 #resumo .resumo-cards{
@@ -456,7 +469,7 @@
 
 #resumo .painel-kpi-ico i{
   font-size: 16px;
-   color:#1163dd;/* cor padrão conex */
+   color:var(--am-marca-texto, #1163dd);/* cor padrão conex */
 }
 
 /* valor KPI */
@@ -775,8 +788,8 @@
 #clientes .cliente-lista-card .agenda-acoes { align-self: center; }
 #usuarios .usuario-lista-card .agenda-btn-acoes,
 #clientes .cliente-lista-card .agenda-btn-acoes {
-  background: #1163dd;
-  box-shadow: 0 8px 18px rgba(17, 99, 221, .24);
+  background: var(--am-marca, #1163dd);
+  box-shadow: 0 8px 18px rgba(var(--am-marca-rgb, 17, 99, 221), .24);
 }
 
 /* Resumo operacional real */

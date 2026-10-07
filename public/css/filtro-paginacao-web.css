@@ -187,8 +187,8 @@
 }
 
 .ok {
-  background: #1163dd; /* Cor padrão conex */
-  color: #fff;
+  background: var(--am-marca, #1163dd); /* Cor padrão conex */
+  color: var(--am-marca-contraste, #fff);
   border: none;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
