@@ -14,8 +14,8 @@ function permissoesCatalogo(): array
         'agenda.editar_agendamento' => ['grupo'=>'agenda','rotulo'=>'Editar agendamento','proprietario'=>true,'profissional'=>true,'recepcionista'=>true],
         'agenda.cancelar_agendamento' => ['grupo'=>'agenda','rotulo'=>'Cancelar agendamento','proprietario'=>true,'profissional'=>true,'recepcionista'=>true],
         'agenda.excluir_agendamento' => ['grupo'=>'agenda','rotulo'=>'Excluir agendamento','proprietario'=>true,'profissional'=>true,'recepcionista'=>true],
-        'clientes.visualizar' => ['grupo'=>'clientes','rotulo'=>'Visualizar clientes','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
-        'clientes.cadastrar' => ['grupo'=>'clientes','rotulo'=>'Cadastrar cliente','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
+        'clientes.visualizar' => ['grupo'=>'clientes','rotulo'=>'Visualizar clientes','proprietario'=>true,'profissional'=>true,'recepcionista'=>false],
+        'clientes.cadastrar' => ['grupo'=>'clientes','rotulo'=>'Cadastrar cliente','proprietario'=>true,'profissional'=>true,'recepcionista'=>false],
         'clientes.editar' => ['grupo'=>'clientes','rotulo'=>'Editar cliente','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'clientes.alterar_status' => ['grupo'=>'clientes','rotulo'=>'Alterar status do cliente','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'servicos.visualizar' => ['grupo'=>'servicos','rotulo'=>'Visualizar serviços','proprietario'=>true,'profissional'=>true,'recepcionista'=>true],
@@ -36,6 +36,16 @@ function permissoesCatalogo(): array
         'agenda_configuracao.visualizar' => ['grupo'=>'configuracoes','rotulo'=>'Visualizar configurações da agenda','proprietario'=>true,'profissional'=>true,'recepcionista'=>false],
         'agenda_configuracao.editar_propria' => ['grupo'=>'configuracoes','rotulo'=>'Configurar a própria agenda','proprietario'=>true,'profissional'=>true,'recepcionista'=>false],
         'agenda_configuracao.editar_todos_profissionais' => ['grupo'=>'configuracoes','rotulo'=>'Configurar agenda de todos os profissionais','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
+        /* CHAT — 'suporte'=>false: nunca liberado ao Super Admin, inclusive em modo suporte.
+           Regra para a futura camada de autorização do Chat: o perfil Profissional atende
+           somente às próprias conversas. Mesmo com exceção individual "Permitir" em
+           chat.visualizar_todos_profissionais, o backend do Chat deve ignorar essa
+           ampliação para Profissional (escopo = id_empresa + id_profissional da sessão). */
+        'chat.visualizar' => ['grupo'=>'chat','rotulo'=>'Visualizar conversas do chat','proprietario'=>true,'profissional'=>true,'recepcionista'=>true,'suporte'=>false],
+        'chat.visualizar_todos_profissionais' => ['grupo'=>'chat','rotulo'=>'Visualizar conversas de todos os profissionais','proprietario'=>true,'profissional'=>false,'recepcionista'=>true,'suporte'=>false],
+        'chat.responder' => ['grupo'=>'chat','rotulo'=>'Responder conversas do chat','proprietario'=>true,'profissional'=>true,'recepcionista'=>true,'suporte'=>false],
+        'chat.encerrar' => ['grupo'=>'chat','rotulo'=>'Encerrar conversas do chat','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'suporte'=>false],
+        'chat.visualizar_historico' => ['grupo'=>'chat','rotulo'=>'Visualizar histórico de conversas encerradas','proprietario'=>true,'profissional'=>true,'recepcionista'=>true,'suporte'=>false],
     ];
 }
 
@@ -86,6 +96,13 @@ function usuarioTemPermissao(mysqli $conexao, string $codigo, array $contexto = 
     $ctx = permissoesContexto($conexao, $contexto['id_usuario'] ?? null, $contexto['id_empresa'] ?? null);
     if (!($ctx['valido'] ?? false)) return false;
     if ($codigo === 'faturamento.pagar' && ($ctx['super_admin_suporte'] ?? false)) return false;
+    // Códigos marcados com 'suporte'=>false (Chat) são negados ao Super Admin: em modo suporte
+    // e sempre que a sessão atual for de Super Admin, independentemente do contexto informado.
+    if (($catalogo[$codigo]['suporte'] ?? true) === false) {
+        if ($ctx['super_admin_suporte'] ?? false) return false;
+        $authSessao = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+        if (mb_strtolower((string)($authSessao['tipo_usuario'] ?? ''), 'UTF-8') === 'super_admin') return false;
+    }
     if ($ctx['super_admin_suporte'] ?? false) return true;
     $regra = $catalogo[$codigo];
     if (($regra['critica'] ?? '') === 'proprietario' && $ctx['perfil'] !== 'proprietario') return false;

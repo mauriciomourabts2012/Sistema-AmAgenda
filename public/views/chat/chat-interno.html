@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AmAgenda • Chat</title>
+  <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/chat/chat-interno-web.css?v=1.0.19">
+  <link rel="stylesheet" href="../../css/chat/chat-interno-mobile.css?v=1.0.19">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <script src="/public/_auth/sessao.js?v=1.0.19"></script>
+  <script src="/public/_auth/permissoes.js?v=1.0.19"></script>
+  <script src="/public/js/mensagem-universal.js?v=1.0.19"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.0.19"></script>
+</head>
+<body data-menu-contexto="chat">
+  <aside id="sidebarAgenda" class="sidebar-agenda" aria-label="Navegação principal">
+    <div class="sidebar-marca" data-identidade-abrir>
+      <span class="sidebar-marca-icone" aria-hidden="true">
+        <img src="/public/imagens/logo-menu.png" alt="Logo AmAgenda" class="sidebar-marca-logo" data-identidade-logo>
+      </span>
+      <span class="sidebar-texto sidebar-marca-texto" data-identidade-nome>AmAgenda</span>
+      <button id="fecharSidebarAgenda" class="sidebar-fechar" type="button" aria-label="Fechar menu">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </div>
+    <nav class="sidebar-navegacao" aria-label="Navegação do chat" data-menu-navegacao></nav>
+    <button class="sidebar-item sidebar-ajuda" type="button" title="Ajuda" aria-label="Ajuda">
+      <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+      <span class="sidebar-texto">Ajuda</span>
+      <i class="fa-solid fa-chevron-right sidebar-ajuda-seta" aria-hidden="true"></i>
+    </button>
+  </aside>
+  <button id="overlaySidebarAgenda" class="sidebar-overlay" type="button" aria-label="Fechar menu" tabindex="-1"></button>
+
+  <div class="agenda-app-shell chat-app-shell">
+    <header class="cabecalho-agenda chat-cabecalho">
+      <div class="cabecalho-esquerda">
+        <button id="abrirSidebarAgenda" class="sidebar-abrir" type="button" aria-label="Abrir menu" aria-controls="sidebarAgenda" aria-expanded="false">
+          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <div class="cabecalho-data-grupo">
+          <h1 class="cabecalho-dia">Chat</h1>
+          <span class="cabecalho-data">Conversas internas da empresa</span>
+        </div>
+      </div>
+
+      <!-- Lado direito: mesmo cabeçalho padrão da Agenda e do Painel Administrativo. -->
+      <div class="cabecalho-direita">
+        <!-- Indicador de Modo Suporte: mesmo componente do Painel Administrativo, preenchido por _auth/sessao.js. -->
+        <div id="indicadorModoSuporte" class="cabecalho-modo-suporte" role="status" hidden>
+          <button class="cabecalho-modo-suporte-acionador" type="button" aria-label="Exibir detalhes do Modo Suporte" title="Modo Suporte ativo">
+            <i class="fa-solid fa-headset" aria-hidden="true"></i>
+          </button>
+          <div class="cabecalho-modo-suporte-conteudo">
+            <span><i class="fa-solid fa-headset" aria-hidden="true"></i> Modo Suporte — <strong id="nomeEmpresaModoSuporte">Empresa</strong></span>
+            <button id="btnSairModoSuporte" class="botao-geral pequeno" type="button">Sair do modo suporte</button>
+          </div>
+        </div>
+        <!-- Centro de notificações (notificacoes.js). -->
+        <button class="cabecalho-notificacoes" type="button" title="Notificações" aria-label="Notificações">
+          <i class="fa-regular fa-bell" aria-hidden="true"></i>
+        </button>
+
+        <!-- Foto do usuário: abre o modal Meu Perfil (foto, senha e Sair). -->
+        <button class="cabecalho-perfil botao-perfil-usuario" type="button" title="Meu perfil" aria-label="Abrir meu perfil" data-abrir-modal="modalPerfilUsuario">
+          <img src="/public/imagens/avatar-default.png" alt="" class="botao-perfil-avatar" data-avatar-usuario data-avatar-cabecalho hidden>
+          <i class="fa-solid fa-user-circle" data-icone-perfil-cabecalho aria-hidden="true"></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="chat-main">
+      <section id="chatApp" class="chat-app" aria-label="Chat interno" hidden>
+        <aside class="chat-lista" aria-label="Lista de conversas">
+          <header class="chat-lista-cabecalho">
+            <div>
+              <h2>Chat</h2>
+              <p>Converse sobre os agendamentos.</p>
+            </div>
+            <span id="chatContadorNaoLidas" class="chat-contador-nao-lidas" aria-label="Conversas não lidas" hidden>0</span>
+          </header>
+
+          <div class="chat-filtros">
+            <label class="chat-campo" for="chatBusca">
+              <span>Buscar conversa</span>
+              <input id="chatBusca" type="search" autocomplete="off" placeholder="Cliente ou profissional">
+            </label>
+
+            <div class="chat-filtros-linha">
+              <label class="chat-campo" for="chatStatus">
+                <span>Status</span>
+                <select id="chatStatus">
+                  <option value="aberta">Abertas</option>
+                  <option value="encerrada">Encerradas</option>
+                </select>
+              </label>
+              <label class="chat-filtro-nao-lidas" for="chatSomenteNaoLidas">
+                <input id="chatSomenteNaoLidas" type="checkbox">
+                <span>Não lidas</span>
+              </label>
+            </div>
+
+            <label id="chatFiltroProfissionalGrupo" class="chat-campo" for="chatFiltroProfissional" hidden>
+              <span>Profissional</span>
+              <select id="chatFiltroProfissional">
+                <option value="">Todos os profissionais</option>
+              </select>
+            </label>
+          </div>
+
+          <p id="chatListaMensagem" class="chat-lista-mensagem" role="status" aria-live="polite"></p>
+          <div id="chatListaConversas" class="chat-lista-conversas" role="list"></div>
+          <button id="chatCarregarMais" class="chat-botao-secundario chat-carregar-mais" type="button" hidden>Carregar mais</button>
+        </aside>
+
+        <section class="chat-detalhe" aria-label="Conversa selecionada">
+          <div id="chatEstadoVazio" class="chat-estado-vazio">
+            <i class="fa-regular fa-comments" aria-hidden="true"></i>
+            <h2>Selecione uma conversa</h2>
+            <p>As mensagens do agendamento aparecerão aqui.</p>
+          </div>
+
+          <div id="chatConversaConteudo" class="chat-conversa-conteudo" hidden>
+            <header class="chat-conversa-cabecalho">
+              <button id="chatVoltar" class="chat-voltar" type="button" aria-label="Voltar para a lista de conversas">
+                <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+              </button>
+              <div class="chat-conversa-titulo">
+                <h2 id="chatClienteNome">Conversa</h2>
+                <p id="chatConversaMeta"></p>
+              </div>
+              <div class="chat-conversa-acoes">
+                <span id="chatStatusConversa" class="chat-status" aria-live="polite"></span>
+                <button id="chatEncerrar" class="chat-botao-perigo" type="button" hidden>Encerrar</button>
+              </div>
+            </header>
+
+            <div id="chatHistorico" class="chat-historico" aria-live="polite"></div>
+            <button id="chatCarregarAnteriores" class="chat-botao-secundario chat-carregar-anteriores" type="button" hidden>Mostrar mensagens anteriores</button>
+
+            <form id="chatFormularioMensagem" class="chat-formulario-mensagem" novalidate>
+              <label class="sr-only" for="chatConteudoMensagem">Mensagem</label>
+              <textarea id="chatConteudoMensagem" rows="3" placeholder="Escreva uma mensagem"></textarea>
+              <div class="chat-formulario-acoes">
+                <p id="chatAviso" class="chat-aviso" role="status" aria-live="polite"></p>
+                <button id="chatEnviar" class="chat-botao-primario" type="submit">
+                  <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                  <span>Enviar</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <section> <!-- Modais da página -->
+      <!-- MODAL: PERFIL DO USUÁRIO (mesma estrutura da Agenda) -->
+      <div id="modalPerfilUsuario" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloPerfilUsuario">
+
+          <div class="modal-topo">
+            <h2 id="tituloPerfilUsuario">Meu Perfil</h2>
+            <button class="modal-fechar" data-fechar-modal type="button">×</button>
+          </div>
+
+          <div class="modal-corpo">
+
+            <!-- FOTO DO PERFIL -->
+            <div class="perfil-foto-box">
+              <img src="/public/imagens/avatar-default.png" alt="Foto do usuário" class="perfil-foto" data-avatar-usuario>
+
+              <div class="perfil-nome-usuario" id="perfilNomeUsuario">Carregando...</div>
+
+              <label class="botao-geral pequeno" for="perfil_foto">
+                <i class="fa-solid fa-camera"></i>
+                Alterar foto
+              </label>
+
+              <input
+                type="file"
+                id="perfil_foto"
+                name="perfil_foto"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+              >
+            </div>
+
+            <hr class="divisor">
+
+            <!-- ALTERAR SENHA -->
+            <form id="formAlterarSenha" novalidate>
+
+              <div class="modal-campo">
+                <input type="password" id="senha_atual" name="senha_atual" required>
+                <label for="senha_atual">Senha atual</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                <label for="nova_senha">Nova senha</label>
+              </div>
+
+              <div class="modal-campo">
+                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                <label for="confirmar_senha">Confirmar nova senha</label>
+              </div> <br>
+
+              <button type="submit" class="botao-geral">
+                <i class="fa-solid fa-key"></i>
+                Salvar nova senha
+              </button>
+
+              <button class="botao-geral destaque" type="button" title="Sair do sistema" id="btnSair">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Sair
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="../../js/core/lista-core.js?v=1.0.19"></script>
+  <script src="../../js/menu-lateral/menu-lateral.js?v=1.0.19"></script>
+  <script src="../../js/notificacoes/notificacoes.js?v=1.0.19"></script> <!--Centro de notificações e experiência de senha temporária-->
+  <script src="../../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
+  <script src="../../js/chat/chat-interno.js?v=1.0.19"></script>
+  <script src="/public/_auth/deslogar.js?v=1.0.19"></script> <!--Sair do sistema (botão Sair do modal perfil)-->
+  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.19"></script> <!--Alterar foto do modal perfil-->
+  <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.0.19"></script> <!--Buscar foto e nome do usuário logado-->
+  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.19"></script> <!--Alterar senha do modal perfil-->
+  <script> // Abrir e fechar modais da página: mesmo padrão do script de modais de agenda.html.
+  (() => {
+    "use strict";
+    function abrirModal(id) {
+      const modal = document.getElementById(id);
+      if (!modal) return;
+      modal.classList.add("ativo");
+      modal.setAttribute("aria-hidden", "false");
+    }
+    function fecharModal(modal) {
+      if (!modal) return;
+      modal.classList.remove("ativo");
+      modal.setAttribute("aria-hidden", "true");
+    }
+    document.addEventListener("click", (e) => {
+      const abrir = e.target.closest("[data-abrir-modal]");
+      if (abrir) {
+        abrirModal(abrir.getAttribute("data-abrir-modal"));
+        return;
+      }
+      if (e.target.closest("[data-fechar-modal]")) fecharModal(e.target.closest(".modal-geral"));
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const ativos = document.querySelectorAll(".modal-geral.ativo");
+      if (ativos.length) {
+        e.preventDefault();
+        fecharModal(ativos[ativos.length - 1]);
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

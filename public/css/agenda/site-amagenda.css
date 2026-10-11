@@ -3312,6 +3312,167 @@
   line-height: 1.6;
 }
 
+/* =========================================================
+   AGENDA ONLINE PERSONALIZADA
+   ========================================================= */
+
+.secao-personalizacao {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(32, 216, 233, 0.12), transparent 28%),
+    linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%);
+}
+
+.personalizacao-cabecalho {
+  max-width: 850px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.personalizacao-chamada {
+  width: fit-content;
+  margin: 22px auto 0;
+  padding: 10px 16px;
+  border: 1px solid rgba(23, 105, 224, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--azul-700);
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 8px 22px rgba(15, 58, 130, 0.07);
+}
+
+.personalizacao-destaque {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.6fr);
+  align-items: center;
+  gap: 42px;
+}
+
+.personalizacao-resultado {
+  padding: 12px;
+  border-radius: 26px;
+  box-shadow: 0 26px 64px rgba(15, 58, 130, 0.17);
+}
+
+.personalizacao-resultado img {
+  border-radius: 16px;
+}
+
+.personalizacao-resultado figcaption {
+  padding: 13px 4px 2px;
+  border-top: 0;
+  text-align: center;
+}
+
+.personalizacao-beneficios h3,
+.personalizacao-configuracao-texto h3 {
+  margin-top: 10px;
+  color: var(--texto-900);
+  font-size: clamp(27px, 3vw, 38px);
+  line-height: 1.14;
+  letter-spacing: -0.8px;
+}
+
+.personalizacao-beneficios > p,
+.personalizacao-configuracao-texto > p {
+  margin-top: 16px;
+  color: var(--texto-500);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.personalizacao-indicadores {
+  margin-top: 26px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.personalizacao-indicador {
+  min-width: 0;
+  padding: 15px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #dce6f2;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.personalizacao-indicador > span {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--azul-100);
+  color: var(--azul-700);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.personalizacao-indicador p {
+  color: var(--texto-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.personalizacao-indicador strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--texto-700);
+  font-size: 13px;
+}
+
+.personalizacao-configuracao {
+  max-width: 1040px;
+  margin: 64px auto 0;
+  padding: 32px;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 52px;
+  border: 1px solid #dce6f2;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--sombra-suave);
+}
+
+.personalizacao-configuracao-imagem {
+  width: min(100%, 390px);
+  justify-self: center;
+  border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(15, 58, 130, 0.1);
+}
+
+.personalizacao-configuracao-imagem figcaption {
+  text-align: center;
+}
+
+.personalizacao-fluxo {
+  margin-top: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.personalizacao-fluxo span {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--azul-050);
+  color: var(--azul-700);
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.personalizacao-fluxo i {
+  color: #8da5c1;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .planos-observacao {
   margin-top: 34px;
   font-size: 14px;
@@ -3376,6 +3537,18 @@
   .produto-destaque-texto {
     max-width: 760px;
   }
+
+  .personalizacao-destaque {
+    grid-template-columns: 1fr;
+  }
+
+  .personalizacao-resultado {
+    width: 100%;
+  }
+
+  .personalizacao-beneficios {
+    max-width: 760px;
+  }
 }
 
 @media (max-width: 820px) {
@@ -3407,6 +3580,15 @@
   .configuracao-card {
     max-width: 760px;
     margin: 0 auto;
+  }
+
+  .personalizacao-configuracao {
+    grid-template-columns: 1fr;
+    gap: 34px;
+  }
+
+  .personalizacao-configuracao-texto {
+    max-width: 700px;
   }
 }
 
@@ -3501,6 +3683,72 @@
 
   .configuracao-card-texto {
     padding: 17px;
+  }
+
+  .personalizacao-chamada {
+    max-width: 100%;
+    margin-top: 18px;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .personalizacao-destaque {
+    gap: 28px;
+  }
+
+  .personalizacao-resultado {
+    padding: 7px;
+    border-radius: 16px;
+  }
+
+  .personalizacao-resultado img {
+    border-radius: 11px;
+  }
+
+  .personalizacao-beneficios h3,
+  .personalizacao-configuracao-texto h3 {
+    font-size: clamp(25px, 7vw, 30px);
+    line-height: 1.15;
+    letter-spacing: -0.6px;
+  }
+
+  .personalizacao-beneficios > p,
+  .personalizacao-configuracao-texto > p {
+    margin-top: 12px;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .personalizacao-indicadores {
+    margin-top: 20px;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .personalizacao-indicador {
+    padding: 13px;
+  }
+
+  .personalizacao-configuracao {
+    margin-top: 42px;
+    padding: 20px;
+    gap: 26px;
+    border-radius: 18px;
+  }
+
+  .personalizacao-configuracao-imagem {
+    width: min(100%, 330px);
+  }
+
+  .personalizacao-fluxo {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .personalizacao-fluxo i {
+    transform: rotate(90deg);
+    text-align: center;
   }
 }
 

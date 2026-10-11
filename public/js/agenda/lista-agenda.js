@@ -165,14 +165,94 @@
     `;
   }
 
+  // =========================
+  // Chat: abrir/iniciar conversa pelo agendamento
+  // =========================
+  const CHAT_API_INICIAR = "/public/api/api_central.php?path=chat/conversa/iniciar";
+  const CHAT_PAGINA = "/public/views/chat/chat-interno.html";
+  let abrindoConversaChat = false;
+
+  // Somente orientação visual; o backend do Chat continua sendo a autoridade final.
+  function podeAbrirConversaChat() {
+    const auth = window.__AUTH__ || {};
+    if (String(auth.tipo_usuario || "").toLowerCase() === "super_admin" || auth.modo_suporte === true) return false;
+    return typeof window.usuarioPode === "function"
+      && window.usuarioPode("chat.visualizar") === true
+      && window.usuarioPode("chat.responder") === true;
+  }
+
+  function atualizarAcoesConversaChat() {
+    const visivel = podeAbrirConversaChat();
+    document.querySelectorAll('.agenda-menu-item[data-acao="abrir_conversa"]').forEach((botao) => {
+      botao.style.display = visivel ? "" : "none";
+    });
+  }
+
+  function avisoConversaChat(tipo, mensagem) {
+    // Mensagens do backend só são exibidas como texto (MensagemSistema usa textContent).
+    if (window.MensagemSistema?.[tipo]) {
+      window.MensagemSistema[tipo](mensagem, { titulo: "Chat" });
+      return;
+    }
+    uiToast(tipo === "erro" ? "danger" : "warning", "Chat", "Não foi possível abrir a conversa deste agendamento.");
+  }
+
+  async function abrirConversaDoAgendamento(idAgendamento) {
+    if (abrindoConversaChat) return;
+    const id = String(idAgendamento || "").trim();
+    if (!/^[1-9]\d{0,17}$/.test(id)) return;
+    if (!podeAbrirConversaChat()) {
+      avisoConversaChat("aviso", "Você não possui permissão para abrir conversas.");
+      return;
+    }
+
+    abrindoConversaChat = true;
+    const botoes = [...document.querySelectorAll('.agenda-menu-item[data-acao="abrir_conversa"]')];
+    botoes.forEach((botao) => { botao.disabled = true; });
+    try {
+      const corpo = new URLSearchParams();
+      corpo.set("id_agendamento", id);
+      const resposta = await fetch(CHAT_API_INICIAR, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
+        },
+        body: corpo.toString(),
+      });
+      const json = await resposta.json().catch(() => null);
+      const idConversa = Number(json?.data?.conversa?.id_conversa);
+      if (!resposta.ok || json?.ok !== true || !Number.isInteger(idConversa) || idConversa <= 0) {
+        throw new Error(String(json?.user_msg || "Não foi possível abrir a conversa deste agendamento."));
+      }
+      // Conversa existente ou recém-criada: o backend devolve o mesmo formato.
+      window.location.assign(`${CHAT_PAGINA}?id_conversa=${encodeURIComponent(String(idConversa))}`);
+    } catch (erro) {
+      abrindoConversaChat = false;
+      botoes.forEach((botao) => { botao.disabled = false; });
+      avisoConversaChat("erro", erro?.message || "Não foi possível abrir a conversa deste agendamento.");
+    }
+  }
+
   function buildMenuAcoes(item) {
     const pago = item.pagamento_confirmado === true;
+    const statusChat = normalizarStatus(item.status);
+    const exibirChat = statusChat === "pendente" || statusChat === "confirmado";
     return `
       <div class="agenda-menu" role="menu">
         <button class="agenda-menu-item" type="button"
           data-acao="visualizar" data-abrir-modal="modalVisualizarAgendamento">
           <i class="fa-regular fa-eye"></i> Visualizar
         </button>
+
+        ${exibirChat ? `
+          <button class="agenda-menu-item" type="button" data-acao="abrir_conversa"${podeAbrirConversaChat() ? "" : ' style="display:none"'}>
+            <i class="fa-regular fa-comments"></i> Abrir conversa
+          </button>
+        ` : ""}
 
         ${!pago ? `
           <button class="agenda-menu-item" type="button"
@@ -728,6 +808,8 @@
 
       if (btnToggle) {
         ev.stopPropagation();
+        // As permissões podem chegar depois da renderização dos cards.
+        atualizarAcoesConversaChat();
         menuCtrl.toggle(btnToggle);
         return;
       }
@@ -749,6 +831,7 @@
         if (acao === "excluir") {
           document.dispatchEvent(new CustomEvent("agenda:excluir:selecionado", { detail: { id_agendamento: id, agendamento: item || null } }));
         }
+        if (acao === "abrir_conversa") abrirConversaDoAgendamento(id);
         return;
       }
 

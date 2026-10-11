@@ -15,13 +15,20 @@
   const ATRASO_FECHAR_MS = 230;
   let avisoRegularizacaoExibido = false;
 
+  // Menu operacional único, usado igualmente pela Agenda e pelo Chat (mesmos itens e ordem).
+  // A única diferença entre as páginas é o item ativo, identificado pela URL atual.
+  const MENU_OPERACIONAL = [
+    { tipo: "link", texto: "Painel Admin", icone: "fa-solid fa-user-gear", href: "/public/views/painel-administrativo/painel-administrativo.html", titulo: "Painel do Administrador", permissao: "painel.acessar" },
+    { tipo: "link", texto: "Agenda", icone: "fa-solid fa-calendar-days", href: "/public/views/agenda.html", titulo: "Abrir Agenda" },
+    { tipo: "link", texto: "Chat", icone: "fa-solid fa-comments", href: "/public/views/chat/chat-interno.html", titulo: "Abrir Chat", requerChat: true },
+    { tipo: "button", texto: "Novo Cliente", icone: "fa-solid fa-user-plus", modal: "modalNovoCliente", titulo: "Cadastrar novo cliente" },
+    { tipo: "button", texto: "Novo Agendamento", icone: "fa-solid fa-plus", modal: "modalNovoAgendamento", titulo: "Adicionar um agendamento" },
+    { tipo: "button", texto: "Configurações Agenda", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", titulo: "Configurações da agenda" }
+  ];
+
   const MENUS = {
-    agenda: [
-      { tipo: "link", texto: "Painel Admin", icone: "fa-solid fa-user-gear", href: "/public/views/painel-administrativo/painel-administrativo.html", titulo: "Painel do Administrador", permissao: "painel.acessar" },
-      { tipo: "button", texto: "Novo Cliente", icone: "fa-solid fa-user-plus", modal: "modalNovoCliente", titulo: "Cadastrar novo cliente" },
-      { tipo: "button", texto: "Novo Agendamento", icone: "fa-solid fa-plus", modal: "modalNovoAgendamento", titulo: "Adicionar um agendamento" },
-      { tipo: "button", texto: "Configurações Agenda", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", titulo: "Configurações da agenda" }
-    ],
+    agenda: MENU_OPERACIONAL,
+    chat: MENU_OPERACIONAL,
     "painel-administrativo": [
       { tipo: "aba", aba: "resumo", texto: "Resumo do dia", icone: "fa-solid fa-chart-line", permissao: "painel.visualizar_resumo" },
       { tipo: "aba", aba: "faturamento", texto: "Faturamento", icone: "fa-solid fa-file-invoice-dollar", permissao: "faturamento.visualizar" },
@@ -50,6 +57,15 @@
       { tipo: "button", texto: "Dados cadastrais", icone: "fa-solid fa-address-card", modal: "modalDadosCadastraisCliente", titulo: "Meus dados cadastrais" }
     ]
   };
+
+  const PAGINA_AGENDA = "/public/views/agenda.html";
+  // Ações dos modais da Agenda via URL (mesmo padrão de agenda.html?acao=abrir_agendamento).
+  const ACAO_POR_MODAL_AGENDA = {
+    modalNovoCliente: "novo_cliente",
+    modalNovoAgendamento: "novo_agendamento",
+    modalConfiguracoesAgenda: "configuracoes_agenda"
+  };
+  let acaoUrlAgendaProcessada = false;
 
   const CONTEXTOS_ABAS = {
     "painel-administrativo": {
@@ -102,6 +118,12 @@
       : `<button type="button" ${atributos.join(" ")}>${conteudo}</button>`;
   }
 
+  function podeAcessarChat(auth) {
+    const tipoUsuario = String(auth?.tipo_usuario || "").toLowerCase();
+    if (tipoUsuario === "super_admin" || auth?.modo_suporte === true) return false;
+    return typeof window.usuarioPode === "function" && window.usuarioPode("chat.visualizar") === true;
+  }
+
   function renderizarMenu(contexto) {
     const navegacao = document.querySelector("[data-menu-navegacao]");
     let itens = MENUS[contexto] || [];
@@ -112,7 +134,7 @@
         { tipo: "link", texto: "Página Inicial", icone: "fa-solid fa-house", href: "/public/views/cliente-perfil.html", titulo: "Voltar à página inicial" }
       ];
     }
-    if (contexto === "agenda") {
+    if (contexto === "agenda" || contexto === "chat") {
       const auth = window.__AUTH__ || {};
       const perfil = String(auth.perfil_nome || auth.perfil || "")
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -123,10 +145,20 @@
       const podeAcessarPainelAdmin = superAdminSuporte || (temMapa ? window.usuarioPode?.("painel.acessar") : perfil === "proprietario");
       const podeConfigurarAgenda = superAdminSuporte || (temMapa ? window.usuarioPode?.("agenda_configuracao.visualizar") : perfil === "proprietario" || perfil === "profissional");
       itens = itens.filter(item => {
+        if (item.requerChat) return podeAcessarChat(auth);
         if (item.texto === "Painel Admin") return podeAcessarPainelAdmin;
         if (item.modal === "modalConfiguracoesAgenda") return podeConfigurarAgenda;
         return true;
       });
+      /* Os modais da Agenda (Novo Cliente, Novo Agendamento, Configurações) e seus scripts
+         existem somente em agenda.html. Fora dela, o mesmo item leva à Agenda em vez de
+         ficar sem ação; nenhum modal é duplicado. */
+      if (contexto !== "agenda") {
+        itens = itens.map(item => (item.modal && !document.getElementById(item.modal))
+          ? { tipo: "link", texto: item.texto, icone: item.icone, titulo: `${item.titulo || item.texto} (abre a Agenda)`,
+              href: ACAO_POR_MODAL_AGENDA[item.modal] ? `${PAGINA_AGENDA}?acao=${ACAO_POR_MODAL_AGENDA[item.modal]}` : PAGINA_AGENDA }
+          : item);
+      }
     }
     if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
       itens = itens.filter(item => !item.permissao || window.usuarioPode?.(item.permissao));
@@ -148,15 +180,15 @@
         });
       }
 
-      if (contexto === "cliente") {
-        navegacao.querySelectorAll("a.sidebar-item[href]").forEach(link => {
-          const caminhoLink = new URL(link.href, window.location.href).pathname.replace(/\/+$/, "").toLowerCase();
-          const ativo = caminhoLink === caminhoAtual;
-          link.classList.toggle("ativo", ativo);
-          if (ativo) link.setAttribute("aria-current", "page");
-          else link.removeAttribute("aria-current");
-        });
-      }
+      navegacao.querySelectorAll("a.sidebar-item[href]").forEach(link => {
+        const caminhoLink = new URL(link.href, window.location.href).pathname.replace(/\/+$/, "").toLowerCase();
+        // /views/... e /public/views/... são a mesma página (reescrita do servidor).
+        const semPrefixo = caminho => caminho.replace(/^\/public(?=\/)/, "");
+        const ativo = semPrefixo(caminhoLink) === semPrefixo(caminhoAtual);
+        link.classList.toggle("ativo", ativo);
+        if (ativo) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      });
     }
     if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
       const abaAtiva = document.querySelector(".conteudo-aba.ativa")?.id;
@@ -174,6 +206,25 @@
         avisoRegularizacaoExibido = true;
       }
     }
+  }
+
+  /* Na Agenda, executa uma única vez a ação recebida pela URL (?acao=novo_cliente etc.).
+     O parâmetro é removido antes de agir, para que recarregar a página não reabra o modal.
+     O modal é aberto clicando no próprio item do menu já filtrado por permissão: se o
+     usuário não tiver o item, nada é aberto. Outras ações (ex.: abrir_agendamento) são ignoradas. */
+  function executarAcaoUrlAgenda() {
+    if (acaoUrlAgendaProcessada) return;
+    const url = new URL(window.location.href);
+    const acao = url.searchParams.get("acao") || "";
+    const modalId = Object.keys(ACAO_POR_MODAL_AGENDA).find(id => ACAO_POR_MODAL_AGENDA[id] === acao);
+    if (!modalId) return;
+    acaoUrlAgendaProcessada = true;
+    url.searchParams.delete("acao");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    window.setTimeout(() => {
+      const item = document.querySelector(`[data-menu-navegacao] [data-abrir-modal="${modalId}"]`);
+      item?.click();
+    }, 0);
   }
 
   function ativarAbaContexto(contexto, idAba, salvar = true) {
@@ -206,11 +257,12 @@
     const contexto = document.body.dataset.menuContexto || "agenda";
     renderizarMenu(contexto);
     document.addEventListener("amagenda:sessao-carregada", () => {
-      if (window.__AUTH__?.modo_regularizacao === true && contexto === "agenda") {
+      if (window.__AUTH__?.modo_regularizacao === true && (contexto === "agenda" || contexto === "chat")) {
         window.location.replace("/public/views/painel-administrativo/painel-administrativo.html");
         return;
       }
       renderizarMenu(contexto);
+      if (contexto === "agenda") executarAcaoUrlAgenda();
     });
 
     const sidebar = document.getElementById("sidebarAgenda");

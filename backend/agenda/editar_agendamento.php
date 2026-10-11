@@ -55,6 +55,7 @@ try {
     require_once __DIR__ . '/../_regras/permissoes_usuario.php';
     require_once __DIR__ . '/../_regras/limites_plano.php';
     require_once __DIR__ . '/../_servicos/auditoria.php';
+    require_once __DIR__ . '/../_servicos/chat.php';
     require_once __DIR__ . '/../_servicos/notificacao.php';
     $conexao->set_charset('utf8mb4');
     $contexto=permissoesContexto($conexao);
@@ -139,6 +140,12 @@ try {
     }
 
     $conexao->begin_transaction();
+    // Mesma ordem de bloqueio da exclusão: primeiro o agendamento, depois a conversa.
+    // Isso impede que edição e exclusão concorrentes invertam locks entre Agenda e Chat.
+    $stmt=$conexao->prepare("SELECT id_agendamento FROM agendamento WHERE id_agendamento=? AND id_empresa=? LIMIT 1 FOR UPDATE");
+    $stmt->bind_param('ii',$id,$idEmpresa); $stmt->execute(); $stmt->store_result();
+    if ($stmt->num_rows!==1) { $stmt->close(); $conexao->rollback(); out(['ok'=>false,'code'=>'APPOINTMENT_NOT_FOUND','user_msg'=>'Agendamento não encontrado.'],404); }
+    $stmt->close();
     $avisosPlano=[];
     if (substr((string)$dataOriginalTexto,0,7)!==$data->format('Y-m')) {
         $resultadoPlano=limitesPlanoBloquearEmpresa($conexao,$idEmpresa);
@@ -152,6 +159,18 @@ try {
         $stmt->bind_param('iisiss',$idEmpresa,$idProfissional,$dataTexto,$id,$horaFim,$horaInicio); $stmt->execute(); $stmt->store_result();
         if ($stmt->num_rows>0) { $stmt->close(); $conexao->rollback(); out(['ok'=>false,'code'=>'SCHEDULE_CONFLICT','user_msg'=>'O horário selecionado já está ocupado.'],409); } $stmt->close();
     }
+    // Compartilha esta transação: preserva a conversa histórica ou sincroniza o snapshot
+    // antes de gravar a edição do agendamento, sem conceder acesso funcional ao Chat.
+    chatPrepararConversaParaEdicaoAgendamento(
+        $conexao,
+        $idEmpresa,
+        $id,
+        $idCliente,
+        $idProfissional,
+        $dataTexto,
+        $horaInicio,
+        $idUsuario
+    );
     // Inclusive quando somente o status muda, o WHERE por ID garante que
     // nenhuma outra ocorrência do mesmo grupo de recorrência seja alterada.
     $stmt=$conexao->prepare("UPDATE agendamento SET id_cliente=?,id_profissional=?,id_servico=?,data_agendamento=?,hora_inicio=?,hora_fim=?,duracao_min_aplicada=?,valor_aplicado=?,status=?,observacao=?,repetir_semanalmente=?,recorrencia_data_fim=?,grupo_recorrencia=? WHERE id_agendamento=? AND id_empresa=? LIMIT 1");

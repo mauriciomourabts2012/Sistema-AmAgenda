@@ -1,0 +1,36 @@
+@media (max-width: 960px) {
+  .chat-main { min-height: calc(100dvh - 66px); padding: 0; }
+  .chat-app { display: block; min-height: calc(100dvh - 66px); border: 0; border-radius: 0; box-shadow: none; }
+  .chat-lista { min-height: calc(100dvh - 66px); border-right: 0; }
+  .chat-lista-cabecalho { padding: 18px 16px 12px; }
+  .chat-filtros { padding: 0 12px 12px; }
+  .chat-lista-mensagem { margin-left: 12px; margin-right: 12px; }
+  .chat-lista-conversas { padding-left: 7px; padding-right: 7px; }
+  .chat-item-conversa { padding: 14px 12px; }
+
+  .chat-detalhe { min-height: calc(100dvh - 66px); }
+  .chat-app:not(.chat-detalhe-aberta) .chat-detalhe { display: none; }
+  .chat-app.chat-detalhe-aberta .chat-lista { display: none; }
+  .chat-voltar { display: inline-flex; }
+  .chat-conversa-cabecalho { min-height: 70px; padding: 10px 12px; }
+  .chat-conversa-titulo h2 { font-size: 17px; }
+  .chat-conversa-titulo p { font-size: 11px; }
+  .chat-conversa-acoes { gap: 6px; }
+  .chat-botao-perigo { min-height: 34px; padding: 0 9px; font-size: 12px; }
+  .chat-historico { padding: 16px 12px; gap: 10px; }
+  .chat-mensagem { max-width: 88%; font-size: 13px; }
+  .chat-formulario-mensagem { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .chat-formulario-mensagem textarea { min-height: 68px; max-height: 34dvh; }
+  .chat-formulario-acoes { align-items: flex-end; }
+  .chat-aviso { font-size: 11px; }
+}
+
+@media (max-width: 450px) {
+  .chat-cabecalho .cabecalho-data { display: none; }
+  .chat-filtros-linha { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+  .chat-filtro-nao-lidas { padding: 0 8px; font-size: 11px; }
+  .chat-conversa-acoes .chat-status { display: none; }
+  .chat-mensagem { max-width: 92%; }
+  .chat-botao-primario { min-width: 42px; padding: 0 11px; }
+  .chat-botao-primario span { display: none; }
+}

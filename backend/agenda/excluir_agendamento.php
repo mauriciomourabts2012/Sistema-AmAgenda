@@ -44,6 +44,7 @@ try {
 
     require __DIR__ . '/../_config/conexao.php';
     require_once __DIR__ . '/../_servicos/auditoria.php';
+    require_once __DIR__ . '/../_servicos/chat.php';
     require_once __DIR__ . '/../_servicos/notificacao.php';
     $conexao->set_charset('utf8mb4');
 
@@ -96,6 +97,12 @@ try {
     $idsExcluidos = [];
     while ($stmt->fetch()) $idsExcluidos[] = (int)$idAtingido;
     $stmt->close();
+
+    // Cada conversa é travada e, se ainda aberta, encerrada na mesma transação.
+    // O DELETE abaixo preserva o histórico e deixa a FK definir id_agendamento como NULL.
+    foreach ($idsExcluidos as $idExcluido) {
+        chatPrepararConversaParaExclusaoAgendamento($conexao, $idEmpresa, $idExcluido, $idUsuario);
+    }
 
     if ($escopo === 'somente_este') {
         $stmt = $conexao->prepare("DELETE FROM agendamento WHERE id_agendamento=? AND id_empresa=? LIMIT 1");

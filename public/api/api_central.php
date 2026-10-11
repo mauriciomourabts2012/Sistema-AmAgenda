@@ -131,6 +131,33 @@ $routes = [
         'POST' => '@notificacoes_marcar_lida',
     ],
 
+    // Chat interno (Proprietário, Profissional e Recepção). Autorização, escopo e bloqueio do
+    // Super Admin são aplicados no handler, antes de qualquer consulta de conversa.
+    'chat/conversas/listar' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/conversas/nao-lidas' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/conversa/abrir' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/mensagens/listar' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/conversa/iniciar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/mensagem/enviar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/leitura/marcar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+    'chat/conversa/encerrar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_interno.php',
+    ],
+
     // Portal do cliente autenticado
     'cliente/perfil' => [
         'GET' => __DIR__ . '/../../backend/cliente/buscar_dados_cadastrais.php',
