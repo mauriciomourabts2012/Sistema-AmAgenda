@@ -55,7 +55,9 @@ try {
     if ($somenteProprio && (int)$idProfissionalSessao <= 0) out(['ok' => false, 'code' => 'PROFESSIONAL_NOT_LINKED', 'user_msg' => 'Seu usuário não possui cadastro profissional vinculado.'], 403);
 
     $joins = " FROM agendamento a INNER JOIN cliente c ON c.id_cliente=a.id_cliente AND c.id_empresa=a.id_empresa INNER JOIN profissional p ON p.id_profissional=a.id_profissional INNER JOIN usuario u ON u.id_usuario=p.id_usuario INNER JOIN empresa_usuario eup ON eup.id_usuario=p.id_usuario AND eup.id_empresa=a.id_empresa AND eup.status='ativo' INNER JOIN servico s ON s.id_servico=a.id_servico AND s.id_profissional=a.id_profissional AND s.id_empresa=a.id_empresa ";
-    $where = ' WHERE a.id_empresa=? ';
+    // A pesquisa global localiza somente agendamentos em aberto; o filtro entra
+    // no WHERE comum ao COUNT e ao LIMIT, mantendo total e paginação coerentes.
+    $where = " WHERE a.id_empresa=? AND a.status IN ('pendente','confirmado') ";
     $tipos = 'i';
     $parametros = [$idEmpresa];
     if ($termo !== '') {

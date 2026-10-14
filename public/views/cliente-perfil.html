@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=1.0.19"/>
     <link rel="stylesheet" href="../css/agenda/cliente-web.css?v=1.0.19"/>
     <link rel="stylesheet" href="../css/agenda/cliente-mobile.css?v=1.0.19"/>
+    <link rel="stylesheet" href="../css/chat/chat-modal-cliente.css?v=1.0.19"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=1.0.19">
     <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.19">
@@ -378,10 +379,49 @@
       </div>
     </div>
 
+    <!-- MODAL: Chat contextual do agendamento -->
+    <div id="modalChatCliente" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo chat-modal-cliente" role="dialog" aria-modal="true" aria-labelledby="tituloChatCliente">
+        <div class="modal-topo chat-cliente-topo">
+          <div class="chat-cliente-identidade">
+            <span id="chatClienteAvatar" class="chat-avatar chat-avatar-cabecalho" aria-hidden="true"></span>
+            <div>
+              <h2 id="tituloChatCliente">Chat</h2>
+              <span id="chatClienteStatus" class="chat-cliente-status" aria-live="polite"></span>
+            </div>
+          </div>
+          <button class="modal-fechar" type="button" data-fechar-modal data-chat-cliente-fechar aria-label="Fechar Chat">×</button>
+        </div>
+
+        <div class="modal-corpo chat-cliente-corpo">
+          <div class="chat-cliente-meta" aria-label="Dados do agendamento">
+            <span><strong>Profissional:</strong> <span id="chatClienteProfissional">—</span></span>
+            <span><strong>Data e hora:</strong> <span id="chatClienteDataHora">—</span></span>
+          </div>
+
+          <p id="chatClienteAviso" class="chat-cliente-aviso" role="status" aria-live="polite"></p>
+          <button id="chatClienteCarregarAnteriores" class="chat-cliente-secundario" type="button" hidden>Mostrar mensagens anteriores</button>
+          <div id="chatClienteHistorico" class="chat-cliente-historico" role="log" aria-live="polite"></div>
+        </div>
+
+        <form id="chatClienteFormulario" class="chat-cliente-rodape" novalidate hidden>
+          <label class="sr-only" for="chatClienteMensagem">Mensagem</label>
+          <textarea id="chatClienteMensagem" rows="3" maxlength="2000" placeholder="Escreva uma mensagem"></textarea>
+          <button id="chatClienteEnviar" class="botao-geral" type="submit">
+            <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+            <span>Enviar</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
     </section>
 
     <script src="../js/menu-lateral/menu-lateral.js?v=1.0.19"></script>
     <script src="../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
+    <script src="../js/chat/chat-nao-lidas.js?v=1.0.19"></script>
+    <script src="../js/chat/chat-modal-cliente.js?v=1.0.19"></script>
+    <script src="../js/notificacoes/notificacoes-cliente.js?v=1.0.19"></script> <!--Central de notificações do cliente (sineta)-->
     <script src="../js/cliente/lista-meus-agendamentos.js?v=1.0.19"></script>
     <script src="../js/cliente/salvar-dados-cadastrais.js?v=1.0.19"></script>
 

@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=1.0.19"/>
     <link rel="stylesheet" href="../css/filtro-paginacao-web.css?v=1.0.19"/>
     <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css?v=1.0.19"/>
+    <link rel="stylesheet" href="../css/chat/chat-modal-agenda.css?v=1.0.19"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
     <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=1.0.19">
 
@@ -224,6 +225,7 @@
           </div>
           <div id="agendaPesquisaLista" class="agenda-pesquisa-resultados-lista" role="listbox"></div>
           <div id="agendaPesquisaPaginacao" class="agenda-pesquisa-resultados-paginacao"></div>
+          <p class="agenda-pesquisa-resultados-nota">Somente Pendentes e Confirmados</p>
         </section>
 
       <!--Cada div e uma aba-->
@@ -739,6 +741,55 @@
         </div>
       </div>
 
+      <!-- MODAL: Chat rápido do agendamento -->
+      <div id="modalChatAgenda" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo chat-modal-agenda" role="dialog" aria-modal="true" aria-labelledby="tituloChatAgenda">
+          <div class="modal-topo chat-modal-topo">
+            <div class="chat-modal-identidade">
+              <span id="chatModalAvatar" class="chat-avatar chat-avatar-cabecalho" aria-hidden="true"></span>
+              <div class="chat-modal-titulo">
+                <h2 id="tituloChatAgenda">Chat</h2>
+                <p id="chatModalCliente">Conversa do agendamento</p>
+                <!-- Chat rápido: status é informação da conversa, não ação (fica junto da identificação). -->
+                <span id="chatModalStatus" class="chat-modal-status" aria-live="polite"></span>
+              </div>
+            </div>
+            <div class="chat-modal-topo-acoes">
+              <!-- Chat rápido: abre o agendamento vinculado no modal oficial desta mesma página. -->
+              <button id="chatModalAbrirAgendamento" class="chat-modal-abrir-agendamento" type="button" title="Abrir agendamento" aria-label="Abrir agendamento" hidden>
+                <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                <span class="chat-modal-abrir-agendamento-texto">Abrir agendamento</span>
+              </button>
+              <button id="chatModalEncerrar" class="chat-modal-encerrar" type="button" aria-label="Encerrar conversa" hidden>
+                <span class="chat-modal-encerrar-longo">Encerrar conversa</span>
+                <span class="chat-modal-encerrar-curto" aria-hidden="true">Encerrar</span>
+              </button>
+              <button class="modal-fechar" type="button" data-fechar-modal data-chat-modal-fechar aria-label="Fechar Chat">×</button>
+            </div>
+          </div>
+
+          <div class="modal-corpo chat-modal-corpo">
+            <div class="chat-modal-meta" aria-label="Dados do agendamento">
+              <span><strong>Profissional:</strong> <span id="chatModalProfissional">—</span></span>
+              <span><strong>Data e hora:</strong> <span id="chatModalDataHora">—</span></span>
+            </div>
+
+            <p id="chatModalAviso" class="chat-modal-aviso" role="status" aria-live="polite"></p>
+            <button id="chatModalCarregarAnteriores" class="chat-modal-secundario" type="button" hidden>Mostrar mensagens anteriores</button>
+            <div id="chatModalHistorico" class="chat-modal-historico" role="log" aria-live="polite"></div>
+          </div>
+
+          <form id="chatModalFormulario" class="chat-modal-rodape" novalidate hidden>
+            <label class="sr-only" for="chatModalMensagem">Mensagem</label>
+            <textarea id="chatModalMensagem" rows="3" maxlength="2000" placeholder="Escreva uma mensagem"></textarea>
+            <button id="chatModalEnviar" class="botao-geral" type="submit">
+              <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+              <span>Enviar</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
       <!-- MODAL: Visualizar Agendamento -->
       <div id="modalVisualizarAgendamento" class="modal-geral" aria-hidden="true">
         <div class="modal-conteudo modal-md">
@@ -796,6 +847,86 @@
               </div>
             </div>
 
+          </div>
+
+          <div id="vc_confirmar_acoes" class="vc-confirmar-acoes" hidden>
+            <button id="vc_btn_confirmar" class="vc-confirmar-agendamento" type="button" data-acao="confirmar" hidden>
+              <i class="fa-regular fa-circle-check" aria-hidden="true"></i>
+              <span>Confirmar agendamento</span>
+            </button>
+            <button id="vc_btn_informar_atraso" class="vc-confirmar-agendamento vc-informar-atraso" type="button" hidden>
+              <i class="fa-regular fa-clock" aria-hidden="true"></i>
+              <span>Informar atraso</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- MODAL INFORMAR ATRASO -->
+      <!-- ============================================================ -->
+      <div id="modalInformarAtraso" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloInformarAtraso">
+          <div class="modal-topo">
+            <h2 id="tituloInformarAtraso">Informar atraso</h2>
+            <button class="modal-fechar" type="button" data-fechar-modal aria-label="Fechar">×</button>
+          </div>
+
+          <div class="modal-corpo">
+            <section class="atraso-referencia" aria-label="Agendamento selecionado">
+              <strong id="atraso_cliente">Cliente</strong>
+              <span id="atraso_horario_atual">Horário atual: —</span>
+              <span id="atraso_profissional">Profissional: —</span>
+            </section>
+
+            <section class="atraso-escolha" aria-labelledby="atraso_escolha_titulo">
+              <div>
+                <h3 id="atraso_escolha_titulo">Quanto tempo de atraso?</h3>
+                <p>Escolha uma opção ou informe os minutos manualmente.</p>
+              </div>
+              <div class="atraso-presets" role="group" aria-label="Sugestões de atraso">
+                <button type="button" data-atraso-preset="10">10 min</button>
+                <button type="button" data-atraso-preset="15">15 min</button>
+                <button type="button" data-atraso-preset="20">20 min</button>
+                <button type="button" data-atraso-preset="30">30 min</button>
+                <button type="button" data-atraso-preset="45">45 min</button>
+                <button type="button" data-atraso-preset="60">60 min</button>
+              </div>
+              <label class="atraso-manual" for="atraso_minutos">
+                <span>Atraso em minutos</span>
+                <input id="atraso_minutos" type="number" inputmode="numeric" min="5" max="180" step="1" placeholder="De 5 a 180">
+              </label>
+            </section>
+
+            <p id="atraso_feedback" class="atraso-feedback" role="status" aria-live="polite" hidden></p>
+
+            <section id="atraso_previa" class="atraso-previa" hidden aria-live="polite">
+              <div class="atraso-resumo">
+                <strong id="atraso_resumo_titulo">Impacto do atraso</strong>
+                <span id="atraso_resumo_texto"></span>
+              </div>
+
+              <div id="atraso_avisos" class="atraso-alertas" hidden></div>
+              <div id="atraso_bloqueios" class="atraso-alertas atraso-alertas--bloqueio" hidden></div>
+
+              <div id="atraso_afetados" class="atraso-afetados"></div>
+
+              <section id="atraso_resultado" class="atraso-resultado" hidden>
+                <h3>Resultado da comunicação</h3>
+                <p id="atraso_resultado_resumo"></p>
+                <div id="atraso_resultado_clientes"></div>
+              </section>
+            </section>
+
+            <div class="modal-acoes atraso-acoes">
+              <button id="atraso_alterar" class="botao-geral" type="button" hidden>Alterar atraso</button>
+              <button id="atraso_ver_impacto" class="botao-geral destaque" type="button">
+                <i class="fa-regular fa-eye" aria-hidden="true"></i><span>Ver impacto</span>
+              </button>
+              <button id="atraso_confirmar" class="botao-geral destaque" type="button" hidden disabled>
+                <i class="fa-regular fa-clock" aria-hidden="true"></i><span>Confirmar atraso</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1012,6 +1143,41 @@
           </div>
 
           <div class="modal-corpo">
+            <!-- Situação do agendamento: preenchida por editar-agendamento.js a partir do registro autorizado. -->
+            <section id="ed_ag_situacao" class="ed-situacao" data-status="" aria-labelledby="ed_ag_situacao_status" hidden>
+              <div class="ed-situacao-principal">
+                <span class="ed-situacao-icone" aria-hidden="true">
+                  <i class="fa-regular fa-calendar-days"></i>
+                  <span class="ed-situacao-selo"><i id="ed_ag_situacao_icone" class="fa-solid fa-check"></i></span>
+                </span>
+                <div class="ed-situacao-texto">
+                  <span class="ed-situacao-rotulo">Situação do agendamento</span>
+                  <strong id="ed_ag_situacao_status" class="ed-situacao-status">—</strong>
+                  <span id="ed_ag_situacao_titulo" class="ed-situacao-titulo"></span>
+                  <span class="ed-situacao-quando"><i class="fa-regular fa-calendar" aria-hidden="true"></i><span id="ed_ag_situacao_quando"></span></span>
+                </div>
+              </div>
+              <div class="ed-situacao-lateral">
+                <!-- Trajetória: Pendente → Confirmado → um dos resultados alternativos. -->
+                <ol id="ed_ag_situacao_etapas" class="ed-situacao-trajetoria" aria-label="Trajetória do agendamento">
+                  <li data-etapa="pendente"><span class="ed-etapa-marca"></span><span class="ed-etapa-nome">Pendente</span></li>
+                  <li data-etapa="confirmado"><span class="ed-etapa-marca"></span><span class="ed-etapa-nome">Confirmado</span></li>
+                  <li class="ed-situacao-resultados" data-etapa="resultado">
+                    <span class="ed-resultados-rotulo">Resultado</span>
+                    <ul>
+                      <li data-etapa="concluido"><span class="ed-etapa-marca"></span><span class="ed-etapa-nome">Concluído</span></li>
+                      <li data-etapa="faltou"><span class="ed-etapa-marca"></span><span class="ed-etapa-nome">Faltou</span></li>
+                      <li data-etapa="cancelado"><span class="ed-etapa-marca"></span><span class="ed-etapa-nome">Cancelado</span></li>
+                    </ul>
+                  </li>
+                </ol>
+                <div class="ed-situacao-mensagem">
+                  <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                  <p><strong id="ed_ag_situacao_destaque"></strong><span id="ed_ag_situacao_mensagem"></span></p>
+                </div>
+              </div>
+            </section>
+
             <form id="formEditarAgendamento" novalidate>
 
               <!-- ✅ ID do agendamento (necessário p/ editar) -->
@@ -1086,6 +1252,16 @@
                   </div>
                 </section>
 
+                <!-- Ações disponíveis: os botões usam data-acao-rapida e são executados pelo fluxo
+                     existente das ações rápidas (lista-agenda.js → agenda/agendamento/editar). -->
+                <aside id="ed_ag_acoes" class="ed-acoes" aria-labelledby="ed_ag_acoes_titulo" hidden>
+                  <header class="ed-acoes-cabecalho">
+                    <strong id="ed_ag_acoes_titulo">Ações disponíveis</strong>
+                    <small><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Ações permitidas para o status atual</small>
+                  </header>
+                  <div id="ed_ag_acoes_lista" class="ed-acoes-lista"></div>
+                </aside>
+
                 <!-- Duração -->
                 <div class="modal-campo">
                   <select id="ed_ag_duracao" name="duracao" required>
@@ -1107,17 +1283,16 @@
                   <small class="msg-erro" data-erro-for="ed_ag_duracao"></small>
                 </div>
 
-                <!-- Status -->
-                <div class="modal-campo">
-                  <select id="ed_ag_status" name="status" required>
-                    <option value="pendente">Pendente</option>
-                    <option value="confirmado">Confirmado</option>
-                    <option value="concluido">Concluído</option>
-                    <option value="cancelado">Cancelado</option>
-                    <option value="faltou">Faltou</option>
-                  </select>
-                  <label for="ed_ag_status">Status</label>
-                  <small class="msg-erro" data-erro-for="ed_ag_status"></small>
+                <!-- Status: somente leitura. O valor oculto é o status atual exigido pela API;
+                     mudanças de status acontecem pelas Ações disponíveis (validadas no backend). -->
+                <div class="modal-campo ed-status-campo">
+                  <input type="hidden" id="ed_ag_status" name="status" value="">
+                  <div id="ed_ag_status_exibicao" class="ed-status-leitura" data-status="" aria-labelledby="ed_ag_status_rotulo ed_ag_status_texto">
+                    <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                    <span id="ed_ag_status_texto">—</span>
+                  </div>
+                  <label id="ed_ag_status_rotulo" class="ed-status-rotulo">Status</label>
+                  <small class="msg-ajuda ed-status-ajuda" id="ed_ag_status_ajuda"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>O status é controlado pelas ações acima e não pode ser alterado manualmente.</span></small>
                 </div>
 
                 <!-- Observação -->
@@ -1153,9 +1328,10 @@
 
               </div> <br>
 
-              <div class="modal-acoes">
+              <div class="modal-acoes ed-acoes-rodape">
+                <button class="botao-geral ed-botao-cancelar" type="button" data-fechar-modal>Cancelar</button>
                 <button id="btnSalvarEdicaoAgendamento" class="botao-geral destaque" type="submit">
-                  Salvar 
+                  <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> <span>Salvar alterações</span>
                 </button>
               </div>
 
@@ -1361,6 +1537,8 @@
     <script src="../js/notificacoes/notificacoes.js?v=1.0.19"></script> <!--Centro de notificações e experiência de senha temporária-->
     <script src="../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
 
+    <script src="../js/chat/chat-modal-agenda.js?v=1.0.19"></script> <!--Chat rápido contextual da Agenda-->
+    <script src="../js/chat/chat-nao-lidas.js?v=1.0.19"></script> <!--Contador global de conversas não lidas (badge do menu)-->
     <script src="../js/agenda/lista-agenda.js?v=1.0.19" ></script> <!--Lista Agendamentos-->
     <script src="../js/agenda/pesquisar-agendamento.js?v=1.0.19" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
     <script src="../js/agenda/excluir-agendamento.js?v=1.0.19" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->

@@ -1,0 +1,392 @@
+/* Chat contextual da Área do Cliente: conteúdo interno do modal padrão. */
+#modalChatCliente .chat-modal-cliente {
+  width: min(680px, calc(100vw - 32px));
+  max-width: 680px;
+  max-height: min(760px, calc(100dvh - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#modalChatCliente [hidden] {
+  display: none !important;
+}
+
+#modalChatCliente .chat-cliente-topo {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+#modalChatCliente .chat-cliente-topo h2 {
+  margin: 0;
+  color: var(--am-marca-contraste, #FFFFFF);
+}
+
+#modalChatCliente .chat-cliente-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-top: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+#modalChatCliente .chat-cliente-status.aberta {
+  color: #166534;
+  background: #DCFCE7;
+}
+
+#modalChatCliente .chat-cliente-status.encerrada {
+  color: #92400E;
+  background: #FEF3C7;
+}
+
+#modalChatCliente .chat-cliente-corpo {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+
+#modalChatCliente .chat-cliente-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, .12);
+  border-radius: 10px;
+  background: #F8FAFC;
+  color: #334155;
+  font-size: .9rem;
+}
+
+#modalChatCliente .chat-cliente-meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#modalChatCliente .chat-cliente-aviso {
+  min-height: 1.25em;
+  margin: 0;
+  color: #475569;
+  font-size: .88rem;
+}
+
+#modalChatCliente .chat-cliente-aviso.erro {
+  color: #B91C1C;
+}
+
+#modalChatCliente .chat-cliente-secundario {
+  align-self: center;
+  border: 0;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--am-marca, #1163DD);
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#modalChatCliente .chat-cliente-secundario:hover,
+#modalChatCliente .chat-cliente-secundario:focus-visible {
+  color: var(--am-marca-hover, #0F57C5);
+  text-decoration: underline;
+}
+
+#modalChatCliente .chat-cliente-historico {
+  display: flex;
+  min-height: 220px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, .12);
+  border-radius: 12px;
+  background: #F8FAFC;
+}
+
+#modalChatCliente .chat-cliente-vazio {
+  margin: auto;
+  color: #64748B;
+  text-align: center;
+}
+
+#modalChatCliente .chat-cliente-mensagem {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: min(86%, 500px);
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, .12);
+  border-radius: 12px 12px 12px 3px;
+  background: #FFFFFF;
+  color: #1E293B;
+  overflow-wrap: anywhere;
+}
+
+#modalChatCliente .chat-cliente-mensagem.propria {
+  align-self: flex-end;
+  border-color: var(--am-marca, #1163DD);
+  border-radius: 12px 12px 3px 12px;
+  background: var(--am-marca, #1163DD);
+  color: var(--am-marca-contraste, #FFFFFF);
+}
+
+/* Linha da mensagem com avatar do remetente (mensagens recebidas). */
+#modalChatCliente .chat-cliente-linha {
+  max-width: min(90%, 540px);
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  align-self: flex-start;
+}
+
+#modalChatCliente .chat-cliente-linha.propria {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+#modalChatCliente .chat-cliente-linha .chat-cliente-mensagem {
+  min-width: 0;
+  max-width: 100%;
+  align-self: auto;
+}
+
+/* Avatar: iniciais por baixo; a foto, quando existe, cobre as iniciais. */
+#modalChatCliente .chat-avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  color: var(--am-marca-hover, #0F57C5);
+  background: rgba(var(--am-marca-rgb, 17, 99, 221), .12);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  user-select: none;
+}
+
+#modalChatCliente .chat-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#modalChatCliente .chat-cliente-identidade {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#modalChatCliente .chat-avatar-cabecalho {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+  border: 2px solid rgba(255, 255, 255, .7);
+  color: var(--am-marca-contraste, #FFFFFF);
+  background: rgba(255, 255, 255, .18);
+  font-size: 14px;
+}
+
+#modalChatCliente .chat-avatar-cabecalho:empty {
+  display: none;
+}
+
+#modalChatCliente .chat-separador-novas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #B42318;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+#modalChatCliente .chat-separador-novas::before,
+#modalChatCliente .chat-separador-novas::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: rgba(198, 40, 40, .35);
+}
+
+#modalChatCliente .chat-cliente-remetente,
+#modalChatCliente .chat-cliente-horario {
+  display: block;
+  font-size: .76rem;
+  font-weight: 700;
+}
+
+#modalChatCliente .chat-cliente-horario {
+  margin-top: 5px;
+  font-weight: 500;
+  opacity: .78;
+}
+
+#modalChatCliente .chat-cliente-conteudo {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+#modalChatCliente .chat-cliente-rodape {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid rgba(15, 23, 42, .12);
+}
+
+#modalChatCliente .chat-cliente-rodape textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid rgba(15, 23, 42, .22);
+  border-radius: 10px;
+  padding: 10px;
+  color: #1E293B;
+  font: inherit;
+}
+
+#modalChatCliente .chat-cliente-rodape textarea:focus {
+  outline: 2px solid rgba(var(--am-marca-rgb, 17, 99, 221), .3);
+  outline-offset: 1px;
+  border-color: var(--am-marca, #1163DD);
+}
+
+#modalChatCliente .chat-cliente-rodape .botao-geral {
+  align-self: end;
+  min-height: 44px;
+  background: var(--am-marca, #1163DD);
+  color: var(--am-marca-contraste, #FFFFFF);
+}
+
+#modalChatCliente .chat-cliente-rodape .botao-geral:hover,
+#modalChatCliente .chat-cliente-rodape .botao-geral:focus-visible {
+  background: var(--am-marca-hover, #0F57C5);
+}
+
+#modalChatCliente .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 680px) {
+  #modalChatCliente {
+    padding: 8px;
+  }
+
+  #modalChatCliente .chat-modal-cliente {
+    width: 100%;
+    max-width: none;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+
+  #modalChatCliente .chat-cliente-topo,
+  #modalChatCliente .chat-cliente-corpo {
+    padding: 12px;
+  }
+
+  #modalChatCliente .chat-cliente-meta {
+    grid-template-columns: 1fr;
+  }
+
+  #modalChatCliente .chat-cliente-historico {
+    min-height: 0;
+    padding: 10px;
+  }
+
+  #modalChatCliente .chat-cliente-mensagem {
+    max-width: 90%;
+  }
+
+  #modalChatCliente .chat-cliente-linha {
+    max-width: 96%;
+    gap: 6px;
+  }
+
+  #modalChatCliente .chat-avatar {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+    font-size: 10px;
+  }
+
+  #modalChatCliente .chat-avatar-cabecalho {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+    font-size: 12px;
+  }
+
+  #modalChatCliente .chat-cliente-rodape {
+    grid-template-columns: 1fr;
+    padding: 10px 12px 12px;
+  }
+
+  #modalChatCliente .chat-cliente-rodape textarea {
+    min-height: 64px;
+    resize: none;
+  }
+
+  #modalChatCliente .chat-cliente-rodape .botao-geral {
+    width: 100%;
+  }
+}
+
+/* Card do agendamento (Área do Cliente): badge de mensagens não lidas no botão Conversar.
+   Cor semântica de alerta, independente da cor da empresa. */
+.chat-cliente-badge {
+  min-width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #FFFFFF;
+  border-radius: 999px;
+  color: #FFFFFF;
+  background: #C62828;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Mensagem do SISTEMA: centralizada, neutra, sem avatar e sem bolha de remetente. */
+#modalChatCliente .chat-sistema-linha { display: flex; justify-content: center; margin: 10px 0; }
+#modalChatCliente .chat-sistema-mensagem { max-width: min(520px, 92%); padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 10px; color: #334155; background: #f1f5f9; text-align: center; }
+#modalChatCliente .chat-sistema-topo { margin-bottom: 3px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; color: #64748b; font-size: 11px; font-weight: 700; line-height: 1.3; }
+#modalChatCliente .chat-sistema-icone { color: var(--am-marca, #1163DD); font-size: 12px; }
+#modalChatCliente .chat-sistema-remetente { min-width: 0; overflow-wrap: anywhere; }
+#modalChatCliente .chat-sistema-horario { font-weight: 600; }
+#modalChatCliente .chat-sistema-conteudo { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12.5px; line-height: 1.45; }
+
+@media (max-width: 680px) {
+  #modalChatCliente .chat-sistema-mensagem { max-width: 96%; padding: 7px 10px; }
+  #modalChatCliente .chat-sistema-conteudo { font-size: 12px; }
+}

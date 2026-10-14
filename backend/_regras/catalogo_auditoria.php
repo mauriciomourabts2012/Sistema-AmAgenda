@@ -21,10 +21,17 @@ function auditoriaCatalogo(): array
         'agendamento.confirmado' => auditoriaDefinicaoEvento('agenda', 'agendamento', 'alta', 'Confirmou um agendamento.', ['status', 'recorrencia']),
         'agendamento.cancelado' => auditoriaDefinicaoEvento('agenda', 'agendamento', 'alta', 'Cancelou um agendamento.', ['status', 'recorrencia']),
         'agendamento.concluido' => auditoriaDefinicaoEvento('agenda', 'agendamento', 'alta', 'Concluiu um agendamento.', ['status', 'recorrencia']),
+        'agendamento.faltou' => auditoriaDefinicaoEvento('agenda', 'agendamento', 'alta', 'Registrou falta em um agendamento.', ['status', 'recorrencia']),
+        // Atraso informado (Fase 5D.3): um registro por agendamento deslocado na cascata.
+        'agendamento.atraso_informado' => auditoriaDefinicaoEvento('agenda', 'agendamento', 'alta', 'Informou atraso em um agendamento.', ['hora_inicio', 'hora_fim', 'atraso']),
         'agendamento.excluido' => auditoriaDefinicaoEvento('agenda', 'agendamento', 'alta', 'Excluiu um agendamento.', [
             'cliente', 'profissional', 'servico', 'data_agendamento', 'hora_inicio', 'hora_fim',
             'status', 'recorrencia', 'antes',
         ]),
+
+        'chat.conversa_criada' => auditoriaDefinicaoEvento('chat', 'chat_conversa', 'alta', 'Criou uma conversa no Chat.', ['id_agendamento', 'status']),
+        'chat.conversa_encerrada' => auditoriaDefinicaoEvento('chat', 'chat_conversa', 'alta', 'Encerrou uma conversa no Chat.', ['status']),
+        'chat.conversa_desvinculada' => auditoriaDefinicaoEvento('chat', 'chat_conversa', 'alta', 'Desvinculou uma conversa do agendamento.', ['id_agendamento', 'status']),
 
         'cliente.criado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'media', 'Cadastrou um cliente.', ['nome', 'telefone', 'email', 'status', 'observacao', 'depois']),
         'cliente.editado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'media', 'Alterou um cliente.', ['nome', 'telefone', 'email', 'status', 'observacao']),

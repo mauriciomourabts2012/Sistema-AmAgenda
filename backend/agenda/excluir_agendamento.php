@@ -127,6 +127,7 @@ try {
     // na mesma transação (falha desfaz a exclusão).
     foreach ($idsExcluidos as $idExcluido) {
         notificacaoReconciliarAgendamentoPendente($conexao, $idEmpresa, $idExcluido);
+        notificacaoReconciliarAgendamentoFinalizacao($conexao, $idEmpresa, $idExcluido);
     }
 
     $escoposAuditoria=['somente_este'=>'ocorrencia_unica','este_e_proximos'=>'esta_e_proximas','toda_recorrencia'=>'toda_recorrencia'];

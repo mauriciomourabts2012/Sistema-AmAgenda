@@ -14,13 +14,15 @@
   const ATRASO_ABRIR_MS = 110;
   const ATRASO_FECHAR_MS = 230;
   let avisoRegularizacaoExibido = false;
+  // Badges por item (chave estável). Ficam fora do HTML porque renderizarMenu() reconstrói a navegação.
+  const badgesMenu = new Map();
 
   // Menu operacional único, usado igualmente pela Agenda e pelo Chat (mesmos itens e ordem).
   // A única diferença entre as páginas é o item ativo, identificado pela URL atual.
   const MENU_OPERACIONAL = [
     { tipo: "link", texto: "Painel Admin", icone: "fa-solid fa-user-gear", href: "/public/views/painel-administrativo/painel-administrativo.html", titulo: "Painel do Administrador", permissao: "painel.acessar" },
     { tipo: "link", texto: "Agenda", icone: "fa-solid fa-calendar-days", href: "/public/views/agenda.html", titulo: "Abrir Agenda" },
-    { tipo: "link", texto: "Chat", icone: "fa-solid fa-comments", href: "/public/views/chat/chat-interno.html", titulo: "Abrir Chat", requerChat: true },
+    { tipo: "link", texto: "Chat", icone: "fa-solid fa-comments", href: "/public/views/chat/chat-interno.html", titulo: "Abrir Chat", requerChat: true, chave: "chat" },
     { tipo: "button", texto: "Novo Cliente", icone: "fa-solid fa-user-plus", modal: "modalNovoCliente", titulo: "Cadastrar novo cliente" },
     { tipo: "button", texto: "Novo Agendamento", icone: "fa-solid fa-plus", modal: "modalNovoAgendamento", titulo: "Adicionar um agendamento" },
     { tipo: "button", texto: "Configurações Agenda", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", titulo: "Configurações da agenda" }
@@ -112,10 +114,76 @@
     if (item.modal) atributos.push(`data-abrir-modal="${escaparHtml(item.modal)}"`);
     if (item.aba) atributos.push(`data-menu-aba="${escaparHtml(item.aba)}"`);
     if (item.acao) atributos.push(`data-menu-acao="${escaparHtml(item.acao)}"`);
+    if (item.chave) atributos.push(`data-menu-chave="${escaparHtml(item.chave)}"`);
     const conteudo = `<i class="${escaparHtml(item.icone)}" aria-hidden="true"></i><span class="sidebar-texto">${escaparHtml(item.texto)}</span>`;
     return item.tipo === "link"
       ? `<a href="${escaparHtml(item.href)}" ${atributos.join(" ")}>${conteudo}</a>`
       : `<button type="button" ${atributos.join(" ")}>${conteudo}</button>`;
+  }
+
+  /* Badge numérico de um item do menu. Usa cor semântica de alerta (não a cor da empresa).
+     O estado é guardado em badgesMenu e reaplicado após cada renderizarMenu(). */
+  function aplicarBadgeItem(item, quantidade) {
+    const texto = item.querySelector(".sidebar-texto")?.textContent?.trim() || "";
+    const tituloBase = item.dataset.tituloBase || item.getAttribute("title") || texto;
+    item.dataset.tituloBase = tituloBase;
+    let badge = item.querySelector(".sidebar-badge");
+    if (quantidade <= 0) {
+      badge?.remove();
+      item.classList.remove("tem-badge");
+      item.setAttribute("title", tituloBase);
+      item.setAttribute("aria-label", tituloBase);
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "sidebar-badge";
+      badge.setAttribute("aria-hidden", "true");
+      item.appendChild(badge);
+    }
+    badge.textContent = quantidade > 99 ? "99+" : String(quantidade);
+    item.classList.add("tem-badge");
+    const descricao = item.dataset.menuChave === "chat"
+      ? `${quantidade} conversa${quantidade === 1 ? "" : "s"} não lida${quantidade === 1 ? "" : "s"}`
+      : `${quantidade} pendência${quantidade === 1 ? "" : "s"}`;
+    item.setAttribute("title", `${tituloBase} (${descricao})`);
+    item.setAttribute("aria-label", `${tituloBase}, ${descricao}`);
+  }
+
+  // Botão que abre o drawer no mobile: indica pendências enquanto o menu está fechado.
+  function aplicarBadgeBotaoMenu() {
+    const botao = document.getElementById("abrirSidebarAgenda");
+    if (!botao) return;
+    const total = [...badgesMenu.entries()]
+      .filter(([chave]) => document.querySelector(`[data-menu-navegacao] [data-menu-chave="${chave}"]`))
+      .reduce((soma, [, valor]) => soma + valor, 0);
+    let badge = botao.querySelector(".sidebar-abrir-badge");
+    if (total <= 0) {
+      badge?.remove();
+      botao.setAttribute("aria-label", "Abrir menu");
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "sidebar-abrir-badge";
+      badge.setAttribute("aria-hidden", "true");
+      botao.appendChild(badge);
+    }
+    badge.textContent = total > 99 ? "99+" : String(total);
+    botao.setAttribute("aria-label", `Abrir menu (${total} não lida${total === 1 ? "" : "s"})`);
+  }
+
+  function reaplicarBadges() {
+    document.querySelectorAll("[data-menu-navegacao] [data-menu-chave]").forEach(item => {
+      aplicarBadgeItem(item, badgesMenu.get(item.dataset.menuChave) || 0);
+    });
+    aplicarBadgeBotaoMenu();
+  }
+
+  function menuAtualizarBadge(chave, numero) {
+    const quantidade = Math.max(0, Math.floor(Number(numero) || 0));
+    badgesMenu.set(String(chave), quantidade);
+    reaplicarBadges();
   }
 
   function podeAcessarChat(auth) {
@@ -169,6 +237,7 @@
     }
     if (navegacao) {
       navegacao.innerHTML = itens.map(htmlItem).join("");
+      reaplicarBadges();
 
       if (CONTEXTOS_ABAS[contexto]) {
         const abaAtiva = document.querySelector(".conteudo-aba.ativa")?.id || "";
@@ -251,6 +320,13 @@
       document.dispatchEvent(new CustomEvent("amagenda:painel-aba-alterada", { detail: { aba: idAba } }));
     }
   }
+
+  window.MenuLateral = Object.freeze({ atualizarBadge: menuAtualizarBadge });
+  // Contador global do Chat (chat-nao-lidas.js): conversas não lidas, não total de mensagens.
+  document.addEventListener("amagenda:chat-nao-lidas", evento => {
+    if (evento.detail?.contexto !== "interno") return;
+    menuAtualizarBadge("chat", evento.detail.total);
+  });
 
   document.addEventListener("DOMContentLoaded", () => {
     window.CentroNotificacoes?.inicializar?.();

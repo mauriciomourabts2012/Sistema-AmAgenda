@@ -1,0 +1,603 @@
+/* Conteúdo do Chat rápido dentro do modal padrão da Agenda. */
+#modalChatAgenda [hidden] {
+  display: none !important;
+}
+
+#modalChatAgenda .chat-modal-agenda {
+  display: flex;
+  flex-direction: column;
+  width: min(780px, 94vw);
+  max-width: 780px;
+  max-height: min(820px, 92dvh);
+  overflow: hidden;
+}
+
+#modalChatAgenda .chat-modal-topo {
+  flex: 0 0 auto;
+  gap: 16px;
+}
+
+#modalChatAgenda .chat-modal-titulo {
+  min-width: 0;
+}
+
+#modalChatAgenda .chat-modal-titulo h2 {
+  margin-bottom: 3px;
+}
+
+#modalChatAgenda .chat-modal-titulo p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--am-marca-contraste, #FFFFFF);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#modalChatAgenda .chat-modal-topo-acoes {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+}
+
+#modalChatAgenda .chat-modal-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #b7dfc6;
+  background: #e7f5ec;
+  color: #12643f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#modalChatAgenda .chat-modal-status.encerrada {
+  border-color: #f0d89a;
+  background: #fff3d6;
+  color: #6b4b11;
+}
+
+#modalChatAgenda .chat-modal-encerrar {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid #fecaca;
+  border-radius: 9px;
+  background: #fff;
+  color: #b42318;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#modalChatAgenda .chat-modal-encerrar:hover,
+#modalChatAgenda .chat-modal-encerrar:focus-visible {
+  background: #fff1f2;
+}
+
+#modalChatAgenda .chat-modal-encerrar:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+#modalChatAgenda .chat-modal-corpo {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 12px;
+  overflow: hidden;
+}
+
+#modalChatAgenda .chat-modal-meta {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-bottom: 10px;
+  padding: 11px 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+}
+
+#modalChatAgenda .chat-modal-meta strong {
+  color: #1e293b;
+}
+
+#modalChatAgenda .chat-modal-aviso {
+  flex: 0 0 auto;
+  min-height: 19px;
+  margin: 0 0 7px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+#modalChatAgenda .chat-modal-aviso.erro,
+#modalChatAgenda .chat-modal-vazio.erro {
+  color: #b42318;
+}
+
+#modalChatAgenda .chat-modal-secundario {
+  align-self: center;
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  padding: 7px 12px;
+  border: 1px solid rgba(var(--am-marca-rgb, 17, 99, 221), .32);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--am-marca, #1163DD);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#modalChatAgenda .chat-modal-secundario:hover,
+#modalChatAgenda .chat-modal-secundario:focus-visible {
+  background: rgba(var(--am-marca-rgb, 17, 99, 221), .08);
+}
+
+#modalChatAgenda .chat-modal-historico {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 240px;
+  padding: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+#modalChatAgenda .chat-modal-vazio {
+  margin: auto;
+  color: #64748b;
+  text-align: center;
+}
+
+#modalChatAgenda .chat-modal-mensagem {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: min(78%, 560px);
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px 13px 13px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, .05);
+}
+
+#modalChatAgenda .chat-modal-mensagem.propria {
+  align-self: flex-end;
+  border-color: transparent;
+  border-radius: 13px 4px 13px 13px;
+  background: var(--am-marca, #1163DD);
+  color: var(--am-marca-contraste, #FFFFFF);
+}
+
+#modalChatAgenda .chat-modal-remetente,
+#modalChatAgenda .chat-modal-horario {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#modalChatAgenda .chat-modal-mensagem.propria .chat-modal-remetente,
+#modalChatAgenda .chat-modal-mensagem.propria .chat-modal-horario {
+  color: var(--am-marca-contraste, #FFFFFF);
+}
+
+/* Linha da mensagem com avatar do remetente (mensagens recebidas). */
+#modalChatAgenda .chat-modal-linha {
+  max-width: min(84%, 600px);
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  align-self: flex-start;
+}
+
+#modalChatAgenda .chat-modal-linha.propria {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+#modalChatAgenda .chat-modal-linha .chat-modal-mensagem {
+  min-width: 0;
+  max-width: 100%;
+  align-self: auto;
+}
+
+/* Avatar: iniciais por baixo; a foto, quando existe, cobre as iniciais. */
+#modalChatAgenda .chat-avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  color: var(--am-marca-hover, #0F57C5);
+  background: rgba(var(--am-marca-rgb, 17, 99, 221), .12);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  user-select: none;
+}
+
+#modalChatAgenda .chat-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#modalChatAgenda .chat-modal-identidade {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#modalChatAgenda .chat-avatar-cabecalho {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+  border: 2px solid rgba(255, 255, 255, .7);
+  color: var(--am-marca-contraste, #FFFFFF);
+  background: rgba(255, 255, 255, .18);
+  font-size: 14px;
+}
+
+#modalChatAgenda .chat-avatar-cabecalho:empty {
+  display: none;
+}
+
+#modalChatAgenda .chat-separador-novas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+#modalChatAgenda .chat-separador-novas::before,
+#modalChatAgenda .chat-separador-novas::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: rgba(198, 40, 40, .35);
+}
+
+#modalChatAgenda .chat-modal-conteudo {
+  margin: 4px 0 5px;
+  overflow-wrap: anywhere;
+  color: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+#modalChatAgenda .chat-modal-horario {
+  text-align: right;
+}
+
+#modalChatAgenda .chat-modal-rodape {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 0 0 auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px 18px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+#modalChatAgenda .chat-modal-rodape textarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 150px;
+  padding: 11px 12px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  outline: none;
+  color: #1e293b;
+  font: inherit;
+  line-height: 1.4;
+}
+
+#modalChatAgenda .chat-modal-rodape textarea:focus {
+  border-color: var(--am-marca, #1163DD);
+  box-shadow: 0 0 0 3px rgba(var(--am-marca-rgb, 17, 99, 221), .14);
+}
+
+#modalChatAgenda .chat-modal-rodape .botao-geral {
+  min-width: 112px;
+  min-height: 44px;
+  background: var(--am-marca, #1163DD);
+  color: var(--am-marca-contraste, #FFFFFF);
+}
+
+#modalChatAgenda .chat-modal-rodape .botao-geral:hover,
+#modalChatAgenda .chat-modal-rodape .botao-geral:focus-visible {
+  background: var(--am-marca-hover, #0F57C5);
+}
+
+#modalChatAgenda .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 680px) {
+  #modalChatAgenda {
+    padding: 8px;
+  }
+
+  #modalChatAgenda .chat-modal-agenda {
+    width: 100%;
+    max-width: none;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+
+  #modalChatAgenda .chat-modal-topo {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  #modalChatAgenda .chat-modal-topo-acoes {
+    gap: 6px;
+  }
+
+  #modalChatAgenda .chat-modal-encerrar {
+    max-width: 84px;
+    padding: 6px 8px;
+    line-height: 1.15;
+  }
+
+  #modalChatAgenda .chat-modal-corpo {
+    padding: 12px;
+  }
+
+  #modalChatAgenda .chat-modal-meta {
+    display: grid;
+    gap: 4px;
+  }
+
+  #modalChatAgenda .chat-modal-historico {
+    min-height: 0;
+    padding: 10px;
+  }
+
+  #modalChatAgenda .chat-modal-mensagem {
+    max-width: 88%;
+  }
+
+  #modalChatAgenda .chat-modal-linha {
+    max-width: 94%;
+    gap: 6px;
+  }
+
+  #modalChatAgenda .chat-avatar {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+    font-size: 10px;
+  }
+
+  #modalChatAgenda .chat-avatar-cabecalho {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+    font-size: 12px;
+  }
+
+  #modalChatAgenda .chat-modal-rodape {
+    grid-template-columns: 1fr;
+    padding: 10px 12px 12px;
+  }
+
+  #modalChatAgenda .chat-modal-rodape textarea {
+    min-height: 64px;
+    resize: none;
+  }
+
+  #modalChatAgenda .chat-modal-rodape .botao-geral {
+    width: 100%;
+  }
+}
+
+/* Mensagem do SISTEMA: centralizada, neutra, sem avatar e sem bolha de remetente. */
+#modalChatAgenda .chat-sistema-linha { display: flex; justify-content: center; margin: 10px 0; }
+#modalChatAgenda .chat-sistema-mensagem { max-width: min(520px, 92%); padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 10px; color: #334155; background: #f1f5f9; text-align: center; }
+#modalChatAgenda .chat-sistema-topo { margin-bottom: 3px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; color: #64748b; font-size: 11px; font-weight: 700; line-height: 1.3; }
+#modalChatAgenda .chat-sistema-icone { color: var(--am-marca, #1163DD); font-size: 12px; }
+#modalChatAgenda .chat-sistema-remetente { min-width: 0; overflow-wrap: anywhere; }
+#modalChatAgenda .chat-sistema-horario { font-weight: 600; }
+#modalChatAgenda .chat-sistema-conteudo { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12.5px; line-height: 1.45; }
+
+@media (max-width: 680px) {
+  #modalChatAgenda .chat-sistema-mensagem { max-width: 96%; padding: 7px 10px; }
+  #modalChatAgenda .chat-sistema-conteudo { font-size: 12px; }
+}
+
+/* ============================================================
+   CHAT RÁPIDO — ABRIR AGENDAMENTO VINCULADO
+   ============================================================ */
+#modalChatAgenda .chat-modal-abrir-agendamento {
+  min-height: 34px;
+  padding: 7px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #d7e0ec;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+#modalChatAgenda .chat-modal-abrir-agendamento i {
+  color: var(--am-marca, #1163DD);
+  font-size: 13px;
+}
+
+#modalChatAgenda .chat-modal-abrir-agendamento:hover,
+#modalChatAgenda .chat-modal-abrir-agendamento:focus-visible {
+  border-color: var(--am-marca, #1163DD);
+  color: var(--am-marca-hover, #0F57C5);
+  outline: none;
+}
+
+#modalChatAgenda .chat-modal-abrir-agendamento[hidden] {
+  display: none;
+}
+
+/* Mobile: só o ícone (title/aria-label no botão). */
+@media (max-width: 680px) {
+  #modalChatAgenda .chat-modal-abrir-agendamento {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  #modalChatAgenda .chat-modal-abrir-agendamento-texto {
+    display: none;
+  }
+}
+
+/* ============================================================
+   CHAT RÁPIDO — CABEÇALHO RESPONSIVO
+   ============================================================ */
+/* Status: informação discreta abaixo do nome do cliente (não compete com as ações). */
+#modalChatAgenda .chat-modal-titulo .chat-modal-status {
+  margin-top: 5px;
+  min-height: 20px;
+  padding: 2px 8px 2px 7px;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .14);
+  color: var(--am-marca-contraste, #FFFFFF);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+#modalChatAgenda .chat-modal-titulo .chat-modal-status:empty {
+  display: none;
+}
+
+#modalChatAgenda .chat-modal-titulo .chat-modal-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #4ade80;
+}
+
+#modalChatAgenda .chat-modal-titulo .chat-modal-status.encerrada::before {
+  background: #fbbf24;
+}
+
+#modalChatAgenda .chat-modal-encerrar-curto {
+  display: none;
+}
+
+#modalChatAgenda .chat-modal-topo-acoes .modal-fechar {
+  margin-left: 4px;
+}
+
+/* Mobile: linha 1 avatar/Chat + fechar; nome e status abaixo; ações em linha própria. */
+@media (max-width: 680px) {
+  #modalChatAgenda .chat-modal-topo {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    min-height: 0;
+    padding: 12px;
+  }
+
+  #modalChatAgenda .chat-modal-identidade {
+    min-width: 0;
+    align-items: flex-start;
+    padding-right: 54px;
+  }
+
+  #modalChatAgenda .chat-modal-titulo {
+    flex: 1 1 auto;
+  }
+
+  #modalChatAgenda .chat-modal-titulo h2 {
+    font-size: 18px;
+  }
+
+  #modalChatAgenda .chat-modal-topo-acoes {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  /* Sem ações visíveis (ex.: conversa encerrada sem agendamento): a linha não ocupa espaço. */
+  #modalChatAgenda .chat-modal-topo-acoes:not(:has(> button:not([hidden]):not(.modal-fechar))) {
+    display: contents;
+  }
+
+  #modalChatAgenda .chat-modal-topo-acoes .modal-fechar {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+    margin: 0;
+  }
+
+  #modalChatAgenda .chat-modal-abrir-agendamento {
+    width: 44px;
+    min-height: 44px;
+  }
+
+  #modalChatAgenda .chat-modal-encerrar {
+    max-width: none;
+    min-height: 44px;
+    padding: 0 14px;
+    line-height: 1.2;
+  }
+
+  #modalChatAgenda .chat-modal-encerrar-longo {
+    display: none;
+  }
+
+  #modalChatAgenda .chat-modal-encerrar-curto {
+    display: inline;
+  }
+}

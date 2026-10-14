@@ -16,8 +16,29 @@
     instrucao: $("ed_ag_disponibilidade_instrucao"), dias: $("ed_ag_calendario_dias"),
     mes: $("ed_ag_calendario_mes"), anterior: $("ed_ag_calendario_anterior"),
     proximo: $("ed_ag_calendario_proximo"), dataTexto: $("ed_ag_data_selecionada"),
-    horarios: $("ed_ag_horarios_disponiveis"), salvar: $("btnSalvarEdicaoAgendamento")
+    horarios: $("ed_ag_horarios_disponiveis"), salvar: $("btnSalvarEdicaoAgendamento"),
+    statusAjuda: $("ed_ag_status_ajuda"), statusTexto: $("ed_ag_status_texto"), statusExibicao: $("ed_ag_status_exibicao"),
+    situacao: $("ed_ag_situacao"), situacaoIcone: $("ed_ag_situacao_icone"),
+    situacaoStatus: $("ed_ag_situacao_status"), situacaoTitulo: $("ed_ag_situacao_titulo"),
+    situacaoQuando: $("ed_ag_situacao_quando"), situacaoEtapas: $("ed_ag_situacao_etapas"),
+    situacaoDestaque: $("ed_ag_situacao_destaque"), situacaoMensagem: $("ed_ag_situacao_mensagem"),
+    acoes: $("ed_ag_acoes"), acoesLista: $("ed_ag_acoes_lista")
   };
+
+  // Ciclo de vida exibido no modal. É somente orientação: editar_agendamento.php valida
+  // novamente a transição, o horário e as permissões sobre o registro travado.
+  const ROTULOS_STATUS = { pendente: "Pendente", confirmado: "Confirmado", concluido: "Concluído", cancelado: "Cancelado", faltou: "Faltou" };
+  const STATUS_FINAIS = ["concluido", "cancelado", "faltou"];
+  const TRANSICOES_STATUS = { pendente: ["pendente", "confirmado", "cancelado"], confirmado: ["confirmado", "concluido", "faltou", "cancelado"] };
+  const CODIGO_NOTIFICACAO_FINALIZACAO = "agenda.agendamento_finalizacao_pendente";
+  const ACOES_STATUS = {
+    confirmado: { acao: "confirmar", classe: "ed-acao--confirmar", icone: "fa-solid fa-calendar-check", titulo: "Confirmar agendamento", descricao: "Marcar este agendamento como confirmado" },
+    concluido: { acao: "concluir", classe: "ed-acao--concluir", icone: "fa-solid fa-check", titulo: "Concluir atendimento", descricao: "Registrar que o serviço foi realizado" },
+    faltou: { acao: "faltou", classe: "ed-acao--faltou", icone: "fa-solid fa-user-xmark", titulo: "Registrar falta", descricao: "Cliente não compareceu" },
+    cancelado: { acao: "cancelar", classe: "ed-acao--cancelar", icone: "fa-solid fa-ban", titulo: "Cancelar agendamento", descricao: "Cancelar este agendamento" }
+  };
+  let registroAtual = null;
+  let contextoAtual = {};
 
   let diasAtendimento = [];
   let mesAtual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -141,17 +162,192 @@
     el.telefone.value = texto(tel);
   }
 
+  function normalizarStatus(valor) {
+    const status = texto(valor).toLowerCase();
+    return Object.prototype.hasOwnProperty.call(ROTULOS_STATUS, status) ? status : "";
+  }
+
+  function dataHoraLocal(data, hora) {
+    const valor = new Date(`${texto(data)}T${texto(hora).slice(0,5)}:00`);
+    return Number.isNaN(valor.getTime()) ? null : valor;
+  }
+
+  function podeEditar() {
+    return typeof window.usuarioPode === "function" && window.usuarioPode("agenda.editar_agendamento") === true;
+  }
+
+  function podeCancelar() {
+    return typeof window.usuarioPode === "function" && window.usuarioPode("agenda.cancelar_agendamento") === true;
+  }
+
+  // Status atual e destinos permitidos; Concluído/Faltou ficam indisponíveis antes do início.
+  function opcoesStatus(a, agora = new Date()) {
+    const atual = normalizarStatus(a?.status);
+    if (!TRANSICOES_STATUS[atual]) return [{ valor: atual, desabilitada: false }];
+    const inicio = dataHoraLocal(a.data_agendamento, a.hora_inicio);
+    const iniciou = inicio !== null && inicio <= agora;
+    return TRANSICOES_STATUS[atual]
+      .filter((status) => status !== "cancelado" || podeCancelar())
+      .map((status) => ({ valor: status, desabilitada: (status === "concluido" || status === "faltou") && !iniciou }));
+  }
+
+  // Ações do painel: as mesmas transições das ações rápidas do menu de três pontos.
+  function acoesDisponiveis(a) {
+    if (!a || !podeEditar()) return [];
+    const atual = normalizarStatus(a.status);
+    return opcoesStatus(a)
+      .filter((opcao) => opcao.valor !== atual && ACOES_STATUS[opcao.valor])
+      .map((opcao) => ({ ...ACOES_STATUS[opcao.valor], desabilitada: opcao.desabilitada }));
+  }
+
+  // Os botões não têm lógica própria: data-acao-rapida + data-id-agendamento são tratados pelo
+  // fluxo existente (lista-agenda.js), com confirmação, detalhamento, lock, auditoria e notificações.
+  function renderAcoes(a) {
+    if (!el.acoes || !el.acoesLista) return;
+    const acoes = acoesDisponiveis(a);
+    const id = esc(a?.id_agendamento);
+    const hora = esc(texto(a?.hora_inicio).slice(0,5));
+    el.acoesLista.innerHTML = acoes.map((acao) => `
+      <button type="button" class="ed-acao ${acao.classe}" data-acao-rapida="${acao.acao}" data-id-agendamento="${id}"${acao.desabilitada ? " disabled" : ""}>
+        <span class="ed-acao-icone" aria-hidden="true"><i class="${acao.icone}"></i></span>
+        <span class="ed-acao-texto"><strong>${acao.titulo}</strong><small>${acao.desabilitada ? `Disponível após o início do atendimento (${hora})` : acao.descricao}</small></span>
+      </button>`).join("");
+    el.acoes.hidden = acoes.length === 0;
+    form.classList.toggle("ed-form--com-acoes", acoes.length > 0);
+  }
+
+  // Status somente leitura: o valor oculto mantém o status atual exigido pela API.
+  function aplicarCampoStatus(a) {
+    const atual = normalizarStatus(a?.status);
+    el.status.value = atual;
+    if (el.statusTexto) el.statusTexto.textContent = `${ROTULOS_STATUS[atual] || texto(a?.status) || "—"} (definido pelo sistema)`;
+    if (el.statusExibicao) el.statusExibicao.dataset.status = atual;
+    const ajuda = el.statusAjuda?.querySelector("span");
+    if (ajuda) {
+      ajuda.textContent = STATUS_FINAIS.includes(atual)
+        ? "Agendamento finalizado. O status não pode ser alterado."
+        : "O status é controlado pelas ações acima e não pode ser alterado manualmente.";
+    }
+  }
+
+  // Áreas do formulário além do Status; inert impede a interação sem retirar os valores do envio.
+  function areasEditaveis() {
+    const campoStatus = el.status.closest(".modal-campo");
+    return [...form.querySelectorAll(".modal-grid > .modal-campo, .modal-grid > .ag-disponibilidade")].filter((area) => area !== campoStatus);
+  }
+
+  function bloquearAreas(areas, bloquear) {
+    areas.forEach((area) => {
+      area.inert = bloquear;
+      area.classList.toggle("ed-area-bloqueada", bloquear);
+    });
+  }
+
+  // Concluído, Cancelado e Faltou: modal somente para consulta, sem Salvar.
+  function aplicarModoConsulta(finalizado) {
+    form.classList.toggle("ed-form--consulta", finalizado);
+    bloquearAreas(areasEditaveis(), finalizado);
+    const botaoSalvar = el.salvar;
+    botaoSalvar.hidden = finalizado;
+    botaoSalvar.closest(".modal-acoes")?.classList.toggle("ed-acoes-rodape--consulta", finalizado);
+    const botaoFechar = form.querySelector(".ed-botao-cancelar");
+    if (botaoFechar) botaoFechar.textContent = finalizado ? "Fechar" : "Cancelar";
+  }
+
+  function descreverSituacao(a, codigoNotificacao, agora = new Date()) {
+    const status = normalizarStatus(a?.status);
+    const horaFim = texto(a?.hora_fim).slice(0,5);
+    const fim = dataHoraLocal(a?.data_agendamento, a?.hora_fim);
+    const consulta = "Este registro está disponível somente para consulta.";
+    if (status === "pendente") return { titulo: "Aguardando confirmação", destaque: "Este agendamento aguarda confirmação.", mensagem: "Confirme ou cancele usando as ações disponíveis.", selo: "fa-solid fa-hourglass-half" };
+    if (status === "confirmado" && fim !== null && fim <= agora) {
+      const daNotificacao = codigoNotificacao === CODIGO_NOTIFICACAO_FINALIZACAO;
+      return {
+        titulo: "Aguardando resultado",
+        destaque: daNotificacao ? `Notificação de finalização: o horário previsto terminou às ${horaFim}.` : `O horário previsto terminou às ${horaFim}.`,
+        mensagem: "Registre o resultado do atendimento: concluir, falta ou cancelar.",
+        selo: "fa-solid fa-bell", alerta: true, notificacao: daNotificacao
+      };
+    }
+    if (status === "confirmado") return { titulo: "Atendimento confirmado", destaque: "Este agendamento está confirmado.", mensagem: "Após o início do atendimento, registre o resultado: concluir, falta ou cancelar.", selo: "fa-solid fa-check" };
+    if (status === "concluido") return { titulo: "Atendimento concluído", destaque: "Agendamento finalizado.", mensagem: consulta, selo: "fa-solid fa-check-double" };
+    if (status === "cancelado") return { titulo: "Agendamento cancelado", destaque: "Agendamento finalizado.", mensagem: consulta, selo: "fa-solid fa-xmark" };
+    if (status === "faltou") return { titulo: "Cliente não compareceu", destaque: "Agendamento finalizado.", mensagem: consulta, selo: "fa-solid fa-user-xmark" };
+    return { titulo: "", destaque: "", mensagem: "", selo: "fa-solid fa-circle" };
+  }
+
+  // Concluído, Faltou e Cancelado são resultados alternativos depois da confirmação (ou de Pendente, no cancelamento).
+  function estadoEtapa(etapa, status) {
+    if (etapa === "resultado") return STATUS_FINAIS.includes(status) ? "definido" : "";
+    if (etapa === status) return "atual";
+    if (etapa === "pendente" && status !== "pendente") return "feito";
+    if (etapa === "confirmado" && (status === "concluido" || status === "faltou")) return "feito";
+    return "";
+  }
+
+  function textoQuando(a) {
+    const data = dataHoraLocal(a?.data_agendamento, "12:00");
+    let dia = texto(a?.data_agendamento);
+    if (data) {
+      const semana = data.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+      dia = `${semana.charAt(0).toUpperCase()}${semana.slice(1)}, ${data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`;
+    }
+    const duracao = Number(a?.duracao_min_aplicada) > 0 ? `  (${Number(a.duracao_min_aplicada)} min)` : "";
+    return `${dia}  ·  ${texto(a?.hora_inicio).slice(0,5)} às ${texto(a?.hora_fim).slice(0,5)}${duracao}`;
+  }
+
+  function renderSituacao(a, codigoNotificacao) {
+    if (!el.situacao) return;
+    const status = normalizarStatus(a?.status);
+    const situacao = descreverSituacao(a, codigoNotificacao);
+    el.situacao.dataset.status = status;
+    el.situacao.classList.toggle("ed-situacao--alerta", situacao.alerta === true);
+    el.situacao.classList.toggle("ed-situacao--notificacao", situacao.notificacao === true);
+    el.situacaoIcone.className = situacao.selo;
+    el.situacaoStatus.textContent = ROTULOS_STATUS[status] || texto(a?.status) || "—";
+    el.situacaoTitulo.textContent = situacao.titulo;
+    if (el.situacaoDestaque) el.situacaoDestaque.textContent = situacao.destaque;
+    el.situacaoMensagem.textContent = situacao.mensagem;
+    el.situacaoQuando.textContent = textoQuando(a);
+    el.situacaoEtapas.querySelectorAll("li[data-etapa]").forEach((item) => {
+      const estado = estadoEtapa(item.dataset.etapa, status);
+      item.dataset.estado = estado;
+      if (estado === "atual") item.setAttribute("aria-current", "step"); else item.removeAttribute("aria-current");
+    });
+    el.situacao.hidden = false;
+  }
+
+  function limparEstadoCicloVida() {
+    registroAtual = null;
+    form.classList.remove("ed-form--consulta", "ed-form--com-acoes");
+    bloquearAreas(areasEditaveis(), false);
+    el.salvar.hidden = false;
+    el.salvar.closest(".modal-acoes")?.classList.remove("ed-acoes-rodape--consulta");
+    const botaoFechar = form.querySelector(".ed-botao-cancelar");
+    if (botaoFechar) botaoFechar.textContent = "Cancelar";
+    if (el.acoesLista) el.acoesLista.innerHTML = "";
+    if (el.acoes) el.acoes.hidden = true;
+    if (el.situacao) el.situacao.hidden = true;
+  }
+
   function atualizarRecorrencia() { const ativo = el.repetir.checked; el.recorrenciaBox.hidden = !ativo; el.recorrenciaFim.required = ativo; if (!ativo) el.recorrenciaFim.value = ""; }
 
-  async function abrirEdicao(id) {
+  async function abrirEdicao(id, contexto = {}) {
     if (!id || carregandoRegistro) return;
     carregandoRegistro = true;
+    limparEstadoCicloVida();
+    contextoAtual = contexto || {};
     const conteudoModal = document.querySelector("#modalEditarAgendamento .modal-conteudo");
     if (conteudoModal) conteudoModal.scrollTop = 0;
     try {
       const j = await api("agenda/agendamento/detalhar", { id_agendamento: id }); const a = j.data;
       horarioOriginal = { data: texto(a.data_agendamento), hora: texto(a.hora_inicio).slice(0,5) };
-      el.id.value = a.id_agendamento; el.status.value = a.status; el.obs.value = a.observacao || "";
+      el.id.value = a.id_agendamento; el.obs.value = a.observacao || "";
+      registroAtual = a;
+      renderSituacao(a, texto(contexto.codigoNotificacao));
+      aplicarCampoStatus(a);
+      aplicarModoConsulta(STATUS_FINAIS.includes(normalizarStatus(a.status)));
+      renderAcoes(a);
       semanaRecorrente = texto(a.grupo_recorrencia) ? intervaloDaSemana(a.data_agendamento) : null;
       el.repetir.checked = Number(a.repetir_semanalmente) === 1; el.recorrenciaFim.value = a.recorrencia_data_fim || ""; atualizarRecorrencia();
       el.repetir.disabled = Boolean(semanaRecorrente);
@@ -183,7 +379,9 @@
   // lista-agenda.js informa o registro escolhido; os dados são confirmados pela API.
   document.addEventListener("agenda:editar:selecionado", (ev) => {
     const id = ev.detail?.id_agendamento || ev.detail?.agendamento?.id_agendamento || ev.detail?.agendamento?.id;
-    setTimeout(() => abrirEdicao(id), 0);
+    // O código da notificação só ajusta a mensagem da situação; o registro vem sempre da API.
+    const codigoNotificacao = texto(ev.detail?.codigo_notificacao);
+    setTimeout(() => abrirEdicao(id, { codigoNotificacao }), 0);
   });
   el.profissional.addEventListener("change", async () => { el.disponibilidade.hidden = true; el.data.value = ""; limparHorario(); await carregarServicos(); });
   el.servico.addEventListener("change", async () => {
@@ -204,12 +402,32 @@
   el.anterior.addEventListener("click", () => { mesAtual = new Date(mesAtual.getFullYear(), mesAtual.getMonth()-1, 1); renderCalendario(); });
   el.proximo.addEventListener("click", () => { mesAtual = new Date(mesAtual.getFullYear(), mesAtual.getMonth()+1, 1); renderCalendario(); });
   el.repetir.addEventListener("change", atualizarRecorrencia);
+  // Duplo clique no painel: enquanto a confirmação visual estiver aberta, um novo clique não chega
+  // ao fluxo das ações rápidas (que só bloqueia repetições após a confirmação).
+  el.acoesLista?.addEventListener("click", (ev) => {
+    if (document.querySelector(".ui-alert--confirm:not(.is-leaving)")) ev.stopPropagation();
+  });
+  // Ação concluída com sucesso (painel ou menu) sobre o agendamento aberto: o modal é recarregado
+  // pelo detalhamento autorizado e passa a refletir o novo status.
+  document.addEventListener("agenda:agendamento:status-atualizado", (ev) => {
+    const id = texto(ev.detail?.id_agendamento);
+    const modal = document.getElementById("modalEditarAgendamento");
+    if (!id || id !== texto(el.id.value) || !modal?.classList.contains("ativo")) return;
+    setTimeout(() => abrirEdicao(id, contextoAtual), 0);
+  });
+  // Ao fim do processamento, o fluxo das ações rápidas reabilita os botões; o painel volta a
+  // refletir horário e permissões do registro aberto.
+  document.addEventListener("agenda:agendamento:acao-rapida-estado", (ev) => {
+    if (ev.detail?.carregando === true || texto(ev.detail?.id_agendamento) !== texto(el.id.value)) return;
+    setTimeout(() => renderAcoes(registroAtual), 0);
+  });
 
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
+    if (registroAtual && STATUS_FINAIS.includes(normalizarStatus(registroAtual.status))) { toast("warning", "Este agendamento já foi finalizado e não pode ser alterado."); return; }
     if (!el.id.value || !el.cliente.value || !el.profissional.value || !el.servico.value || !el.duracao.value || !el.data.value || !el.hora.value) { toast("danger", "Preencha cliente, profissional, serviço, duração, data e horário."); return; }
     const body = new FormData(form); body.set("repetir_semanalmente", el.repetir.checked ? "1" : "0");
-    el.salvar.disabled = true; const original = el.salvar.textContent; el.salvar.textContent = "Salvando...";
+    el.salvar.disabled = true; const original = el.salvar.innerHTML; el.salvar.textContent = "Salvando...";
     try {
       const j = await api("agenda/agendamento/editar", {}, { method:"POST", body, headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") } });
       toast("success", j.user_msg || "Agendamento atualizado com sucesso.");
@@ -217,7 +435,13 @@
       avisosPlano.forEach((aviso) => toast("warning", aviso?.mensagem || "O consumo mensal do plano está próximo do limite."));
       document.dispatchEvent(new CustomEvent("agenda:agendamento:atualizado", { detail:j.data }));
       window.CentroNotificacoes?.carregar?.(); // reflete a pendência resolvida/atualizada na central
-      setTimeout(() => { window.fecharModal?.("modalEditarAgendamento"); window.location.reload(); }, avisosPlano.length ? 5200 : 1200);
-    } catch(e) { toast("danger", e.message); } finally { el.salvar.disabled = false; el.salvar.textContent = original; }
+      // Agenda aberta pelo Chat (origem=chat): volta para a conversa em vez de recarregar.
+      const retornoChat = window.AgendaRetornoChat?.destino?.() || null;
+      setTimeout(() => {
+        window.fecharModal?.("modalEditarAgendamento");
+        if (retornoChat) window.location.assign(retornoChat);
+        else window.location.reload();
+      }, avisosPlano.length ? 5200 : 1200);
+    } catch(e) { toast("danger", e.message); } finally { el.salvar.disabled = false; el.salvar.innerHTML = original; }
   });
 })();

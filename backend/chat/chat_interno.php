@@ -212,20 +212,44 @@ switch ($chatRota) {
         if (!$resultado['ok']) {
             out(['ok' => false, 'code' => 'CHAT_MESSAGE_NOT_FOUND', 'user_msg' => 'Mensagem não encontrada nesta conversa.'], 404);
         }
+        $restantes = null;
+        // Conversa lida até a última mensagem relevante: conclui a notificação da central.
+        // Falha aqui não desfaz nem bloqueia a leitura (a sincronização reconcilia depois).
+        try {
+            $restantes = chatQuantidadeNaoLidasConversaUsuario($conexao, $idConversa, (int)$chatCtx['id_usuario']);
+            if ($restantes === 0) {
+                require_once __DIR__ . '/../_servicos/notificacao.php';
+                notificacaoConcluirChatConversa($conexao, (int)$chatCtx['id_empresa'], $idConversa, (int)$chatCtx['id_usuario']);
+            }
+        } catch (Throwable $e) {
+            error_log('[chat/leitura/marcar] Notificação não concluída: ' . $e->getMessage());
+        }
         out(['ok' => true, 'code' => 'CHAT_READ_MARKED', 'data' => [
             'id_conversa' => $idConversa,
             'id_ultima_mensagem_lida' => $resultado['id_ultima_mensagem_lida'],
+            'quantidade_nao_lidas' => $restantes,
         ]]);
     }
 
     case 'chat/conversa/encerrar': {
         if (!$chatCtx['pode_encerrar']) $chatSemPermissao('chat.encerrar');
         $idConversa = $chatIdConversa($_POST);
-        // Auditoria do encerramento pendente: auditoria.chk_auditoria_modulo ainda não aceita 'chat'.
-        $resultado = chatEncerrarConversa($conexao, $chatCtx, $idConversa);
-        if ($resultado === 'nao_encontrada') $chatNaoEncontrada();
-        if ($resultado === 'ja_encerrada') {
-            out(['ok' => false, 'code' => 'CHAT_ALREADY_CLOSED', 'user_msg' => 'Esta conversa já está encerrada.'], 409);
+        try {
+            $conexao->begin_transaction();
+            $resultado = chatEncerrarConversa($conexao, $chatCtx, $idConversa);
+            if ($resultado === 'nao_encontrada') {
+                $conexao->rollback();
+                $chatNaoEncontrada();
+            }
+            if ($resultado === 'ja_encerrada') {
+                $conexao->rollback();
+                out(['ok' => false, 'code' => 'CHAT_ALREADY_CLOSED', 'user_msg' => 'Esta conversa já está encerrada.'], 409);
+            }
+            if (!$conexao->commit()) throw new RuntimeException('Falha ao confirmar o encerramento da conversa.');
+        } catch (Throwable $e) {
+            try { $conexao->rollback(); } catch (Throwable) {}
+            error_log('[chat/conversa/encerrar] ' . $e->getMessage());
+            out(['ok' => false, 'code' => 'INTERNAL_ERROR', 'user_msg' => 'Não foi possível encerrar a conversa.'], 500);
         }
         out(['ok' => true, 'code' => 'CHAT_CONVERSATION_CLOSED', 'data' => ['id_conversa' => $idConversa, 'status' => 'encerrada']]);
     }

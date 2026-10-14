@@ -67,6 +67,16 @@
   }
 
   .sidebar-item { min-height: 54px; }
+
+  /* Drawer: o texto está sempre visível, então o badge vira pílula à direita. */
+  .sidebar-badge,
+  body.sidebar-agenda-aberta .sidebar-badge {
+    position: static;
+    margin: 0 12px 0 auto;
+    flex: 0 0 auto;
+  }
+
+  body.sidebar-agenda-aberta .sidebar-abrir-badge { display: none; }
   .sidebar-ajuda { margin-top: auto; }
 
   .sidebar-overlay {

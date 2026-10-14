@@ -135,12 +135,19 @@
               <button id="chatVoltar" class="chat-voltar" type="button" aria-label="Voltar para a lista de conversas">
                 <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
               </button>
+              <span id="chatConversaAvatar" class="chat-avatar chat-avatar-cabecalho" aria-hidden="true"></span>
               <div class="chat-conversa-titulo">
                 <h2 id="chatClienteNome">Conversa</h2>
                 <p id="chatConversaMeta"></p>
+                <!-- Chat: status é informação da conversa, não ação (fica junto da identificação). -->
+                <span id="chatStatusConversa" class="chat-status" aria-live="polite"></span>
               </div>
               <div class="chat-conversa-acoes">
-                <span id="chatStatusConversa" class="chat-status" aria-live="polite"></span>
+                <!-- Chat: abre o agendamento vinculado no modal oficial da Agenda (deep link). -->
+                <button id="chatAbrirAgendamento" class="chat-botao-secundario chat-abrir-agendamento" type="button" title="Abrir agendamento" aria-label="Abrir agendamento" hidden>
+                  <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                  <span class="chat-abrir-agendamento-texto">Abrir agendamento</span>
+                </button>
                 <button id="chatEncerrar" class="chat-botao-perigo" type="button" hidden>Encerrar</button>
               </div>
             </header>
@@ -236,6 +243,7 @@
   <script src="../../js/menu-lateral/menu-lateral.js?v=1.0.19"></script>
   <script src="../../js/notificacoes/notificacoes.js?v=1.0.19"></script> <!--Centro de notificações e experiência de senha temporária-->
   <script src="../../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
+  <script src="../../js/chat/chat-nao-lidas.js?v=1.0.19"></script> <!--Contador global de conversas não lidas (badge do menu)-->
   <script src="../../js/chat/chat-interno.js?v=1.0.19"></script>
   <script src="/public/_auth/deslogar.js?v=1.0.19"></script> <!--Sair do sistema (botão Sair do modal perfil)-->
   <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.19"></script> <!--Alterar foto do modal perfil-->

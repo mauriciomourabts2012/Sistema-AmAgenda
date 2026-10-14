@@ -168,10 +168,6 @@
   // =========================
   // Chat: abrir/iniciar conversa pelo agendamento
   // =========================
-  const CHAT_API_INICIAR = "/public/api/api_central.php?path=chat/conversa/iniciar";
-  const CHAT_PAGINA = "/public/views/chat/chat-interno.html";
-  let abrindoConversaChat = false;
-
   // Somente orientação visual; o backend do Chat continua sendo a autoridade final.
   function podeAbrirConversaChat() {
     const auth = window.__AUTH__ || {};
@@ -197,43 +193,469 @@
     uiToast(tipo === "erro" ? "danger" : "warning", "Chat", "Não foi possível abrir a conversa deste agendamento.");
   }
 
-  async function abrirConversaDoAgendamento(idAgendamento) {
-    if (abrindoConversaChat) return;
+  function abrirConversaDoAgendamento(idAgendamento) {
     const id = String(idAgendamento || "").trim();
     if (!/^[1-9]\d{0,17}$/.test(id)) return;
     if (!podeAbrirConversaChat()) {
       avisoConversaChat("aviso", "Você não possui permissão para abrir conversas.");
       return;
     }
+    if (typeof window.ChatModalAgenda?.abrir !== "function") {
+      avisoConversaChat("erro", "O Chat rápido não está disponível no momento.");
+      return;
+    }
+    window.ChatModalAgenda.abrir(id);
+  }
 
-    abrindoConversaChat = true;
-    const botoes = [...document.querySelectorAll('.agenda-menu-item[data-acao="abrir_conversa"]')];
-    botoes.forEach((botao) => { botao.disabled = true; });
+  // ============================================================
+  // AGENDA — AÇÃO RÁPIDA CONFIRMAR
+  // ============================================================
+  // Somente orientação visual: o backend (agenda/agendamento/editar) é a autoridade de empresa,
+  // permissão, escopo do profissional, conflito, auditoria, notificações e Chat.
+  function podeConfirmarAgendamento(item) {
+    return podeExecutarAcaoRapida(item, "confirmar");
+  }
+
+  const ACOES_RAPIDAS_AGENDAMENTO = Object.freeze({
+    confirmar: Object.freeze({ origens: ["pendente"], destino: "confirmado", exigeInicio: false, titulo: "Confirmar agendamento?", pergunta: "Deseja confirmar este agendamento?", textoConfirmar: "Confirmar", sucesso: "Agendamento confirmado.", erro: "Não foi possível confirmar o agendamento." }),
+    concluir: Object.freeze({ origens: ["confirmado"], destino: "concluido", exigeInicio: true, titulo: "Concluir agendamento?", pergunta: "Deseja registrar este agendamento como concluído?", textoConfirmar: "Concluir", sucesso: "Agendamento concluído.", erro: "Não foi possível concluir o agendamento." }),
+    faltou: Object.freeze({ origens: ["confirmado"], destino: "faltou", exigeInicio: true, titulo: "Registrar falta?", pergunta: "Deseja registrar que o cliente faltou a este agendamento?", textoConfirmar: "Registrar falta", sucesso: "Falta registrada.", erro: "Não foi possível registrar a falta." }),
+    cancelar: Object.freeze({ origens: ["pendente", "confirmado"], destino: "cancelado", exigeInicio: false, titulo: "Cancelar agendamento?", pergunta: "Deseja cancelar este agendamento?", textoConfirmar: "Cancelar agendamento", sucesso: "Agendamento cancelado.", erro: "Não foi possível cancelar o agendamento." }),
+  });
+
+  function inicioAgendamentoAtingido(item, agora = new Date()) {
+    const data = String(item?.data_agendamento ?? item?.data ?? "");
+    const hora = String(item?.hora_inicio ?? item?.hora ?? "").slice(0, 5);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(hora)) return false;
+    const inicio = new Date(`${data}T${hora}:00`);
+    return !Number.isNaN(inicio.getTime()) && inicio <= agora;
+  }
+
+  function podeExecutarAcaoRapida(item, acao, agora = new Date()) {
+    const definicao = ACOES_RAPIDAS_AGENDAMENTO[acao];
+    if (!definicao || !definicao.origens.includes(normalizarStatus(item?.status))) return false;
+    if (typeof window.usuarioPode !== "function" || window.usuarioPode("agenda.editar_agendamento") !== true) return false;
+    if (acao === "cancelar" && window.usuarioPode("agenda.cancelar_agendamento") !== true) return false;
+    return !definicao.exigeInicio || inicioAgendamentoAtingido(item, agora);
+  }
+
+  function avisoDeepLinkAgendamento(codigoNotificacao, statusBruto) {
+    const status = normalizarStatus(statusBruto);
+    if (codigoNotificacao === "agenda.agendamento_pendente") {
+      return status === "pendente" ? "" : "Este agendamento não está mais pendente.";
+    }
+    if (codigoNotificacao !== "agenda.agendamento_finalizacao_pendente" || status === "confirmado") return "";
+    return ({
+      concluido: "Este agendamento já foi concluído.",
+      cancelado: "Este agendamento foi cancelado.",
+      faltou: "A falta deste agendamento já foi registrada.",
+    })[status] || "Este agendamento não está mais aguardando finalização.";
+  }
+
+  const CODIGOS_NOTIFICACAO_AGENDAMENTO = Object.freeze(["agenda.agendamento_pendente", "agenda.agendamento_finalizacao_pendente"]);
+
+  // Item do menu de três pontos para uma ação rápida; a visibilidade final é revista ao abrir o menu.
+  function botaoAcaoRapidaMenu(item, acao, classe, icone, rotulo) {
+    const id = C.escapeHtml(item.id_agendamento ?? item.id ?? "");
+    return `
+          <button class="agenda-menu-item agenda-menu-item--acao-rapida ${classe}" type="button"
+            data-acao-rapida="${acao}" data-id-agendamento="${id}"${podeExecutarAcaoRapida(item, acao) ? "" : " hidden"}>
+            <i class="${icone}"></i> <span>${rotulo}</span>
+          </button>`;
+  }
+
+  const acoesRapidasEmAndamento = new Set();
+
+  function estadoAcaoRapida(id, acao, carregando) {
+    const detail = { id_agendamento: id, acao, carregando };
+    document.dispatchEvent(new CustomEvent("agenda:agendamento:acao-rapida-estado", { detail }));
+    // Evento existente preservado para integrações que acompanham a confirmação rápida.
+    if (acao === "confirmar") document.dispatchEvent(new CustomEvent("agenda:agendamento:confirmacao-estado", { detail }));
+  }
+
+  async function apiConfirmacaoAgenda(path, { metodo = "GET", parametros = {}, corpo = null } = {}) {
+    const url = new URL("/public/api/api_central.php", window.location.origin);
+    url.searchParams.set("path", path);
+    Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, String(valor)));
+    const headers = { Accept: "application/json" };
+    if (metodo !== "GET") headers["X-CSRF-Token"] = String(window.__AUTH__?.csrf_token || "");
+    const resposta = await fetch(url.toString(), { method: metodo, headers, body: corpo, credentials: "same-origin", cache: "no-store" });
+    const json = await resposta.json().catch(() => null);
+    if (!resposta.ok || json?.ok !== true) {
+      throw new Error(String(json?.user_msg || "Não foi possível atualizar o agendamento."));
+    }
+    return json;
+  }
+
+  function mensagemConfirmacao(tipo, mensagem) {
+    // MensagemSistema exibe como texto; o fallback usa somente textos fixos.
+    if (window.MensagemSistema?.[tipo]) {
+      window.MensagemSistema[tipo](mensagem, { titulo: "Agendamento" });
+      return;
+    }
+    uiToast(tipo === "sucesso" ? "success" : "danger", "Agendamento",
+      tipo === "sucesso" ? "Agendamento confirmado." : "Não foi possível confirmar o agendamento.");
+  }
+
+  // Fluxo aprovado da confirmação, generalizado sem alterar seus passos: detalhar o estado
+  // oficial, reenviar o snapshot e deixar o backend travar e alterar somente o status.
+  async function executarAcaoRapidaAgendamento(idBruto, acao) {
+    const id = String(idBruto || "").trim();
+    const definicao = ACOES_RAPIDAS_AGENDAMENTO[acao];
+    if (!definicao || !/^[1-9]\d{0,17}$/.test(id) || acoesRapidasEmAndamento.has(id) || !window.MensagemSistema?.confirmar) return;
+    const confirmado = await window.MensagemSistema.confirmar(definicao.pergunta, {
+      titulo: definicao.titulo, textoConfirmar: definicao.textoConfirmar, textoCancelar: "Voltar"
+    });
+    if (!confirmado || acoesRapidasEmAndamento.has(id)) return;
+
+    acoesRapidasEmAndamento.add(id);
+    estadoAcaoRapida(id, acao, true);
     try {
-      const corpo = new URLSearchParams();
-      corpo.set("id_agendamento", id);
-      const resposta = await fetch(CHAT_API_INICIAR, {
-        method: "POST",
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
-        },
-        body: corpo.toString(),
-      });
-      const json = await resposta.json().catch(() => null);
-      const idConversa = Number(json?.data?.conversa?.id_conversa);
-      if (!resposta.ok || json?.ok !== true || !Number.isInteger(idConversa) || idConversa <= 0) {
-        throw new Error(String(json?.user_msg || "Não foi possível abrir a conversa deste agendamento."));
+      const atual = (await apiConfirmacaoAgenda("agenda/agendamento/detalhar", { parametros: { id_agendamento: id } })).data || {};
+      if (String(atual.id_agendamento) !== id) throw new Error(definicao.erro);
+      if (!definicao.origens.includes(normalizarStatus(atual.status))) {
+        mensagemConfirmacao("aviso", acao === "confirmar"
+          ? "Este agendamento não está mais pendente. Atualize a agenda."
+          : "O status deste agendamento foi alterado. Atualize a agenda.");
+        return;
       }
-      // Conversa existente ou recém-criada: o backend devolve o mesmo formato.
-      window.location.assign(`${CHAT_PAGINA}?id_conversa=${encodeURIComponent(String(idConversa))}`);
+      if (definicao.exigeInicio && !inicioAgendamentoAtingido(atual)) {
+        mensagemConfirmacao("aviso", "Este atendimento ainda não começou.");
+        return;
+      }
+      const corpo = new FormData();
+      corpo.set("acao_rapida", acao);
+      corpo.set("id_agendamento", id);
+      corpo.set("id_cliente", String(atual.id_cliente ?? ""));
+      corpo.set("id_profissional", String(atual.id_profissional ?? ""));
+      corpo.set("id_servico", String(atual.id_servico ?? ""));
+      corpo.set("duracao", String(atual.duracao_min_aplicada ?? ""));
+      corpo.set("data_agendamento", String(atual.data_agendamento ?? ""));
+      corpo.set("hora_inicio", String(atual.hora_inicio ?? "").slice(0, 5));
+      corpo.set("status", definicao.destino);
+      corpo.set("observacao", String(atual.observacao ?? ""));
+      corpo.set("repetir_semanalmente", Number(atual.repetir_semanalmente) === 1 ? "1" : "0");
+      corpo.set("recorrencia_data_fim", String(atual.recorrencia_data_fim ?? ""));
+      const resposta = await apiConfirmacaoAgenda("agenda/agendamento/editar", { metodo: "POST", corpo });
+      mensagemConfirmacao("sucesso", definicao.sucesso);
+      (resposta.data?.avisos_plano || []).forEach((aviso) => mensagemConfirmacao("aviso", String(aviso?.mensagem || "O consumo mensal do plano está próximo do limite.")));
+      document.dispatchEvent(new CustomEvent("agenda:agendamento:status-atualizado", { detail: { id_agendamento: id, status: definicao.destino } }));
+      // Evento aprovado da confirmação permanece disponível sem conduzir o novo fluxo.
+      if (acao === "confirmar") document.dispatchEvent(new CustomEvent("agenda:agendamento:confirmado", { detail: { id_agendamento: id } }));
+      window.CentroNotificacoes?.carregar?.();
     } catch (erro) {
-      abrindoConversaChat = false;
-      botoes.forEach((botao) => { botao.disabled = false; });
-      avisoConversaChat("erro", erro?.message || "Não foi possível abrir a conversa deste agendamento.");
+      mensagemConfirmacao("erro", erro?.message || definicao.erro);
+    } finally {
+      acoesRapidasEmAndamento.delete(id);
+      estadoAcaoRapida(id, acao, false);
+    }
+  }
+
+  function confirmarAgendamentoRapido(idBruto) {
+    return executarAcaoRapidaAgendamento(idBruto, "confirmar");
+  }
+
+  function atualizarAcoesConfirmar() {
+    document.querySelectorAll(".agenda-menu-item[data-acao-rapida]").forEach((botao) => {
+      const card = botao.closest(".agenda-card");
+      botao.hidden = !podeExecutarAcaoRapida({
+        status: card?.dataset.status,
+        data_agendamento: card?.dataset.data,
+        hora_inicio: card?.dataset.horaInicio,
+      }, String(botao.dataset.acaoRapida || ""));
+    });
+    document.querySelectorAll('.agenda-menu-item[data-acao="editar"]').forEach((botao) => {
+      botao.hidden = typeof window.usuarioPode !== "function" || window.usuarioPode("agenda.editar_agendamento") !== true;
+    });
+    document.querySelectorAll('.agenda-menu-item[data-acao="excluir"]').forEach((botao) => {
+      botao.hidden = typeof window.usuarioPode !== "function" || window.usuarioPode("agenda.excluir_agendamento") !== true;
+    });
+    const modal = document.getElementById("modalVisualizarAgendamento");
+    const botaoModal = document.getElementById("vc_btn_confirmar");
+    const botaoAtraso = document.getElementById("vc_btn_informar_atraso");
+    if ((botaoModal || botaoAtraso) && modal?.dataset.status) {
+      if (botaoModal) botaoModal.hidden = !podeConfirmarAgendamento({ status: modal.dataset.status });
+      if (botaoAtraso) {
+        botaoAtraso.hidden = !podeInformarAtraso({
+          status: modal.dataset.status,
+          data_agendamento: modal.dataset.dataAgendamento
+        });
+      }
+      const acoesModal = document.getElementById("vc_confirmar_acoes");
+      if (acoesModal) acoesModal.hidden = Boolean(botaoModal?.hidden) && Boolean(botaoAtraso?.hidden);
+    }
+  }
+
+  // ============================================================
+  // INFORMAR ATRASO
+  // ============================================================
+  const atrasoEstado = { agendamento: null, minutos: null, previa: null, ocupado: false };
+  let recarregarAgendaAposAtraso = null;
+
+  function dataLocalIsoHoje() {
+    const agora = new Date();
+    const ano = agora.getFullYear();
+    const mes = String(agora.getMonth() + 1).padStart(2, "0");
+    const dia = String(agora.getDate()).padStart(2, "0");
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  function podeInformarAtraso(item) {
+    return normalizarStatus(item?.status) === "confirmado"
+      && String(item?.data_agendamento ?? item?.data ?? "") === dataLocalIsoHoje()
+      && typeof window.usuarioPode === "function"
+      && window.usuarioPode("agenda.editar_agendamento") === true;
+  }
+
+  function elementoAtraso(id) { return document.getElementById(id); }
+
+  function abrirModalAtraso(item) {
+    const dataAgendamento = String(item?.data_agendamento ?? item?.data ?? "");
+    const outrosCriteriosValidos = normalizarStatus(item?.status) === "confirmado"
+      && typeof window.usuarioPode === "function"
+      && window.usuarioPode("agenda.editar_agendamento") === true;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataAgendamento)
+      && dataAgendamento !== dataLocalIsoHoje()
+      && outrosCriteriosValidos) {
+      const titulo = "Não é possível informar atraso";
+      const descricao = "Você só pode informar atrasos em agendamentos do dia de hoje.";
+      if (typeof window.MensagemSistema?.aviso === "function") {
+        window.MensagemSistema.aviso(descricao, { titulo });
+      } else {
+        uiToast("warning", titulo, descricao);
+      }
+      return;
+    }
+    if (!podeInformarAtraso(item)) {
+      mensagemConfirmacao("aviso", "Este agendamento não está disponível para informar atraso.");
+      return;
+    }
+    const modal = elementoAtraso("modalInformarAtraso");
+    if (!modal) return;
+    limparEstadoAtraso();
+    atrasoEstado.agendamento = item;
+    elementoAtraso("atraso_cliente").textContent = resolveCliente(item) || "Cliente";
+    elementoAtraso("atraso_horario_atual").textContent = `Horário atual: ${String(item.hora_inicio || item.hora || "—").slice(0, 5)}`;
+    elementoAtraso("atraso_profissional").textContent = `Profissional: ${resolveProfissional(item) || "—"}`;
+    modal.classList.add("ativo");
+    modal.setAttribute("aria-hidden", "false");
+    elementoAtraso("atraso_minutos")?.focus();
+  }
+
+  function fecharModalAtraso() {
+    const modal = elementoAtraso("modalInformarAtraso");
+    if (modal) {
+      modal.classList.remove("ativo");
+      modal.setAttribute("aria-hidden", "true");
+    }
+    limparEstadoAtraso();
+  }
+
+  function limparEstadoAtraso() {
+    atrasoEstado.agendamento = null;
+    atrasoEstado.minutos = null;
+    atrasoEstado.previa = null;
+    atrasoEstado.ocupado = false;
+    const campo = elementoAtraso("atraso_minutos");
+    if (campo) campo.value = "";
+    document.querySelectorAll("[data-atraso-preset]").forEach((botao) => botao.classList.remove("ativo"));
+    elementoAtraso("atraso_previa")?.setAttribute("hidden", "");
+    elementoAtraso("atraso_resultado")?.setAttribute("hidden", "");
+    elementoAtraso("atraso_avisos")?.setAttribute("hidden", "");
+    elementoAtraso("atraso_bloqueios")?.setAttribute("hidden", "");
+    limparConteudoAtraso("atraso_afetados");
+    limparConteudoAtraso("atraso_avisos");
+    limparConteudoAtraso("atraso_bloqueios");
+    limparConteudoAtraso("atraso_resultado_clientes");
+    const resumo = elementoAtraso("atraso_resultado_resumo");
+    if (resumo) resumo.textContent = "";
+    mostrarFeedbackAtraso("", "");
+    atualizarBotoesAtraso();
+  }
+
+  function limparConteudoAtraso(id) { elementoAtraso(id)?.replaceChildren(); }
+
+  function mostrarFeedbackAtraso(tipo, mensagem) {
+    const feedback = elementoAtraso("atraso_feedback");
+    if (!feedback) return;
+    feedback.textContent = mensagem;
+    feedback.className = `atraso-feedback${tipo ? ` atraso-feedback--${tipo}` : ""}`;
+    feedback.hidden = !mensagem;
+  }
+
+  function atualizarBotoesAtraso() {
+    const temPrevia = atrasoEstado.previa !== null;
+    const bloqueada = (atrasoEstado.previa?.bloqueios || []).length > 0 || atrasoEstado.previa?.valida === false;
+    const aplicada = Boolean(atrasoEstado.previa?.aplicada);
+    const verImpacto = elementoAtraso("atraso_ver_impacto");
+    const alterar = elementoAtraso("atraso_alterar");
+    const confirmar = elementoAtraso("atraso_confirmar");
+    if (verImpacto) { verImpacto.hidden = temPrevia || aplicada; verImpacto.disabled = atrasoEstado.ocupado; }
+    if (alterar) { alterar.hidden = !temPrevia || aplicada; alterar.disabled = atrasoEstado.ocupado; }
+    if (confirmar) { confirmar.hidden = !temPrevia || aplicada; confirmar.disabled = atrasoEstado.ocupado || bloqueada; }
+  }
+
+  async function apiAtrasoAgenda(path, { metodo = "GET", parametros = {}, corpo = null } = {}) {
+    const url = new URL("/public/api/api_central.php", window.location.origin);
+    url.searchParams.set("path", path);
+    Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, String(valor)));
+    const headers = { Accept: "application/json" };
+    if (metodo !== "GET") headers["X-CSRF-Token"] = String(window.__AUTH__?.csrf_token || "");
+    const resposta = await fetch(url.toString(), { method: metodo, headers, body: corpo, credentials: "same-origin", cache: "no-store" });
+    const json = await resposta.json().catch(() => null);
+    if (!resposta.ok || json?.ok !== true) {
+      const erro = new Error(String(json?.user_msg || "Não foi possível processar o atraso agora."));
+      erro.code = String(json?.code || "");
+      throw erro;
+    }
+    return json;
+  }
+
+  function rotuloAtraso(tipo) {
+    const rotulos = {
+      ultrapassa_expediente: "O novo horário ultrapassa o expediente.",
+      invade_almoco: "O novo horário invade o intervalo de almoço.",
+      fora_horario_especial: "O novo horário fica fora do horário especial.",
+      invade_bloqueio: "O novo horário invade um bloqueio da agenda.",
+      ultrapassa_meia_noite: "O atendimento ultrapassaria a meia-noite.",
+      agendamento_ja_iniciado: "A cascata alcança um atendimento já iniciado.",
+      dia_indisponivel: "O dia está indisponível para este atendimento."
+    };
+    return rotulos[tipo] || "Há uma condição que exige atenção na agenda.";
+  }
+
+  function renderizarAlertasAtraso(id, itens, tipo) {
+    const destino = elementoAtraso(id);
+    if (!destino) return;
+    destino.replaceChildren();
+    if (!Array.isArray(itens) || itens.length === 0) { destino.hidden = true; return; }
+    const titulo = document.createElement("strong");
+    titulo.textContent = tipo === "bloqueio" ? "Não é possível aplicar este atraso" : "Atenção antes de confirmar";
+    const lista = document.createElement("ul");
+    itens.forEach((item) => {
+      const linha = document.createElement("li");
+      linha.textContent = rotuloAtraso(String(item?.tipo || ""));
+      lista.append(linha);
+    });
+    destino.append(titulo, lista);
+    destino.hidden = false;
+  }
+
+  function renderizarPreviaAtraso(previa) {
+    const area = elementoAtraso("atraso_previa");
+    if (!area) return;
+    const afetados = Array.isArray(previa?.afetados) ? previa.afetados : [];
+    const resumo = elementoAtraso("atraso_resumo_texto");
+    if (resumo) resumo.textContent = `${afetados.length} cliente${afetados.length === 1 ? "" : "s"} afetado${afetados.length === 1 ? "" : "s"} por ${previa.atraso_min} minuto${Number(previa.atraso_min) === 1 ? "" : "s"}.`;
+    renderizarAlertasAtraso("atraso_avisos", previa?.avisos, "aviso");
+    renderizarAlertasAtraso("atraso_bloqueios", previa?.bloqueios, "bloqueio");
+    const lista = elementoAtraso("atraso_afetados");
+    lista?.replaceChildren();
+    afetados.forEach((afetado) => {
+      const item = document.createElement("article");
+      item.className = "atraso-afetado";
+      const nome = document.createElement("strong");
+      nome.textContent = String(afetado?.cliente_nome || "Cliente");
+      const horario = document.createElement("span");
+      horario.textContent = `${String(afetado?.hora_original || "—").slice(0, 5)} → ${String(afetado?.nova_hora || "—").slice(0, 5)}`;
+      const deslocamento = document.createElement("small");
+      const minutos = Number(afetado?.deslocamento_min || 0);
+      deslocamento.textContent = `Atraso real: ${minutos} minuto${minutos === 1 ? "" : "s"}`;
+      item.append(nome, horario, deslocamento);
+      lista?.append(item);
+    });
+    area.hidden = false;
+  }
+
+  function renderizarResultadoComunicacao(dados) {
+    const comunicacao = dados?.comunicacao || {};
+    const area = elementoAtraso("atraso_resultado");
+    const resumo = elementoAtraso("atraso_resultado_resumo");
+    const clientes = Array.isArray(comunicacao.clientes) ? comunicacao.clientes : [];
+    if (resumo) {
+      const total = Number(comunicacao.total_clientes || dados?.total_afetados || 0);
+      const completos = Number(comunicacao.sucesso_completo || 0);
+      const pendencias = Number(comunicacao.com_pendencia || 0);
+      resumo.textContent = pendencias > 0
+        ? `Atraso aplicado com sucesso. ${total} clientes afetados; ${completos} avisados completamente e ${pendencias} com comunicação pendente.`
+        : `Atraso aplicado com sucesso. ${total} clientes afetados; todos avisados em todos os canais.`;
+    }
+    const lista = elementoAtraso("atraso_resultado_clientes");
+    lista?.replaceChildren();
+    clientes.forEach((cliente) => {
+      const item = document.createElement("article");
+      item.className = "atraso-resultado-cliente";
+      const nome = document.createElement("strong");
+      nome.textContent = String(cliente?.cliente_nome || "Cliente");
+      const canais = document.createElement("span");
+      canais.textContent = `Chat: ${String(cliente?.chat?.status || "falhou")} · Notificação: ${String(cliente?.notificacao?.status || "falhou")}`;
+      item.append(nome, canais);
+      lista?.append(item);
+    });
+    if (area) area.hidden = false;
+  }
+
+  async function verImpactoAtraso() {
+    const id = String(atrasoEstado.agendamento?.id_agendamento ?? atrasoEstado.agendamento?.id ?? "");
+    const minutos = Number(elementoAtraso("atraso_minutos")?.value);
+    if (!/^[1-9]\d{0,17}$/.test(id) || !Number.isInteger(minutos) || minutos < 5 || minutos > 180) {
+      mostrarFeedbackAtraso("erro", "Informe um atraso entre 5 e 180 minutos.");
+      return;
+    }
+    if (atrasoEstado.ocupado) return;
+    atrasoEstado.ocupado = true;
+    atrasoEstado.minutos = minutos;
+    mostrarFeedbackAtraso("carregando", "Calculando o impacto na agenda…");
+    atualizarBotoesAtraso();
+    try {
+      const resposta = await apiAtrasoAgenda("agenda/agendamento/atraso/previa", { parametros: { id_agendamento: id, minutos_atraso: minutos } });
+      atrasoEstado.previa = resposta.data || null;
+      renderizarPreviaAtraso(atrasoEstado.previa || {});
+      mostrarFeedbackAtraso((atrasoEstado.previa?.bloqueios || []).length ? "erro" : "sucesso", (atrasoEstado.previa?.bloqueios || []).length ? "Altere o atraso para continuar." : "Confira o impacto antes de confirmar.");
+    } catch (erro) {
+      atrasoEstado.previa = null;
+      mostrarFeedbackAtraso("erro", erro?.message || "Não foi possível calcular o impacto agora.");
+    } finally {
+      atrasoEstado.ocupado = false;
+      atualizarBotoesAtraso();
+    }
+  }
+
+  async function aplicarAtraso() {
+    if (atrasoEstado.ocupado || !atrasoEstado.previa || (atrasoEstado.previa?.bloqueios || []).length || atrasoEstado.previa?.valida === false) return;
+    const id = String(atrasoEstado.agendamento?.id_agendamento ?? atrasoEstado.agendamento?.id ?? "");
+    const confirmacao = await window.MensagemSistema?.confirmar?.("Confirmar a aplicação deste atraso na agenda?", {
+      titulo: "Confirmar atraso?", textoConfirmar: "Confirmar atraso", textoCancelar: "Voltar"
+    });
+    if (!confirmacao || atrasoEstado.ocupado) return;
+    atrasoEstado.ocupado = true;
+    mostrarFeedbackAtraso("carregando", "Aplicando atraso e comunicando os clientes…");
+    atualizarBotoesAtraso();
+    try {
+      const corpo = new FormData();
+      corpo.set("id_agendamento", id);
+      corpo.set("minutos_atraso", String(atrasoEstado.minutos));
+      corpo.set("impressao_digital", JSON.stringify(atrasoEstado.previa.impressao_digital));
+      const resposta = await apiAtrasoAgenda("agenda/agendamento/atraso/aplicar", { metodo: "POST", corpo });
+      atrasoEstado.previa = { ...atrasoEstado.previa, aplicada: true };
+      renderizarResultadoComunicacao(resposta.data || {});
+      mostrarFeedbackAtraso("sucesso", "Atraso aplicado com sucesso.");
+      try {
+        await recarregarAgendaAposAtraso?.();
+      } catch (erroRecarregar) {
+        console.error("[lista-agenda:atraso]", erroRecarregar);
+      }
+    } catch (erro) {
+      if (erro?.code === "DELAY_PREVIEW_OUTDATED") {
+        atrasoEstado.previa = null;
+        elementoAtraso("atraso_previa")?.setAttribute("hidden", "");
+        mostrarFeedbackAtraso("erro", "A agenda mudou desde a prévia. Atualize o impacto antes de confirmar novamente.");
+      } else {
+        mostrarFeedbackAtraso("erro", erro?.message || "Não foi possível aplicar o atraso agora.");
+      }
+    } finally {
+      atrasoEstado.ocupado = false;
+      atualizarBotoesAtraso();
     }
   }
 
@@ -241,6 +663,11 @@
     const pago = item.pagamento_confirmado === true;
     const statusChat = normalizarStatus(item.status);
     const exibirChat = statusChat === "pendente" || statusChat === "confirmado";
+    const exibirConfirmar = statusChat === "pendente";
+    const exibirAtraso = statusChat === "confirmado";
+    // Concluído, cancelado e faltou não oferecem ações rápidas de mudança de status.
+    const exibirFinalizacao = statusChat === "confirmado";
+    const exibirCancelar = statusChat === "pendente" || statusChat === "confirmado";
     return `
       <div class="agenda-menu" role="menu">
         <button class="agenda-menu-item" type="button"
@@ -254,12 +681,35 @@
           </button>
         ` : ""}
 
+        ${exibirConfirmar ? `
+          <button class="agenda-menu-item agenda-menu-item--confirmar" type="button"
+            data-acao="confirmar" data-acao-rapida="confirmar" data-id-agendamento="${C.escapeHtml(item.id_agendamento ?? item.id ?? "")}"${podeConfirmarAgendamento(item) ? "" : " hidden"}>
+            <i class="fa-regular fa-circle-check"></i> <span>Confirmar</span>
+          </button>
+        ` : ""}
+
+        ${exibirFinalizacao ? `
+          ${botaoAcaoRapidaMenu(item, "concluir", "agenda-menu-item--concluir", "fa-regular fa-square-check", "Concluir")}
+          ${botaoAcaoRapidaMenu(item, "faltou", "agenda-menu-item--faltou", "fa-solid fa-user-xmark", "Registrar falta")}
+        ` : ""}
+
+        ${exibirAtraso ? `
+          <button class="agenda-menu-item agenda-menu-item--atraso" type="button"
+            data-acao="informar_atraso" data-id-agendamento="${C.escapeHtml(item.id_agendamento ?? item.id ?? "")}"${podeInformarAtraso(item) ? "" : " hidden"}>
+            <i class="fa-regular fa-clock"></i> <span>Informar atraso</span>
+          </button>
+        ` : ""}
+
         ${!pago ? `
           <button class="agenda-menu-item" type="button"
             data-acao="editar" data-abrir-modal="modalEditarAgendamento">
             <i class="fa-regular fa-pen-to-square"></i> Editar
           </button>
+        ` : ""}
 
+        ${exibirCancelar ? botaoAcaoRapidaMenu(item, "cancelar", "danger", "fa-regular fa-circle-xmark", "Cancelar") : ""}
+
+        ${!pago ? `
           <button class="agenda-menu-item danger" type="button" data-acao="excluir">
             <i class="fa-regular fa-trash-can"></i> Excluir
           </button>
@@ -463,7 +913,31 @@
     set("vc_obs", item.observacao || item.obs || "Nenhuma observação informada.");
 
     const chip = document.getElementById("vc_chip_status");
-    if (chip) { const status = normalizarStatus(item.status); chip.textContent = ({pendente:"Pendente",confirmado:"Confirmado",concluido:"Concluído",cancelado:"Cancelado",faltou:"Faltou"})[status] || item.status; chip.dataset.status = status; }
+    const status = normalizarStatus(item.status);
+    if (chip) { chip.textContent = ({pendente:"Pendente",confirmado:"Confirmado",concluido:"Concluído",cancelado:"Cancelado",faltou:"Faltou"})[status] || item.status; chip.dataset.status = status; }
+    const modal = document.getElementById("modalVisualizarAgendamento");
+    if (modal) {
+      modal.dataset.idAgendamento = String(item.id_agendamento ?? item.id ?? "");
+      modal.dataset.status = status;
+      modal.dataset.dataAgendamento = String(item.data_agendamento ?? item.data ?? "");
+    }
+    const confirmar = document.getElementById("vc_btn_confirmar");
+    if (confirmar) {
+      confirmar.dataset.idAgendamento = String(item.id_agendamento ?? item.id ?? "");
+      confirmar.hidden = !podeConfirmarAgendamento(item);
+      confirmar.disabled = false;
+      confirmar.innerHTML = '<i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>Confirmar agendamento</span>';
+      const acoesConfirmar = document.getElementById("vc_confirmar_acoes");
+      if (acoesConfirmar) acoesConfirmar.hidden = confirmar.hidden;
+    }
+    const atraso = document.getElementById("vc_btn_informar_atraso");
+    if (atraso) {
+      atraso.dataset.idAgendamento = String(item.id_agendamento ?? item.id ?? "");
+      atraso.hidden = !podeInformarAtraso(item);
+      atraso.disabled = false;
+      const acoesConfirmar = document.getElementById("vc_confirmar_acoes");
+      if (acoesConfirmar) acoesConfirmar.hidden = Boolean(confirmar?.hidden) && atraso.hidden;
+    }
     const whats = document.getElementById("vc_btn_whats");
     if (whats) { whats.disabled = onlyDigits(telefone).length < 10; whats.onclick = () => abrirWhatsapp({ telefone, cliente, servico: resolveServico(item), hora: item.hora_inicio || item.hora }); }
     const copiar = document.getElementById("vc_btn_copiar_tel");
@@ -785,6 +1259,15 @@
       const btnWhats  = ev.target.closest('button[data-acao="whatsapp"]');
       const btnToggle = ev.target.closest('button[data-acao="toggle-menu"]');
       const menuItem  = ev.target.closest(".agenda-menu-item");
+      const btnConfirmar = ev.target.closest('button[data-acao="confirmar"]');
+      const btnAcaoRapida = ev.target.closest("button[data-acao-rapida]");
+      const btnInformarAtrasoModal = ev.target.closest("#vc_btn_informar_atraso");
+      const btnPresetAtraso = ev.target.closest("[data-atraso-preset]");
+      const btnVerImpactoAtraso = ev.target.closest("#atraso_ver_impacto");
+      const btnAlterarAtraso = ev.target.closest("#atraso_alterar");
+      const btnConfirmarAtraso = ev.target.closest("#atraso_confirmar");
+      const fecharAtraso = ev.target.closest("#modalInformarAtraso [data-fechar-modal]");
+      const modalAtraso = document.getElementById("modalInformarAtraso");
       const cardClicado = ev.target.closest(".agenda-card");
       const btnLimpar = ev.target.closest(".agenda-pesquisa-global .btn-limpar-pesquisa");
       const btnAba    = ev.target.closest(".menu-principal-abas button[data-aba]");
@@ -810,7 +1293,69 @@
         ev.stopPropagation();
         // As permissões podem chegar depois da renderização dos cards.
         atualizarAcoesConversaChat();
+        atualizarAcoesConfirmar();
         menuCtrl.toggle(btnToggle);
+        return;
+      }
+
+      if (fecharAtraso || (modalAtraso && ev.target === modalAtraso)) {
+        if (!atrasoEstado.ocupado) fecharModalAtraso();
+        return;
+      }
+
+      if (btnPresetAtraso) {
+        const minutos = String(btnPresetAtraso.dataset.atrasoPreset || "");
+        const campo = elementoAtraso("atraso_minutos");
+        if (campo) campo.value = minutos;
+        document.querySelectorAll("[data-atraso-preset]").forEach((botao) => botao.classList.toggle("ativo", botao === btnPresetAtraso));
+        mostrarFeedbackAtraso("", "");
+        return;
+      }
+
+      if (btnVerImpactoAtraso) {
+        verImpactoAtraso();
+        return;
+      }
+
+      if (btnAlterarAtraso) {
+        atrasoEstado.previa = null;
+        elementoAtraso("atraso_previa")?.setAttribute("hidden", "");
+        mostrarFeedbackAtraso("", "");
+        atualizarBotoesAtraso();
+        elementoAtraso("atraso_minutos")?.focus();
+        return;
+      }
+
+      if (btnConfirmarAtraso) {
+        aplicarAtraso();
+        return;
+      }
+
+      if (btnInformarAtrasoModal) {
+        const id = String(btnInformarAtrasoModal.dataset.idAgendamento || "");
+        const dados = getDadosSemanaRef();
+        const item = Object.values(dados || {}).flat().find((registro) => String(registro.id_agendamento ?? registro.id) === id);
+        if (item) {
+          document.getElementById("modalVisualizarAgendamento")?.classList.remove("ativo");
+          abrirModalAtraso(item);
+        }
+        return;
+      }
+
+      if (btnConfirmar) {
+        ev.stopPropagation();
+        menuCtrl.fechar();
+        if (btnConfirmar.disabled || btnConfirmar.hidden) return;
+        confirmarAgendamentoRapido(btnConfirmar.dataset.idAgendamento);
+        return;
+      }
+
+      // Concluir, Registrar falta e Cancelar: mesmo fluxo aprovado da confirmação rápida.
+      if (btnAcaoRapida) {
+        ev.stopPropagation();
+        menuCtrl.fechar();
+        if (btnAcaoRapida.disabled || btnAcaoRapida.hidden) return;
+        executarAcaoRapidaAgendamento(btnAcaoRapida.dataset.idAgendamento, String(btnAcaoRapida.dataset.acaoRapida || ""));
         return;
       }
 
@@ -832,6 +1377,7 @@
           document.dispatchEvent(new CustomEvent("agenda:excluir:selecionado", { detail: { id_agendamento: id, agendamento: item || null } }));
         }
         if (acao === "abrir_conversa") abrirConversaDoAgendamento(id);
+        if (acao === "informar_atraso" && item) abrirModalAtraso(item);
         return;
       }
 
@@ -879,6 +1425,13 @@
 
     document.addEventListener("input", (ev) => {
       const el = ev.target;
+      if (el.matches("#atraso_minutos")) {
+        document.querySelectorAll("[data-atraso-preset]").forEach((botao) => botao.classList.remove("ativo"));
+        atrasoEstado.previa = null;
+        elementoAtraso("atraso_previa")?.setAttribute("hidden", "");
+        atualizarBotoesAtraso();
+        return;
+      }
       if (!el.matches("#pesquisar-agenda-global")) return;
       PESQUISA_GLOBAL = el.value;
       sincronizarPesquisas();
@@ -891,6 +1444,8 @@
         fecharTodosPopovers();
       }
     });
+
+    document.addEventListener("amagenda:sessao-carregada", atualizarAcoesConfirmar);
   }
 
   // =========================
@@ -907,6 +1462,11 @@
     }
     const getDadosSemanaRef = () => dadosSemana;
     getDadosPesquisa = getDadosSemanaRef;
+
+    recarregarAgendaAposAtraso = async () => {
+      dadosSemana = await obterDados();
+      renderizarTodasAbas(dadosSemana);
+    };
 
     // render inicial
     DIAS.forEach(({ dia, box, pag }) => {
@@ -1017,7 +1577,45 @@
       return json.data;
     }
 
-    async function abrirAgendamentoPorId(idBruto) {
+    // ============================================================
+    // AGENDA — RETORNO PARA O CHAT
+    // ============================================================
+    // Só existe quando a Agenda foi aberta pelo Chat (origem=chat). O destino é FIXO:
+    // nunca aceita URL/caminho vindo do navegador; id_conversa é só um inteiro positivo
+    // e não autoriza nada (o Chat revalida a conversa no backend ao reabrir).
+    const PAGINA_CHAT_RETORNO = "/public/views/chat/chat-interno.html";
+
+    function prepararRetornoChat(origem, idConversaBruto) {
+      if (origem !== "chat" || !/^[1-9]\d{0,17}$/.test(String(idConversaBruto || ""))) return null;
+      const destino = new URL(PAGINA_CHAT_RETORNO, window.location.origin);
+      destino.searchParams.set("id_conversa", String(idConversaBruto));
+      const url = `${destino.pathname}${destino.search}`;
+      // Lido por editar-agendamento.js após salvar (no lugar do reload da Agenda).
+      window.AgendaRetornoChat = Object.freeze({ destino: () => url });
+      return url;
+    }
+
+    // Fechar o modal aberto pelo deep link (edição ou visualização) volta para a conversa.
+    function monitorarFechamentoParaChat(destino) {
+      const modais = ["modalEditarAgendamento", "modalVisualizarAgendamento"]
+        .map((id) => document.getElementById(id))
+        .filter((modal) => modal?.classList.contains("ativo"));
+      if (!modais.length) return;
+      let retornando = false;
+      const observador = new MutationObserver(() => {
+        if (retornando || modais.some((modal) => modal.classList.contains("ativo"))) return;
+        retornando = true;
+        observador.disconnect();
+        window.location.assign(destino);
+      });
+      modais.forEach((modal) => observador.observe(modal, { attributes: true, attributeFilter: ["class"] }));
+    }
+
+    async function abrirAgendamentoPorId(idBruto, opcoes = {}) {
+      // Sem código conhecido (ex.: deep link do Chat) mantém o aviso original de pendentes.
+      const codigoNotificacao = CODIGOS_NOTIFICACAO_AGENDAMENTO.includes(String(opcoes?.codigoNotificacao || ""))
+        ? String(opcoes.codigoNotificacao)
+        : "agenda.agendamento_pendente";
       const id = Number(idBruto);
       if (!Number.isInteger(id) || id <= 0 || abrindoAgendamento) return false;
       abrindoAgendamento = true;
@@ -1058,12 +1656,11 @@
         modalEditar.classList.add("ativo");
         modalEditar.setAttribute("aria-hidden", "false");
         document.dispatchEvent(new CustomEvent("agenda:editar:selecionado", {
-          detail: { id_agendamento: String(id), agendamento: item || null }
+          detail: { id_agendamento: String(id), agendamento: item || null, codigo_notificacao: opcoes?.codigoNotificacao ? codigoNotificacao : "" }
         }));
 
-        if (normalizarStatus(registro.status) !== "pendente") {
-          uiToast("info", "Agendamento", "Este agendamento não está mais pendente.");
-        }
+        const avisoDeepLink = avisoDeepLinkAgendamento(codigoNotificacao, registro.status);
+        if (avisoDeepLink) uiToast("info", "Agendamento", avisoDeepLink);
         return true;
       } finally {
         abrindoAgendamento = false;
@@ -1085,6 +1682,69 @@
       }
     });
 
+    document.addEventListener("agenda:agendamento:confirmacao-estado", (evento) => {
+      const id = String(evento.detail?.id_agendamento || "");
+      const carregando = evento.detail?.carregando === true;
+      document.querySelectorAll(`button[data-acao="confirmar"][data-id-agendamento="${CSS.escape(id)}"]`).forEach((botao) => {
+        botao.disabled = carregando;
+        const rotulo = botao.querySelector("span");
+        if (rotulo) rotulo.textContent = carregando
+          ? "Confirmando..."
+          : (botao.id === "vc_btn_confirmar" ? "Confirmar agendamento" : "Confirmar");
+      });
+    });
+
+    // Bloqueia todos os itens de ação rápida do agendamento enquanto uma ação está em andamento.
+    document.addEventListener("agenda:agendamento:acao-rapida-estado", (evento) => {
+      const id = String(evento.detail?.id_agendamento || "");
+      const carregando = evento.detail?.carregando === true;
+      document.querySelectorAll(`button[data-acao-rapida][data-id-agendamento="${CSS.escape(id)}"]`).forEach((botao) => {
+        botao.disabled = carregando;
+      });
+    });
+
+    // Concluir, Registrar falta e Cancelar: atualização localizada após o sucesso do backend.
+    // A confirmação continua sendo tratada pelo evento próprio abaixo.
+    document.addEventListener("agenda:agendamento:status-atualizado", (evento) => {
+      const id = String(evento.detail?.id_agendamento || "");
+      const status = normalizarStatus(evento.detail?.status);
+      if (!id || status === "confirmado" || !["concluido", "faltou", "cancelado"].includes(status)) return;
+      let registroAtualizado = null;
+      Object.values(dadosSemana || {}).forEach((lista) => {
+        if (!Array.isArray(lista)) return;
+        const registro = lista.find((item) => String(item.id_agendamento ?? item.id) === id);
+        if (registro) { registro.status = status; registroAtualizado = registro; }
+      });
+      renderizarTodasAbas(dadosSemana);
+      const modal = document.getElementById("modalVisualizarAgendamento");
+      if (registroAtualizado && modal?.classList.contains("ativo") && modal.dataset.idAgendamento === id) {
+        preencherModalVisualizar(registroAtualizado);
+      }
+    });
+
+    document.addEventListener("agenda:agendamento:confirmado", (evento) => {
+      // Atualização localizada (sem recarregar): somente o status muda no registro em memória.
+      const id = String(evento.detail?.id_agendamento || "");
+      let registroAtualizado = null;
+      Object.values(dadosSemana || {}).forEach((lista) => {
+        if (!Array.isArray(lista)) return;
+        const registro = lista.find((item) => String(item.id_agendamento ?? item.id) === id);
+        if (registro) { registro.status = "confirmado"; registroAtualizado = registro; }
+      });
+      renderizarTodasAbas(dadosSemana);
+      const modal = document.getElementById("modalVisualizarAgendamento");
+      if (modal?.classList.contains("ativo") && modal.dataset.idAgendamento === id) {
+        if (registroAtualizado) {
+          preencherModalVisualizar(registroAtualizado);
+        } else {
+          const chip = document.getElementById("vc_chip_status");
+          if (chip) { chip.textContent = "Confirmado"; chip.dataset.status = "confirmado"; }
+          modal.dataset.status = "confirmado";
+          atualizarAcoesConfirmar();
+        }
+      }
+    });
+
     setTimeout(pesquisa_aplicar, 0);
     setInterval(atualizarEstadosTemporais, 60000);
 
@@ -1094,10 +1754,23 @@
     const urlAtual = new URL(window.location.href);
     if (urlAtual.searchParams.get("acao") === "abrir_agendamento") {
       const idDeepLink = urlAtual.searchParams.get("id_agendamento");
+      const codigoNotificacaoDeepLink = urlAtual.searchParams.get("notificacao");
+      // Chat: preserva a conversa de origem para o retorno após consultar/editar.
+      const origemDeepLink = urlAtual.searchParams.get("origem");
+      const idConversaOrigem = urlAtual.searchParams.get("id_conversa");
       urlAtual.searchParams.delete("acao");
       urlAtual.searchParams.delete("id_agendamento");
+      urlAtual.searchParams.delete("notificacao");
+      urlAtual.searchParams.delete("origem");
+      urlAtual.searchParams.delete("id_conversa");
       window.history.replaceState(window.history.state, "", `${urlAtual.pathname}${urlAtual.search}${urlAtual.hash}`);
-      if (/^\d{1,10}$/.test(String(idDeepLink || ""))) abrirAgendamentoPorId(idDeepLink);
+      if (/^\d{1,10}$/.test(String(idDeepLink || ""))) {
+        const retornoChat = prepararRetornoChat(origemDeepLink, idConversaOrigem);
+        abrirAgendamentoPorId(idDeepLink, { codigoNotificacao: codigoNotificacaoDeepLink }).then((aberto) => {
+          if (aberto && retornoChat) monitorarFechamentoParaChat(retornoChat);
+          else if (retornoChat) window.AgendaRetornoChat = Object.freeze({ destino: () => null });
+        });
+      }
     }
   }
 

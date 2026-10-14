@@ -19,22 +19,17 @@
   const esc = (valor) => String(valor ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const dataBr = (iso) => String(iso || "").split("-").reverse().join("/");
 
-  // No celular o cabeçalho pode variar de altura. A posição é calculada pela
-  // barra real, evitando que os resultados fiquem escondidos atrás dela.
-  function posicionarPainelMobile() {
-    if (!window.matchMedia("(max-width: 768px)").matches) {
-      painel.style.removeProperty("--agenda-pesquisa-top");
-      return;
-    }
+  // O painel é posicionado pela barra real (calendário + pesquisa + filtro),
+  // dentro do mesmo container relativo, logo abaixo dela e sem sobreposição.
+  function posicionarPainel() {
     const barra = document.querySelector(".agenda-ferramentas-global");
-    const cabecalho = document.querySelector(".cabecalho-agenda");
-    const limite = Math.max(90, window.innerHeight - 190);
-    const base = Math.max(
-      barra?.getBoundingClientRect().bottom || 70,
-      cabecalho?.getBoundingClientRect().bottom || 0
-    );
-    const topo = Math.min(Math.max(12, base + 8), limite);
-    painel.style.setProperty("--agenda-pesquisa-top", `${Math.round(topo)}px`);
+    const base = painel.offsetParent;
+    if (!barra || !base) return;
+    const rb = barra.getBoundingClientRect();
+    const rc = base.getBoundingClientRect();
+    painel.style.setProperty("--agenda-pesquisa-top", `${Math.round(rb.bottom - rc.top + 8)}px`);
+    painel.style.setProperty("--agenda-pesquisa-left", `${Math.round(rb.left - rc.left)}px`);
+    painel.style.setProperty("--agenda-pesquisa-largura", `${Math.round(rb.width)}px`);
   }
 
   function ocultar() {
@@ -45,15 +40,15 @@
   }
 
   function estado(mensagem) {
-    posicionarPainelMobile();
     painel.hidden = false;
+    posicionarPainel();
     lista.innerHTML = `<div class="agenda-pesquisa-estado">${esc(mensagem)}</div>`;
     paginacao.innerHTML = "";
   }
 
   function renderizar(itens, meta) {
-    posicionarPainelMobile();
     painel.hidden = false;
+    posicionarPainel();
     if (!itens.length) { estado("Nenhum agendamento encontrado."); return; }
     lista.innerHTML = itens.map((item) => `<button type="button" class="agenda-pesquisa-item" role="option" data-id-agendamento="${item.id_agendamento}" data-data-agendamento="${esc(item.data_agendamento)}">
       <span class="agenda-pesquisa-item-data"><strong>${esc(dataBr(item.data_agendamento))}</strong><small>${esc(item.hora_inicio)}</small></span>
@@ -111,8 +106,8 @@
     input.focus();
   });
   fechar?.addEventListener("click", ocultar);
-  window.addEventListener("resize", () => { if (!painel.hidden) posicionarPainelMobile(); });
-  window.addEventListener("scroll", () => { if (!painel.hidden) posicionarPainelMobile(); }, { passive: true });
+  window.addEventListener("resize", () => { if (!painel.hidden) posicionarPainel(); });
+  window.addEventListener("scroll", () => { if (!painel.hidden) posicionarPainel(); }, { passive: true });
 
   paginacao.addEventListener("click", (evento) => {
     const botao = evento.target.closest("button[data-pagina]");

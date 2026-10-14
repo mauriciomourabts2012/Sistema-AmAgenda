@@ -10,12 +10,18 @@
 
   const API_NOTIFICACOES = "/public/api/api_central.php?path=notificacoes/listar";
   const API_MARCAR_LIDA = "/public/api/api_central.php?path=notificacoes/marcar-lida";
-  const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto", "agenda.abrir_agendamento"]);
+  const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto", "agenda.abrir_agendamento", "chat.abrir_conversa"]);
   const PAGINA_AGENDA = "/public/views/agenda.html";
+  const PAGINA_CHAT = "/public/views/chat/chat-interno.html";
+  // Recarga periódica leve da central (somente com a aba visível).
+  const INTERVALO_RECARGA_MS = 60000;
 
   const estadoNotificacoes = {
     itens: [],
     carregando: false,
+    inicializada: false,
+    timerRecarga: 0,
+    ultimaCarga: 0,
     dropdownAberto: false,
     senhaVencida: false,
     bloqueioSenha: false,
@@ -187,13 +193,30 @@
   function abrirAgendamentoDaNotificacao(item) {
     const id = Number(item?.contexto?.id_agendamento);
     if (!Number.isInteger(id) || id <= 0) return;
+    // O código da notificação só escolhe o aviso contextual exibido pela Agenda.
+    const codigoNotificacao = String(item?.codigo || "");
     if (typeof window.AgendaNotificacao?.abrirAgendamento === "function") {
-      window.AgendaNotificacao.abrirAgendamento(id);
+      window.AgendaNotificacao.abrirAgendamento(id, { codigoNotificacao });
       return;
     }
     const destino = new URL(PAGINA_AGENDA, window.location.origin);
     destino.searchParams.set("acao", "abrir_agendamento");
     destino.searchParams.set("id_agendamento", String(id));
+    if (codigoNotificacao) destino.searchParams.set("notificacao", codigoNotificacao);
+    window.location.assign(destino.toString());
+  }
+
+  // Chat: somente o id da conversa segue adiante. Marcar a notificação como lida NÃO
+  // marca a conversa como lida; isso só acontece quando o Chat exibe as mensagens.
+  function abrirConversaDaNotificacao(item) {
+    const id = Number(item?.contexto?.id_conversa);
+    if (!Number.isInteger(id) || id <= 0) return;
+    if (typeof window.ChatInterno?.abrirConversa === "function") {
+      window.ChatInterno.abrirConversa(id);
+      return;
+    }
+    const destino = new URL(PAGINA_CHAT, window.location.origin);
+    destino.searchParams.set("id_conversa", String(id));
     window.location.assign(destino.toString());
   }
 
@@ -203,6 +226,7 @@
     if (codigo === "perfil.alterar_senha") abrirPerfilNaArea("senha", false);
     if (codigo === "perfil.alterar_foto") abrirPerfilNaArea("foto", false);
     if (codigo === "agenda.abrir_agendamento") abrirAgendamentoDaNotificacao(item);
+    if (codigo === "chat.abrir_conversa") abrirConversaDaNotificacao(item);
   }
 
   function renderizarNotificacoes() {
@@ -243,7 +267,7 @@
       const rodape = document.createElement("span");
       rodape.className = "notificacao-item-rodape";
       const data = document.createElement("time");
-      const dataReferencia = item.categoria === "agenda" && item.prazo_em
+      const dataReferencia = ["agenda", "chat"].includes(item.categoria) && item.prazo_em
         ? item.prazo_em
         : item.criada_em;
       data.textContent = formatarDataNotificacao(dataReferencia);
@@ -270,10 +294,13 @@
     atualizarContador();
   }
 
-  async function carregarNotificacoes() {
+  async function carregarNotificacoes({ silencioso = false } = {}) {
     if (estadoNotificacoes.carregando || estadoNotificacoes.senhaVencida) return;
     estadoNotificacoes.carregando = true;
-    criarTextoEstado("Carregando notificações…", "carregando");
+    estadoNotificacoes.ultimaCarga = Date.now();
+    agendarRecarga();
+    // A recarga automática não substitui a lista aberta por "Carregando…".
+    if (!silencioso || estadoNotificacoes.itens.length === 0) criarTextoEstado("Carregando notificações…", "carregando");
     try {
       const resposta = await fetch(API_NOTIFICACOES, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
       const dados = await resposta.json().catch(() => null);
@@ -284,10 +311,20 @@
       estadoNotificacoes.itens = dados.data.itens.map((item) => ({ ...item, lida: item.lida === true }));
       renderizarNotificacoes();
     } catch (erro) {
-      criarTextoEstado(erro?.message || "Não foi possível carregar as notificações.", "erro");
+      if (!silencioso) criarTextoEstado(erro?.message || "Não foi possível carregar as notificações.", "erro");
     } finally {
       estadoNotificacoes.carregando = false;
     }
+  }
+
+  /* Ciclo único de recarga (setTimeout encadeado): só dispara com a aba visível e a
+     central inicializada; é reiniciado a cada carga para não acumular timers. */
+  function agendarRecarga() {
+    window.clearTimeout(estadoNotificacoes.timerRecarga);
+    if (!estadoNotificacoes.inicializada) return;
+    estadoNotificacoes.timerRecarga = window.setTimeout(() => {
+      if (document.visibilityState === "visible") carregarNotificacoes({ silencioso: true });
+    }, INTERVALO_RECARGA_MS);
   }
 
   function abrirDropdownNotificacoes() {
@@ -355,6 +392,7 @@
 
     botao.addEventListener("click", () => estadoNotificacoes.dropdownAberto ? fecharDropdownNotificacoes() : abrirDropdownNotificacoes());
     fechar.addEventListener("click", () => fecharDropdownNotificacoes());
+    estadoNotificacoes.inicializada = true;
     carregarNotificacoes();
     aplicarEstadoSessao(window.__AUTH__ || null);
   }
@@ -371,7 +409,18 @@
       carregarNotificacoes();
     }
   });
-  document.addEventListener("perfil:foto-atualizada", carregarNotificacoes);
+  document.addEventListener("perfil:foto-atualizada", () => carregarNotificacoes());
+  // Reaproveita o ciclo do Chat: quando o contador de conversas não lidas sobe ou cai,
+  // a central é recarregada na hora em vez de esperar o próximo ciclo de 60 s.
+  document.addEventListener("amagenda:chat-nao-lidas", (evento) => {
+    if (!estadoNotificacoes.inicializada || evento.detail?.contexto !== "interno") return;
+    if (evento.detail.total === evento.detail.anterior) return;
+    carregarNotificacoes({ silencioso: true });
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !estadoNotificacoes.inicializada) return;
+    if (Date.now() - estadoNotificacoes.ultimaCarga >= INTERVALO_RECARGA_MS) carregarNotificacoes({ silencioso: true });
+  });
 
   document.addEventListener("click", (evento) => {
     if (estadoNotificacoes.bloqueioSenha) {

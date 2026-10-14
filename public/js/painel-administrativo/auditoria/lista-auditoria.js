@@ -10,7 +10,7 @@
     : "/api/api_central.php?path=painel/auditoria/listar";
   const PERIODO_PADRAO_DIAS = 7;
   const EVENTOS = {
-    agenda: ["agendamento.criado", "agendamento.editado", "agendamento.confirmado", "agendamento.cancelado", "agendamento.concluido", "agendamento.excluido"],
+    agenda: ["agendamento.criado", "agendamento.editado", "agendamento.confirmado", "agendamento.cancelado", "agendamento.concluido", "agendamento.faltou", "agendamento.excluido"],
     clientes: ["cliente.criado", "cliente.editado", "cliente.status_alterado"],
     usuarios: ["usuario.criado", "usuario.vinculado_empresa", "usuario.editado", "usuario.status_alterado", "usuario.senha_redefinida", "super_admin.criado", "super_admin.editado", "super_admin.status_alterado"],
     permissoes: ["usuario.permissoes_alteradas", "usuario.permissoes_restauradas"],

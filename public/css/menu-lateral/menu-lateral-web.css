@@ -220,6 +220,59 @@ body.sidebar-agenda-aberta .sidebar-ajuda-seta { opacity: .9; }
 
 .sidebar-item:active { transform: scale(.985); }
 
+/* Badge numérico de item (ex.: conversas não lidas do Chat). Cor semântica de alerta,
+   igual à central de notificações, independente da cor da empresa. */
+.sidebar-item { position: relative; }
+.sidebar-badge {
+  position: absolute;
+  top: 6px;
+  left: 33px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  background: #c62828;
+  box-shadow: 0 3px 8px rgba(109, 16, 16, .25);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Menu expandido: pílula à direita do texto. */
+body.sidebar-agenda-aberta .sidebar-badge {
+  position: static;
+  margin: 0 12px 0 auto;
+  flex: 0 0 auto;
+}
+
+/* Botão que abre o menu (mobile): indicador com o total quando o drawer está fechado. */
+.sidebar-abrir { position: relative; }
+.sidebar-abrir-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  background: #c62828;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .sidebar-fechar,
 .sidebar-abrir,
 .sidebar-overlay {

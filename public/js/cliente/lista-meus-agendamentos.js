@@ -20,7 +20,7 @@
   const API = "/public/api/api_central.php";
   const LOGIN = "/public/views/login-cliente.php";
 
-  const ITENS_POR_PAGINA = 5;
+  const ITENS_POR_PAGINA = 3;
 
   const lista = document.getElementById("ma_lista");
   const estado = document.getElementById("ma_estado");
@@ -141,6 +141,29 @@
       : `${quantidade} agendamentos encontrados.`;
   }
 
+  function clienteAptoParaChat() {
+    const auth = window.__AUTH__ || {};
+    return auth.tipo_usuario === "cliente"
+      && Number(auth.id_cliente) > 0
+      && auth.cadastro_completo === true;
+  }
+
+  function agendamentoDisponivelParaChat(item) {
+    const idAgendamento = Number(item?.id_agendamento);
+    const status = normalizarTexto(item?.status);
+
+    return Number.isInteger(idAgendamento)
+      && idAgendamento > 0
+      && clienteAptoParaChat()
+      && ["pendente", "confirmado"].includes(status);
+  }
+
+  // Estado de não lidas vem exclusivamente do módulo global chat-nao-lidas.js.
+  function naoLidasDoAgendamento(idAgendamento) {
+    const quantidade = Number(window.ChatNaoLidas?.quantidadePorAgendamento?.(idAgendamento) || 0);
+    return Number.isFinite(quantidade) && quantidade > 0 ? Math.floor(quantidade) : 0;
+  }
+
   /*
   |--------------------------------------------------------------------------
   | REQUISIÇÃO
@@ -200,11 +223,18 @@
 
   function criarCardAgendamento(item) {
     const status = classeStatus(item.status);
+    const idAgendamento = Number(item.id_agendamento) || 0;
+    const naoLidas = idAgendamento > 0 && clienteAptoParaChat() ? naoLidasDoAgendamento(idAgendamento) : 0;
+    const disponivel = agendamentoDisponivelParaChat(item);
+    // Status final com resposta não lida: acesso somente para consultar a conversa existente.
+    const somenteConsulta = !disponivel && naoLidas > 0;
+    const podeConversar = disponivel || somenteConsulta;
+    const rotuloNaoLidas = naoLidas === 1 ? "1 mensagem não lida" : `${naoLidas} mensagens não lidas`;
 
     return `
       <article
         class="ma-item"
-        data-id="${Number(item.id_agendamento) || 0}"
+        data-id="${idAgendamento}"
       >
         <div class="ma-top">
           <div>
@@ -262,6 +292,23 @@
             </span>
           </div>
         </div>
+
+        ${podeConversar ? `
+          <div class="ma-acoes">
+            <button
+              class="botao-geral pequeno"
+              type="button"
+              data-chat-cliente-abrir
+              data-id-agendamento="${idAgendamento}"
+              ${somenteConsulta ? "data-chat-somente-consulta" : ""}
+              ${naoLidas > 0 ? `data-chat-nao-lidas="${naoLidas}" aria-label="Conversar, ${rotuloNaoLidas}" title="${rotuloNaoLidas}"` : ""}
+            >
+              <i class="fa-solid fa-comments" aria-hidden="true"></i>
+              ${somenteConsulta ? "Ver conversa" : "Conversar"}
+              ${naoLidas > 0 ? `<span class="chat-cliente-badge" aria-hidden="true">${naoLidas > 99 ? "99+" : naoLidas}</span>` : ""}
+            </button>
+          </div>
+        ` : ""}
       </article>
     `;
   }
@@ -575,6 +622,32 @@
       renderizarPagina();
     }
   );
+
+  // A listagem mantém apenas a ação contextual e entrega o id do agendamento.
+  // Estado, rede e renderização do Chat pertencem exclusivamente ao modal.
+  lista.addEventListener("click", evento => {
+    const botao = evento.target.closest("[data-chat-cliente-abrir]");
+    if (!botao) return;
+
+    const idAgendamento = Number(botao.dataset.idAgendamento);
+    if (!Number.isInteger(idAgendamento) || idAgendamento <= 0) return;
+
+    window.ChatModalCliente?.abrir?.(idAgendamento, {
+      somenteConsulta: botao.hasAttribute("data-chat-somente-consulta"),
+    });
+  });
+
+  // Atualiza os badges dos cards quando o contador global muda (sem nova consulta de agendamentos).
+  let assinaturaNaoLidas = "";
+  document.addEventListener("amagenda:chat-nao-lidas", evento => {
+    if (evento.detail?.contexto !== "cliente") return;
+    const assinatura = (evento.detail.conversas || [])
+      .map(item => `${item.id_agendamento}:${item.quantidade_nao_lidas}`)
+      .join("|");
+    if (assinatura === assinaturaNaoLidas) return;
+    assinaturaNaoLidas = assinatura;
+    if (iniciado && Array.isArray(agendamentosFiltrados) && agendamentosFiltrados.length) renderizarPagina();
+  });
 
   /*
   |--------------------------------------------------------------------------

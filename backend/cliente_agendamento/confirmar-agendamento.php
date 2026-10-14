@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_comum.php';
 require_once __DIR__ . '/../_regras/limites_plano.php';
+require_once __DIR__ . '/../_servicos/chat.php';
 
 $nomeLock = null;
 $transacao = false;
@@ -143,6 +144,80 @@ try {
     $transacao = false;
     clienteAgendamentoLiberarLock($conexao, $nomeLock);
     $nomeLock = null;
+
+    // Chat 5B-3: mensagem automática "agendamento_solicitado" SOMENTE após o commit e a liberação
+    // do lock. Transação própria e curta; qualquer falha é isolada aqui (log sem dados pessoais):
+    // o agendamento já está gravado e a resposta continua sendo sucesso.
+    $chatEmTransacao = false;
+    try {
+        $conexao->begin_transaction();
+        $chatEmTransacao = true;
+        // Relê e trava o agendamento (empresa + id); não confia nos valores em memória.
+        $agendamentoChat = chatBuscarAgendamentoParaAtualizar($conexao, $idEmpresa, $idAgendamento);
+        $profissionalChat = null;
+        if ($agendamentoChat !== null
+            && (int)$agendamentoChat['id_cliente'] === $idCliente
+            && (string)$agendamentoChat['status'] === 'pendente'
+            && (int)$agendamentoChat['id_profissional'] > 0) {
+            $profissionalChat = chatConsultar(
+                $conexao,
+                'SELECT u.nome
+                   FROM profissional p
+                  INNER JOIN usuario u ON u.id_usuario = p.id_usuario
+                  INNER JOIN empresa_usuario eu ON eu.id_usuario = p.id_usuario AND eu.id_empresa = ?
+                  WHERE p.id_profissional = ?
+                  LIMIT 1',
+                'ii',
+                [$idEmpresa, (int)$agendamentoChat['id_profissional']]
+            )[0] ?? null;
+        }
+        $nomeProfissionalChat = trim((string)($profissionalChat['nome'] ?? ''));
+        $dataChat = $agendamentoChat !== null ? DateTimeImmutable::createFromFormat('!Y-m-d', (string)$agendamentoChat['data_agendamento']) : false;
+        $horaChat = $agendamentoChat !== null ? substr((string)$agendamentoChat['hora_inicio'], 0, 5) : '';
+
+        if ($nomeProfissionalChat === '' || $dataChat === false || preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $horaChat) !== 1) {
+            // Não está mais pendente, cliente/profissional divergente ou dados inválidos: nada a gravar.
+            $conexao->rollback();
+            $chatEmTransacao = false;
+        } else {
+            $conversaChat = chatObterOuCriarConversaAgendamento($conexao, $idEmpresa, $agendamentoChat, ['tipo' => 'cliente']);
+            if (in_array($conversaChat['resultado'], ['criada', 'existente'], true) && !empty($conversaChat['id_conversa'])) {
+                if ($conversaChat['resultado'] === 'criada') {
+                    chatAuditarConversaCriada(
+                        $conexao,
+                        (int)$conversaChat['id_conversa'],
+                        $idAgendamento,
+                        'agendamento_solicitado',
+                        chatAtorAuditoriaCliente([
+                            'id_empresa' => $idEmpresa,
+                            'id_cliente' => $idCliente,
+                            'nome_cliente' => (string)($contexto['cliente']['nome_completo'] ?? ''),
+                        ])
+                    );
+                }
+                chatRegistrarMensagemSistema(
+                    $conexao,
+                    $idEmpresa,
+                    (int)$conversaChat['id_conversa'],
+                    'Recebemos sua solicitação de agendamento para ' . $dataChat->format('d/m/Y') . ' às ' . $horaChat
+                        . ' com ' . $nomeProfissionalChat . '. Você receberá a confirmação por aqui assim que o profissional confirmar.',
+                    chatNomeExibicaoSistema($conexao, $idEmpresa),
+                    chatChaveIdempotenciaSistema('agendamento_solicitado', $idEmpresa, $idAgendamento, $dataChat->format('Y-m-d'), $horaChat),
+                    true // evento originado pelo próprio cliente: nasce lida (sem pular respostas anteriores não lidas)
+                );
+                $conexao->commit();
+            } else {
+                $conexao->rollback();
+            }
+            $chatEmTransacao = false;
+        }
+    } catch (Throwable $erroChat) {
+        if ($chatEmTransacao) {
+            try { $conexao->rollback(); } catch (Throwable $ignorado) {}
+        }
+        error_log('[cliente_agendamento_confirmar] chat evento=agendamento_solicitado empresa=' . $idEmpresa
+            . ' agendamento=' . $idAgendamento . ' erro=' . get_class($erroChat) . ': ' . $erroChat->getMessage());
+    }
 
     out(['ok' => true, 'code' => 'CLIENT_APPOINTMENT_CREATED', 'user_msg' => 'Solicitação enviada com sucesso. O agendamento está pendente de confirmação do profissional.', 'data' => [
         'id_agendamento' => $idAgendamento,

@@ -44,7 +44,7 @@ function permissoesCatalogo(): array
         'chat.visualizar' => ['grupo'=>'chat','rotulo'=>'Visualizar conversas do chat','proprietario'=>true,'profissional'=>true,'recepcionista'=>true,'suporte'=>false],
         'chat.visualizar_todos_profissionais' => ['grupo'=>'chat','rotulo'=>'Visualizar conversas de todos os profissionais','proprietario'=>true,'profissional'=>false,'recepcionista'=>true,'suporte'=>false],
         'chat.responder' => ['grupo'=>'chat','rotulo'=>'Responder conversas do chat','proprietario'=>true,'profissional'=>true,'recepcionista'=>true,'suporte'=>false],
-        'chat.encerrar' => ['grupo'=>'chat','rotulo'=>'Encerrar conversas do chat','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'suporte'=>false],
+        'chat.encerrar' => ['grupo'=>'chat','rotulo'=>'Encerrar conversas do chat','proprietario'=>true,'profissional'=>true,'recepcionista'=>false,'suporte'=>false],
         'chat.visualizar_historico' => ['grupo'=>'chat','rotulo'=>'Visualizar histórico de conversas encerradas','proprietario'=>true,'profissional'=>true,'recepcionista'=>true,'suporte'=>false],
     ];
 }

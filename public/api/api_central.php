@@ -158,6 +158,36 @@ $routes = [
         'POST' => __DIR__ . '/../../backend/chat/chat_interno.php',
     ],
 
+    // Chat contextual do cliente. O handler valida sessão, empresa, cliente e
+    // vínculo do agendamento/conversa sem reutilizar permissões internas chat.*.
+    'cliente/chat/conversa/iniciar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_cliente.php',
+    ],
+    'cliente/chat/conversa/abrir' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_cliente.php',
+    ],
+    'cliente/chat/mensagens/listar' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_cliente.php',
+    ],
+    'cliente/chat/mensagem/enviar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_cliente.php',
+    ],
+    'cliente/chat/conversas/nao-lidas' => [
+        'GET' => __DIR__ . '/../../backend/chat/chat_cliente.php',
+    ],
+    'cliente/chat/leitura/marcar' => [
+        'POST' => __DIR__ . '/../../backend/chat/chat_cliente.php',
+    ],
+
+    // Central de notificações do cliente. Empresa e cliente vêm somente da sessão do cliente;
+    // não reutiliza as rotas internas (notificacoes/*), que dependem da sessão de usuário.
+    'cliente/notificacoes/listar' => [
+        'GET' => __DIR__ . '/../../backend/cliente/notificacoes_cliente.php',
+    ],
+    'cliente/notificacoes/marcar-lida' => [
+        'POST' => __DIR__ . '/../../backend/cliente/notificacoes_cliente.php',
+    ],
+
     // Portal do cliente autenticado
     'cliente/perfil' => [
         'GET' => __DIR__ . '/../../backend/cliente/buscar_dados_cadastrais.php',
@@ -554,6 +584,14 @@ $routes = [
     'agenda/agendamento/editar' => [
         'POST' => __DIR__ . '/../../backend/agenda/editar_agendamento.php',
     ],
+    // PRÉVIA DE ATRASO (somente leitura; a aplicação será o POST da Fase 5D.3)
+    'agenda/agendamento/atraso/previa' => [
+        'GET' => __DIR__ . '/../../backend/agenda/atraso_agendamento.php',
+    ],
+    // APLICAR ATRASO (transacional; CSRF validado no handler, como no editar)
+    'agenda/agendamento/atraso/aplicar' => [
+        'POST' => __DIR__ . '/../../backend/agenda/atraso_agendamento.php',
+    ],
     'agenda/agendamento/excluir' => [
         'POST' => __DIR__ . '/../../backend/agenda/excluir_agendamento.php',
     ],
@@ -693,6 +731,30 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
         if ($destinatarioTipo === 'usuario'
             && ($contextoNotificacoes['perfil'] ?? '') === 'profissional') {
             notificacaoSincronizarAgendamentosPendentesProfissional($conexao, $contextoNotificacoes);
+            try {
+                notificacaoSincronizarAgendamentosFinalizacaoProfissional($conexao, $contextoNotificacoes);
+            } catch (Throwable $e) {
+                // A nova projeção é autocorretiva na próxima listagem e não pode
+                // indisponibilizar notificações já validadas de outros módulos.
+                error_log('[notificacoes/listar] Falha ao sincronizar finalizações: ' . $e->getMessage());
+            }
+        }
+
+        // Chat: projeta conversas não lidas no escopo real do usuário (chatContextoInterno aplica
+        // o bloqueio de Super Admin/suporte, chat.* e o escopo do Profissional). Uma falha aqui
+        // não impede a listagem das demais notificações.
+        if ($destinatarioTipo === 'usuario' && !$modoSuporteNotificacoes) {
+            try {
+                require_once __DIR__ . '/../../backend/_servicos/chat.php';
+                notificacaoSincronizarChatUsuario(
+                    $conexao,
+                    chatContextoInterno($conexao),
+                    $idEmpresaNotificacoes,
+                    $idDestinatario
+                );
+            } catch (Throwable $e) {
+                error_log('[notificacoes/listar] Falha ao sincronizar notificações do chat: ' . $e->getMessage());
+            }
         }
 
         $pendentes = notificacaoListarPendentes(
@@ -704,11 +766,19 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
         );
         $itens = array_map(static function (array $item): array {
             $contextoSeguro = null;
-            if ((string)$item['codigo'] === 'agenda.agendamento_pendente'
+            if (in_array((string)$item['codigo'], ['agenda.agendamento_pendente', 'agenda.agendamento_finalizacao_pendente'], true)
                 && is_array($item['contexto'] ?? null)
                 && is_int($item['contexto']['id_agendamento'] ?? null)
                 && $item['contexto']['id_agendamento'] > 0) {
                 $contextoSeguro = ['id_agendamento' => $item['contexto']['id_agendamento']];
+            }
+            // Chat: somente a referência da conversa; a autorização é refeita ao abrir.
+            if ((string)$item['codigo'] === 'chat.conversa_nao_lida'
+                && (string)($item['acao_codigo'] ?? '') === 'chat.abrir_conversa'
+                && is_array($item['contexto'] ?? null)
+                && is_int($item['contexto']['id_conversa'] ?? null)
+                && $item['contexto']['id_conversa'] > 0) {
+                $contextoSeguro = ['id_conversa' => $item['contexto']['id_conversa']];
             }
 
             return [
@@ -838,6 +908,8 @@ $permissoesPorRota = [
     'agenda/agendamento/detalhar' => 'agenda.visualizar',
     'agenda/agendamento/cadastrar' => 'agenda.criar_agendamento',
     'agenda/agendamento/editar' => 'agenda.editar_agendamento',
+    'agenda/agendamento/atraso/previa' => 'agenda.editar_agendamento',
+    'agenda/agendamento/atraso/aplicar' => 'agenda.editar_agendamento',
     'agenda/agendamento/excluir' => 'agenda.excluir_agendamento',
     'agenda/horarios-disponiveis' => 'agenda.visualizar',
     'agenda/configuracao-geral-buscar' => 'agenda_configuracao.visualizar',

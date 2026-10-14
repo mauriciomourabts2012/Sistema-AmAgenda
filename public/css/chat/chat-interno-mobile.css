@@ -16,9 +16,15 @@
   .chat-conversa-titulo h2 { font-size: 17px; }
   .chat-conversa-titulo p { font-size: 11px; }
   .chat-conversa-acoes { gap: 6px; }
+  .chat-conversa-titulo h2 { line-height: 1.2; }
+  .chat-item-conversa { min-width: 0; max-width: 100%; }
   .chat-botao-perigo { min-height: 34px; padding: 0 9px; font-size: 12px; }
   .chat-historico { padding: 16px 12px; gap: 10px; }
   .chat-mensagem { max-width: 88%; font-size: 13px; }
+  .chat-mensagem-linha { max-width: 92%; gap: 6px; }
+  .chat-avatar { width: 34px; height: 34px; flex-basis: 34px; font-size: 12px; }
+  .chat-avatar-cabecalho { width: 32px; height: 32px; flex-basis: 32px; }
+  .chat-avatar-mensagem { width: 28px; height: 28px; flex-basis: 28px; font-size: 10px; }
   .chat-formulario-mensagem { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
   .chat-formulario-mensagem textarea { min-height: 68px; max-height: 34dvh; }
   .chat-formulario-acoes { align-items: flex-end; }
@@ -31,6 +37,39 @@
   .chat-filtro-nao-lidas { padding: 0 8px; font-size: 11px; }
   .chat-conversa-acoes .chat-status { display: none; }
   .chat-mensagem { max-width: 92%; }
+  .chat-mensagem-linha { max-width: 96%; }
+  .chat-item-conversa { gap: 9px; }
   .chat-botao-primario { min-width: 42px; padding: 0 11px; }
   .chat-botao-primario span { display: none; }
+}
+
+/* Mensagem do SISTEMA no mobile. */
+@media (max-width: 450px) {
+  .chat-sistema-mensagem { max-width: 96%; padding: 7px 10px; }
+  .chat-sistema-conteudo { font-size: 12px; }
+}
+@media (max-width: 960px) {
+  .chat-item-agendamento, .chat-item-profissional { font-size: 11.5px; }
+  .chat-conversa-titulo p#chatConversaMeta { font-size: 11.5px; gap: 3px 8px; }
+  .chat-agendamento-cabecalho { padding: 2px 8px; }
+  .chat-agendamento-profissional { max-width: 100%; }
+}
+/* Chat: em telas pequenas o atalho do agendamento vira só ícone (title/aria-label no botão). */
+@media (max-width: 760px) {
+  .chat-abrir-agendamento { width: 34px; min-height: 34px; padding: 0; justify-content: center; }
+  .chat-abrir-agendamento-texto { display: none; }
+}
+/* ============================================================
+   CHAT CENTRAL — CABEÇALHO RESPONSIVO
+   ============================================================ */
+/* Mobile: voltar/avatar/identificação na primeira linha; ações em linha própria. */
+@media (max-width: 760px) {
+  .chat-conversa-cabecalho { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "voltar avatar titulo" "acoes acoes acoes"; align-items: start; gap: 8px 10px; min-height: 0; }
+  .chat-conversa-cabecalho .chat-voltar { grid-area: voltar; width: 40px; min-height: 40px; }
+  .chat-conversa-cabecalho .chat-avatar-cabecalho { grid-area: avatar; margin-top: 4px; }
+  .chat-conversa-titulo { grid-area: titulo; }
+  .chat-conversa-acoes { grid-area: acoes; min-width: 0; justify-content: flex-end; gap: 8px; }
+  .chat-conversa-acoes:not(:has(> button:not([hidden]))) { display: none; }
+  .chat-abrir-agendamento { width: 44px; min-height: 44px; }
+  .chat-conversa-acoes .chat-botao-perigo { min-height: 44px; padding: 0 14px; font-size: 12.5px; }
 }
