@@ -80,7 +80,8 @@
         credentials: "same-origin",
         cache: "no-store",
         headers: {
-          Accept: "application/json"
+          Accept: "application/json",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
         },
         body: formData
       }

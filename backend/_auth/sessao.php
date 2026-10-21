@@ -47,6 +47,17 @@ if ($clienteAuth) {
     && $clienteStatus === 'ativo'
     && $modoVisualizacao
   ) {
+    // A6.1: a sessão do cliente precisa corresponder à credencial atual.
+    require_once __DIR__ . '/../_regras/login_multiempresa.php';
+    if ($clienteId !== null && (!isset($conexao) || !($conexao instanceof mysqli))) {
+      require __DIR__ . '/../_config/conexao.php';
+    }
+    sessaoCredencialExigirCliente(
+      isset($conexao) && $conexao instanceof mysqli ? $conexao : null,
+      $clienteEmpresaId,
+      $clienteId
+    );
+
     out([
       'ok' => true,
       'code' => 'CLIENT_AUTHENTICATED',
@@ -100,6 +111,12 @@ if ($status !== '' && $status !== 'ativo') {
 $tipoUsuario = mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8');
 $idUsuario = (int)($auth['id_usuario'] ?? 0);
 $idEmpresa = (int)($auth['empresa_id'] ?? $auth['id_empresa'] ?? 0);
+
+/* A6.1: antes de qualquer outra revalidação, a sessão interna precisa
+ * corresponder à credencial atual (senha alterada => 401 SESSION_REAUTH_REQUIRED). */
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
+if (!isset($conexao) || !($conexao instanceof mysqli)) require __DIR__ . '/../_config/conexao.php';
+sessaoCredencialExigirInterna(isset($conexao) && $conexao instanceof mysqli ? $conexao : null, $idUsuario);
 
 /* A sessão empresarial é revalidada contra o contrato para que uma mudança
  * posterior de status não preserve autorização apenas pelo cookie existente. */

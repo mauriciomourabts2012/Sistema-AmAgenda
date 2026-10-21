@@ -11,13 +11,12 @@ declare(strict_types=1);
  *   - valida o contrato de entrada (JSON estrito, allowlist de campos, tamanhos, formatos);
  *   - valida plano (existe, ativo, limite_proprietarios >= 1) e resolve o perfil Proprietário no backend;
  *   - confere a versão/hash dos documentos legais exibidos ao visitante;
- *   - para identidade global existente, exige conta ativa do tipo usuário e prova de senha;
+ *   - recusa o cadastro público quando o e-mail do Proprietário já existe como identidade global;
  *   - serializa por e-mail (GET_LOCK) e usa uma transação única;
  *   - cria empresa, usuário global quando novo, vínculo Proprietário, assinatura trial de 30 dias
  *     e configurações iniciais;
  *   - registra as manifestações legais definitivas na mesma transação;
  *   - limita tentativas por IP e registra o resultado do onboarding na auditoria central;
- *   - reconhece reenvio recente já concluído sem duplicar empresa, trial ou manifestações;
  *   - não cria sessão nem cobrança.
  *
  * Segurança: aceita somente application/json; nunca confia em id_empresa/perfil/status/modalidade/datas/
@@ -41,15 +40,12 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 const CADASTRO_PUBLICO_TAMANHO_MAX_CORPO = 16384;
-const CADASTRO_PUBLICO_SENHA_MIN = 8;
-const CADASTRO_PUBLICO_SENHA_MAX_BYTES = 72; // limite efetivo do bcrypt (PASSWORD_DEFAULT)
 // Bloqueio progressivo por IP, baseado somente em recusas sensíveis já auditadas.
 // Faixas [mínimo de erros na janela, minutos de bloqueio contados a partir do último erro], da maior para a menor.
 const CADASTRO_PUBLICO_JANELA_ERROS_MINUTOS = 60;
 const CADASTRO_PUBLICO_FAIXAS_BLOQUEIO = [[20, 60], [15, 30], [10, 5]];
 // Lista positiva: somente esta recusa indica abuso persistente para fins do limitador.
 const CADASTRO_PUBLICO_MOTIVO_ABUSO = 'dados_nao_aceitos';
-const CADASTRO_PUBLICO_JANELA_REENVIO_MINUTOS = 5;
 
 /* ==========================================================
    HELPERS LOCAIS (normalização e validação)
@@ -242,6 +238,9 @@ try {
     cadastroPublicoErroValidacao(['_geral' => 'Os dados enviados são inválidos.']);
 }
 
+// Política central de senhas definitivas (funções puras, sem acesso ao banco).
+require_once __DIR__ . '/../_regras/politica_senha.php';
+
 /* ==========================================================
    VALIDAÇÃO DE ENTRADA (sem acesso ao banco)
 ========================================================== */
@@ -326,19 +325,23 @@ if ($proprietarioNome === null || mb_strlen($proprietarioNome) < 3) {
 $proprietarioEmail = $validarEmail($blocoProprietario['email'] ?? null, 'proprietario.email');
 $proprietarioTelefone = $validarTelefone($blocoProprietario['telefone'] ?? null, 'proprietario.telefone');
 
-// A senha não é aparada nem normalizada.
+// A senha não é aparada nem normalizada. Regras da política central de senha definitiva:
+// mínimo de 8 caracteres, limite do bcrypt, caracteres proibidos, senhas comuns,
+// dados pessoais do Proprietário e confirmação exata (hash_equals).
 $senha = $blocoProprietario['senha'] ?? null;
 $senha2 = $blocoProprietario['senha2'] ?? null;
 if (!is_string($senha) || !is_string($senha2)) {
-    $erros['proprietario.senha'] = 'Informe a senha.';
-} elseif (str_contains($senha, "\0") || !mb_check_encoding($senha, 'UTF-8')) {
-    $erros['proprietario.senha'] = 'A senha contém caracteres inválidos.';
-} elseif (mb_strlen($senha) < CADASTRO_PUBLICO_SENHA_MIN) {
-    $erros['proprietario.senha'] = 'A senha deve ter no mínimo ' . CADASTRO_PUBLICO_SENHA_MIN . ' caracteres.';
-} elseif (strlen($senha) > CADASTRO_PUBLICO_SENHA_MAX_BYTES) {
-    $erros['proprietario.senha'] = 'A senha deve ter no máximo ' . CADASTRO_PUBLICO_SENHA_MAX_BYTES . ' caracteres.';
-} elseif (!hash_equals($senha, $senha2)) {
-    $erros['proprietario.senha2'] = 'As senhas não coincidem.';
+    $erros['proprietario.senha'] = politicaSenhaMensagem('PASSWORD_REQUIRED');
+} else {
+    $erroSenha = politicaSenhaValidarDefinitiva($senha, $senha2, [
+        'nome' => $proprietarioNome ?? '',
+        'email' => $proprietarioEmail,
+        'telefone' => $proprietarioTelefone,
+    ]);
+    if ($erroSenha !== null) {
+        $campoSenha = $erroSenha['campo'] === 'confirmacao' ? 'proprietario.senha2' : 'proprietario.senha';
+        $erros[$campoSenha] = $erroSenha['user_msg'];
+    }
 }
 
 // Documentos: lista de {codigo, versao, hash_sha256}, sem repetição.
@@ -487,13 +490,19 @@ if ($limiteIpExcedido) {
 
 $nomeLock = 'amagenda:cad:email:' . substr(hash('sha256', $proprietarioEmail), 0, 40);
 $lockAdquirido = false;
+// Lock próprio do e-mail da empresa: serializa cadastros simultâneos com o mesmo empresa.email,
+// mesmo quando o e-mail do Proprietário é diferente. Sempre adquirido depois do lock do Proprietário.
+$nomeLockEmpresaEmail = 'amagenda:cad:empresa_email:' . substr(hash('sha256', $empresaEmail), 0, 32);
+$lockEmpresaEmailAdquirido = false;
 $transacaoAberta = false;
 
 /** Libera o lock e desfaz qualquer transação pendente antes de responder (exit não executa finally). */
 $encerrar = static function (array $payload, int $status) use (
     $conexao,
     $nomeLock,
+    $nomeLockEmpresaEmail,
     &$lockAdquirido,
+    &$lockEmpresaEmailAdquirido,
     &$transacaoAberta,
     $auditarCadastroPublico
 ): void {
@@ -505,6 +514,13 @@ $encerrar = static function (array $payload, int $status) use (
             $rollbackConcluido = false;
         }
         $transacaoAberta = false;
+    }
+    if ($lockEmpresaEmailAdquirido) {
+        try {
+            cadastroPublicoConsultar($conexao, 'SELECT RELEASE_LOCK(?) AS liberado', 's', $nomeLockEmpresaEmail);
+        } catch (Throwable) {
+        }
+        $lockEmpresaEmailAdquirido = false;
     }
     if ($lockAdquirido) {
         try {
@@ -526,6 +542,7 @@ $encerrar = static function (array $payload, int $status) use (
             'DOCUMENT_INTEGRITY_ERROR' => 'integridade_documento',
             'SIGNUP_BUSY' => 'concorrencia_email',
             'COMPANY_ALREADY_EXISTS' => 'empresa_ja_cadastrada',
+            'COMPANY_EMAIL_EXISTS' => 'email_empresa_ja_cadastrado',
             'SIGNUP_REFUSED' => $status === 429 ? 'solicitacao_limitada' : 'dados_nao_aceitos',
             default => 'falha_interna',
         };
@@ -552,6 +569,17 @@ try {
         $encerrar(['ok' => false, 'code' => 'SERVER_ERROR', 'user_msg' => 'Não foi possível processar o cadastro agora.'], 500);
     }
     $lockAdquirido = true;
+
+    $lockEmpresaEmail = cadastroPublicoConsultar($conexao, 'SELECT GET_LOCK(?, 5) AS adquirido', 's', $nomeLockEmpresaEmail);
+    $resultadoLockEmpresaEmail = $lockEmpresaEmail[0]['adquirido'] ?? null;
+    if ($resultadoLockEmpresaEmail === 0 || $resultadoLockEmpresaEmail === '0') {
+        $encerrar(['ok' => false, 'code' => 'SIGNUP_BUSY', 'user_msg' => 'Não foi possível concluir o cadastro agora. Tente novamente em instantes.'], 409);
+    }
+    if ($resultadoLockEmpresaEmail === null || ($resultadoLockEmpresaEmail !== 1 && $resultadoLockEmpresaEmail !== '1')) {
+        error_log('[cadastro_publico] Falha técnica ao adquirir o lock por e-mail da empresa.');
+        $encerrar(['ok' => false, 'code' => 'SERVER_ERROR', 'user_msg' => 'Não foi possível processar o cadastro agora.'], 500);
+    }
+    $lockEmpresaEmailAdquirido = true;
 
     // Validação preliminar do plano; a decisão autoritativa é repetida sob lock na transação.
     $planos = cadastroPublicoConsultar(
@@ -624,14 +652,6 @@ try {
         }
     }
 
-    // Localização preliminar; a decisão autoritativa ocorre sob FOR UPDATE dentro da transação.
-    $identidadeLocalizadaAntesTransacao = cadastroPublicoConsultar(
-        $conexao,
-        'SELECT id_usuario FROM usuario WHERE LOWER(email) = ? LIMIT 1',
-        's',
-        $proprietarioEmail
-    ) !== [];
-
     // Transação única, no mysqli compartilhado com os serviços (que não fazem commit/rollback próprios).
     if (!$conexao->begin_transaction()) {
         throw new RuntimeException('Falha ao iniciar a transação do cadastro público.');
@@ -661,7 +681,7 @@ try {
 
     $identidades = cadastroPublicoConsultar(
         $conexao,
-        'SELECT id_usuario, senha_hash, status, tipo_usuario
+        'SELECT id_usuario
            FROM usuario
           WHERE LOWER(email) = ?
           LIMIT 1 FOR UPDATE',
@@ -669,137 +689,40 @@ try {
         $proprietarioEmail
     );
     $identidadeExistente = $identidades[0] ?? null;
-    if ($identidadeLocalizadaAntesTransacao && $identidadeExistente === null) {
+    if ($identidadeExistente !== null) {
         $encerrar([
             'ok' => false,
             'code' => 'SIGNUP_REFUSED',
-            'user_msg' => 'Não foi possível concluir o cadastro com os dados informados.',
+            'user_msg' => 'Não foi possível concluir o cadastro com os dados informados. Verifique as informações ou entre em contato com o suporte.',
         ], 409);
     }
 
+    // O cadastro público cria apenas identidades novas. O serviço global continua apto a vincular
+    // usuários existentes quando chamado pelos fluxos administrativos autorizados.
     $autorizarVinculoExistente = false;
-    if ($identidadeExistente !== null) {
-        $senhaIdentidadeValida = password_verify($senha, (string)$identidadeExistente['senha_hash']);
-        $identidadeValida = (string)$identidadeExistente['status'] === 'ativo'
-            && (string)$identidadeExistente['tipo_usuario'] === 'usuario'
-            && $senhaIdentidadeValida;
-        if (!$identidadeValida) {
-            $encerrar([
-                'ok' => false,
-                'code' => 'SIGNUP_REFUSED',
-                'user_msg' => 'Não foi possível concluir o cadastro com os dados informados.',
-            ], 409);
-        }
-        // A autorização só existe nesta execução, depois da prova de posse da identidade bloqueada.
-        $autorizarVinculoExistente = true;
 
-        /*
-         * O lock por e-mail serializa os reenvios. A identidade e a senha já foram confirmadas;
-         * somente então um onboarding anterior pode ser revelado e reutilizado.
-         */
-        $sqlReenvio = "SELECT e.id_empresa, e.nome AS empresa_nome, e.cnpj, e.status AS empresa_status,
-                              e.plano_id, eu.status AS vinculo_status, eu.bloqueado_plano,
-                              a.id_assinatura, a.id_plano AS assinatura_plano_id,
-                              a.status AS assinatura_status, a.modalidade,
-                              DATE_FORMAT(a.teste_iniciado_em, '%Y-%m-%d %H:%i:%s') AS teste_iniciado_em,
-                              DATE_FORMAT(a.teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em,
-                              (a.criado_em >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL "
-            . CADASTRO_PUBLICO_JANELA_REENVIO_MINUTOS
-            . " MINUTE)) AS assinatura_recente,
-                              EXISTS(
-                                  SELECT 1
-                                    FROM auditoria au
-                                   WHERE au.id_empresa = e.id_empresa
-                                     AND au.origem = 'autenticacao'
-                                     AND au.evento_codigo = 'cadastro_publico.concluido'
-                                     AND au.entidade_tipo = 'cadastro_publico'
-                                     AND au.entidade_id = e.id_empresa
-                                     AND au.ocorrido_em >= DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL "
-            . CADASTRO_PUBLICO_JANELA_REENVIO_MINUTOS
-            . " MINUTE)
-                              ) AS onboarding_confirmado
-                         FROM empresa_usuario eu
-                         JOIN empresa e ON e.id_empresa = eu.id_empresa
-                         JOIN perfil p ON p.id_perfil = eu.id_perfil
-                    LEFT JOIN assinatura a ON a.id_empresa = e.id_empresa
-                        WHERE eu.id_usuario = ?
-                          AND eu.id_perfil = ?
-                          AND p.status = 'ativo'
-                          AND e.nome = ?
-                          AND e.criado_em >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL "
-            . CADASTRO_PUBLICO_JANELA_REENVIO_MINUTOS
-            . " MINUTE)
-                          AND (? IS NULL OR e.cnpj = ?)
-                     ORDER BY e.id_empresa DESC, a.id_assinatura DESC
-                     FOR UPDATE";
-        $linhasReenvio = cadastroPublicoConsultar(
-            $conexao,
-            $sqlReenvio,
-            'iisss',
-            (int)$identidadeExistente['id_usuario'],
-            $idPerfilProprietario,
-            $empresaNome,
-            $empresaCnpj,
-            $empresaCnpj
-        );
-
-        if ($linhasReenvio !== []) {
-            $empresasReenvio = [];
-            foreach ($linhasReenvio as $linhaReenvio) {
-                $idEmpresaReenvio = (int)$linhaReenvio['id_empresa'];
-                $empresasReenvio[$idEmpresaReenvio][] = $linhaReenvio;
-            }
-            if (count($empresasReenvio) !== 1) {
-                throw new RuntimeException('Mais de um onboarding recente equivalente foi localizado.');
-            }
-
-            $linhasEmpresaReenvio = reset($empresasReenvio);
-            $cadastroAnterior = $linhasEmpresaReenvio[0];
-            $assinaturasReenvio = array_values(array_filter(
-                $linhasEmpresaReenvio,
-                static fn (array $linha): bool => $linha['id_assinatura'] !== null
-            ));
-            $trialAnteriorValido = count($assinaturasReenvio) === 1
-                && (int)$cadastroAnterior['plano_id'] === $idPlano
-                && (string)$cadastroAnterior['empresa_status'] === 'ativo'
-                && (string)$cadastroAnterior['vinculo_status'] === 'ativo'
-                && (int)$cadastroAnterior['bloqueado_plano'] === 0
-                && (int)$cadastroAnterior['onboarding_confirmado'] === 1
-                && (int)$assinaturasReenvio[0]['assinatura_plano_id'] === $idPlano
-                && (string)$assinaturasReenvio[0]['assinatura_status'] === 'ativa'
-                && (string)$assinaturasReenvio[0]['modalidade'] === 'teste'
-                && (int)$assinaturasReenvio[0]['assinatura_recente'] === 1
-                && (string)$assinaturasReenvio[0]['teste_iniciado_em'] !== ''
-                && (string)$assinaturasReenvio[0]['teste_expira_em'] !== ''
-                && (string)$assinaturasReenvio[0]['teste_expira_em'] > (string)$assinaturasReenvio[0]['teste_iniciado_em'];
-            if (!$trialAnteriorValido) {
-                throw new RuntimeException('Onboarding recente equivalente está em estado inconsistente.');
-            }
-
-            if (!$conexao->commit()) {
-                throw new RuntimeException('Falha ao confirmar a leitura idempotente do cadastro público.');
-            }
-            $transacaoAberta = false;
-            $encerrar([
-                'ok' => true,
-                'code' => 'SIGNUP_COMPLETED',
-                'data' => [
-                    'id_empresa' => (int)$cadastroAnterior['id_empresa'],
-                    'empresa_nome' => (string)$cadastroAnterior['empresa_nome'],
-                    'trial_expira_em' => (string)$assinaturasReenvio[0]['teste_expira_em'],
-                    'request_id' => $requestId,
-                ],
-            ], 200);
-        }
-    }
-
-    // Só após excluir um reenvio válido uma colisão de CNPJ representa nova tentativa recusada.
     // A consulta pelo CNPJ informado confirma a empresa existente; nenhum dado dela é devolvido.
     if ($empresaCnpj !== null
         && cadastroPublicoConsultar($conexao, 'SELECT id_empresa FROM empresa WHERE cnpj = ? LIMIT 1', 's', $empresaCnpj) !== []) {
         $encerrar(['ok' => false, 'code' => 'COMPANY_ALREADY_EXISTS', 'user_msg' => 'Esta empresa já possui cadastro no AmAgenda.'], 409);
     }
-    // empresa.email pode repetir entre empresas: nenhuma checagem de duplicidade.
+
+    // E-mail da empresa não pode repetir entre empresas. $empresaEmail já vem com trim e minúsculas;
+    // LOWER(TRIM()) na coluna cobre registros gravados com espaços/caixa diferentes. A consulta roda
+    // dentro da transação e sob o lock do e-mail da empresa.
+    if (cadastroPublicoConsultar(
+        $conexao,
+        'SELECT id_empresa FROM empresa WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+        's',
+        $empresaEmail
+    ) !== []) {
+        $encerrar([
+            'ok' => false,
+            'code' => 'COMPANY_EMAIL_EXISTS',
+            'user_msg' => 'Este e-mail já está cadastrado. Utilize outro e-mail.',
+            'fields' => ['empresa.email' => 'Este e-mail já está cadastrado. Utilize outro e-mail.'],
+        ], 409);
+    }
 
     try {
         $empresaCriada = empresaServicoCriar($conexao, [
@@ -848,11 +771,8 @@ try {
         }
         throw $e;
     }
-    $esperavaUsuarioNovo = $identidadeExistente === null;
     if (($usuarioVinculo['vinculo_criado'] ?? false) !== true
-        || (bool)($usuarioVinculo['usuario_novo'] ?? false) !== $esperavaUsuarioNovo
-        || (!$esperavaUsuarioNovo
-            && (int)($usuarioVinculo['id_usuario'] ?? 0) !== (int)$identidadeExistente['id_usuario'])) {
+        || ($usuarioVinculo['usuario_novo'] ?? false) !== true) {
         $encerrar([
             'ok' => false,
             'code' => 'SIGNUP_REFUSED',

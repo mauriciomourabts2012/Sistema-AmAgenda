@@ -718,23 +718,118 @@
     `;
   }
 
-  function abrirWhatsapp({ telefone, cliente, servico, hora }) {
-    let tel = onlyDigits(telefone);
-    if (!tel || tel.length < 10) {
-      uiToast("warning", "WhatsApp", "Telefone inválido ou não informado para este cliente.");
+  // =========================
+  // WhatsApp (abertura manual via wa.me)
+  // Prioridade por campo: profissional (config própria ativa) -> empresa (ativa) -> sistema.
+  // A configuração chega em agenda/agendamento/listar, restrita à empresa da sessão.
+  // =========================
+  const WHATSAPP_PADRAO_SISTEMA = Object.freeze({
+    ddi: "55",
+    ddd: "",
+    mensagem: "Olá {cliente}! Tudo bem?\nSobre seu agendamento:\n• Serviço: {servico}\n• Horário: {hora}\n\nPosso te ajudar em algo?"
+  });
+  const WHATSAPP_ROTULOS_STATUS = { pendente: "Pendente", confirmado: "Confirmado", concluido: "Concluído", cancelado: "Cancelado", faltou: "Faltou" };
+  let whatsappConfigAgenda = null;
+
+  function normalizarConfigWhatsapp(cfg) {
+    if (!cfg || typeof cfg !== "object") return null;
+    const ddi = onlyDigits(cfg.ddi);
+    const ddd = onlyDigits(cfg.ddd);
+    return {
+      ddi: /^\d{1,4}$/.test(ddi) ? ddi : "",
+      ddd: /^\d{2}$/.test(ddd) ? ddd : "",
+      mensagem: typeof cfg.mensagem === "string" ? cfg.mensagem : ""
+    };
+  }
+
+  function atualizarConfigWhatsapp(bruto) {
+    if (!bruto || typeof bruto !== "object") { whatsappConfigAgenda = null; return; }
+    const profissionais = {};
+    const origem = bruto.profissionais && typeof bruto.profissionais === "object" ? bruto.profissionais : {};
+    Object.keys(origem).forEach((chave) => {
+      if (!/^[1-9]\d*$/.test(chave)) return;
+      const cfg = normalizarConfigWhatsapp(origem[chave]);
+      if (cfg) profissionais[chave] = cfg;
+    });
+    whatsappConfigAgenda = { empresa: normalizarConfigWhatsapp(bruto.empresa), profissionais };
+  }
+
+  function resolverConfigWhatsapp(idProfissional) {
+    const id = String(idProfissional ?? "").trim();
+    const empresa = whatsappConfigAgenda?.empresa || null;
+    // Só usa a configuração do próprio profissional do agendamento; sem id válido, usa a da empresa.
+    const profissional = /^[1-9]\d*$/.test(id) && whatsappConfigAgenda?.profissionais
+      && Object.prototype.hasOwnProperty.call(whatsappConfigAgenda.profissionais, id)
+      ? whatsappConfigAgenda.profissionais[id]
+      : null;
+    const escolher = (campo) => {
+      const vProf = profissional ? String(profissional[campo] || "") : "";
+      if (vProf.trim() !== "") return vProf;
+      const vEmp = empresa ? String(empresa[campo] || "") : "";
+      if (vEmp.trim() !== "") return vEmp;
+      return WHATSAPP_PADRAO_SISTEMA[campo];
+    };
+    return { ddi: escolher("ddi"), ddd: escolher("ddd"), mensagem: escolher("mensagem") };
+  }
+
+  // Monta o número internacional sem inventar dígitos; combinações ambíguas retornam null.
+  function montarNumeroWhatsapp(telefone, ddi, ddd) {
+    const tel = onlyDigits(telefone);
+    if (!/^\d{1,4}$/.test(ddi)) return null;
+    let numero = null;
+    if (tel.length === 8 || tel.length === 9) {
+      // Número local sem DDD: exige DDD configurado.
+      if (!/^\d{2}$/.test(ddd) || tel.startsWith("0")) return null;
+      numero = ddi + ddd + tel;
+    } else if (tel.length === 10 || tel.length === 11) {
+      // DDD + número (inclui DDD 55): recebe sempre o DDI. Prefixo 0 (tronco) é ambíguo.
+      if (tel.startsWith("0")) return null;
+      numero = ddi + tel;
+    } else if (tel.length === 12 || tel.length === 13) {
+      // Já contém DDI: aceito somente se coincidir com o DDI configurado.
+      if (!tel.startsWith(ddi)) return null;
+      numero = tel;
+    }
+    if (!numero || numero.length < 10 || numero.length > 15) return null;
+    return numero;
+  }
+
+  function formatarDataWhatsapp(data) {
+    const valor = String(data || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? valor.split("-").reverse().join("/") : "";
+  }
+
+  function formatarHoraWhatsapp(hora) {
+    const valor = String(hora || "").trim();
+    return /^\d{2}:\d{2}/.test(valor) ? valor.slice(0, 5) : "";
+  }
+
+  function rotuloStatusWhatsapp(status) {
+    const normalizado = normalizarStatus(status);
+    return WHATSAPP_ROTULOS_STATUS[normalizado] || String(status || "").trim();
+  }
+
+  function aplicarVariaveisWhatsapp(modelo, valores) {
+    return String(modelo || "").replace(/\{(cliente|servico|status|data|hora)\}/g, (_, chave) => valores[chave] ?? "");
+  }
+
+  function abrirWhatsapp({ telefone, cliente, servico, hora, data, status, idProfissional }) {
+    const cfg = resolverConfigWhatsapp(idProfissional);
+    const tel = montarNumeroWhatsapp(telefone, cfg.ddi, cfg.ddd);
+    if (!tel) {
+      uiToast("warning", "WhatsApp", "Telefone inválido, incompleto ou com DDI/DDD incompatível com a configuração. Verifique o cadastro do cliente.");
       return;
     }
-    if (!tel.startsWith("55")) tel = "55" + tel;
 
-    const msg = encodeURIComponent(
-      `Olá ${cliente || ""}! Tudo bem?\n` +
-      `Sobre seu agendamento:\n` +
-      `• Serviço: ${servico || "-"}\n` +
-      `• Horário: ${hora || "-"}\n\n` +
-      `Posso te ajudar em algo?`
-    );
+    const texto = aplicarVariaveisWhatsapp(cfg.mensagem, {
+      cliente: String(cliente || "").trim(),
+      servico: String(servico || "").trim(),
+      status: rotuloStatusWhatsapp(status),
+      data: formatarDataWhatsapp(data),
+      hora: formatarHoraWhatsapp(hora)
+    });
 
-    window.open(`https://wa.me/${tel}?text=${msg}`, "_blank");
+    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, "_blank");
   }
 
   // =========================
@@ -813,7 +908,7 @@
     const dataBr = /^\d{4}-\d{2}-\d{2}$/.test(data) ? data.split("-").reverse().join("/") : data;
 
     const telRaw = String(item.telefone || "");
-    const temTel = onlyDigits(telRaw).length >= 10;
+    const temTel = onlyDigits(telRaw).length >= 8;
 
     return `
       <article class="agenda-card ${emAtendimento ? "agenda-card-em-atendimento" : ""}" data-id="${C.escapeHtml(id)}" data-pago="${pago ? "1" : "0"}" data-data="${C.escapeHtml(data)}" data-hora-inicio="${C.escapeHtml(horaInicio)}" data-hora-fim="${C.escapeHtml(horaFim)}" data-status="${C.escapeHtml(statusNormalizado)}">
@@ -848,7 +943,10 @@
             data-telefone="${C.escapeHtml(telRaw)}"
             data-cliente="${C.escapeHtml(cliente)}"
             data-servico="${C.escapeHtml(servico)}"
-            data-hora="${C.escapeHtml(hora)}"
+            data-hora="${C.escapeHtml(horaInicio)}"
+            data-data="${C.escapeHtml(data)}"
+            data-status="${C.escapeHtml(String(item.status ?? ""))}"
+            data-id-profissional="${C.escapeHtml(String(item.id_profissional ?? ""))}"
             ${temTel ? "" : 'aria-disabled="true" disabled'}
             title="${temTel ? "WhatsApp" : "Sem telefone cadastrado"}">
             <i class="fa-brands fa-whatsapp"></i>
@@ -880,6 +978,7 @@
     if (!resposta.ok || !json || json.ok === false) {
       throw new Error(json?.user_msg || "Não foi possível carregar os agendamentos.");
     }
+    if (Object.prototype.hasOwnProperty.call(json, "whatsapp")) atualizarConfigWhatsapp(json.whatsapp);
     return json.data || {};
   }
 
@@ -939,7 +1038,7 @@
       if (acoesConfirmar) acoesConfirmar.hidden = Boolean(confirmar?.hidden) && atraso.hidden;
     }
     const whats = document.getElementById("vc_btn_whats");
-    if (whats) { whats.disabled = onlyDigits(telefone).length < 10; whats.onclick = () => abrirWhatsapp({ telefone, cliente, servico: resolveServico(item), hora: item.hora_inicio || item.hora }); }
+    if (whats) { whats.disabled = onlyDigits(telefone).length < 8; whats.onclick = () => abrirWhatsapp({ telefone, cliente, servico: resolveServico(item), hora: item.hora_inicio || item.hora, data: item.data_agendamento || item.data, status: item.status, idProfissional: item.id_profissional }); }
     const copiar = document.getElementById("vc_btn_copiar_tel");
     if (copiar) { copiar.disabled = !telefone; copiar.onclick = async () => { try { await navigator.clipboard.writeText(telefone); uiToast("success", "Telefone", "Telefone copiado."); } catch { uiToast("warning", "Telefone", "Não foi possível copiar o telefone."); } }; }
   }
@@ -1285,6 +1384,9 @@
           cliente: btnWhats.dataset.cliente,
           servico: btnWhats.dataset.servico,
           hora: btnWhats.dataset.hora,
+          data: btnWhats.dataset.data,
+          status: btnWhats.dataset.status,
+          idProfissional: btnWhats.dataset.idProfissional,
         });
         return;
       }

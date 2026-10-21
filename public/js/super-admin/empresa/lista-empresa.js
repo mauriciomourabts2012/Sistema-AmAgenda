@@ -433,6 +433,14 @@
     });
   }
 
+  function badgeTeste(emp) {
+    if (!emp.teste_ativo || !Number.isInteger(emp.teste_dias) || emp.teste_dias < 1) return "";
+    const dias = emp.teste_dias;
+    const cls = dias <= 5 ? "super-teste-badge--alerta" : "super-teste-badge--normal";
+    const txt = `Teste grátis · ${dias} ${dias === 1 ? "dia restante" : "dias restantes"}`;
+    return `<span class="super-teste-badge ${cls}">${C.escapeHtml(txt)}</span>`;
+  }
+
   function cardTemplate(emp) {
     const id = emp.id ?? "";
     const nome = emp.nome ?? "Empresa";
@@ -467,7 +475,7 @@
 
             <div class="super-lista-metadados">
               <span class="super-lista-meta"><span class="super-lista-meta-label">ID</span><strong>${C.escapeHtml(String(id || "—"))}</strong></span>
-              <span class="super-lista-meta"><span class="super-lista-meta-label">Plano</span><strong>${C.escapeHtml(plano)}</strong></span>
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Plano</span><strong>${C.escapeHtml(plano)}</strong>${badgeTeste(emp)}</span>
               ${cnpj ? `<span class="super-lista-meta"><span class="super-lista-meta-label">CNPJ</span><strong>${C.escapeHtml(cnpj)}</strong></span>` : ""}
               ${telefone ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone)}</strong></span>` : ""}
               ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
@@ -810,6 +818,8 @@
       telefone: e.telefone ?? "",
       plano_id: e.plano_id ?? "",
       plano: e.plano_nome ?? "—",
+      teste_ativo: e.teste_ativo === true,
+      teste_dias: Number.isInteger(e.teste_dias_restantes) ? e.teste_dias_restantes : null,
       status: normalizeStatus(e.status ?? "Ativo"),
       endereco: e.endereco ?? "",
       observacao: e.observacao ?? "",

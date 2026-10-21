@@ -178,9 +178,21 @@ try {
 
     /* id_empresa é sempre o primeiro predicado e provém exclusivamente do
        contexto autenticado. Nenhum parâmetro pode trocar a empresa consultada. */
-    $where = ['id_empresa = ?', "origem <> 'autenticacao'", 'ocorrido_em >= ?', 'ocorrido_em <= ?'];
-    $tipos = 'iss';
-    $parametros = [$idEmpresa, $inicio->format('Y-m-d H:i:s.u'), $fim->format('Y-m-d H:i:s.u')];
+    $where = [
+        'id_empresa = ?',
+        "origem <> 'autenticacao'",
+        'evento_codigo NOT IN (?, ?)',
+        'ocorrido_em >= ?',
+        'ocorrido_em <= ?',
+    ];
+    $tipos = 'issss';
+    $parametros = [
+        $idEmpresa,
+        'suporte.iniciado',
+        'suporte.finalizado',
+        $inicio->format('Y-m-d H:i:s.u'),
+        $fim->format('Y-m-d H:i:s.u'),
+    ];
 
     if ($idAuditoria !== null) { $where[] = 'id_auditoria = ?'; $tipos .= 'i'; $parametros[] = $idAuditoria; }
     if ($atorId !== null) { $where[] = 'id_ator = ?'; $tipos .= 'i'; $parametros[] = $atorId; }

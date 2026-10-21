@@ -323,6 +323,7 @@
           credentials: "same-origin",
           headers: {
             "X-Requested-With": "XMLHttpRequest",
+            "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
           },
         });
 

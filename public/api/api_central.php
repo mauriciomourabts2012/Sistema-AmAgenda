@@ -18,7 +18,11 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
-ini_set('error_log', __DIR__ . '/api_errors.log');
+ini_set('error_log', __DIR__ . '/../../storage/api_errors.log');
+
+// A7: cookie de sessao seguro, aplicado antes de qualquer session_start() deste roteador.
+require_once __DIR__ . '/../../backend/_config/sessao.php';
+amagendaConfigurarSessaoSegura();
 
 function out(array $payload, int $code = 200): void
 {
@@ -919,6 +923,50 @@ if (isset($permissoesPorRota[$rota])) {
     require_once __DIR__ . '/../../backend/_config/conexao.php';
     require_once __DIR__ . '/../../backend/_regras/permissoes_usuario.php';
     exigirPermissao($conexao, $permissoesPorRota[$rota]);
+}
+
+/*
+|--------------------------------------------------------------------------
+| CSRF central (defesa preventiva com negação por padrão)
+|--------------------------------------------------------------------------
+| Toda operação de escrita com identidade autenticada na sessão exige o token
+| CSRF da sessão (mecanismo existente em backend/_auth/csrf.php), inclusive em
+| rotas criadas no futuro. Os handlers mantêm as próprias validações; a nova
+| checagem usa o mesmo token e o mesmo resultado.
+| Sem identidade na sessão, a decisão continua com o handler (preserva 401).
+| Roda após o bloqueio jurídico, a revalidação da sessão e as permissões.
+| O handler especial @notificacoes_* encerra antes deste ponto e valida o
+| CSRF da sua escrita no próprio bloco.
+|
+| Exceções exatas e justificadas:
+| - _auth/login, _auth/cliente-login e cadastro-publico/empresa: entrada pública;
+| - webhooks/mercado-pago: servidor a servidor, autenticado por assinatura HMAC;
+| - cliente/agendamento/confirmar: token próprio (cliente_agendamento_csrf).
+*/
+$rotasExcecaoCsrfCentral = [
+    '_auth/login',
+    '_auth/cliente-login',
+    'cadastro-publico/empresa',
+    'webhooks/mercado-pago',
+    'cliente/agendamento/confirmar',
+];
+
+if (in_array($verbo, ['POST', 'PUT', 'PATCH', 'DELETE'], true)
+    && !in_array($rota, $rotasExcecaoCsrfCentral, true)) {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $authCsrfCentral = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+    $clienteCsrfCentral = is_array($_SESSION['cliente_auth'] ?? null) ? $_SESSION['cliente_auth'] : [];
+    $identidadeCsrfCentral = (int)($authCsrfCentral['id_usuario'] ?? 0) > 0
+        || $clienteCsrfCentral !== []
+        || (int)($_SESSION['superadmin_id'] ?? 0) > 0;
+
+    if ($identidadeCsrfCentral) {
+        require_once __DIR__ . '/../../backend/_auth/csrf.php';
+        csrfValidarSessao();
+    }
 }
 
 /*

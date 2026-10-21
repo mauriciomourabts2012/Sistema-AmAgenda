@@ -28,6 +28,8 @@ try {
     }
 
     $sessao = exigirSessaoCliente();
+    require_once __DIR__ . '/../_auth/csrf.php';
+    csrfValidarSessao();
     $clienteSessao = buscarClienteDaSessao($conexao, $sessao);
 
     if ($clienteSessao === null) {

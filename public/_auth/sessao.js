@@ -17,7 +17,51 @@
   const API_BASE = "/api/api_central.php";
   // Todas as páginas internas usam o login central (sem exigir link de empresa).
   const LOGIN_URL = "/public/views/login-empresa.php";
+  const LOGIN_CLIENTE_URL = "/public/views/login-cliente.php";
   const ACEITE_URL = "/views/documentos-legais/aceite-documentos.html";
+  const CODIGO_REAUTENTICACAO = "SESSION_REAUTH_REQUIRED";
+  const DESTINOS_REAUTENTICACAO = new Set([LOGIN_URL, LOGIN_CLIENTE_URL]);
+
+  let esperaRedirecionamentoReautenticacao = null;
+
+  if (!window.__AMAGENDA_FETCH_REAUTENTICACAO__) {
+    window.__AMAGENDA_FETCH_REAUTENTICACAO__ = true;
+    const fetchOriginal = window.fetch.bind(window);
+
+    window.fetch = async (...args) => {
+      // Reautenticação já em andamento: nenhuma outra resposta é entregue aos
+      // consumidores, evitando avisos repetidos enquanto a página navega.
+      if (window.__AMAGENDA_REAUTENTICANDO__ && esperaRedirecionamentoReautenticacao) {
+        return esperaRedirecionamentoReautenticacao;
+      }
+
+      const resposta = await fetchOriginal(...args);
+      if (window.__AMAGENDA_REAUTENTICANDO__ && esperaRedirecionamentoReautenticacao) {
+        return esperaRedirecionamentoReautenticacao;
+      }
+      if (resposta.status !== 401) return resposta;
+
+      const dados = await resposta.clone().json().catch(() => null);
+      if (dados?.code !== CODIGO_REAUTENTICACAO) return resposta;
+
+      if (!esperaRedirecionamentoReautenticacao) {
+        esperaRedirecionamentoReautenticacao = new Promise(() => {});
+      }
+
+      if (!window.__AMAGENDA_REAUTENTICANDO__) {
+        window.__AMAGENDA_REAUTENTICANDO__ = true;
+        const destinoInformado = String(dados?.data?.redirect_url || "");
+        const destino = DESTINOS_REAUTENTICACAO.has(destinoInformado)
+          ? destinoInformado
+          : LOGIN_URL;
+        window.location.replace(destino);
+      }
+
+      // A navegação encerra a página. Manter a chamada pendente impede que os
+      // consumidores da mesma resposta exibam mensagens ou redirecionem de novo.
+      return esperaRedirecionamentoReautenticacao;
+    };
+  }
 
   function caminhoAtual() {
     return String(window.location.pathname || "").toLowerCase();

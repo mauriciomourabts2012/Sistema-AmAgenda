@@ -391,6 +391,7 @@
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           "Accept": "application/json",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
         },
         body: payload.toString(),
         credentials: "include",

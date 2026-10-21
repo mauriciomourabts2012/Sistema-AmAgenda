@@ -150,6 +150,7 @@ $stmt = $conexao->prepare("
         email,
         status,
         tipo_usuario,
+        senha_hash,
         deve_alterar_senha,
         (
             deve_alterar_senha = 1
@@ -187,6 +188,18 @@ if (!$user || $statusUsuario !== 'ativo' || $tipoUsuario === 'super_admin') {
         !$user ? 'pre_sessao_usuario_inexistente' : ($tipoUsuario === 'super_admin' ? 'pre_sessao_usuario_nao_permitido' : 'usuario_inativo'),
         403
     );
+}
+
+/**
+ * A6.1: a credencial validada no login precisa ser a mesma no momento da
+ * consolidação. Se a senha mudou durante a escolha da empresa, a pré-sessão é
+ * encerrada e um novo login é exigido.
+ */
+$credencialPendente = (string)($pendente['credencial'] ?? '');
+if (preg_match('/^[a-f0-9]{64}$/', $credencialPendente) !== 1
+    || !hash_equals($credencialPendente, sessaoCredencialImpressao($user['senha_hash'] === null ? null : (string)$user['senha_hash']))
+) {
+    selecaoEncerrarPreSessao($conexao, 'SESSION_REAUTH_REQUIRED', 'pre_sessao_credencial_alterada', 401);
 }
 
 /**

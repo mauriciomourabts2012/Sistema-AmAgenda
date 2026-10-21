@@ -71,6 +71,18 @@
   let recuperacaoExpiraEm = 0;
   let recuperacaoTimer = null;
 
+  // Indicador visual da política de senha definitiva (componente compartilhado
+  // IndicadorSenha, o mesmo do Meu Perfil e do cadastro público). Apenas
+  // orientação: a validação oficial continua no backend (politica_senha.php).
+  const indicadorSenhaRecuperacao =
+    $recNovaSenha && typeof window.IndicadorSenha?.anexar === "function"
+      ? window.IndicadorSenha.anexar({
+          campoNova: $recNovaSenha,
+          campoConfirmacao: $recConfirmarSenha,
+          dadosPessoais: () => ({ email: recuperacaoEmailAtual })
+        })
+      : null;
+
   function setMsg(text, type = "info") {
     $msg.textContent = text || "";
     $msg.dataset.type = type; // info | ok | err
@@ -145,12 +157,19 @@
       case "DB_EXEC_EMPRESA_FAIL":
         return "Erro interno ao processar o login.";
 
+      // Credenciais inválidas e bloqueio temporário: o servidor informa as tentativas
+      // restantes ou o tempo de espera; o texto local é usado apenas como reserva.
+      case "LOGIN_INVALID_CREDENTIALS":
+        return fallback || "E-mail ou senha inválidos.";
+
+      case "LOGIN_TOO_MANY_ATTEMPTS":
+        return fallback || "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.";
+
       case "LOGIN_INVALID_USER_NOT_FOUND":
       case "LOGIN_INVALID_PASSWORD_MISMATCH":
       case "USER_NOT_ACTIVE":
       case "EMPTY_HASH":
-      case "LOGIN_INVALID_CREDENTIALS":
-        return "Usuário ou senha inválidos.";
+        return "E-mail ou senha inválidos.";
 
       case "LOGIN_ACCESS_DENIED":
         return "Não foi possível realizar o acesso.";
@@ -656,6 +675,7 @@
       setMensagemRecuperacao($recMsgCodigo, json.user_msg || "Código validado.", "ok");
       if ($recNovaSenha) $recNovaSenha.value = "";
       if ($recConfirmarSenha) $recConfirmarSenha.value = "";
+      indicadorSenhaRecuperacao?.limpar();
       mostrarEtapaRecuperacao("senha");
       $recNovaSenha?.focus();
     } catch (erro) {
@@ -685,13 +705,21 @@
     const novaSenha = String($recNovaSenha?.value || "");
     const confirmarSenha = String($recConfirmarSenha?.value || "");
     setMensagemRecuperacao($recMsgSenha, "");
-    if (novaSenha.length < 6 || novaSenha.length > 72) {
-      setMensagemRecuperacao($recMsgSenha, "A nova senha deve ter entre 6 e 72 caracteres.", "err");
+    // Apenas orientação: as regras oficiais (tamanho, caractere especial,
+    // senhas previsíveis e dados pessoais) são validadas pelo backend com a
+    // política central, que devolve a mensagem exibida abaixo.
+    if (novaSenha === "") {
+      setMensagemRecuperacao($recMsgSenha, "Informe a senha.", "err");
       $recNovaSenha?.focus();
       return;
     }
+    if (confirmarSenha === "") {
+      setMensagemRecuperacao($recMsgSenha, "Repita a senha no campo de confirmação.", "err");
+      $recConfirmarSenha?.focus();
+      return;
+    }
     if (novaSenha !== confirmarSenha) {
-      setMensagemRecuperacao($recMsgSenha, "A confirmação da nova senha não confere.", "err");
+      setMensagemRecuperacao($recMsgSenha, "As senhas informadas não coincidem.", "err");
       $recConfirmarSenha?.focus();
       return;
     }

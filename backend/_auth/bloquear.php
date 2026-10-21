@@ -23,3 +23,16 @@ if ($tipoUsuarioSuperAdmin !== 'super_admin') {
 if ($statusUsuarioSuperAdmin !== '' && $statusUsuarioSuperAdmin !== 'ativo') {
     out(['ok' => false, 'code' => 'SESSION_USER_INACTIVE', 'user_msg' => 'Seu usuário não está ativo. Faça login novamente.'], 403);
 }
+
+// A6.1: a sessão do Super Admin precisa corresponder à credencial atual. Quando
+// require_auth.php já validou nesta requisição, a consulta não é repetida.
+if (!defined('AUTH_CREDENCIAL_VALIDADA')) {
+    require_once __DIR__ . '/../_regras/login_multiempresa.php';
+    if (!isset($conexao) || !($conexao instanceof mysqli)) {
+        require __DIR__ . '/../_config/conexao.php';
+    }
+    sessaoCredencialExigirInterna(
+        isset($conexao) && $conexao instanceof mysqli ? $conexao : null,
+        $idUsuarioSuperAdmin
+    );
+}

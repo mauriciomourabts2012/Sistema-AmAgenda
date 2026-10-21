@@ -21,6 +21,8 @@ function somenteDigitosCliente(mixed $valor): string
 try {
     // Cliente e empresa vêm sempre da sessão validada (isolamento multiempresa).
     $sessao = exigirSessaoCliente();
+    require_once __DIR__ . '/../_auth/csrf.php';
+    csrfValidarSessao();
     $cliente = buscarClienteDaSessao($conexao, $sessao);
 
     $nome = textoCliente($_POST['nome'] ?? '');

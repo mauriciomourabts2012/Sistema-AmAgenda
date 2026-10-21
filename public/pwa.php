@@ -6,6 +6,8 @@ header('Pragma: no-cache');
 header('Expires: 0');
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    require_once __DIR__ . '/../backend/_config/sessao.php';
+    amagendaConfigurarSessaoSegura();
     session_start();
 }
 

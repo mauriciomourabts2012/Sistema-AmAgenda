@@ -7,6 +7,7 @@ declare(strict_types=1);
  * - Protegido contra envio de dados inválidos
  * - Ignora completamente senha_hash e tipo_usuario do frontend
  * - Sem logs sensíveis de senha/hash
+ * - Exige confirmação (senha2) idêntica à senha temporária, comparada sem trim (hash_equals)
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -33,6 +34,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require __DIR__ . '/../../_auth/bloquear.php';
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 
 /* ==========================================================
    HELPERS
@@ -96,6 +99,7 @@ $email       = lowerStr(strv('email', 160, true));
 $telefoneRaw = strv('telefone', 20, true);
 $status      = lowerStr(strv('status', 20, true));
 $senha       = (string)($_POST['senha'] ?? '');
+$senha2      = (string)($_POST['senha2'] ?? ''); // confirmação, sem trim
 $tipoUsuario = 'super_admin';
 
 /* ==========================================================
@@ -143,6 +147,13 @@ if ($senha === '') {
     $erros['senha'] = 'A senha contém caracteres invisíveis inválidos.';
 } elseif (!isAsciiPrintable($senha)) {
     $erros['senha'] = 'A senha contém caracteres inválidos.';
+}
+
+// Confirmação obrigatória da senha temporária, mesmo em chamadas diretas à API.
+if ($senha2 === '') {
+    $erros['senha2'] = 'Repita a senha no campo de confirmação.';
+} elseif (!hash_equals($senha, $senha2)) {
+    $erros['senha2'] = 'As senhas informadas não coincidem.';
 }
 
 if (!empty($erros)) {

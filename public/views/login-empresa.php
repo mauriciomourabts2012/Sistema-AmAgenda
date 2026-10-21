@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    require_once __DIR__ . '/../../backend/_config/sessao.php';
+    amagendaConfigurarSessaoSegura();
     session_start();
 }
 
@@ -34,6 +36,7 @@ $pwaContexto = (mb_strtolower(trim((string)($authExistente['tipo_usuario'] ?? ''
     <!-- CSS -->
     <link rel="stylesheet" href="../css/login/login-web.css?v=1.0.19" />
     <link rel="stylesheet" href="../css/login/login-mobile.css?v=1.0.19" />
+    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.0.22" />
 
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
@@ -162,11 +165,11 @@ $pwaContexto = (mb_strtolower(trim((string)($authExistente['tipo_usuario'] ?? ''
                 </div>
                 <div class="campo">
                   <label for="recuperacaoNovaSenha">Nova senha</label>
-                  <input type="password" id="recuperacaoNovaSenha" autocomplete="new-password" minlength="6" maxlength="72" />
+                  <input type="password" id="recuperacaoNovaSenha" autocomplete="new-password" minlength="8" maxlength="72" />
                 </div>
                 <div class="campo">
                   <label for="recuperacaoConfirmarSenha">Confirmar nova senha</label>
-                  <input type="password" id="recuperacaoConfirmarSenha" autocomplete="new-password" minlength="6" maxlength="72" />
+                  <input type="password" id="recuperacaoConfirmarSenha" autocomplete="new-password" minlength="8" maxlength="72" />
                 </div>
                 <button type="button" class="botao-entrar" id="recuperacaoSalvarSenha">Alterar senha</button>
                 <p class="mensagem" id="recuperacaoMensagemSenha" role="alert" aria-live="polite"></p>
@@ -205,7 +208,8 @@ $pwaContexto = (mb_strtolower(trim((string)($authExistente['tipo_usuario'] ?? ''
     </script>
 
     <!-- Scripts -->
-    <script src="/public/_auth/login.js?v=1.0.19"></script>
+    <script src="/public/js/componentes/indicador-senha.js?v=1.0.23"></script>
+    <script src="/public/_auth/login.js?v=1.0.25"></script>
     <script src="/public/js/identidade-visual/identidade-visual-login.js?v=1.0.19"></script>
     <script src="../js/PWA/RegistrarServiceWorker.js?v=1.0.19" data-pwa-contexto="<?php echo $pwaContexto; ?>"></script>
   </body>

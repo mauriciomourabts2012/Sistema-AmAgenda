@@ -23,6 +23,8 @@ try {
     }
 
     require __DIR__ . '/../../_auth/bloquear.php';
+    require_once __DIR__ . '/../../_auth/csrf.php';
+    csrfValidarSessao();
     require __DIR__ . '/../../_config/conexao.php';
     require_once __DIR__ . '/../../_regras/limites_plano.php';
     require_once __DIR__ . '/../../_servicos/auditoria.php';

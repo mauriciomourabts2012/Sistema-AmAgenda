@@ -21,6 +21,8 @@ declare(strict_types=1);
  * ==========================================================
  */
 
+require_once __DIR__ . '/../backend/_config/sessao.php';
+amagendaConfigurarSessaoSegura();
 session_start();
 
 require_once __DIR__ . '/../backend/_servicos/empresa.php';

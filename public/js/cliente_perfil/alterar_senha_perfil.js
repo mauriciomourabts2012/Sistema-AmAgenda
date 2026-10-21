@@ -586,7 +586,10 @@
             "application/json",
 
           "Content-Type":
-            "application/json"
+            "application/json",
+
+          "X-CSRF-Token":
+            String(window.__AUTH__?.csrf_token || "")
 
         },
 

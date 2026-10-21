@@ -478,6 +478,39 @@
     lista.appendChild(item);
   }
 
+  // Disponibilidade contratual do plano (plano.agenda_online). Não representa
+  // a liberação temporária do trial, tratada no backend. Sem o campo na
+  // resposta, a linha não é exibida para não afirmar algo desconhecido.
+  function adicionarAgendaOnline(lista, valor) {
+
+    if (valor === undefined || valor === null) {
+      return;
+    }
+
+    const incluida = Number(valor) === 1;
+    const item = criarElemento(
+      "li",
+      incluida
+        ? "recurso-agenda-online"
+        : "recurso-agenda-online indisponivel"
+    );
+    item.appendChild(
+      criarElemento(
+        "span",
+        incluida ? "check" : "check check-indisponivel",
+        incluida ? "✓" : "–"
+      )
+    );
+    item.appendChild(
+      document.createTextNode(
+        incluida
+          ? "Agenda Online incluída"
+          : "Agenda Online não incluída"
+      )
+    );
+    lista.appendChild(item);
+  }
+
   const CHAVE_PLANO_CADASTRO =
     "amagenda:cadastro-publico:plano-id";
 
@@ -653,7 +686,83 @@
   // Cadastro público: feedback e estado visual
   // =====================================================================
 
-  function mostrarAlertaCadastro(titulo, mensagem, tipo) {
+  // Contatos oficiais do cadastro público. Altere estes valores quando necessário.
+  const SUPORTE_CADASTRO = Object.freeze({
+    whatsappNumero: "5538998969407",
+    whatsappExibicao: "(38) 99896-9407",
+    whatsappMensagem: "Olá! Preciso de ajuda para concluir meu cadastro no AmAgenda.",
+    email: "suporteamagenda@gmail.com"
+  });
+
+  function configurarSuporteCadastro(exibir) {
+
+    const suporte =
+      cadEl("cadastroAlertaSuporte");
+
+    suporte.replaceChildren();
+    suporte.hidden = !exibir;
+
+    if (!exibir) {
+      return;
+    }
+
+    const whatsapp =
+      document.createElement("a");
+    whatsapp.href =
+      `https://wa.me/${SUPORTE_CADASTRO.whatsappNumero}?text=${encodeURIComponent(SUPORTE_CADASTRO.whatsappMensagem)}`;
+    whatsapp.target = "_blank";
+    whatsapp.rel = "noopener noreferrer";
+    whatsapp.title = "Abrir atendimento pelo WhatsApp";
+    whatsapp.setAttribute(
+      "aria-label",
+      `Abrir WhatsApp de suporte em nova aba: ${SUPORTE_CADASTRO.whatsappExibicao}`
+    );
+
+    const whatsappIcone =
+      document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    whatsappIcone.setAttribute("viewBox", "0 0 24 24");
+    whatsappIcone.setAttribute("width", "17");
+    whatsappIcone.setAttribute("height", "17");
+    whatsappIcone.setAttribute("aria-hidden", "true");
+    whatsappIcone.setAttribute("focusable", "false");
+
+    const whatsappFundo =
+      document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    whatsappFundo.setAttribute("cx", "12");
+    whatsappFundo.setAttribute("cy", "12");
+    whatsappFundo.setAttribute("r", "11");
+    whatsappFundo.setAttribute("fill", "#25d366");
+
+    const whatsappTelefone =
+      document.createElementNS("http://www.w3.org/2000/svg", "path");
+    whatsappTelefone.setAttribute(
+      "d",
+      "M8.4 6.8c.3-.5.6-.5.9-.5h.7c.2 0 .4.1.5.4l.9 2.1c.1.3.1.5-.1.7l-.7.9c-.1.1-.1.3 0 .4.6 1 1.4 1.8 2.4 2.4.2.1.3.1.4 0l.9-1.1c.2-.2.4-.3.7-.2l2.2 1c.3.1.4.3.4.6v.7c0 .4-.2.8-.6 1.1-.6.4-1.4.6-2.2.5-1.6-.2-3.5-1.1-5.1-2.7-1.6-1.6-2.5-3.5-2.7-5.1-.1-.7.1-1.4.4-2.2Z"
+    );
+    whatsappTelefone.setAttribute("fill", "#ffffff");
+
+    whatsappIcone.append(whatsappFundo, whatsappTelefone);
+    whatsapp.textContent =
+      `WhatsApp: ${SUPORTE_CADASTRO.whatsappExibicao}`;
+    whatsapp.prepend(whatsappIcone, document.createTextNode(" "));
+
+    const email =
+      document.createElement("a");
+    email.href =
+      `mailto:${SUPORTE_CADASTRO.email}`;
+    email.textContent =
+      SUPORTE_CADASTRO.email;
+
+    suporte.append(
+      document.createTextNode("Fale com o suporte: "),
+      whatsapp,
+      document.createTextNode(" ou "),
+      email,
+      document.createTextNode(".")
+    );
+  }
+
+  function mostrarAlertaCadastro(titulo, mensagem, tipo, exibirSuporte) {
 
     const alerta =
       cadEl("cadastroAlerta");
@@ -673,6 +782,8 @@
     cadEl("cadastroAlertaTexto").textContent =
       mensagem;
 
+    configurarSuporteCadastro(exibirSuporte === true);
+
     alerta.hidden = false;
 
     alerta.focus();
@@ -687,6 +798,7 @@
 
     cadEl("cadastroAlertaTitulo").textContent = "";
     cadEl("cadastroAlertaTexto").textContent = "";
+    configurarSuporteCadastro(false);
   }
 
   function limparErrosCampos() {
@@ -707,6 +819,53 @@
         campo.removeAttribute("aria-invalid");
         campo.removeAttribute("aria-describedby");
       });
+
+    reaplicarDescricaoIndicadorSenha();
+  }
+
+  // Indicador de segurança da senha (apoio visual; o backend valida a senha).
+  // Inicializado uma única vez, pois o formulário existe no HTML desde o carregamento.
+  let indicadorSenhaCadastro = null;
+
+  function juntarDescricao(campo, id) {
+
+    if (!campo || !id) {
+      return;
+    }
+
+    const ids =
+      (campo.getAttribute("aria-describedby") || "")
+        .split(/\s+/)
+        .filter(Boolean);
+
+    if (!ids.includes(id)) {
+      ids.push(id);
+      campo.setAttribute("aria-describedby", ids.join(" "));
+    }
+  }
+
+  // Mantém o vínculo do indicador mesmo após as mensagens de erro redefinirem aria-describedby.
+  function reaplicarDescricaoIndicadorSenha() {
+
+    const raiz =
+      document.querySelector("#cadIndicadorSenha .ind-senha");
+
+    if (!raiz) {
+      return;
+    }
+
+    const conf =
+      raiz.querySelector(".ind-senha__lista--conf");
+
+    juntarDescricao(cadEl("cadProprietarioSenha"), raiz.id);
+    juntarDescricao(cadEl("cadProprietarioSenha2"), conf && conf.id);
+  }
+
+  function reiniciarIndicadorSenhaCadastro() {
+
+    if (indicadorSenhaCadastro) {
+      indicadorSenhaCadastro.limpar();
+    }
   }
 
   function definirErroCampo(chave, mensagem) {
@@ -736,6 +895,7 @@
 
       campo.setAttribute("aria-invalid", "true");
       campo.setAttribute("aria-describedby", span.id);
+      reaplicarDescricaoIndicadorSenha();
     }
 
     return true;
@@ -1378,22 +1538,35 @@
         "Informe o telefone com DDD, por exemplo (11) 91234-5678.";
     }
 
+    // Mesmos limites e mensagens da política central (backend/_regras/politica_senha.php).
+    // Senhas comuns e dados pessoais são verificados somente no servidor.
     const senha = dados.proprietario.senha;
+    const senha2 = dados.proprietario.senha2;
 
     const bytesSenha =
       new TextEncoder().encode(senha).length;
 
-    if (senha.length < 8) {
+    if (senha === "") {
       erros["proprietario.senha"] =
-        "Use uma senha com pelo menos 8 caracteres.";
+        "Informe a senha.";
+    } else if (Array.from(senha).length < 8) {
+      erros["proprietario.senha"] =
+        "A senha deve ter pelo menos 8 caracteres.";
     } else if (bytesSenha > 72) {
       erros["proprietario.senha"] =
-        "A senha é muito longa. Use uma senha mais curta.";
+        "A senha está muito longa. Use até 72 caracteres, ou menos se usar acentos.";
+    } else if (!/[\p{P}\p{S}]/u.test(senha)) {
+      // Mesma definição de caractere especial do backend (politica_senha.php).
+      erros["proprietario.senha"] =
+        "A senha deve conter pelo menos um caractere especial, como #, @ ou !.";
     }
 
-    if (dados.proprietario.senha2 !== senha || senha === "") {
+    if (senha2 === "") {
       erros["proprietario.senha2"] =
-        "A confirmação precisa ser igual à senha digitada.";
+        "Repita a senha no campo de confirmação.";
+    } else if (senha2 !== senha) {
+      erros["proprietario.senha2"] =
+        "As senhas informadas não coincidem.";
     }
 
     if (!documentosCadastro) {
@@ -1510,6 +1683,8 @@
       cadEl(id).value = "";
     });
 
+    reiniciarIndicadorSenhaCadastro();
+
     documentosCadastro = null;
     cargaDocumentosId++;
     cadEl("cadastroDocs").replaceChildren();
@@ -1577,6 +1752,21 @@
 
     if (status === 409 && codigo === "COMPANY_ALREADY_EXISTS") {
       mostrarEmpresaJaCadastrada();
+      return;
+    }
+
+    if (status === 409 && codigo === "COMPANY_EMAIL_EXISTS") {
+
+      // Os dados digitados permanecem no formulário; só o e-mail da empresa precisa ser trocado.
+      aplicarErrosCadastro({
+        "empresa.email": "Este e-mail já está cadastrado."
+      });
+
+      mostrarAlertaCadastro(
+        "Este e-mail já está cadastrado",
+        "Já existe uma empresa cadastrada com este endereço de e-mail. Informe outro e-mail para continuar."
+      );
+
       return;
     }
 
@@ -1685,8 +1875,10 @@
     if (codigo === "SIGNUP_REFUSED") {
 
       mostrarAlertaCadastro(
-        "Não foi possível concluir o cadastro.",
-        "Confira os dados informados e tente novamente. Se o problema continuar, entre em contato com o suporte."
+        "Não foi possível concluir o cadastro",
+        "Verifique os dados informados. Se você já possui uma conta no AmAgenda, acesse sua conta existente ou entre em contato com o suporte para cadastrar outra empresa.",
+        "erro",
+        true
       );
 
       return;
@@ -1694,7 +1886,9 @@
 
     mostrarAlertaCadastro(
       "Não foi possível concluir o cadastro neste momento.",
-      "Tente novamente em instantes. Se o problema continuar, entre em contato com o suporte."
+      "Tente novamente em instantes. Se o problema continuar, entre em contato com o suporte.",
+      "erro",
+      true
     );
   }
 
@@ -1822,6 +2016,7 @@
 
     cadEl("cadProprietarioSenha").value = "";
     cadEl("cadProprietarioSenha2").value = "";
+    reiniciarIndicadorSenhaCadastro();
 
     cadEl("cadastroResultado").hidden = true;
     cadEl("cadastroForm").hidden = false;
@@ -1855,6 +2050,7 @@
 
     cadEl("cadProprietarioSenha").value = "";
     cadEl("cadProprietarioSenha2").value = "";
+    reiniciarIndicadorSenhaCadastro();
 
     if (
       elementoFocoAnterior &&
@@ -1935,6 +2131,47 @@
         }
       );
     });
+
+  // =====================================================================
+  // Cadastro público: indicador de segurança da senha
+  // =====================================================================
+
+  (function iniciarIndicadorSenhaCadastro() {
+
+    const destino =
+      cadEl("cadIndicadorSenha");
+
+    if (!destino || indicadorSenhaCadastro) {
+      return;
+    }
+
+    if (
+      !window.IndicadorSenha ||
+      typeof window.IndicadorSenha.anexar !== "function"
+    ) {
+
+      // Sem o componente, mantém a orientação mínima já existente.
+      const ajuda = document.createElement("span");
+      ajuda.className = "cadastro-ajuda";
+      ajuda.textContent = "Mínimo de 8 caracteres.";
+      destino.appendChild(ajuda);
+      return;
+    }
+
+    indicadorSenhaCadastro =
+      window.IndicadorSenha.anexar({
+        campoNova: cadEl("cadProprietarioSenha"),
+        campoConfirmacao: cadEl("cadProprietarioSenha2"),
+        container: destino,
+        dadosPessoais: () => ({
+          nome: cadEl("cadProprietarioNome").value,
+          email: cadEl("cadProprietarioEmail").value,
+          telefone: cadEl("cadProprietarioTelefone").value
+        })
+      });
+
+    reaplicarDescricaoIndicadorSenha();
+  })();
 
   // =====================================================================
   // Cadastro público: eventos
@@ -2063,6 +2300,7 @@
     adicionarLimite(limites, textoLimite(plano.limite_recepcionistas, "recepcionista", "recepcionistas"));
     adicionarLimite(limites, textoLimite(plano.limite_servicos, "serviço", "serviços"));
     adicionarLimite(limites, textoLimite(plano.limite_agendamentos, "agendamento", "agendamentos"));
+    adicionarAgendaOnline(limites, plano.agenda_online);
     card.appendChild(limites);
 
     const botao = criarElemento(

@@ -1,5 +1,26 @@
 RewriteEngine On
 
+# --- Seguranca (P0 H1/H2): bloqueio de arquivos e diretorios internos ---
+# Usa apenas mod_rewrite (ja exigido por este arquivo); nao requer AllowOverride adicional.
+# [NC] e tolerancia a pontos/espacos finais cobrem o sistema de arquivos do Windows (XAMPP).
+
+# Arquivos e diretorios ocultos / controle de versao (.git, .svn, .hg, .env, .gitignore, .htaccess)
+# Excecao: /.well-known/ (validacao de certificados ACME).
+RewriteRule (^|/)\.(?!well-known(/|$)) - [F,NC,L]
+
+# Diretorios internos na raiz do projeto: backend, ferramentas e armazenamento
+RewriteRule ^(backend|tools|storage)[.\x20]*(/|$) - [F,NC,L]
+
+# Nomes curtos 8.3 do Windows (ex.: GIT~1) e copias de editor terminadas em ~
+RewriteRule (~[0-9]|~$) - [F,L]
+
+# Logs (inclui public/api/api_errors.log), dumps de banco, backups, configuracoes e scripts
+RewriteRule \.(log|sql|sqlite3?|db|dump|bak|backup|old|orig|save|swp|swo|tmp|temp|dist|ini|conf|cnf|env|sh|bash|ps1|bat|cmd|md|lock|ya?ml|gz|tgz|zip|rar|7z|tar)[.\x20]*$ - [F,NC,L]
+
+# Manifestos de dependencias
+RewriteRule (^|/)(composer|package)(-lock)?\.json[.\x20]*$ - [F,NC,L]
+# --- fim do bloco P0 H1/H2 ---
+
 # 🔒 Bloqueia acesso HTTP direto ao backend
 RewriteRule ^backend/ - [F,L]
 
@@ -19,3 +40,14 @@ RewriteRule ^$ public/ [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ public/$1 [L]
+
+# --- Seguranca (H3): cabecalhos HTTP basicos ---
+# Requer mod_headers; sem o modulo o bloco e ignorado (nao gera erro 500).
+# "always" cobre tambem respostas de erro (403/404/5xx). Sem HSTS e sem CSP completa nesta etapa.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Content-Security-Policy "frame-ancestors 'self'"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+# --- fim do bloco H3 ---

@@ -241,6 +241,7 @@
     try {
       const json = await requisitar("cliente/perfil/salvar", {
         method: "POST",
+        headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") },
         body: new FormData(formCadastro)
       });
       mensagemCadastro.textContent = json.user_msg || "Dados cadastrais salvos com sucesso.";

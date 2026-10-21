@@ -9,13 +9,14 @@
   <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.19">
   
   <!--CSS WEB-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.0.19"/>
+  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.0.20"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.0.19"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.0.19"/>
   <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.0.19"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.0.19"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.0.19"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.0.19">
+  <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.0.22"/>
   <!--CSS MOBILE-->
   <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.0.19"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css?v=1.0.19"/>
@@ -27,7 +28,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
   
   <!--Verifica se usuario esta logado se não redireciona para tela de login e tabem informa no cabeçalho a data atual e nome da emresa loada-->
-  <script src="/public/_auth/sessao.js?v=1.0.19"></script>
+  <script src="/public/_auth/sessao.js?v=1.0.25"></script>
   <script src="/public/_auth/permissoes.js?v=1.0.19"></script>
   <script src="/public/js/mensagem-universal.js?v=1.0.19"></script>
   <script src="/public/js/PWA/InstalarPWA.js?v=1.0.19"></script>
@@ -565,12 +566,12 @@
             </div>
 
             <div class="modal-campo">
-              <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+              <input type="password" id="nova_senha" name="nova_senha" required minlength="8">
               <label for="nova_senha">Nova senha</label>
             </div>
 
             <div class="modal-campo">
-              <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+              <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="8">
               <label for="confirmar_senha">Confirmar nova senha</label>
             </div> <br>
 
@@ -760,25 +761,41 @@
               <div class="modal-grid">
 
                 <div class="modal-campo">
-                  <label for="cfg_ddd_padrao"></label>
-                  <input id="cfg_ddd_padrao" name="ddd_padrao" type="text" inputmode="numeric" maxlength="2" placeholder="DDD" value="">
-                  
+                  <input id="cfg_ddd_padrao" name="ddd_padrao" type="text" inputmode="numeric" maxlength="2" placeholder=" " value="">
+                  <label for="cfg_ddd_padrao">DDD</label>
                   <small class="msg-erro" data-erro-for="cfg_ddd_padrao"></small>
                   <small class="msg-ajuda">Minas Gerais = 38</small>
                 </div>
 
                 <div class="modal-campo">
                   <input id="cfg_ddi_padrao" name="ddi_padrao" type="text" inputmode="numeric" maxlength="2" placeholder=" " value="">
-                  <label for="cfg_ddi_padrao">DDI</label>
+                  <label for="cfg_ddi_padrao">DDI padrão</label>
                   <small class="msg-erro" data-erro-for="cfg_ddi_padrao"></small>
                   <small class="msg-ajuda">Brasil = 55</small>
                 </div>
 
                 <div class="modal-campo modal-campo-full">
-                  <textarea id="cfg_msg_whats" name="msg_whats" rows="4" placeholder=" "></textarea>
+                  <textarea id="cfg_msg_whats" name="msg_whats" rows="6" placeholder=" "></textarea>
                   <label for="cfg_msg_whats">Mensagem padrão</label>
                   <small class="msg-erro" data-erro-for="cfg_msg_whats"></small>
-                  <small class="msg-ajuda">Variáveis: {cliente} {servico} {status} {data} {hora}</small>
+                </div>
+
+                <div class="modal-campo-full whats-variaveis" role="group" aria-label="Variáveis disponíveis">
+                  <span class="whats-variaveis-titulo">Variáveis disponíveis:</span>
+                  <button type="button" class="whats-chip" data-variavel-whats="{cliente}">{cliente}</button>
+                  <button type="button" class="whats-chip" data-variavel-whats="{servico}">{servico}</button>
+                  <button type="button" class="whats-chip" data-variavel-whats="{status}">{status}</button>
+                  <button type="button" class="whats-chip" data-variavel-whats="{data}">{data}</button>
+                  <button type="button" class="whats-chip" data-variavel-whats="{hora}">{hora}</button>
+                </div>
+
+                <div class="modal-campo-full whats-preview">
+                  <span class="whats-preview-icone" aria-hidden="true"><i class="fa-brands fa-whatsapp"></i></span>
+                  <div class="whats-preview-conteudo">
+                    <strong class="whats-preview-titulo">Pré-visualização da mensagem</strong>
+                    <div id="cfg_msg_whats_preview" class="whats-preview-texto" aria-live="polite"></div>
+                    <small class="whats-preview-nota">Exemplo com dados fictícios.</small>
+                  </div>
                 </div>
 
               </div>
@@ -1441,18 +1458,19 @@
   <script src="../../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
 
   <!--Cabeçallho-->
-  <script src="../../js/notificacoes/notificacoes.js?v=1.0.19"></script> <!--Notificações do cabeçalho-->
+  <script src="../../js/notificacoes/notificacoes.js?v=1.0.20"></script> <!--Notificações do cabeçalho-->
 
 
   <!--Modal Perfil-->
-  <script src="/public/_auth/deslogar.js?v=1.0.19" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.19" ></script> <!--Alterar Foto de perfil do modal perfil-->
+  <script src="/public/_auth/deslogar.js?v=1.0.24" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.24" ></script> <!--Alterar Foto de perfil do modal perfil-->
   <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.0.19" ></script> <!--Buscar Foto de perfil do usuario logado-->
-  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.19" ></script> <!--Alterar senha perfil-->
+  <script src="/public/js/componentes/indicador-senha.js?v=1.0.23"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
+  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.24" ></script> <!--Alterar senha perfil-->
 
   <!--Modal Configuração Geral-->
-  <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js?v=1.0.19" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-  <script src="../../js/painel-administrativo/configuracao-empresa/salvar-dados-modal-empresa-conf.js?v=1.0.19" ></script> <!--Salvar dados da configuração geral empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+  <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js?v=1.0.25" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+  <script src="../../js/painel-administrativo/configuracao-empresa/salvar-dados-modal-empresa-conf.js?v=1.0.24" ></script> <!--Salvar dados da configuração geral empresa ABA: (GERAL, HORARIOS e Whatssap)-->
  
 
   <!--ABA RESUMO DO DIA -->
@@ -1463,8 +1481,8 @@
 
   <!--ABA CLIENTES -->
   <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=1.0.19" ></script> <!-- LISTA DE CLIENTES -->
-  <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js?v=1.0.19" ></script> <!--Cadastrar Clientes-->
-  <script src="../../js/painel-administrativo/cliente/editar-cliente.js?v=1.0.19" ></script> <!--Editar cliente-->
+  <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js?v=1.0.24" ></script> <!--Cadastrar Clientes-->
+  <script src="../../js/painel-administrativo/cliente/editar-cliente.js?v=1.0.24" ></script> <!--Editar cliente-->
   
   <!--ABA USUARIOS - (FUNCIONARIO)-->
   <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=1.0.19" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->

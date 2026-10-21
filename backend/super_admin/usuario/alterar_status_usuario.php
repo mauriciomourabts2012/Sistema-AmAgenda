@@ -42,6 +42,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require __DIR__ . '/../../_auth/bloquear.php';
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 
 /* ==========================================================
    CONEXÃO

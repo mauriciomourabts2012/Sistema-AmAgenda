@@ -5,7 +5,9 @@ declare(strict_types=1);
  * HANDLER: perfil/alterar-senha
  * - Altera a senha do usuário logado
  * - Valida senha atual
- * - Valida nova senha e confirmação
+ * - Valida nova senha e confirmação pela política centralizada
+ *   (backend/_regras/politica_senha.php)
+ * - Senhas usadas exatamente como digitadas (sem trim), como no login
  * - Atualiza usuario.senha_hash
  * - Retorna JSON padrão
  */
@@ -44,13 +46,18 @@ if ($idUsuario <= 0) {
         'user_msg' => 'Sessão expirada. Faça login novamente.',
     ], 401);
 }
+require_once __DIR__ . '/../_auth/csrf.php';
+csrfValidarSessao();
+
+require_once __DIR__ . '/../_regras/politica_senha.php';
 
 /* ==========================================================
    ENTRADA
+   As senhas não são aparadas nem normalizadas.
 ========================================================== */
-$senhaAtual     = trim((string)($_POST['senha_atual'] ?? ''));
-$novaSenha      = trim((string)($_POST['nova_senha'] ?? ''));
-$confirmarSenha = trim((string)($_POST['confirmar_senha'] ?? ''));
+$senhaAtual     = (string)($_POST['senha_atual'] ?? '');
+$novaSenha      = (string)($_POST['nova_senha'] ?? '');
+$confirmarSenha = (string)($_POST['confirmar_senha'] ?? '');
 
 if ($senhaAtual === '') {
     out([
@@ -79,29 +86,11 @@ if ($confirmarSenha === '') {
     ], 422);
 }
 
-if (mb_strlen($novaSenha) < 6 || mb_strlen($novaSenha) > 72) {
-    out([
-        'ok'       => false,
-        'code'     => 'NEW_PASSWORD_INVALID_LENGTH',
-        'user_msg' => 'A nova senha deve ter entre 6 e 72 caracteres.',
-        'field'    => 'nova_senha',
-    ], 422);
-}
-
-if ($novaSenha !== $confirmarSenha) {
-    out([
-        'ok'       => false,
-        'code'     => 'PASSWORD_CONFIRMATION_MISMATCH',
-        'user_msg' => 'A confirmação da nova senha não confere.',
-        'field'    => 'confirmar_senha',
-    ], 422);
-}
-
-if ($senhaAtual === $novaSenha) {
+if (hash_equals($senhaAtual, $novaSenha)) {
     out([
         'ok'       => false,
         'code'     => 'PASSWORD_SAME_AS_CURRENT',
-        'user_msg' => 'A nova senha deve ser diferente da senha atual.',
+        'user_msg' => politicaSenhaMensagem('PASSWORD_SAME_AS_CURRENT'),
         'field'    => 'nova_senha',
     ], 422);
 }
@@ -132,7 +121,7 @@ if ($conexao->connect_errno) {
 $conexao->set_charset('utf8mb4');
 
 try {
-    $sqlUser = "SELECT id_usuario, nome, senha_hash, status FROM usuario WHERE id_usuario = ? LIMIT 1";
+    $sqlUser = "SELECT id_usuario, nome, email, telefone, senha_hash, status FROM usuario WHERE id_usuario = ? LIMIT 1";
     $stmtUser = $conexao->prepare($sqlUser);
 
     if (!$stmtUser) {
@@ -170,6 +159,22 @@ try {
             'code'     => 'CURRENT_PASSWORD_INVALID',
             'user_msg' => 'A senha atual informada está incorreta.',
             'field'    => 'senha_atual',
+        ], 422);
+    }
+
+    // Política de senha definitiva: tamanho, caracteres, senhas comuns,
+    // dados pessoais e confirmação. Aplicada somente à nova senha.
+    $erroPolitica = politicaSenhaValidarDefinitiva($novaSenha, $confirmarSenha, [
+        'nome'     => (string)($usuario['nome'] ?? ''),
+        'email'    => (string)($usuario['email'] ?? ''),
+        'telefone' => (string)($usuario['telefone'] ?? ''),
+    ]);
+    if ($erroPolitica !== null) {
+        out([
+            'ok'       => false,
+            'code'     => $erroPolitica['code'],
+            'user_msg' => $erroPolitica['user_msg'],
+            'field'    => $erroPolitica['campo'] === 'confirmacao' ? 'confirmar_senha' : 'nova_senha',
         ], 422);
     }
 
@@ -277,10 +282,17 @@ try {
     $_SESSION['auth']['deve_alterar_senha'] = false;
     $_SESSION['auth']['senha_temporaria_vencida'] = false;
 
+    // A6.1: a sessão atual acompanha a nova credencial (as demais sessões deste
+    // usuário passam a divergir e são revogadas). Atualizado só depois do commit;
+    // o identificador da sessão é rotacionado.
+    require_once __DIR__ . '/../_regras/login_multiempresa.php';
+    $_SESSION[SESSAO_CREDENCIAL_INTERNA] = sessaoCredencialImpressao((string)$novoHash);
+    session_regenerate_id(true);
+
     out([
         'ok'       => true,
         'code'     => 'PASSWORD_UPDATED',
-        'user_msg' => 'Senha alterada com sucesso.',
+        'user_msg' => politicaSenhaMensagem('PASSWORD_CHANGED'),
         'data'     => [
             'id_usuario' => $idUsuario,
         ],

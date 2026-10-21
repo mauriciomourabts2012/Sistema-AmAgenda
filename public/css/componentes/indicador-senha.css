@@ -1,0 +1,142 @@
+/* AmAgenda - Componente IndicadorSenha (apoio visual; o backend valida a senha). */
+.ind-senha {
+  --isn-texto: var(--cad-text-2, #475569);
+  --isn-titulo: var(--cad-text, var(--text, #0f172a));
+  --isn-pendente: var(--muted, #6b7280);
+  --isn-ok: var(--cad-success, #15803d);
+  --isn-erro: #b42318;
+  --isn-sugestao: var(--icon-muted, #64748b);
+  --isn-fundo: var(--ed-acao-fundo, #f8fafc);
+  --isn-borda: var(--ed-acao-borda, #e2e8f0);
+  --isn-raio: var(--radius-sm, 12px);
+
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  background: var(--isn-fundo);
+  border: 1px solid var(--isn-borda);
+  border-radius: var(--isn-raio);
+  color: var(--isn-texto);
+  font-size: .85rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.ind-senha *,
+.ind-senha *::before,
+.ind-senha *::after { box-sizing: border-box; }
+
+.ind-senha__dica {
+  margin: 0 0 6px;
+  color: var(--isn-pendente);
+  font-size: .82rem;
+}
+.ind-senha__dica[hidden] { display: none; }
+
+.ind-senha__bloco + .ind-senha__bloco,
+.ind-senha__lista--conf { margin-top: 8px; }
+
+.ind-senha__titulo {
+  margin: 0 0 4px;
+  color: var(--isn-titulo);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.ind-senha__lista {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ind-senha__lista--conf {
+  padding-top: 8px;
+  border-top: 1px dashed var(--isn-borda);
+}
+
+.ind-senha__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  color: var(--isn-pendente);
+  overflow-wrap: anywhere;
+}
+
+.ind-senha__icone {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ind-senha__texto { min-width: 0; }
+
+/* Estados: cor + ícone (✓ / ✕ / ○) + texto; nunca apenas cor. */
+.ind-senha__item[data-estado="ok"] { color: var(--isn-ok); }
+.ind-senha__item[data-estado="ok"] .ind-senha__icone {
+  background: var(--isn-ok);
+  border-color: var(--isn-ok);
+  color: #fff;
+}
+.ind-senha__item[data-estado="invalido"] { color: var(--isn-erro); font-weight: 600; }
+.ind-senha__item[data-estado="invalido"] .ind-senha__icone {
+  background: var(--isn-erro);
+  border-color: var(--isn-erro);
+  color: #fff;
+}
+.ind-senha__item[data-estado="sugestao"] { color: var(--isn-sugestao); }
+.ind-senha__item[data-estado="sugestao"] .ind-senha__icone { border-style: dashed; }
+.ind-senha__item[data-estado="pendente"] .ind-senha__icone { border-style: solid; }
+
+/* Texto auxiliar exclusivo para leitores de tela. */
+.ind-senha__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Região viva: existe para leitores de tela, sem ocupar espaço visual. */
+.ind-senha__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .ind-senha { padding: 8px 10px; font-size: .82rem; }
+}
+
+@media (forced-colors: active) {
+  .ind-senha__icone { forced-color-adjust: auto; }
+  .ind-senha__item[data-estado="invalido"] .ind-senha__texto { text-decoration: underline; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ind-senha__item,
+  .ind-senha__icone { transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
+}

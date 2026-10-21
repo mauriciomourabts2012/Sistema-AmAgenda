@@ -55,6 +55,8 @@ try {
         && (bool)($auth['modo_suporte'] ?? false);
 
     if ($idUsuario <= 0) out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
+    require_once __DIR__ . '/../_auth/csrf.php';
+    csrfValidarSessao();
     if (($auth['status'] ?? 'ativo') !== 'ativo') out(['ok' => false, 'code' => 'USER_INACTIVE', 'user_msg' => 'Seu usuário está inativo.'], 403);
     if ($idEmpresa <= 0) out(['ok' => false, 'code' => 'SESSION_WITHOUT_COMPANY', 'user_msg' => 'Não foi possível identificar a empresa da sessão.'], 403);
 

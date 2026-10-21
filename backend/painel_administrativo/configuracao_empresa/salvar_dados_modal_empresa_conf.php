@@ -278,6 +278,8 @@ if ($idEmpresa <= 0) {
         'user_msg' => 'Empresa da sessão não encontrada.',
     ], 401);
 }
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 
 /*
 |--------------------------------------------------------------------------

@@ -6,7 +6,19 @@ declare(strict_types=1);
  * - Atualiza dados do usuário super admin na tabela `usuario`
  * - Compatível com API central
  * - Sempre retorna JSON válido
- * - Atualiza senha SOMENTE se enviada
+ * - Atualiza senha SOMENTE se enviada, validada pela política de senha PROVISÓRIA usada no
+ *   cadastro de Super Admin (cadastrar_usuario_super.php): 6 a 72 bytes, somente ASCII
+ *   imprimível, sem caracteres invisíveis e confirmação idêntica. A senha definitiva, com a
+ *   política central forte (politica_senha.php), é exigida na troca obrigatória.
+ * - A senha definida aqui é sempre TEMPORÁRIA (A5.1-R2): grava deve_alterar_senha = 1 e
+ *   data_senha_temporaria = CURRENT_TIMESTAMP, cancela avisos pendentes anteriores e cria a
+ *   notificação seguranca.senha_temporaria (troca obrigatória, prazo de 24 horas), tudo na
+ *   mesma transação. Sem nova senha, o prazo não é renovado.
+ * - Depois do commit da senha temporária, grava o marcador de liberação do login
+ *   (A5.1-R2) para o e-mail atual e, se alterado, para o anterior. O login aplica o
+ *   marcador sob o GET_LOCK da conta (backend/_auth/login.php). Uma falha aqui não
+ *   desfaz a redefinição e é informada ao administrador.
+ * - A própria senha não pode ser redefinida aqui (exige a senha atual no perfil)
  * - Email é obrigatório
  * - Nome é obrigatório
  * - Status é obrigatório
@@ -38,6 +50,8 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require __DIR__ . '/../../_auth/bloquear.php';
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 
 /* ==========================================================
    HELPERS
@@ -83,6 +97,87 @@ function intOrNull(string $k): ?int
     return ($n > 0) ? $n : null;
 }
 
+/**
+ * Grava o marcador de liberação do login central para o e-mail informado.
+ * Espelha a composição de chaves e o nome do lock do limitador de
+ * backend/_auth/login.php (A5.1): qualquer mudança lá deve ser refletida aqui.
+ * Somente grava o marcador (operação atômica); nenhum contador é apagado aqui.
+ * O lock da conta é usado, quando obtido, para que a liberação não se misture a
+ * uma tentativa de login em andamento. Nunca lança exceção.
+ */
+function liberarLoginContaSuperAdmin(mysqli $conexao, string $email): bool
+{
+    $email = mb_strtolower(trim($email), 'UTF-8');
+    if ($email === '') {
+        return false;
+    }
+
+    $chaveConta = hash('sha256', "amagenda:login_central:conta\n" . $email, true);
+    $marcador = hash('sha256', "amagenda:login_central:liberar_conta\n" . $email, true);
+    $nomeLock = 'amagenda:login_conta:' . substr(bin2hex($chaveConta), 0, 40);
+    $lockObtido = false;
+    $gravado = false;
+
+    try {
+        $stmt = $conexao->prepare('SELECT GET_LOCK(?, 5) AS adquirido');
+        if ($stmt) {
+            $stmt->bind_param('s', $nomeLock);
+            if ($stmt->execute()) {
+                $resultado = $stmt->get_result();
+                $linha = $resultado ? $resultado->fetch_assoc() : null;
+                $lockObtido = (int)($linha['adquirido'] ?? 0) === 1;
+            }
+            $stmt->close();
+        }
+
+        $stmt = $conexao->prepare(
+            'INSERT INTO login_limite_conta_ip (chave, falhas, primeira_falha_em, ultima_falha_em, bloqueado_ate)
+             VALUES (?, 0, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), NULL)
+             ON DUPLICATE KEY UPDATE
+                 falhas = 0,
+                 primeira_falha_em = VALUES(primeira_falha_em),
+                 ultima_falha_em = VALUES(ultima_falha_em),
+                 bloqueado_ate = NULL'
+        );
+        if ($stmt) {
+            $stmt->bind_param('s', $marcador);
+            $gravado = $stmt->execute();
+            $stmt->close();
+        }
+    } catch (Throwable $e) {
+        $gravado = false;
+    }
+
+    if ($lockObtido) {
+        try {
+            $stmt = $conexao->prepare('SELECT RELEASE_LOCK(?) AS liberado');
+            if ($stmt) {
+                $stmt->bind_param('s', $nomeLock);
+                $stmt->execute();
+                $stmt->close();
+            }
+        } catch (Throwable) {
+            // O lock é liberado automaticamente quando a conexão termina.
+        }
+    }
+
+    if (!$gravado) {
+        error_log('[editar_usuario_super] Marcador de liberação do login não gravado.');
+    }
+    return $gravado;
+}
+
+/** Senha provisória: mesmas regras de caracteres do cadastro de Super Admin. */
+function senhaProvisoriaTemInvisiveis(string $v): bool
+{
+    return preg_match('/[\x00-\x1F\x7F\x{200B}-\x{200D}\x{FEFF}]/u', $v) === 1;
+}
+
+function senhaProvisoriaAsciiImprimivel(string $v): bool
+{
+    return preg_match('/^[\x20-\x7E]+$/', $v) === 1;
+}
+
 function onlyDigits(?string $v): string
 {
     return preg_replace('/\D+/', '', (string)$v) ?? '';
@@ -96,8 +191,9 @@ $nome        = strv('nome', 140, true);
 $email       = mb_strtolower(strv('email', 160, true));
 $telefoneRaw = strv('telefone', 20, false);
 $status      = mb_strtolower(strv('status', 20, true));
-$senha       = trim((string)($_POST['senha'] ?? ''));
-$senha2      = trim((string)($_POST['senha2'] ?? ''));
+// As senhas não são aparadas nem normalizadas.
+$senha       = (string)($_POST['senha'] ?? '');
+$senha2      = (string)($_POST['senha2'] ?? '');
 
 /* ==========================================================
    VALIDAÇÕES
@@ -141,28 +237,48 @@ if ($status === '') {
 $alterarSenha = false;
 $senhaHash = null;
 
+// Redefinição administrativa da própria senha não é permitida: o fluxo
+// Alterar senha do perfil exige a senha atual. Os demais dados continuam editáveis.
+$editandoPropriaConta = $idUsuario !== null && $idUsuario === (int)$idUsuarioSuperAdmin;
+if ($editandoPropriaConta && ($senha !== '' || $senha2 !== '')) {
+    out([
+        'ok' => false,
+        'code' => 'PROPRIA_SENHA_NAO_PERMITIDA',
+        'user_msg' => 'Para alterar sua própria senha, utilize a opção Alterar senha no seu perfil.',
+        'fields' => [
+            'senha' => 'Para alterar sua própria senha, utilize a opção Alterar senha no seu perfil.',
+        ],
+    ], 403);
+}
+
 if ($senha !== '' || $senha2 !== '') {
+    // Senha PROVISÓRIA (sempre temporária nesta tela): mesmas regras e mensagens do
+    // cadastro de Super Admin. Sem trim; confirmação exata (hash_equals). A política
+    // forte de senha definitiva é aplicada quando o usuário fizer a troca obrigatória.
+    $erroSenhaProvisoria = null;
     if ($senha === '') {
-        $erros['senha'] = 'Informe a nova senha.';
+        $erroSenhaProvisoria = 'Informe a senha.';
+    } elseif (strlen($senha) < 6) {
+        $erroSenhaProvisoria = 'A senha deve ter no mínimo 6 caracteres.';
+    } elseif (strlen($senha) > 72) {
+        $erroSenhaProvisoria = 'A senha deve ter no máximo 72 caracteres.';
+    } elseif (senhaProvisoriaTemInvisiveis($senha)) {
+        $erroSenhaProvisoria = 'A senha contém caracteres invisíveis inválidos.';
+    } elseif (!senhaProvisoriaAsciiImprimivel($senha)) {
+        $erroSenhaProvisoria = 'A senha contém caracteres inválidos.';
+    }
+
+    if ($erroSenhaProvisoria !== null) {
+        $erros['senha'] = $erroSenhaProvisoria;
     }
 
     if ($senha2 === '') {
-        $erros['senha2'] = 'Confirme a nova senha.';
+        $erros['senha2'] = 'Repita a senha no campo de confirmação.';
+    } elseif (!hash_equals($senha, $senha2)) {
+        $erros['senha2'] = 'As senhas informadas não coincidem.';
     }
 
-    if ($senha !== '' && mb_strlen($senha) < 6) {
-        $erros['senha'] = 'A senha deve ter no mínimo 6 caracteres.';
-    }
-
-    if ($senha2 !== '' && mb_strlen($senha2) < 6) {
-        $erros['senha2'] = 'A confirmação deve ter no mínimo 6 caracteres.';
-    }
-
-    if ($senha !== '' && $senha2 !== '' && $senha !== $senha2) {
-        $erros['senha2'] = 'As senhas não conferem.';
-    }
-
-    if (!isset($erros['senha']) && !isset($erros['senha2'])) {
+    if ($erroSenhaProvisoria === null && !isset($erros['senha2'])) {
         $alterarSenha = true;
         $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
     }
@@ -182,6 +298,7 @@ if (!empty($erros)) {
 ========================================================== */
 require __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';
+require_once __DIR__ . '/../../_servicos/notificacao.php';
 
 if (!isset($conexao) || !($conexao instanceof mysqli)) {
     out([
@@ -300,7 +417,9 @@ try {
                 email = ?,
                 telefone = ?,
                 status = ?,
-                senha_hash = ?
+                senha_hash = ?,
+                deve_alterar_senha = 1,
+                data_senha_temporaria = CURRENT_TIMESTAMP
             WHERE id_usuario = ?
               AND tipo_usuario = 'super_admin'
             LIMIT 1
@@ -362,6 +481,88 @@ try {
     $affected = (int)$stmt->affected_rows;
     $stmt->close();
 
+    /* ==========================================================
+       SENHA TEMPORÁRIA (A5.1-R2) — mesma transação
+       ----------------------------------------------------------
+       - Cancela avisos de senha temporária ainda pendentes (evita dois prazos).
+       - Cria o aviso seguranca.senha_temporaria com o prazo de 24 horas
+         calculado pelo banco, como na criação do Super Admin.
+    ========================================================== */
+    if ($alterarSenha) {
+        $stmtPendentes = $conexao->prepare(
+            "SELECT id_notificacao
+               FROM notificacao
+              WHERE destinatario_tipo = 'super_admin'
+                AND destinatario_id = ?
+                AND id_empresa IS NULL
+                AND codigo = 'seguranca.senha_temporaria'
+                AND concluida_em IS NULL
+                AND cancelada_em IS NULL
+              FOR UPDATE"
+        );
+        if (!$stmtPendentes) {
+            throw new RuntimeException('Prepare dos avisos de senha temporária pendentes falhou.');
+        }
+        $stmtPendentes->bind_param('i', $idUsuario);
+        if (!$stmtPendentes->execute()) {
+            $stmtPendentes->close();
+            throw new RuntimeException('Consulta dos avisos de senha temporária pendentes falhou.');
+        }
+        $resultadoPendentes = $stmtPendentes->get_result();
+        $idsPendentes = [];
+        while ($resultadoPendentes && ($linhaPendente = $resultadoPendentes->fetch_assoc())) {
+            $idsPendentes[] = (int)$linhaPendente['id_notificacao'];
+        }
+        $stmtPendentes->close();
+        foreach ($idsPendentes as $idPendente) {
+            notificacaoCancelar($conexao, $idPendente, 'super_admin', (int)$idUsuario, null);
+        }
+
+        $stmtPrazo = $conexao->prepare(
+            'SELECT data_senha_temporaria,
+                    DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR)
+               FROM usuario
+              WHERE id_usuario = ?
+                AND tipo_usuario = \'super_admin\'
+                AND deve_alterar_senha = 1
+              LIMIT 1
+              FOR UPDATE'
+        );
+        if (!$stmtPrazo) {
+            throw new RuntimeException('Prepare do prazo da senha temporária falhou.');
+        }
+        $stmtPrazo->bind_param('i', $idUsuario);
+        if (!$stmtPrazo->execute()) {
+            $stmtPrazo->close();
+            throw new RuntimeException('Consulta do prazo da senha temporária falhou.');
+        }
+        $stmtPrazo->bind_result($dataSenhaTemporaria, $prazoSenhaTemporaria);
+        $prazoEncontrado = $stmtPrazo->fetch();
+        $stmtPrazo->close();
+        if (!$prazoEncontrado || trim((string)$dataSenhaTemporaria) === '' || trim((string)$prazoSenhaTemporaria) === '') {
+            throw new RuntimeException('Os dados da senha temporária do Super Admin não foram gravados corretamente.');
+        }
+
+        $prefixoDeduplicacao = 'super_admin:' . $idUsuario . ':redefinicao:' . bin2hex(random_bytes(16));
+        notificacaoCriar($conexao, [
+            'id_empresa' => null,
+            'destinatario_tipo' => 'super_admin',
+            'destinatario_id' => $idUsuario,
+            'origem_tipo' => 'sistema',
+            'origem_id' => null,
+            'codigo' => 'seguranca.senha_temporaria',
+            'categoria' => 'seguranca',
+            'titulo' => 'Altere sua senha temporária',
+            'mensagem' => 'Sua senha atual é temporária. Altere-a dentro de 24 horas.',
+            'prioridade' => 'alta',
+            'obrigatoria' => true,
+            'acao_codigo' => 'perfil.alterar_senha',
+            'contexto' => null,
+            'prazo_em' => (string)$prazoSenhaTemporaria,
+            'chave_deduplicacao' => 'seguranca.senha_temporaria:' . $prefixoDeduplicacao,
+        ]);
+    }
+
     $depois = ['nome'=>$nome,'email'=>$email,'telefone'=>$telefone,'status'=>$status];
     $antes = ['nome'=>$usuario['nome'],'email'=>$usuario['email'],'telefone'=>$usuario['telefone'],'status'=>$usuario['status']];
     $alteracoes = [];
@@ -370,17 +571,45 @@ try {
     if ($alteracoes !== []) auditoriaRegistrar($conexao, 'super_admin.editado', [
         'ator'=>auditoriaResolverAtorSuperAdmin($conexao),
         'entidade_id'=>$idUsuario,'entidade_rotulo'=>$nome,
-        'descricao'=>'Alterou o Super Admin ' . $nome . '.','alteracoes'=>$alteracoes,
-        'contexto'=>['origem'=>'painel_super_admin'],
+        'descricao'=>$alterarSenha
+            ? 'Alterou o Super Admin ' . $nome . ' e definiu uma senha temporária (troca obrigatória em até 24 horas).'
+            : 'Alterou o Super Admin ' . $nome . '.',
+        'alteracoes'=>$alteracoes,
+        'contexto'=>$alterarSenha
+            ? ['origem'=>'painel_super_admin','motivo'=>'redefinicao_administrativa_temporaria']
+            : ['origem'=>'painel_super_admin'],
     ]);
 
     $conexao->commit();
+
+    /* ==========================================================
+       LIBERAÇÃO DO LOGIN (A5.1-R2) — somente após o commit da
+       senha temporária. Não desfaz a redefinição em caso de falha.
+    ========================================================== */
+    $loginDesbloqueado = null;
+    if ($alterarSenha) {
+        $emailsLiberacao = array_values(array_unique(array_filter([
+            mb_strtolower(trim($email), 'UTF-8'),
+            mb_strtolower(trim((string)($usuario['email'] ?? '')), 'UTF-8'),
+        ], static fn(string $valor): bool => $valor !== '')));
+        $loginDesbloqueado = $emailsLiberacao !== [];
+        foreach ($emailsLiberacao as $emailLiberacao) {
+            if (!liberarLoginContaSuperAdmin($conexao, $emailLiberacao)) {
+                $loginDesbloqueado = false;
+            }
+        }
+    }
 
     out([
         'ok' => true,
         'code' => 'UPDATED',
         'user_msg' => $affected > 0
-            ? ($alterarSenha ? 'Super Admin e senha atualizados com sucesso.' : 'Super Admin atualizado com sucesso.')
+            ? ($alterarSenha
+                ? 'Super Admin atualizado. A senha definida é temporária: no próximo acesso, o usuário deverá alterá-la (prazo de 24 horas).'
+                    . ($loginDesbloqueado
+                        ? ' O bloqueio de tentativas de login desta conta foi liberado.'
+                        : ' Atenção: não foi possível liberar agora o bloqueio de tentativas de login desta conta. Se ele estiver ativo, expira em até 15 minutos.')
+                : 'Super Admin atualizado com sucesso.')
             : 'Nenhuma alteração foi realizada.',
         'data' => [
             'id_usuario'     => $idUsuario,
@@ -389,6 +618,8 @@ try {
             'telefone'       => $telefone,
             'status'         => $status,
             'senha_alterada' => $alterarSenha,
+            'senha_temporaria' => $alterarSenha,
+            'login_desbloqueado' => $loginDesbloqueado,
             'tipo_usuario'   => $tipoUsuario,
         ],
     ], 200);

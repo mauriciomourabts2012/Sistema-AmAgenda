@@ -14,6 +14,21 @@ const LOGIN_PENDENTE_CHAVE = 'login_pendente';
 const LOGIN_PENDENTE_TTL_SEGUNDOS = 300;
 const LOGIN_PENDENTE_MAX_TENTATIVAS = 5;
 
+/* ==========================================================
+   CREDENCIAL DA SESSÃO (A6.1) — revogação após troca de senha
+   ----------------------------------------------------------
+   A sessão guarda, somente no servidor, a impressão da credencial validada:
+   hash('sha256', (string)senha_hash). Toda troca de senha altera senha_hash e,
+   com isso, invalida as sessões antigas. A impressão nunca é enviada ao
+   frontend; a comparação usa hash_equals(). Sessões sem marcador ou com marcador
+   divergente recebem 401 SESSION_REAUTH_REQUIRED. Falha técnica de consulta
+   continua sendo erro técnico (500), nunca 401.
+   ========================================================== */
+const SESSAO_CREDENCIAL_INTERNA = 'auth_credencial';
+const SESSAO_CREDENCIAL_CLIENTE = 'cliente_credencial';
+const SESSAO_LOGIN_INTERNO_URL = '/public/views/login-empresa.php';
+const SESSAO_LOGIN_CLIENTE_URL = '/public/views/login-cliente.php';
+
 if (!function_exists('normalizaEmpresaNome')) {
     function normalizaEmpresaNome(string $nome): string {
         $nome = trim(mb_strtolower($nome, 'UTF-8'));
@@ -44,7 +59,7 @@ function loginMultiempresaLimparContexto(): void
         'usuario_id', 'usuario_nome', 'usuario_email', 'usuario_tipo',
         'perfil_id', 'perfil_nome', 'modo_suporte',
         'empresa_id', 'empresa_nome', 'empresa_slug',
-        LOGIN_PENDENTE_CHAVE,
+        LOGIN_PENDENTE_CHAVE, SESSAO_CREDENCIAL_INTERNA,
     ] as $chave) {
         unset($_SESSION[$chave]);
     }
@@ -200,7 +215,7 @@ function loginMultiempresaAuditarFalha(mysqli $conexao, string $evento, string $
  * Cria a pré-sessão de seleção. Não grava nenhuma chave que sessao.php,
  * require_auth.php ou os handlers reconheçam como usuário autenticado.
  */
-function loginMultiempresaCriarPreSessao(int $idUsuario): string
+function loginMultiempresaCriarPreSessao(int $idUsuario, string $credencialImpressao = ''): string
 {
     session_regenerate_id(true);
     loginMultiempresaLimparContexto();
@@ -211,6 +226,9 @@ function loginMultiempresaCriarPreSessao(int $idUsuario): string
         'criado_em' => $agora,
         'expira_em' => $agora + LOGIN_PENDENTE_TTL_SEGUNDOS,
         'tentativas' => 0,
+        // Credencial validada no login (A6.1): a seleção só consolida a sessão
+        // se a senha não tiver mudado desde então.
+        'credencial' => $credencialImpressao,
     ];
 
     return loginMultiempresaRotacionarCsrf();
@@ -266,6 +284,11 @@ function loginMultiempresaConsolidarSessao(mysqli $conexao, array $user, array $
         'senha_temporaria_vencida' => $senhaTemporariaVencida,
     ];
 
+    // Marcador da credencial validada (A6.1); somente no servidor.
+    $_SESSION[SESSAO_CREDENCIAL_INTERNA] = sessaoCredencialImpressao(
+        array_key_exists('senha_hash', $user) ? (string)$user['senha_hash'] : null
+    );
+
     $_SESSION['usuario_id'] = $idUsuario;
     $_SESSION['usuario_nome'] = (string)$user['nome'];
     $_SESSION['usuario_email'] = (string)$user['email'];
@@ -299,4 +322,159 @@ function loginMultiempresaResponderLoginOk(array $data): void
             : 'Login realizado com sucesso.',
         'data' => $data,
     ], 200);
+}
+
+/* ==========================================================
+   CREDENCIAL DA SESSÃO (A6.1) — funções
+   ========================================================== */
+
+/** Impressão da credencial: somente no servidor, nunca enviada ao frontend. */
+function sessaoCredencialImpressao(?string $senhaHash): string
+{
+    return hash('sha256', (string)$senhaHash);
+}
+
+/** Confere o marcador da sessão com a credencial atual (sem marcador = não confere). */
+function sessaoCredencialConfere(string $chaveSessao, ?string $senhaHashAtual): bool
+{
+    $marcador = $_SESSION[$chaveSessao] ?? null;
+    if (!is_string($marcador) || preg_match('/^[a-f0-9]{64}$/', $marcador) !== 1) {
+        return false;
+    }
+    return hash_equals($marcador, sessaoCredencialImpressao($senhaHashAtual));
+}
+
+/** Resposta única de revogação, tratada pelo sessao.js (sem repetir avisos). */
+function sessaoCredencialResponderReautenticacao(string $destino): void
+{
+    out([
+        'ok' => false,
+        'code' => 'SESSION_REAUTH_REQUIRED',
+        'user_msg' => 'Sua sessão foi encerrada por segurança. Faça login novamente.',
+        'data' => ['redirect_url' => $destino],
+    ], 401);
+}
+
+/**
+ * Revoga a identidade interna (funcionário/Super Admin) e o contexto
+ * privilegiado, inclusive Modo Suporte. Uma sessão de cliente que coexista na
+ * mesma sessão PHP é preservada, com o contexto público da empresa que ela usa.
+ */
+function sessaoCredencialRevogarInterna(): void
+{
+    $clienteAtivo = is_array($_SESSION['cliente_auth'] ?? null) && $_SESSION['cliente_auth'] !== [];
+    $contextoPublico = [];
+    if ($clienteAtivo) {
+        foreach (['empresa_id', 'empresa_nome', 'empresa_slug'] as $chave) {
+            if (array_key_exists($chave, $_SESSION)) {
+                $contextoPublico[$chave] = $_SESSION[$chave];
+            }
+        }
+    }
+
+    loginMultiempresaLimparContexto();
+    unset(
+        $_SESSION[SESSAO_CREDENCIAL_INTERNA],
+        $_SESSION['id_empresa'],
+        $_SESSION['modo_suporte_iniciado_em']
+    );
+
+    foreach ($contextoPublico as $chave => $valor) {
+        $_SESSION[$chave] = $valor;
+    }
+}
+
+/**
+ * Revoga a identidade do cliente. Preserva somente o contexto público da
+ * empresa (empresa_id, empresa_nome, empresa_slug) para o retorno ao login da
+ * Agenda Online dessa empresa.
+ */
+function sessaoCredencialRevogarCliente(): void
+{
+    unset(
+        $_SESSION['cliente_auth'],
+        $_SESSION['cliente_auth_desafio'],
+        $_SESSION['cliente_recuperacao_senha'],
+        $_SESSION[SESSAO_CREDENCIAL_CLIENTE]
+    );
+}
+
+/**
+ * Exige que a sessão interna corresponda à credencial atual do usuário.
+ * - $senhaHashAtual já lido (require_auth) ou null para consultar aqui.
+ * - Divergência ou ausência de marcador: revoga e responde 401 SESSION_REAUTH_REQUIRED.
+ * - Falha técnica: 500 SESSION_USER_CHECK_ERROR (nunca 401).
+ */
+function sessaoCredencialExigirInterna(?mysqli $conexao, int $idUsuario, bool $senhaJaLida = false, ?string $senhaHashAtual = null): void
+{
+    if (!$senhaJaLida) {
+        if (!($conexao instanceof mysqli) || $conexao->connect_errno) {
+            out(['ok' => false, 'code' => 'SESSION_USER_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $stmt = $conexao->prepare('SELECT senha_hash FROM usuario WHERE id_usuario = ? LIMIT 1');
+        if (!$stmt) {
+            out(['ok' => false, 'code' => 'SESSION_USER_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $stmt->bind_param('i', $idUsuario);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            out(['ok' => false, 'code' => 'SESSION_USER_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $resultado = $stmt->get_result();
+        $linha = $resultado ? ($resultado->fetch_assoc() ?: null) : null;
+        $stmt->close();
+        if ($linha === null) {
+            sessaoCredencialRevogarInterna();
+            sessaoCredencialResponderReautenticacao(SESSAO_LOGIN_INTERNO_URL);
+        }
+        $senhaHashAtual = $linha['senha_hash'] === null ? null : (string)$linha['senha_hash'];
+    }
+
+    if (!sessaoCredencialConfere(SESSAO_CREDENCIAL_INTERNA, $senhaHashAtual)) {
+        sessaoCredencialRevogarInterna();
+        sessaoCredencialResponderReautenticacao(SESSAO_LOGIN_INTERNO_URL);
+    }
+
+    if (!defined('AUTH_CREDENCIAL_VALIDADA')) {
+        define('AUTH_CREDENCIAL_VALIDADA', true);
+    }
+}
+
+/**
+ * Exige que a sessão do cliente corresponda à credencial atual.
+ * - Sem id_cliente (cadastro ainda não criado): credencial vazia.
+ * - Cliente inexistente, divergência ou ausência de marcador: revoga e responde
+ *   401 SESSION_REAUTH_REQUIRED, com retorno ao login da empresa.
+ * - Falha técnica: 500 CLIENT_SESSION_CHECK_ERROR (nunca 401).
+ */
+function sessaoCredencialExigirCliente(?mysqli $conexao, int $idEmpresa, ?int $idCliente): void
+{
+    $senhaHashAtual = null;
+    if ($idCliente !== null && $idCliente > 0) {
+        if (!($conexao instanceof mysqli) || $conexao->connect_errno) {
+            out(['ok' => false, 'code' => 'CLIENT_SESSION_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $stmt = $conexao->prepare('SELECT senha_hash FROM cliente WHERE id_cliente = ? AND id_empresa = ? LIMIT 1');
+        if (!$stmt) {
+            out(['ok' => false, 'code' => 'CLIENT_SESSION_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $stmt->bind_param('ii', $idCliente, $idEmpresa);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            out(['ok' => false, 'code' => 'CLIENT_SESSION_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $resultado = $stmt->get_result();
+        $linha = $resultado ? ($resultado->fetch_assoc() ?: null) : null;
+        $stmt->close();
+        if ($linha === null) {
+            sessaoCredencialRevogarCliente();
+            sessaoCredencialResponderReautenticacao(SESSAO_LOGIN_CLIENTE_URL);
+        }
+        $senhaHashAtual = $linha['senha_hash'] === null ? null : (string)$linha['senha_hash'];
+    }
+
+    if (!sessaoCredencialConfere(SESSAO_CREDENCIAL_CLIENTE, $senhaHashAtual)) {
+        sessaoCredencialRevogarCliente();
+        sessaoCredencialResponderReautenticacao(SESSAO_LOGIN_CLIENTE_URL);
+    }
 }

@@ -49,6 +49,107 @@
 
   let isSubmitting = false;
 
+  // ==========================================================
+  // Indicador da senha PROVISÓRIA (apenas apoio visual; o backend valida).
+  // A senha definida nesta tela é sempre temporária: mostra as regras da
+  // política provisória do cadastro de Super Admin (6 a 72 caracteres, sem
+  // acentos ou caracteres invisíveis, confirmação idêntica), com o mesmo
+  // visual do IndicadorSenha. A política forte é exigida na troca obrigatória.
+  // Senha opcional: oculto enquanto os dois campos estão vazios.
+  // ==========================================================
+  let indicadorSenha = null;
+
+  function iniciarIndicadorSenha() {
+    if (indicadorSenha || !els.senha || !els.senha2) return;
+    const campoConfirmacao = els.senha2.closest(".modal-campo");
+    if (!campoConfirmacao) return;
+
+    const ICONES = { ok: "✓", invalido: "✕", pendente: "○" };
+    const raiz = document.createElement("div");
+    raiz.className = "ind-senha";
+    raiz.id = "eusIndicadorSenhaProvisoria";
+    raiz.style.gridColumn = "1 / -1";
+    raiz.style.display = "none";
+
+    const dica = document.createElement("p");
+    dica.className = "ind-senha__dica";
+    dica.textContent = "Senha temporária: no próximo acesso, o usuário deverá criar uma senha definitiva que atenda a todas as regras de segurança.";
+    raiz.appendChild(dica);
+
+    const bloco = document.createElement("div");
+    bloco.className = "ind-senha__bloco";
+    const titulo = document.createElement("p");
+    titulo.className = "ind-senha__titulo";
+    titulo.textContent = "Requisitos da senha temporária";
+    bloco.appendChild(titulo);
+    const lista = document.createElement("ul");
+    lista.className = "ind-senha__lista";
+    lista.setAttribute("aria-label", "Requisitos da senha temporária");
+    bloco.appendChild(lista);
+    raiz.appendChild(bloco);
+
+    const listaConf = document.createElement("ul");
+    listaConf.className = "ind-senha__lista ind-senha__lista--conf";
+    raiz.appendChild(listaConf);
+
+    const itens = {};
+    const criarItem = (destino, chave, texto) => {
+      const li = document.createElement("li");
+      li.className = "ind-senha__item";
+      li.setAttribute("data-estado", "pendente");
+      const icone = document.createElement("span");
+      icone.className = "ind-senha__icone";
+      icone.setAttribute("aria-hidden", "true");
+      icone.textContent = ICONES.pendente;
+      const span = document.createElement("span");
+      span.className = "ind-senha__texto";
+      span.textContent = texto;
+      li.append(icone, span);
+      destino.appendChild(li);
+      itens[chave] = { li, icone, span };
+    };
+    const definir = (chave, estado, texto) => {
+      const item = itens[chave];
+      if (!item) return;
+      item.li.setAttribute("data-estado", estado);
+      item.icone.textContent = ICONES[estado] || ICONES.pendente;
+      if (texto) item.span.textContent = texto;
+    };
+
+    criarItem(lista, "tamanho", "Entre 6 e 72 caracteres.");
+    criarItem(lista, "caracteres", "Somente letras sem acento, números, espaço e símbolos comuns.");
+    criarItem(listaConf, "confirmacao", "Repita a senha para confirmar.");
+
+    const atualizar = () => {
+      const nova = String(els.senha.value || "");
+      const conf = String(els.senha2.value || "");
+      if (nova === "" && conf === "") {
+        raiz.style.display = "none";
+        return;
+      }
+      raiz.style.display = "";
+      const bytes = new TextEncoder().encode(nova).length;
+      if (nova === "") definir("tamanho", "pendente");
+      else definir("tamanho", bytes >= 6 && bytes <= 72 ? "ok" : "invalido");
+      if (nova === "") definir("caracteres", "pendente");
+      else definir("caracteres", !hasInvisibleChars(nova) && /^[\x20-\x7E]+$/.test(nova) ? "ok" : "invalido");
+      if (conf === "") definir("confirmacao", "pendente", "Repita a senha para confirmar.");
+      else if (conf === nova) definir("confirmacao", "ok", "As senhas coincidem.");
+      else definir("confirmacao", "invalido", "As senhas informadas não coincidem.");
+    };
+
+    campoConfirmacao.insertAdjacentElement("afterend", raiz);
+    els.senha.addEventListener("input", atualizar);
+    els.senha2.addEventListener("input", atualizar);
+    indicadorSenha = { limpar: atualizar };
+  }
+
+  function reiniciarIndicadorSenha() {
+    if (indicadorSenha) indicadorSenha.limpar();
+  }
+
+  iniciarIndicadorSenha();
+
   /* ==========================================================
      Debug
   ========================================================== */
@@ -265,13 +366,10 @@
     return /[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/.test(String(v || ""));
   }
 
-  function isAllowedPasswordCharSet(v) {
-    return /^[\x20-\x7E]+$/.test(String(v || ""));
-  }
-
   function clearSensitiveFields() {
     if (els.senha) els.senha.value = "";
     if (els.senha2) els.senha2.value = "";
+    reiniciarIndicadorSenha();
   }
 
   function setLoading(loading) {
@@ -289,6 +387,7 @@
   }
 
   function closeModal() {
+    clearSensitiveFields();
     modal.setAttribute("aria-hidden", "true");
     modal.classList.remove("ativo", "aberto", "show");
 
@@ -367,29 +466,31 @@
       ok = false;
     }
 
+    // Senha PROVISÓRIA: mesmos limites e mensagens do cadastro de Super Admin
+    // (backend/super_admin/usuario-super/cadastrar_usuario_super.php).
     if (senha || senha2) {
       if (!senha) {
-        setFieldErrorById("eus_senha", "Informe a nova senha.");
+        setFieldErrorById("eus_senha", "Informe a senha.");
         ok = false;
-      } else if (senha.length < 6) {
+      } else if (new TextEncoder().encode(senha).length < 6) {
         setFieldErrorById("eus_senha", "A senha deve ter no mínimo 6 caracteres.");
         ok = false;
-      } else if (senha.length > 72) {
+      } else if (new TextEncoder().encode(senha).length > 72) {
         setFieldErrorById("eus_senha", "A senha deve ter no máximo 72 caracteres.");
         ok = false;
       } else if (hasInvisibleChars(senha)) {
         setFieldErrorById("eus_senha", "A senha contém caracteres invisíveis inválidos.");
         ok = false;
-      } else if (!isAllowedPasswordCharSet(senha)) {
+      } else if (!/^[\x20-\x7E]+$/.test(senha)) {
         setFieldErrorById("eus_senha", "A senha contém caracteres inválidos.");
         ok = false;
       }
 
       if (!senha2) {
-        setFieldErrorById("eus_senha2", "Confirme a nova senha.");
+        setFieldErrorById("eus_senha2", "Repita a senha no campo de confirmação.");
         ok = false;
       } else if (senha !== senha2) {
-        setFieldErrorById("eus_senha2", "As senhas não coincidem.");
+        setFieldErrorById("eus_senha2", "As senhas informadas não coincidem.");
         ok = false;
       }
     }
@@ -435,7 +536,7 @@
     if (isSubmitting) return;
 
     const data = buildPayloadData();
-    debugLog("submit iniciado", data);
+    debugLog("submit iniciado");
 
     if (!validateForm(data)) {
       toastMsg("warning", "Revise os campos destacados.");
@@ -464,6 +565,7 @@
         credentials: "same-origin",
         headers: {
           "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
         },
         cache: "no-store",
       });
@@ -558,6 +660,7 @@ setTimeout(() => {
       if (els.status) els.status.value = firstFilled(dados.status, "ativo");
       if (els.senha) els.senha.value = "";
       if (els.senha2) els.senha2.value = "";
+      reiniciarIndicadorSenha();
 
       modal.setAttribute("aria-hidden", "false");
       modal.classList.add("ativo", "aberto", "show");

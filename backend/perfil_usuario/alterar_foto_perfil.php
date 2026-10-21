@@ -43,6 +43,8 @@ if ($idUsuario <= 0) {
         'user_msg' => 'Sessão expirada. Faça login novamente.',
     ], 401);
 }
+require_once __DIR__ . '/../_auth/csrf.php';
+csrfValidarSessao();
 
 /* ==========================================================
    HELPERS

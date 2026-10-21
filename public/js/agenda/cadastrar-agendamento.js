@@ -147,7 +147,7 @@
       const resposta = await fetch(API_URL, {
         method: "POST",
         body: payload,
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") },
         credentials: "same-origin",
         cache: "no-store"
       });

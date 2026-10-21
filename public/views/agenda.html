@@ -8,7 +8,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.0.19">
   
-    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=1.0.19"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=1.0.20"/>
     <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=1.0.19"/>
     <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=1.0.19"/>
     <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=1.0.19"/>
@@ -18,9 +18,10 @@
     <link rel="stylesheet" href="../css/chat/chat-modal-agenda.css?v=1.0.19"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
     <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=1.0.19">
+    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.0.22"/>
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
-    <script src="/public/_auth/sessao.js?v=1.0.19"></script>
+    <script src="/public/_auth/sessao.js?v=1.0.25"></script>
     <script src="/public/_auth/permissoes.js?v=1.0.19"></script>
     <script src="/public/js/mensagem-universal.js?v=1.0.19"></script>
     <script src="/public/js/PWA/InstalarPWA.js?v=1.0.19"></script>
@@ -386,12 +387,12 @@
               </div>
 
               <div class="modal-campo">
-                <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                <input type="password" id="nova_senha" name="nova_senha" required minlength="8">
                 <label for="nova_senha">Nova senha</label>
               </div>
 
               <div class="modal-campo">
-                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="8">
                 <label for="confirmar_senha">Confirmar nova senha</label>
               </div> <br>
 
@@ -679,9 +680,9 @@
                 <div class="modal-grid">
 
                   <div class="modal-campo">
-                    <label for="cfg_ddd_padrao"></label>
-                    <input id="cfg_ddd_padrao" name="ddd_padrao" type="text" inputmode="numeric" maxlength="2" placeholder="DDD" value="">
-                    <small class="msg-ajuda"> Minas Gerais = 38</small>
+                    <input id="cfg_ddd_padrao" name="ddd_padrao" type="text" inputmode="numeric" maxlength="2" placeholder=" " value="">
+                    <label for="cfg_ddd_padrao">DDD</label>
+                    <small class="msg-ajuda">Minas Gerais = 38</small>
                   </div>
 
                   <div class="modal-campo">
@@ -691,9 +692,26 @@
                   </div>
 
                   <div class="modal-campo modal-campo-full">
-                    <textarea id="cfg_msg_whats" name="msg_whats" rows="4" placeholder=""></textarea>
+                    <textarea id="cfg_msg_whats" name="msg_whats" rows="6" placeholder=""></textarea>
                     <label for="cfg_msg_whats">Mensagem padrão</label>
-                    <small class="msg-ajuda">Variáveis: {cliente} {servico} {status} {data} {hora}</small>
+                  </div>
+
+                  <div class="modal-campo-full whats-variaveis" role="group" aria-label="Variáveis disponíveis">
+                    <span class="whats-variaveis-titulo">Variáveis disponíveis:</span>
+                    <button type="button" class="whats-chip" data-variavel-whats="{cliente}">{cliente}</button>
+                    <button type="button" class="whats-chip" data-variavel-whats="{servico}">{servico}</button>
+                    <button type="button" class="whats-chip" data-variavel-whats="{status}">{status}</button>
+                    <button type="button" class="whats-chip" data-variavel-whats="{data}">{data}</button>
+                    <button type="button" class="whats-chip" data-variavel-whats="{hora}">{hora}</button>
+                  </div>
+
+                  <div class="modal-campo-full whats-preview">
+                    <span class="whats-preview-icone" aria-hidden="true"><i class="fa-brands fa-whatsapp"></i></span>
+                    <div class="whats-preview-conteudo">
+                      <strong class="whats-preview-titulo">Pré-visualização da mensagem</strong>
+                      <div id="cfg_msg_whats_preview" class="whats-preview-texto" aria-live="polite"></div>
+                      <small class="whats-preview-nota">Exemplo com dados fictícios.</small>
+                    </div>
                   </div>
 
                 </div>
@@ -1534,40 +1552,41 @@
 
     <script src="../js/core/lista-core.js?v=1.0.19" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
     <script src="../js/menu-lateral/menu-lateral.js?v=1.0.19"></script> <!--Componente universal do menu lateral responsivo-->
-    <script src="../js/notificacoes/notificacoes.js?v=1.0.19"></script> <!--Centro de notificações e experiência de senha temporária-->
+    <script src="../js/notificacoes/notificacoes.js?v=1.0.20"></script> <!--Centro de notificações e experiência de senha temporária-->
     <script src="../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
 
     <script src="../js/chat/chat-modal-agenda.js?v=1.0.19"></script> <!--Chat rápido contextual da Agenda-->
     <script src="../js/chat/chat-nao-lidas.js?v=1.0.19"></script> <!--Contador global de conversas não lidas (badge do menu)-->
-    <script src="../js/agenda/lista-agenda.js?v=1.0.19" ></script> <!--Lista Agendamentos-->
+    <script src="../js/agenda/lista-agenda.js?v=1.0.20" ></script> <!--Lista Agendamentos-->
     <script src="../js/agenda/pesquisar-agendamento.js?v=1.0.19" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
     <script src="../js/agenda/excluir-agendamento.js?v=1.0.19" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
 
     <!--Modal Perfil-->
-    <script src="/public/_auth/deslogar.js?v=1.0.19" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.19" ></script> <!--Alterar Foto de perfil do modal perfil-->
+    <script src="/public/_auth/deslogar.js?v=1.0.24" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.24" ></script> <!--Alterar Foto de perfil do modal perfil-->
     <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.0.19" ></script> <!--Buscar Foto de perfil do usuario logado-->
-    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.19" ></script> <!--Alterar senha perfil-->
+    <script src="/public/js/componentes/indicador-senha.js?v=1.0.23"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
+    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.24" ></script> <!--Alterar senha perfil-->
 
     <!--Modal Configuração Geral-->
-    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=1.0.19" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=1.0.19" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js?v=1.0.19" ></script> <!--Script para resetar as configurações padrão da empresa-->
-    <script src="../js/agenda/servico-profissional/cadastrar-servico.js?v=1.0.19" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
+    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=1.0.20" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=1.0.24" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js?v=1.0.24" ></script> <!--Script para resetar as configurações padrão da empresa-->
+    <script src="../js/agenda/servico-profissional/cadastrar-servico.js?v=1.0.24" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
     <script src="../js/agenda/servico-profissional/lista-servico.js?v=1.0.19" ></script> <!--Lista Serviço do Modal Configurações-->
-    <script src="../js/agenda/servico-profissional/excluir-servico.js?v=1.0.19" ></script> <!--Excluir servico no modal configurações-->
+    <script src="../js/agenda/servico-profissional/excluir-servico.js?v=1.0.24" ></script> <!--Excluir servico no modal configurações-->
   
     
     <!--Modal Novo Agendamento-->
     <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js?v=1.0.19" ></script> <!--Lista de clientes no modal novo agendamento-->
     <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js?v=1.0.19" ></script> <!--Busca de clientes no modal editar agendamento-->
     <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js?v=1.0.19" ></script>
-    <script src="../js/agenda/cadastrar-agendamento.js?v=1.0.19"></script> <!--Valida e salva o Novo Agendamento-->
+    <script src="../js/agenda/cadastrar-agendamento.js?v=1.0.24"></script> <!--Valida e salva o Novo Agendamento-->
     <script src="../js/agenda/editar-agendamento.js?v=1.0.19" ></script> <!--Carrega e atualiza o agendamento-->
 
     <!--Modal Novo CLiente-->
-    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js?v=1.0.19" ></script> <!--Cadastrar Clientes-->
-    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=1.0.19" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
+    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js?v=1.0.24" ></script> <!--Cadastrar Clientes-->
+    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=1.0.24" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
 
 
     <!--Universal-->

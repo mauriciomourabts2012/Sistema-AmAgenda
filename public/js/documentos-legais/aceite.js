@@ -309,11 +309,21 @@
     accept.disabled = true;
     refuse.disabled = true;
     try {
-      const payload = await request("_auth/logout", {
+      const sairComToken = (token) => request("_auth/logout", {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-CSRF-Token": token },
         body: ""
       });
+      let payload;
+      try {
+        payload = await sairComToken(csrfToken);
+      } catch (error) {
+        if (error.code !== "CSRF_INVALID") throw error;
+        // Token ausente ou desatualizado: renova pela sessão e repete uma única vez.
+        const sessao = await request("_auth/session").catch(() => null);
+        const tokenNovo = String(sessao?.data?.user?.csrf_token || "");
+        payload = await sairComToken(/^[a-f0-9]{64}$/.test(tokenNovo) ? tokenNovo : "");
+      }
       if (payload.code !== "LOGOUT_OK") throw apiError("Não foi possível encerrar a sessão.");
       const redirect = safeLogoutRedirect(payload.redirect_url);
       if (!redirect) throw apiError("O servidor retornou um destino de saída inválido.");

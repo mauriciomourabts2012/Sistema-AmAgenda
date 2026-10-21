@@ -59,6 +59,51 @@
   const elStatus = document.getElementById("edit_u_status");
 
   // ==========================================================
+  // Indicador de segurança da senha (apenas apoio visual; o backend valida).
+  // Instância única; senha opcional: oculto enquanto os dois campos estão vazios.
+  // ==========================================================
+  let indicadorSenha = null;
+
+  function iniciarIndicadorSenha() {
+    if (indicadorSenha || !elSenha || !elSenha2) return;
+    if (!window.IndicadorSenha || typeof window.IndicadorSenha.anexar !== "function") return;
+
+    indicadorSenha = window.IndicadorSenha.anexar({
+      campoNova: elSenha,
+      campoConfirmacao: elSenha2,
+      opcional: true,
+      dadosPessoais: () => ({
+        nome: elNome?.value || "",
+        email: elEmail?.value || "",
+        telefone: elTelefone?.value || "",
+      }),
+    });
+
+    const raiz = elSenha.closest(".modal-campo")?.nextElementSibling;
+    if (!raiz || !raiz.classList.contains("ind-senha")) return;
+
+    // Layout em duas colunas: o indicador fica abaixo do par Nova senha / Confirmar nova senha.
+    const campoConfirmacao = elSenha2.closest(".modal-campo");
+    if (campoConfirmacao) campoConfirmacao.insertAdjacentElement("afterend", raiz);
+    raiz.style.gridColumn = "1 / -1";
+
+    const aplicarVisibilidade = () => {
+      raiz.style.display = raiz.getAttribute("data-vazio") === "1" ? "none" : "";
+    };
+    new MutationObserver(aplicarVisibilidade).observe(raiz, {
+      attributes: true,
+      attributeFilter: ["data-vazio"],
+    });
+    aplicarVisibilidade();
+  }
+
+  function reiniciarIndicadorSenha() {
+    if (indicadorSenha) indicadorSenha.limpar();
+  }
+
+  iniciarIndicadorSenha();
+
+  // ==========================================================
   // Toast Universal
   // ==========================================================
   function getToastStack() {
@@ -384,8 +429,9 @@
       email: normalizarTexto(elEmail?.value).toLowerCase(),
       telefone: normalizarTexto(elTelefone?.value),
       status: normalizarTexto(elStatus?.value).toLowerCase(),
-      senha: normalizarTexto(elSenha?.value),
-      senha2: normalizarTexto(elSenha2?.value),
+      // Senhas exatamente como digitadas (sem trim), como o backend espera.
+      senha: String(elSenha?.value ?? ""),
+      senha2: String(elSenha2?.value ?? ""),
       perfil_visual: normalizarTexto(elPerfilVisual?.value),
     };
   }
@@ -443,25 +489,29 @@
       ok = false;
     }
 
+    // Mesmos limites e mensagens da política central (backend/_regras/politica_senha.php).
+    // Senhas comuns e dados pessoais são verificados somente no servidor.
     if (dados.senha || dados.senha2) {
       if (!dados.senha) {
         setFieldError("senha", "Informe a nova senha.");
         ok = false;
-      } else if (dados.senha.length < 6) {
-        setFieldError("senha", "A senha deve ter no mínimo 6 caracteres.");
+      } else if (Array.from(dados.senha).length < 8) {
+        setFieldError("senha", "A senha deve ter pelo menos 8 caracteres.");
+        ok = false;
+      } else if (new TextEncoder().encode(dados.senha).length > 72) {
+        setFieldError("senha", "A senha está muito longa. Use até 72 caracteres, ou menos se usar acentos.");
+        ok = false;
+      } else if (!/[\p{P}\p{S}]/u.test(dados.senha)) {
+        // Mesma definição de caractere especial do backend (politica_senha.php).
+        setFieldError("senha", "A senha deve conter pelo menos um caractere especial, como #, @ ou !.");
         ok = false;
       }
 
       if (!dados.senha2) {
-        setFieldError("senha2", "Confirme a nova senha.");
+        setFieldError("senha2", "Repita a senha no campo de confirmação.");
         ok = false;
-      } else if (dados.senha2.length < 6) {
-        setFieldError("senha2", "A confirmação deve ter no mínimo 6 caracteres.");
-        ok = false;
-      }
-
-      if (dados.senha && dados.senha2 && dados.senha !== dados.senha2) {
-        setFieldError("senha2", "As senhas não conferem.");
+      } else if (dados.senha !== dados.senha2) {
+        setFieldError("senha2", "As senhas informadas não coincidem.");
         ok = false;
       }
     }
@@ -494,6 +544,10 @@
   // Modal / reset
   // ==========================================================
   function fecharModal() {
+    if (elSenha) elSenha.value = "";
+    if (elSenha2) elSenha2.value = "";
+    reiniciarIndicadorSenha();
+
     modal.setAttribute("aria-hidden", "true");
     modal.classList.remove("aberto", "ativo", "show", "is-open");
     document.body.classList.remove(
@@ -514,6 +568,7 @@
     if (elEmail) elEmail.value = "";
     if (elSenha) elSenha.value = "";
     if (elSenha2) elSenha2.value = "";
+    reiniciarIndicadorSenha();
     if (elPerfilVisual) elPerfilVisual.value = "";
     if (elEmpresa) elEmpresa.value = "";
     if (elTelefone) elTelefone.value = "";
@@ -593,6 +648,7 @@
 
     if (elSenha) elSenha.value = "";
     if (elSenha2) elSenha2.value = "";
+    reiniciarIndicadorSenha();
 
     clearErrors();
   }
@@ -677,7 +733,8 @@
         credentials: "same-origin",
         cache: "no-store",
         headers: {
-          "Accept": "application/json"
+          "Accept": "application/json",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
         }
       });
 

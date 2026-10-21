@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../_config/conexao.php';
 require_once __DIR__ . '/../_auth/csrf.php';
 require_once __DIR__ . '/../_servicos/auditoria.php';
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
 
 const DOCUMENTOS_LEGAIS_PUBLICOS = [
     'termos_empresa',
@@ -44,7 +45,7 @@ function documentosLegaisContextoAutenticado(mysqli $conexao, bool $exigir = tru
     $idUsuario = (int)($auth['id_usuario'] ?? 0);
 
     if ($idUsuario > 0) {
-        $stmt = $conexao->prepare("SELECT id_usuario,nome,email,tipo_usuario,status FROM usuario WHERE id_usuario=? LIMIT 1");
+        $stmt = $conexao->prepare("SELECT id_usuario,nome,email,tipo_usuario,status,senha_hash FROM usuario WHERE id_usuario=? LIMIT 1");
         if (!$stmt) throw new RuntimeException('Falha ao preparar a validação do usuário.');
         $stmt->bind_param('i', $idUsuario);
         if (!$stmt->execute()) {
@@ -58,6 +59,14 @@ function documentosLegaisContextoAutenticado(mysqli $conexao, bool $exigir = tru
             if (!$exigir) return null;
             out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
         }
+
+        // A6.1: senha alterada (ou sessão sem marcador) revoga a sessão interna.
+        sessaoCredencialExigirInterna(
+            $conexao,
+            $idUsuario,
+            true,
+            $usuario['senha_hash'] === null ? null : (string)$usuario['senha_hash']
+        );
 
         if ((string)$usuario['tipo_usuario'] === 'super_admin') {
             $modoSuporte = (bool)($auth['modo_suporte'] ?? false);
@@ -151,6 +160,9 @@ function documentosLegaisContextoAutenticado(mysqli $conexao, bool $exigir = tru
     if ($idCliente > 0 && $idEmpresa > 0 && $idEmpresa === $empresaSessao
         && (string)($clienteAuth['tipo_usuario'] ?? $clienteAuth['tipo'] ?? '') === 'cliente'
         && ($clienteAuth['telefone_verificado'] ?? false) === true) {
+        // A6.1: senha alterada (ou sessão sem marcador) revoga a sessão do cliente.
+        sessaoCredencialExigirCliente($conexao, $idEmpresa, $idCliente);
+
         $stmt = $conexao->prepare(
             "SELECT c.nome_completo,c.whatsapp_celular,e.nome
                FROM cliente c

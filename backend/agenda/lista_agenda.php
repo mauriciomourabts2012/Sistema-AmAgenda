@@ -239,7 +239,72 @@ try {
     }
     $stmt->close();
 
-    out(['ok' => true, 'code' => 'AGENDA_LISTED', 'data' => $dias, 'meta' => ['total' => $total]]);
+    // Configuracao de WhatsApp (somente leitura) para a abertura manual do wa.me na Agenda.
+    // Somente registros ativos da empresa da sessao; profissional apenas com configuracao propria
+    // (usa_padrao_empresa = 0). Perfil Profissional recebe somente a propria configuracao.
+    $whatsappConfig = null;
+    try {
+        $whatsappConfig = ['empresa' => null, 'profissionais' => (object)[]];
+
+        $stmt = $conexao->prepare("
+            SELECT ddi_padrao, ddd_padrao, mensagem_padrao
+            FROM configuracao_whatsapp_empresa
+            WHERE id_empresa = ?
+              AND status = 'ativo'
+            LIMIT 1
+        ");
+        if (!$stmt) throw new RuntimeException('Falha ao preparar configuracao de WhatsApp da empresa: ' . $conexao->error);
+        $stmt->bind_param('i', $idEmpresa);
+        $stmt->execute();
+        $linhaWhatsapp = $stmt->get_result()?->fetch_assoc();
+        $stmt->close();
+        if ($linhaWhatsapp) {
+            $whatsappConfig['empresa'] = [
+                'ddi' => (string)($linhaWhatsapp['ddi_padrao'] ?? ''),
+                'ddd' => (string)($linhaWhatsapp['ddd_padrao'] ?? ''),
+                'mensagem' => (string)($linhaWhatsapp['mensagem_padrao'] ?? ''),
+            ];
+        }
+
+        $sqlWhatsappProf = "
+            SELECT id_profissional, ddi_padrao, ddd_padrao, mensagem_padrao
+            FROM configuracao_whatsapp_profissional
+            WHERE id_empresa = ?
+              AND usa_padrao_empresa = 0
+              AND status = 'ativo'
+        ";
+        if ($somenteProprioProfissional) {
+            $sqlWhatsappProf .= ' AND id_profissional = ? ';
+        }
+        $stmt = $conexao->prepare($sqlWhatsappProf);
+        if (!$stmt) throw new RuntimeException('Falha ao preparar configuracao de WhatsApp dos profissionais: ' . $conexao->error);
+        if ($somenteProprioProfissional) {
+            $idProfissionalWhatsapp = (int)$idProfissionalSessao;
+            $stmt->bind_param('ii', $idEmpresa, $idProfissionalWhatsapp);
+        } else {
+            $stmt->bind_param('i', $idEmpresa);
+        }
+        $stmt->execute();
+        $resultadoWhatsapp = $stmt->get_result();
+        $profissionaisWhatsapp = [];
+        while ($resultadoWhatsapp && ($linhaProf = $resultadoWhatsapp->fetch_assoc())) {
+            $idProfWhatsapp = (int)$linhaProf['id_profissional'];
+            if ($idProfWhatsapp <= 0) continue;
+            $profissionaisWhatsapp[(string)$idProfWhatsapp] = [
+                'ddi' => (string)($linhaProf['ddi_padrao'] ?? ''),
+                'ddd' => (string)($linhaProf['ddd_padrao'] ?? ''),
+                'mensagem' => (string)($linhaProf['mensagem_padrao'] ?? ''),
+            ];
+        }
+        $stmt->close();
+        $whatsappConfig['profissionais'] = (object)$profissionaisWhatsapp;
+    } catch (Throwable $e) {
+        // A agenda nunca deixa de carregar por causa do WhatsApp: o front usa o padrao do sistema.
+        error_log('[lista_agenda][whatsapp] ' . $e->getMessage());
+        $whatsappConfig = null;
+    }
+
+    out(['ok' => true, 'code' => 'AGENDA_LISTED', 'data' => $dias, 'meta' => ['total' => $total], 'whatsapp' => $whatsappConfig]);
 } catch (Throwable $e) {
     error_log('[lista_agenda] ' . $e->getMessage());
     out(['ok' => false, 'code' => 'INTERNAL_ERROR', 'user_msg' => 'Não foi possível carregar a agenda.'], 500);

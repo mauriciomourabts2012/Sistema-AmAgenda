@@ -50,7 +50,7 @@ if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno
 }
 
 $stmt = $conexao->prepare(
-    "SELECT status, deve_alterar_senha,
+    "SELECT status, senha_hash, deve_alterar_senha,
             (deve_alterar_senha = 1
              AND data_senha_temporaria IS NOT NULL
              AND CURRENT_TIMESTAMP >= DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR)) AS senha_temporaria_vencida
@@ -87,16 +87,33 @@ if (!$usuarioAtual || mb_strtolower(trim((string)($usuarioAtual['status'] ?? '')
     ], 403);
 }
 
+/* A6.1: a sessão precisa corresponder à credencial atual do usuário. Sem
+ * marcador ou com marcador divergente (senha alterada), a identidade e o
+ * contexto privilegiado são revogados e a resposta é 401 SESSION_REAUTH_REQUIRED. */
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
+sessaoCredencialExigirInterna(
+    $conexao,
+    $idUsuario,
+    true,
+    $usuarioAtual['senha_hash'] === null ? null : (string)$usuarioAtual['senha_hash']
+);
+
 $deveAlterarSenha = (int)($usuarioAtual['deve_alterar_senha'] ?? 0) === 1;
 $senhaTemporariaVencida = (int)($usuarioAtual['senha_temporaria_vencida'] ?? 0) === 1;
 $_SESSION['auth']['deve_alterar_senha'] = $deveAlterarSenha;
 $_SESSION['auth']['senha_temporaria_vencida'] = $senhaTemporariaVencida;
 
-if ($senhaTemporariaVencida && !defined('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA')) {
+/* Funcionários comuns devem trocar a senha temporária imediatamente.
+ * Super Admin pode usar o painel durante as primeiras 24 horas e só é
+ * bloqueado quando o vencimento calculado pelo banco se torna verdadeiro. */
+$senhaTemporariaBloqueia = $senhaTemporariaVencida
+    || ($tipoUsuario !== 'super_admin' && $deveAlterarSenha);
+
+if ($senhaTemporariaBloqueia && !defined('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA')) {
     out([
         'ok' => false,
-        'code' => 'SENHA_TEMPORARIA_EXPIRADA',
-        'user_msg' => 'Altere sua senha temporária para continuar utilizando o AmAgenda.'
+        'code' => $senhaTemporariaVencida ? 'SENHA_TEMPORARIA_EXPIRADA' : 'SENHA_ALTERACAO_OBRIGATORIA',
+        'user_msg' => 'Por segurança, você precisa definir uma nova senha para continuar.'
     ], 403);
 }
 
@@ -171,6 +188,8 @@ if ($tipoUsuario !== 'super_admin') {
         $rotasPermitidasRegularizacao = [
             '_auth/session',
             '_auth/logout',
+            // Troca obrigatória da própria senha (senha temporária) antes da regularização.
+            'perfil/alterar-senha',
             'painel/faturamento/resumo',
             'painel/faturamento/cobrancas',
             'painel/faturamento/pagamentos',

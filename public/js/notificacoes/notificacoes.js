@@ -13,6 +13,7 @@
   const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto", "agenda.abrir_agendamento", "chat.abrir_conversa"]);
   const PAGINA_AGENDA = "/public/views/agenda.html";
   const PAGINA_CHAT = "/public/views/chat/chat-interno.html";
+  const CHAVE_AVISO_SENHA_TEMPORARIA = "amagenda:senha-temporaria:aviso-24h";
   // Recarga periódica leve da central (somente com a aba visível).
   const INTERVALO_RECARGA_MS = 60000;
 
@@ -26,11 +27,16 @@
     senhaVencida: false,
     bloqueioSenha: false,
     ultimoFoco: null,
+    avisoPrazoSenhaExibido: false,
   };
 
   /* ----------------------------------------------------------
-     Interceptador global para SENHA_TEMPORARIA_EXPIRADA (403)
+     Interceptador global da troca obrigatória de senha (403):
+     SENHA_ALTERACAO_OBRIGATORIA (senha temporária dentro das 24 horas)
+     SENHA_TEMPORARIA_EXPIRADA (senha temporária vencida)
      ---------------------------------------------------------- */
+  const CODIGOS_SENHA_OBRIGATORIA = new Set(["SENHA_ALTERACAO_OBRIGATORIA", "SENHA_TEMPORARIA_EXPIRADA"]);
+
   if (!window.__AMAGENDA_FETCH_SENHA_TEMPORARIA__) {
     window.__AMAGENDA_FETCH_SENHA_TEMPORARIA__ = true;
     const fetchOriginal = window.fetch.bind(window);
@@ -38,7 +44,7 @@
       const resposta = await fetchOriginal(...args);
       if (resposta.status === 403) {
         resposta.clone().json().then((dados) => {
-          if (dados?.code === "SENHA_TEMPORARIA_EXPIRADA") {
+          if (CODIGOS_SENHA_OBRIGATORIA.has(dados?.code)) {
             document.dispatchEvent(new CustomEvent("amagenda:senha-temporaria-expirada"));
           }
         }).catch(() => {});
@@ -116,14 +122,70 @@
   }
 
   function ativarBloqueioSenha() {
+    // Requisições automáticas repetem o 403: a orientação aparece só na primeira ativação.
+    const primeiraAtivacao = !estadoNotificacoes.bloqueioSenha;
     estadoNotificacoes.senhaVencida = true;
     estadoNotificacoes.bloqueioSenha = true;
     document.body.classList.add("senha-temporaria-bloqueada");
     fecharDropdownNotificacoes(false);
     abrirPerfilNaArea("senha", true);
+    if (primeiraAtivacao) exibirAvisoSenhaObrigatoria();
   }
 
   let alertaSenhaObrigatoria = null;
+  let alertaPrazoSenhaTemporaria = null;
+
+  function chaveAvisoPrazoSenha(auth) {
+    const idUsuario = Number(auth?.id_usuario);
+    return `${CHAVE_AVISO_SENHA_TEMPORARIA}:${Number.isInteger(idUsuario) && idUsuario > 0 ? idUsuario : "super-admin"}`;
+  }
+
+  function avisoPrazoJaExibido(auth) {
+    if (estadoNotificacoes.avisoPrazoSenhaExibido) return true;
+    try {
+      return window.sessionStorage.getItem(chaveAvisoPrazoSenha(auth)) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function marcarAvisoPrazoComoExibido(auth) {
+    // Marca antes de criar o aviso para deduplicar eventos simultâneos.
+    estadoNotificacoes.avisoPrazoSenhaExibido = true;
+    try {
+      window.sessionStorage.setItem(chaveAvisoPrazoSenha(auth), "1");
+    } catch (_) {}
+  }
+
+  function exibirAvisoPrazoSenhaTemporaria(auth) {
+    if (avisoPrazoJaExibido(auth)) return;
+    const mensagens = window.MensagemSistema;
+    if (!mensagens?.info) return;
+
+    marcarAvisoPrazoComoExibido(auth);
+    alertaPrazoSenhaTemporaria = mensagens.info(
+      "Sua senha temporária deve ser alterada dentro de 24 horas.",
+      {
+        titulo: "Senha temporária",
+        tempo: 6000,
+        focar: false,
+        aoFechar: () => { alertaPrazoSenhaTemporaria = null; },
+      }
+    );
+  }
+
+  function fecharAvisoPrazoSenhaTemporaria() {
+    if (alertaPrazoSenhaTemporaria?.isConnected) alertaPrazoSenhaTemporaria.remove();
+    alertaPrazoSenhaTemporaria = null;
+  }
+
+  function removerAvisoPrazoSenhaTemporaria(auth) {
+    fecharAvisoPrazoSenhaTemporaria();
+    estadoNotificacoes.avisoPrazoSenhaExibido = false;
+    try {
+      window.sessionStorage.removeItem(chaveAvisoPrazoSenha(auth));
+    } catch (_) {}
+  }
 
   function exibirAvisoSenhaObrigatoria() {
     if (alertaSenhaObrigatoria && alertaSenhaObrigatoria.isConnected) {
@@ -133,7 +195,7 @@
     if (!mensagens?.aviso) return;
 
     alertaSenhaObrigatoria = mensagens.aviso(
-      "Por segurança, sua senha temporária expirou e precisa ser substituída antes de continuar usando o AmAgenda. Altere sua senha para liberar o acesso ao sistema.",
+      "Por segurança, você precisa definir uma nova senha para continuar.",
       {
         titulo: "Alteração de senha obrigatória",
         persistente: true,
@@ -163,9 +225,21 @@
   }
 
   function aplicarEstadoSessao(auth) {
-    const vencida = auth?.senha_temporaria_vencida === true;
-    if (vencida) ativarBloqueioSenha();
-    else if (estadoNotificacoes.bloqueioSenha) liberarBloqueioSenha(true);
+    const superAdmin = String(auth?.tipo_usuario || "").trim().toLowerCase() === "super_admin";
+    const deveAlterarSenha = auth?.deve_alterar_senha === true;
+    const senhaTemporariaVencida = auth?.senha_temporaria_vencida === true;
+    const trocaObrigatoria = senhaTemporariaVencida || (!superAdmin && deveAlterarSenha);
+
+    if (trocaObrigatoria) {
+      fecharAvisoPrazoSenhaTemporaria();
+      ativarBloqueioSenha();
+    } else if (estadoNotificacoes.bloqueioSenha) liberarBloqueioSenha(true);
+
+    if (superAdmin && deveAlterarSenha && !senhaTemporariaVencida) {
+      exibirAvisoPrazoSenhaTemporaria(auth);
+    } else if (auth && !deveAlterarSenha && !senhaTemporariaVencida) {
+      removerAvisoPrazoSenhaTemporaria(auth);
+    }
   }
 
   async function marcarNotificacaoComoLida(item) {
@@ -305,7 +379,7 @@
       const resposta = await fetch(API_NOTIFICACOES, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
       const dados = await resposta.json().catch(() => null);
       if (!resposta.ok || dados?.ok !== true || !Array.isArray(dados?.data?.itens)) {
-        if (dados?.code === "SENHA_TEMPORARIA_EXPIRADA") return;
+        if (CODIGOS_SENHA_OBRIGATORIA.has(dados?.code)) return;
         throw new Error(dados?.user_msg || "Não foi possível carregar as notificações.");
       }
       estadoNotificacoes.itens = dados.data.itens.map((item) => ({ ...item, lida: item.lida === true }));

@@ -47,6 +47,8 @@ try {
     */
 
     $sessao = exigirSessaoCliente();
+    require_once __DIR__ . '/../_auth/csrf.php';
+    csrfValidarSessao();
     $clienteSessao = buscarClienteDaSessao($conexao, $sessao);
 
     if ($clienteSessao === null) {
@@ -320,8 +322,26 @@ try {
 
     $stmtAtualizar->close();
 
+    // A6.1: a sessão atual acompanha a nova credencial (troca voluntária,
+    // primeira senha ou recuperação por código); as demais sessões deste cliente
+    // passam a divergir e são revogadas. Atualizado só depois da gravação; o
+    // identificador da sessão é rotacionado.
+    require_once __DIR__ . '/../_regras/login_multiempresa.php';
+    $_SESSION[SESSAO_CREDENCIAL_CLIENTE] = sessaoCredencialImpressao((string)$novoHash);
+    session_regenerate_id(true);
+
     if ($recuperacaoAutorizada) {
         unset($_SESSION['cliente_recuperacao_senha']);
+
+        // A4: recuperação por código concluída e nova senha gravada. Apaga o
+        // bloqueio do login por senha (conta e conta + IP atual) para que o
+        // cliente não precise aguardar. Nunca interrompe a recuperação.
+        require_once __DIR__ . '/../_regras/limite_tentativas.php';
+        limiteTentativasClienteLimparAposRecuperacao(
+            $conexao,
+            $idEmpresa,
+            (string)($recuperacao['telefone'] ?? '')
+        );
     }
 
     /*

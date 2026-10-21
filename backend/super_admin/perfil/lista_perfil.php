@@ -28,7 +28,8 @@ if (!function_exists('out')) {
     }
 }
 
-require __DIR__ . '/../../_config/conexao.php';
+require __DIR__ . '/../../_auth/require_auth.php';
+require_once __DIR__ . '/../../_regras/permissoes_usuario.php';
 
 try {
     if (!isset($conexao) || !($conexao instanceof mysqli)) {
@@ -37,6 +38,27 @@ try {
             'code' => 'DB_CONNECTION_ERROR',
             'user_msg' => 'Erro de conexão com banco de dados.'
         ], 500);
+    }
+
+    $authListaPerfis = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+    $tipoUsuarioListaPerfis = mb_strtolower(trim((string)($authListaPerfis['tipo_usuario'] ?? '')), 'UTF-8');
+    $listaPerfisAutorizada = $tipoUsuarioListaPerfis === 'super_admin';
+
+    if (!$listaPerfisAutorizada) {
+        foreach (['usuarios.visualizar', 'usuarios.cadastrar', 'usuarios.editar'] as $permissao) {
+            if (usuarioTemPermissao($conexao, $permissao)) {
+                $listaPerfisAutorizada = true;
+                break;
+            }
+        }
+    }
+
+    if (!$listaPerfisAutorizada) {
+        out([
+            'ok' => false,
+            'code' => 'PERMISSION_DENIED',
+            'user_msg' => 'Você não possui permissão para realizar esta ação.'
+        ], 403);
     }
 
     $status = isset($_GET['status'])

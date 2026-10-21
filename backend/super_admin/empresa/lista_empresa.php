@@ -516,6 +516,92 @@ try {
 
     $stmt->close();
 
+    /* ==========================================================
+       TESTE GRATUITO (somente leitura)
+       Mesma regra de acesso_assinatura.php: assinatura mais recente
+       ativa, modalidade 'teste', período configurado e não expirado,
+       com uma única assinatura ativa na empresa.
+    ========================================================== */
+    $idsPagina = array_values(array_filter(array_map(
+        static fn(array $it): int => (int)$it['id_empresa'],
+        $items
+    ), static fn(int $v): bool => $v > 0));
+
+    $estadoTeste = [];
+    if ($idsPagina) {
+        $marcadores = implode(',', array_fill(0, count($idsPagina), '?'));
+        $sqlTeste = "
+            SELECT id_empresa, status, modalidade,
+                   CASE
+                       WHEN modalidade = 'teste'
+                        AND teste_iniciado_em IS NOT NULL
+                        AND teste_expira_em IS NOT NULL
+                        AND teste_expira_em > teste_iniciado_em
+                       THEN 1 ELSE 0
+                   END AS teste_configurado,
+                   CASE
+                       WHEN modalidade = 'teste'
+                        AND teste_expira_em IS NOT NULL
+                        AND CURRENT_TIMESTAMP >= teste_expira_em
+                       THEN 1 ELSE 0
+                   END AS teste_expirado,
+                   CASE
+                       WHEN teste_expira_em IS NOT NULL
+                       THEN TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, teste_expira_em)
+                       ELSE NULL
+                   END AS segundos_restantes
+              FROM assinatura
+             WHERE id_empresa IN ({$marcadores})
+             ORDER BY id_empresa ASC, id_assinatura DESC
+        ";
+
+        $stmtTeste = $conexao->prepare($sqlTeste);
+        if ($stmtTeste) {
+            $tiposTeste = str_repeat('i', count($idsPagina));
+            $valoresTeste = $idsPagina;
+            if (bindParams($stmtTeste, $tiposTeste, $valoresTeste) && $stmtTeste->execute()) {
+                $resTeste = $stmtTeste->get_result();
+                while ($resTeste && ($a = $resTeste->fetch_assoc())) {
+                    $idE = (int)$a['id_empresa'];
+                    $st  = mb_strtolower(trim((string)$a['status']), 'UTF-8');
+                    if (!isset($estadoTeste[$idE])) {
+                        $estadoTeste[$idE] = ['recente' => $a, 'ativas' => 0];
+                    }
+                    if ($st === 'ativa') {
+                        $estadoTeste[$idE]['ativas']++;
+                    }
+                }
+            } else {
+                error_log('LISTA_EMPRESA_TESTE: falha ao consultar assinaturas.');
+            }
+            $stmtTeste->close();
+        }
+    }
+
+    foreach ($items as &$itemEmpresa) {
+        $itemEmpresa['teste_ativo'] = false;
+        $itemEmpresa['teste_dias_restantes'] = null;
+
+        $info = $estadoTeste[$itemEmpresa['id_empresa']] ?? null;
+        if (!$info || $info['ativas'] !== 1) {
+            continue;
+        }
+
+        $rec = $info['recente'];
+        $ehTesteAtivo =
+            mb_strtolower(trim((string)$rec['status']), 'UTF-8') === 'ativa'
+            && mb_strtolower(trim((string)$rec['modalidade']), 'UTF-8') === 'teste'
+            && (int)$rec['teste_configurado'] === 1
+            && (int)$rec['teste_expirado'] === 0
+            && $rec['segundos_restantes'] !== null;
+
+        if ($ehTesteAtivo) {
+            $itemEmpresa['teste_ativo'] = true;
+            $itemEmpresa['teste_dias_restantes'] = max(1, (int)ceil(((int)$rec['segundos_restantes']) / 86400));
+        }
+    }
+    unset($itemEmpresa);
+
     $totalPages = (int) max(1, (int) ceil($total / $limit));
 
     out([

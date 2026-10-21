@@ -46,6 +46,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $auth=$_SESSION['auth']??[];
 $idEmpresa=(int)($auth['id_empresa']??$auth['empresa_id']??$_SESSION['empresa_id']??$_SESSION['id_empresa']??0);
 if((int)($auth['id_usuario']??0)<=0)out(['ok'=>false,'code'=>'NOT_AUTHENTICATED','user_msg'=>'Sessão expirada. Faça login novamente.'],401);
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
 if($idEmpresa<=0)out(['ok'=>false,'code'=>'COMPANY_ACCESS_DENIED','user_msg'=>'Contexto empresarial não autorizado.'],403);
 require_once __DIR__ . '/../../_config/conexao.php';
 require_once __DIR__ . '/../../_servicos/auditoria.php';

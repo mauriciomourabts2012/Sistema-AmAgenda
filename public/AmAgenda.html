@@ -17,7 +17,8 @@
 
   <link rel="icon" type="image/png" href="/public/imagens/logo-menu.png">
 
-    <link rel="stylesheet" href="/public/css/agenda/site-amagenda.css?v=20261003_1">
+    <link rel="stylesheet" href="/public/css/agenda/site-amagenda.css?v=20261019_1">
+    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.0.22">
 
 
 </head>
@@ -39,10 +40,13 @@
       >
 
         <span class="marca-logo">
-          <img
-            src="/public/imagens/logo-menu.png"
-            alt="AmAgenda"
-          >
+          <picture>
+            <source type="image/webp" sizes="42px" srcset="/public/imagens/logo-menu-128.webp 128w, /public/imagens/logo-menu.webp 1254w">
+            <img
+              src="/public/imagens/logo-menu.png"
+              alt="AmAgenda"
+            >
+          </picture>
         </span>
 
         <span>AmAgenda</span>
@@ -60,8 +64,12 @@
           Agenda online
         </a>
 
-        <a href="#gestao-agenda">
-          Gestão
+        <a href="#agenda-personalizada">
+          Personalização
+        </a>
+
+        <a href="#chat-integrado">
+          Chat
         </a>
 
         <a href="#planos">
@@ -138,6 +146,19 @@
             <div class="mini-info"><span class="check">✓</span> Agenda online 24 horas</div>
             <div class="mini-info"><span class="check">✓</span> Gestão em um só lugar</div>
           </div>
+
+          <div class="hero-teste">
+            <strong class="hero-teste-titulo">30 dias de teste grátis</strong>
+            <p class="hero-teste-texto">
+              Experimente o AmAgenda gratuitamente por 30 dias, com os limites do plano
+              escolhido e acesso à Agenda Online durante o teste.
+            </p>
+          </div>
+
+          <div class="hero-acoes">
+            <a href="#planos" class="btn btn-primary">Começar agora</a>
+            <a href="#produto" class="btn btn-secundario">Conhecer funcionalidades</a>
+          </div>
         </div>
 
         <figure class="hero-painel produto-frame produto-frame-hero">
@@ -148,14 +169,17 @@
             aria-haspopup="dialog"
             aria-controls="siteLightbox"
           >
-            <img
-              class="site-screenshot-ampliavel"
-              src="/public/imagens/site/Painel AmAgenda_ resumo do dia.png"
-              alt="Painel do AmAgenda com resumo de agendamentos, confirmações, pendências, ocupação e próximos atendimentos"
-              width="1672"
-              height="941"
-              fetchpriority="high"
-            >
+            <picture>
+              <source type="image/webp" srcset="/public/imagens/site/Painel%20AmAgenda_%20resumo%20do%20dia.webp">
+              <img
+                class="site-screenshot-ampliavel"
+                src="/public/imagens/site/Painel AmAgenda_ resumo do dia.png"
+                alt="Painel do AmAgenda com resumo de agendamentos, confirmações, pendências, ocupação e próximos atendimentos"
+                width="1672"
+                height="941"
+                fetchpriority="high"
+              >
+            </picture>
           </button>
           <figcaption>Uma visão clara da operação desde o início do dia.</figcaption>
         </figure>
@@ -244,15 +268,18 @@
               aria-haspopup="dialog"
               aria-controls="siteLightbox"
             >
-              <img
-                class="site-screenshot-ampliavel"
-                src="/public/imagens/site/Agenda Online cliente3.png"
-                alt="Agenda online do AmAgenda na etapa de escolha do profissional"
-                width="1672"
-                height="941"
-                loading="lazy"
-                decoding="async"
-              >
+              <picture>
+                <source type="image/webp" srcset="/public/imagens/site/Agenda%20Online%20cliente3.webp">
+                <img
+                  class="site-screenshot-ampliavel"
+                  src="/public/imagens/site/Agenda Online cliente3.png"
+                  alt="Agenda online do AmAgenda na etapa de escolha do profissional"
+                  width="1672"
+                  height="941"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </picture>
             </button>
             <figcaption>Escolha do profissional</figcaption>
           </figure>
@@ -266,15 +293,18 @@
                 aria-haspopup="dialog"
                 aria-controls="siteLightbox"
               >
-                <img
-                  class="site-screenshot-ampliavel"
-                  src="/public/imagens/site/Agenda Online cliente4.png"
-                  alt="Agenda online do AmAgenda na etapa de escolha do serviço"
-                  width="1672"
-                  height="941"
-                  loading="lazy"
-                  decoding="async"
-                >
+                <picture>
+                  <source type="image/webp" srcset="/public/imagens/site/Agenda%20Online%20cliente4.webp">
+                  <img
+                    class="site-screenshot-ampliavel"
+                    src="/public/imagens/site/Agenda Online cliente4.png"
+                    alt="Agenda online do AmAgenda na etapa de escolha do serviço"
+                    width="1672"
+                    height="941"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                </picture>
               </button>
               <figcaption>Serviço</figcaption>
             </figure>
@@ -287,15 +317,18 @@
                 aria-haspopup="dialog"
                 aria-controls="siteLightbox"
               >
-                <img
-                  class="site-screenshot-ampliavel"
-                  src="/public/imagens/site/Agenda Online cliente5.png"
-                  alt="Agenda online do AmAgenda na etapa de escolha de data e horário"
-                  width="1672"
-                  height="941"
-                  loading="lazy"
-                  decoding="async"
-                >
+                <picture>
+                  <source type="image/webp" srcset="/public/imagens/site/Agenda%20Online%20cliente5.webp">
+                  <img
+                    class="site-screenshot-ampliavel"
+                    src="/public/imagens/site/Agenda Online cliente5.png"
+                    alt="Agenda online do AmAgenda na etapa de escolha de data e horário"
+                    width="1672"
+                    height="941"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                </picture>
               </button>
               <figcaption>Horário</figcaption>
             </figure>
@@ -308,15 +341,18 @@
                 aria-haspopup="dialog"
                 aria-controls="siteLightbox"
               >
-                <img
-                  class="site-screenshot-ampliavel"
-                  src="/public/imagens/site/Agenda Online cliente6.png"
-                  alt="Agenda online do AmAgenda na etapa de confirmação do agendamento"
-                  width="1672"
-                  height="941"
-                  loading="lazy"
-                  decoding="async"
-                >
+                <picture>
+                  <source type="image/webp" srcset="/public/imagens/site/Agenda%20Online%20cliente6.webp">
+                  <img
+                    class="site-screenshot-ampliavel"
+                    src="/public/imagens/site/Agenda Online cliente6.png"
+                    alt="Agenda online do AmAgenda na etapa de confirmação do agendamento"
+                    width="1672"
+                    height="941"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                </picture>
               </button>
               <figcaption>Confirmação</figcaption>
             </figure>
@@ -351,15 +387,18 @@
               aria-haspopup="dialog"
               aria-controls="siteLightbox"
             >
-              <img
-                class="site-screenshot-ampliavel"
-                src="/public/imagens/site/Login Agenda Oline Personalizada.png"
-                alt="Tela de acesso da Agenda Online personalizada com nome, logotipo, cor e imagem da empresa"
-                width="1672"
-                height="941"
-                loading="lazy"
-                decoding="async"
-              >
+              <picture>
+                <source type="image/webp" srcset="/public/imagens/site/Login%20Agenda%20Oline%20Personalizada.webp">
+                <img
+                  class="site-screenshot-ampliavel"
+                  src="/public/imagens/site/Login Agenda Oline Personalizada.png"
+                  alt="Tela de acesso da Agenda Online personalizada com nome, logotipo, cor e imagem da empresa"
+                  width="1672"
+                  height="941"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </picture>
             </button>
             <figcaption>A experiência que o cliente encontra ao acessar sua Agenda Online.</figcaption>
           </figure>
@@ -402,15 +441,18 @@
               aria-haspopup="dialog"
               aria-controls="siteLightbox"
             >
-              <img
-                class="site-screenshot-ampliavel"
-                src="/public/imagens/site/Modal de Identidade Visual personalizado.png"
-                alt="Modal do AmAgenda para configurar nome, logotipo, cor principal e imagem da tela de acesso"
-                width="1055"
-                height="1491"
-                loading="lazy"
-                decoding="async"
-              >
+              <picture>
+                <source type="image/webp" srcset="/public/imagens/site/Modal%20de%20Identidade%20Visual%20personalizado.webp">
+                <img
+                  class="site-screenshot-ampliavel"
+                  src="/public/imagens/site/Modal de Identidade Visual personalizado.png"
+                  alt="Modal do AmAgenda para configurar nome, logotipo, cor principal e imagem da tela de acesso"
+                  width="1055"
+                  height="1491"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </picture>
             </button>
             <figcaption>Configuração e pré-visualização feitas no próprio AmAgenda.</figcaption>
           </figure>
@@ -433,6 +475,55 @@
             </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- =======================================================
+         CHAT INTEGRADO AOS AGENDAMENTOS
+         ======================================================= -->
+
+    <section class="secao secao-cinza" id="chat-integrado">
+      <div class="container produto-destaque produto-destaque-invertido">
+        <div class="produto-destaque-texto">
+          <span class="badge">Chat integrado</span>
+          <h2>Chat integrado aos agendamentos</h2>
+          <p>
+            Converse com seus clientes de forma prática e organizada. Centralize
+            mensagens, acompanhe solicitações e acesse as informações dos
+            agendamentos em um único lugar.
+          </p>
+
+          <ul class="lista-beneficios">
+            <li><span>✓</span> Conversas vinculadas aos agendamentos</li>
+            <li><span>✓</span> Histórico de mensagens organizado</li>
+            <li><span>✓</span> Indicadores de mensagens não lidas</li>
+            <li><span>✓</span> Acesso pelo computador e celular</li>
+          </ul>
+        </div>
+
+        <figure class="produto-frame">
+          <button
+            type="button"
+            class="site-screenshot-trigger"
+            aria-label="Ampliar: Chat do AmAgenda com conversas vinculadas aos agendamentos, no computador e no celular"
+            aria-haspopup="dialog"
+            aria-controls="siteLightbox"
+          >
+            <picture>
+              <source type="image/webp" srcset="/public/imagens/site/ChatAmAgenda.webp">
+              <img
+                class="site-screenshot-ampliavel"
+                src="/public/imagens/site/ChatAmAgenda.png"
+                alt="Chat do AmAgenda com conversas vinculadas aos agendamentos, no computador e no celular"
+                width="1672"
+                height="941"
+                loading="lazy"
+                decoding="async"
+              >
+            </picture>
+          </button>
+          <figcaption>Conversas e agendamentos reunidos em um só lugar.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -467,15 +558,18 @@
             aria-haspopup="dialog"
             aria-controls="siteLightbox"
           >
-            <img
-              class="site-screenshot-ampliavel"
-              src="/public/imagens/site/Agendamentos.png"
-              alt="Agenda do AmAgenda com atendimentos, horários, profissionais, status e ações rápidas"
-              width="1774"
-              height="887"
-              loading="lazy"
-              decoding="async"
-            >
+            <picture>
+              <source type="image/webp" srcset="/public/imagens/site/Agendamentos.webp">
+              <img
+                class="site-screenshot-ampliavel"
+                src="/public/imagens/site/Agendamentos.png"
+                alt="Agenda do AmAgenda com atendimentos, horários, profissionais, status e ações rápidas"
+                width="1774"
+                height="887"
+                loading="lazy"
+                decoding="async"
+              >
+            </picture>
           </button>
           <figcaption>Atendimentos organizados com status e ações rápidas.</figcaption>
         </figure>
@@ -505,15 +599,18 @@
                 aria-haspopup="dialog"
                 aria-controls="siteLightbox"
               >
-                <img
-                  class="site-screenshot-ampliavel"
-                  src="/public/imagens/site/Configuração de Horários da Agenda Profissional.png"
-                  alt="Configuração de dias, horários e intervalos de um profissional no AmAgenda"
-                  width="1774"
-                  height="887"
-                  loading="lazy"
-                  decoding="async"
-                >
+                <picture>
+                  <source type="image/webp" srcset="/public/imagens/site/Configura%C3%A7%C3%A3o%20de%20Hor%C3%A1rios%20da%20Agenda%20Profissional.webp">
+                  <img
+                    class="site-screenshot-ampliavel"
+                    src="/public/imagens/site/Configuração de Horários da Agenda Profissional.png"
+                    alt="Configuração de dias, horários e intervalos de um profissional no AmAgenda"
+                    width="1774"
+                    height="887"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                </picture>
               </button>
             </figure>
             <div class="configuracao-card-texto">
@@ -534,15 +631,18 @@
                 aria-haspopup="dialog"
                 aria-controls="siteLightbox"
               >
-                <img
-                  class="site-screenshot-ampliavel"
-                  src="/public/imagens/site/Configuração de Serviços da Agenda.png"
-                  alt="Configuração de serviços, duração e valores de um profissional no AmAgenda"
-                  width="1521"
-                  height="1034"
-                  loading="lazy"
-                  decoding="async"
-                >
+                <picture>
+                  <source type="image/webp" srcset="/public/imagens/site/Configura%C3%A7%C3%A3o%20de%20Servi%C3%A7os%20da%20Agenda.webp">
+                  <img
+                    class="site-screenshot-ampliavel"
+                    src="/public/imagens/site/Configuração de Serviços da Agenda.png"
+                    alt="Configuração de serviços, duração e valores de um profissional no AmAgenda"
+                    width="1521"
+                    height="1034"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                </picture>
               </button>
             </figure>
             <div class="configuracao-card-texto">
@@ -563,15 +663,18 @@
                 aria-haspopup="dialog"
                 aria-controls="siteLightbox"
               >
-                <img
-                  class="site-screenshot-ampliavel"
-                  src="/public/imagens/site/Configurações de WhatsApp da Agenda.png"
-                  alt="Configuração da mensagem padrão de WhatsApp de um profissional no AmAgenda"
-                  width="1774"
-                  height="887"
-                  loading="lazy"
-                  decoding="async"
-                >
+                <picture>
+                  <source type="image/webp" srcset="/public/imagens/site/Configura%C3%A7%C3%B5es%20de%20WhatsApp%20da%20Agenda.webp">
+                  <img
+                    class="site-screenshot-ampliavel"
+                    src="/public/imagens/site/Configurações de WhatsApp da Agenda.png"
+                    alt="Configuração da mensagem padrão de WhatsApp de um profissional no AmAgenda"
+                    width="1774"
+                    height="887"
+                    loading="lazy"
+                    decoding="async"
+                  >
+                </picture>
               </button>
             </figure>
             <div class="configuracao-card-texto">
@@ -617,15 +720,18 @@
             aria-haspopup="dialog"
             aria-controls="siteLightbox"
           >
-            <img
-              class="site-screenshot-ampliavel"
-              src="/public/imagens/site/Painel de Clientes AmAgenda.png"
-              alt="Painel de clientes do AmAgenda com contatos, status, atendimentos e serviços"
-              width="1672"
-              height="941"
-              loading="lazy"
-              decoding="async"
-            >
+            <picture>
+              <source type="image/webp" srcset="/public/imagens/site/Painel%20de%20Clientes%20AmAgenda.webp">
+              <img
+                class="site-screenshot-ampliavel"
+                src="/public/imagens/site/Painel de Clientes AmAgenda.png"
+                alt="Painel de clientes do AmAgenda com contatos, status, atendimentos e serviços"
+                width="1672"
+                height="941"
+                loading="lazy"
+                decoding="async"
+              >
+            </picture>
           </button>
           <figcaption>Informações essenciais para acompanhar cada cliente.</figcaption>
         </figure>
@@ -662,15 +768,18 @@
             aria-haspopup="dialog"
             aria-controls="siteLightbox"
           >
-            <img
-              class="site-screenshot-ampliavel"
-              src="/public/imagens/site/Dashboard de Faturamento AmAgenda.png"
-              alt="Dashboard de faturamento do AmAgenda com plano, vencimento, resumo financeiro e cobranças"
-              width="1672"
-              height="941"
-              loading="lazy"
-              decoding="async"
-            >
+            <picture>
+              <source type="image/webp" srcset="/public/imagens/site/Dashboard%20de%20Faturamento%20AmAgenda.webp">
+              <img
+                class="site-screenshot-ampliavel"
+                src="/public/imagens/site/Dashboard de Faturamento AmAgenda.png"
+                alt="Dashboard de faturamento do AmAgenda com plano, vencimento, resumo financeiro e cobranças"
+                width="1672"
+                height="941"
+                loading="lazy"
+                decoding="async"
+              >
+            </picture>
           </button>
           <figcaption>Consulta de assinatura, vencimentos e cobranças.</figcaption>
         </figure>
@@ -690,6 +799,11 @@
           Escolha a opção que melhor atende sua empresa e tenha acesso aos recursos do
           AmAgenda de acordo com os limites contratados.
         </p>
+
+        <div class="planos-teste">
+          <strong>Experimente gratuitamente por 30 dias.</strong>
+          <span>Escolha o plano ideal para seu negócio e aproveite o período de teste antes de contratar.</span>
+        </div>
 
         <div class="planos-grid" id="planosGrid" aria-live="polite">
           <p>Carregando planos...</p>
@@ -753,6 +867,22 @@
 
           <div class="faq-item">
             <button type="button" class="faq-pergunta">
+              <span>Como funciona o teste gratuito de 30 dias?</span>
+              <span class="faq-icone">+</span>
+            </button>
+            <div class="faq-resposta">
+              <p>
+                Você escolhe um plano e pode utilizar o AmAgenda gratuitamente por 30 dias,
+                respeitando os limites do plano selecionado. Durante o teste, a Agenda Online
+                também fica disponível. Ao término do período gratuito, será necessário contratar
+                o plano para continuar utilizando o sistema. Não há cobrança automática ao
+                finalizar o teste.
+              </p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-pergunta">
               <span>O pagamento do plano já funciona?</span>
               <span class="faq-icone">+</span>
             </button>
@@ -789,7 +919,7 @@
 
           <div class="cta-acoes">
             <a href="#planos" class="btn btn-secundario">Começar agora</a>
-            <a href="/public/views/login-empresa.php" class="btn btn-primary">Entrar</a>
+            <a href="/public/views/login-empresa.php" class="btn btn-primary">Já sou cliente</a>
           </div>
         </div>
       </div>
@@ -816,10 +946,15 @@
           >
 
             <span class="marca-logo">
-              <img
-                src="/public/imagens/logo-menu.png"
-                alt="AmAgenda"
-              >
+              <picture>
+                <source type="image/webp" sizes="42px" srcset="/public/imagens/logo-menu-128.webp 128w, /public/imagens/logo-menu.webp 1254w">
+                <img
+                  src="/public/imagens/logo-menu.png"
+                  alt="AmAgenda"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </picture>
             </span>
 
             <span>
@@ -1003,6 +1138,7 @@
             <div>
               <strong id="cadastroAlertaTitulo"></strong>
               <span id="cadastroAlertaTexto"></span>
+              <span class="cadastro-alerta-suporte" id="cadastroAlertaSuporte" hidden></span>
             </div>
           </div>
 
@@ -1175,7 +1311,7 @@
                     <svg class="cadastro-ic cadastro-olho-aberto" aria-hidden="true" focusable="false"><use href="#cad-ic-eye"/></svg><svg class="cadastro-ic cadastro-olho-fechado" aria-hidden="true" focusable="false"><use href="#cad-ic-eyeoff"/></svg>
                   </button>
                 </div>
-                <span class="cadastro-ajuda">Mínimo de 8 caracteres.</span>
+                <div class="cadastro-indicador-senha" id="cadIndicadorSenha"></div>
                 <span class="cadastro-erro" data-erro="proprietario.senha" aria-live="polite"></span>
               </div>
 
@@ -1356,7 +1492,8 @@
        JAVASCRIPT
        ======================================================= -->
 
-  <script src="/public/js/agenda/site-amagenda.js?v=20261003_1"></script>
+  <script src="/public/js/componentes/indicador-senha.js?v=1.0.23"></script>
+  <script src="/public/js/agenda/site-amagenda.js?v=20261020_2"></script>
 
 </body>
 </html>

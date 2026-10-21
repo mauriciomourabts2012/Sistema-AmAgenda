@@ -41,6 +41,22 @@
   }
 
   // ==========================================================
+  // Indicador visual de segurança da senha (apenas apoio visual).
+  // Inicializado uma única vez; a validação oficial é sempre do backend.
+  // ==========================================================
+  function obterDadosPessoaisIndicador() {
+    const nome = (document.getElementById("perfilNomeUsuario")?.textContent || "").trim();
+    return { nome: nome === "Usuário" ? "" : nome };
+  }
+
+  const indicadorSenha = window.IndicadorSenha?.anexar({
+    campoNova: inputNovaSenha,
+    campoConfirmacao: inputConfirmarSenha,
+    campoAtual: inputSenhaAtual,
+    dadosPessoais: obterDadosPessoaisIndicador,
+  }) || null;
+
+  // ==========================================================
   // Toast Universal
   // ==========================================================
   function getToastStack() {
@@ -206,16 +222,25 @@
   // ==========================================================
   // Helpers
   // ==========================================================
-  function normalizarTexto(v) {
-    return String(v || "").trim();
-  }
+  // Mesmos limites da política do backend (backend/_regras/politica_senha.php).
+  const SENHA_MIN_CARACTERES = 8;
+  const SENHA_MAX_TAMANHO = 72;
 
+  // As senhas são usadas exatamente como digitadas, sem remover espaços.
   function coletarDados() {
     return {
-      senha_atual: normalizarTexto(inputSenhaAtual.value),
-      nova_senha: normalizarTexto(inputNovaSenha.value),
-      confirmar_senha: normalizarTexto(inputConfirmarSenha.value),
+      senha_atual: String(inputSenhaAtual.value ?? ""),
+      nova_senha: String(inputNovaSenha.value ?? ""),
+      confirmar_senha: String(inputConfirmarSenha.value ?? ""),
     };
+  }
+
+  function contarCaracteres(v) {
+    return Array.from(v).length;
+  }
+
+  function tamanhoArmazenado(v) {
+    return new TextEncoder().encode(v).length;
   }
 
   function getMensagemAmigavelPorCode(code, fallbackMsg = "") {
@@ -225,9 +250,8 @@
       CURRENT_PASSWORD_REQUIRED: "Informe sua senha atual para continuar.",
       NEW_PASSWORD_REQUIRED: "Informe a nova senha.",
       CONFIRM_PASSWORD_REQUIRED: "Confirme a nova senha.",
-      NEW_PASSWORD_INVALID_LENGTH: "A nova senha deve ter entre 6 e 72 caracteres.",
-      PASSWORD_CONFIRMATION_MISMATCH: "A confirmação da nova senha não confere.",
-      PASSWORD_SAME_AS_CURRENT: "A nova senha precisa ser diferente da senha atual.",
+      PASSWORD_CONFIRMATION_MISMATCH: "As senhas informadas não coincidem.",
+      PASSWORD_SAME_AS_CURRENT: "A nova senha deve ser diferente da senha atual.",
       DB_CONN_MISSING: "Não foi possível acessar a conexão com o banco de dados.",
       DB_CONN_ERROR: "Falha ao conectar ao banco de dados.",
       USER_NOT_FOUND: "Não encontramos o usuário logado para concluir a alteração.",
@@ -235,7 +259,7 @@
       CURRENT_PASSWORD_INVALID: "A senha atual informada está incorreta.",
       DB_UPDATE_ERROR: "Não foi possível salvar a nova senha agora. Tente novamente.",
       SERVER_ERROR: "Ocorreu um erro interno ao alterar a senha. Tente novamente em instantes.",
-      PASSWORD_UPDATED: "Senha alterada com sucesso."
+      PASSWORD_UPDATED: "Sua senha foi alterada com sucesso."
     };
 
     return mapa[String(code || "").trim()] || fallbackMsg || "Não foi possível alterar a senha.";
@@ -244,43 +268,45 @@
   // ==========================================================
   // Validate
   // ==========================================================
+  // Retorna a mensagem do primeiro erro encontrado ou "" quando tudo está correto.
   function validate() {
     clearErrors();
-    let ok = true;
+    let primeiraMensagem = "";
+
+    const marcarErro = (campo, mensagem) => {
+      setFieldError(campo, mensagem);
+      if (!primeiraMensagem) primeiraMensagem = mensagem;
+    };
 
     const dados = coletarDados();
 
     if (!dados.senha_atual) {
-      setFieldError("senha_atual", "Digite sua senha atual.");
-      ok = false;
+      marcarErro("senha_atual", "Informe sua senha atual.");
     }
 
     if (!dados.nova_senha) {
-      setFieldError("nova_senha", "Digite a nova senha.");
-      ok = false;
-    } else if (dados.nova_senha.length < 6) {
-      setFieldError("nova_senha", "A nova senha deve ter no mínimo 6 caracteres.");
-      ok = false;
-    } else if (dados.nova_senha.length > 72) {
-      setFieldError("nova_senha", "A nova senha deve ter no máximo 72 caracteres.");
-      ok = false;
+      marcarErro("nova_senha", "Informe a nova senha.");
+    } else if (contarCaracteres(dados.nova_senha) < SENHA_MIN_CARACTERES) {
+      marcarErro("nova_senha", `A senha deve ter pelo menos ${SENHA_MIN_CARACTERES} caracteres.`);
+    } else if (tamanhoArmazenado(dados.nova_senha) > SENHA_MAX_TAMANHO) {
+      marcarErro("nova_senha", `A senha está muito longa. Use até ${SENHA_MAX_TAMANHO} caracteres, ou menos se usar acentos.`);
+    } else if (!/[\p{P}\p{S}]/u.test(dados.nova_senha)) {
+      // Mesma definição de caractere especial do backend (politica_senha.php).
+      marcarErro("nova_senha", "A senha deve conter pelo menos um caractere especial, como #, @ ou !.");
     }
 
     if (!dados.confirmar_senha) {
-      setFieldError("confirmar_senha", "Confirme a nova senha.");
-      ok = false;
+      marcarErro("confirmar_senha", "Confirme a nova senha.");
     } else if (dados.nova_senha !== dados.confirmar_senha) {
-      setFieldError("confirmar_senha", "A confirmação não corresponde à nova senha.");
-      ok = false;
+      marcarErro("confirmar_senha", "As senhas informadas não coincidem.");
     }
 
     if (dados.senha_atual && dados.nova_senha && dados.senha_atual === dados.nova_senha) {
-      setFieldError("nova_senha", "A nova senha não pode ser igual à senha atual.");
-      ok = false;
+      marcarErro("nova_senha", "A nova senha deve ser diferente da senha atual.");
     }
 
-    if (!ok) focusFirstError();
-    return ok;
+    if (primeiraMensagem) focusFirstError();
+    return primeiraMensagem;
   }
 
   function applyApiFieldErrors(fields) {
@@ -299,6 +325,7 @@
   function resetForm() {
     form.reset();
     clearErrors();
+    indicadorSenha?.limpar();
     form.dataset.loading = "0";
 
     if (btnSalvar) {
@@ -326,6 +353,7 @@
       headers: {
         Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest",
+        "X-CSRF-Token": String(window.__AUTH__?.csrf_token || ""),
       },
     });
 
@@ -399,24 +427,14 @@
 
     if (form.dataset.loading === "1") return;
 
-    if (!validate()) {
-      toastMsg(
-        "warning",
-        "Preencha corretamente os campos destacados antes de continuar.",
-        "Verifique os dados"
-      );
+    const erroValidacao = validate();
+    if (erroValidacao) {
+      toastMsg("warning", erroValidacao, "Verifique os dados");
       return;
     }
 
     setLoading(true);
     clearErrors();
-
-    toastMsg(
-      "confirm",
-      "Estamos validando sua senha atual e salvando a nova senha com segurança.",
-      "Processando",
-      1800
-    );
 
     try {
       const json = await enviarFormulario();
@@ -433,7 +451,7 @@
 
       toastMsg(
         "success",
-        (json.user_msg || "Senha alterada com sucesso.") + " Sua sessão continua ativa.",
+        (json.user_msg || "Sua senha foi alterada com sucesso.") + " Sua sessão continua ativa.",
         "Senha atualizada",
         4200
       );

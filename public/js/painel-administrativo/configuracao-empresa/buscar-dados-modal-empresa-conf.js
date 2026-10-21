@@ -241,6 +241,70 @@
     setValor(IDS.ddd, data.ddd_padrao ?? "");
     setValor(IDS.ddi, data.ddi_padrao ?? "55");
     setValor(IDS.msgWhats, data.mensagem_padrao ?? data.msg_whats ?? MSG_WHATS_PADRAO);
+    atualizarPreviewWhatsapp();
+  }
+
+  /* ==========================================================
+     WHATSAPP — variáveis e pré-visualização (somente interface)
+     Mesmo padrão da aba WhatsApp do Profissional (agenda.html).
+     Apenas as variáveis substituídas pela Agenda (lista-agenda.js).
+  ========================================================== */
+  const VARIAVEIS_WHATS_SUPORTADAS = ["cliente", "servico", "status", "data", "hora"];
+  const EXEMPLO_PREVIEW_WHATS = Object.freeze({
+    cliente: "João Silva",
+    servico: "Limpeza de Pele",
+    status: "Confirmado",
+    data: "03/10/2026",
+    hora: "14:00"
+  });
+  const REGEX_VARIAVEIS_WHATS = new RegExp(`\\{(${VARIAVEIS_WHATS_SUPORTADAS.join("|")})\\}`, "g");
+
+  function atualizarPreviewWhatsapp() {
+    const destino = $("cfg_msg_whats_preview");
+    if (!destino) return;
+    const texto = String($(IDS.msgWhats)?.value ?? "");
+    destino.textContent = "";
+
+    if (texto.trim() === "") {
+      const aviso = document.createElement("em");
+      aviso.textContent = "Mensagem vazia: será usada a mensagem padrão.";
+      destino.appendChild(aviso);
+      return;
+    }
+
+    let ultimo = 0;
+    texto.replace(REGEX_VARIAVEIS_WHATS, (trecho, chave, posicao) => {
+      if (posicao > ultimo) destino.appendChild(document.createTextNode(texto.slice(ultimo, posicao)));
+      const valor = document.createElement("strong");
+      valor.textContent = EXEMPLO_PREVIEW_WHATS[chave];
+      destino.appendChild(valor);
+      ultimo = posicao + trecho.length;
+      return trecho;
+    });
+    if (ultimo < texto.length) destino.appendChild(document.createTextNode(texto.slice(ultimo)));
+  }
+
+  function inserirVariavelWhatsapp(token) {
+    const campo = $(IDS.msgWhats);
+    if (!campo || !/^\{[a-z]+\}$/.test(token)) return;
+    const inicio = Number.isInteger(campo.selectionStart) ? campo.selectionStart : campo.value.length;
+    const fim = Number.isInteger(campo.selectionEnd) ? campo.selectionEnd : inicio;
+    campo.focus();
+    campo.setRangeText(token, inicio, fim, "end");
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function bindVariaveisWhatsapp() {
+    const campo = $(IDS.msgWhats);
+    if (campo) campo.addEventListener("input", atualizarPreviewWhatsapp);
+
+    document.querySelectorAll("#modalConfiguracoesAgenda #cfg-whatsapp [data-variavel-whats]").forEach((chip) => {
+      // Mantém o cursor/seleção do textarea ao clicar no chip.
+      chip.addEventListener("mousedown", (ev) => ev.preventDefault());
+      chip.addEventListener("click", () => inserirVariavelWhatsapp(String(chip.dataset.variavelWhats || "")));
+    });
+
+    atualizarPreviewWhatsapp();
   }
 
   async function carregarConfiguracao() {
@@ -305,7 +369,8 @@
         credentials: "same-origin",
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          Accept: "application/json"
+          Accept: "application/json",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
         },
         body: JSON.stringify(payload)
       });
@@ -382,6 +447,7 @@
     }
 
     bindEventosCampos();
+    bindVariaveisWhatsapp();
     bindAberturaModal();
     form.addEventListener("submit", salvarConfiguracao);
   }

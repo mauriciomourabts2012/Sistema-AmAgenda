@@ -132,6 +132,20 @@ function formatarCnpj(string $cnpj): ?string
            substr($digits, 12, 2);
 }
 
+function editarEmpresaErroTransacional(mysqli $conexao, string $code, string $mensagem, int $httpStatus = 409): void
+{
+    try {
+        $conexao->rollback();
+    } catch (Throwable) {
+    }
+
+    out([
+        'ok' => false,
+        'code' => $code,
+        'user_msg' => $mensagem,
+    ], $httpStatus);
+}
+
 /* ==========================================================
    ENTRADAS
 ========================================================== */
@@ -385,56 +399,133 @@ try {
     $resultadoTrocaPlano = limitesPlanoPrepararTrocaEmpresa($conexao, $idEmpresa, $planoId, $idsPermanentesPlano);
     limitesPlanoAbortarSeNegado($conexao, $resultadoTrocaPlano);
 
+    // A decisão da troca usa o estado autoritativo já bloqueado pela regra de limites,
+    // nunca a leitura realizada antes da transação.
+    $stmtEmpresaAtual = $conexao->prepare(
+        'SELECT nome, cnpj, email, telefone, plano_id, status, endereco, observacao
+           FROM empresa
+          WHERE id_empresa = ?
+          LIMIT 1
+          FOR UPDATE'
+    );
+    if (!$stmtEmpresaAtual) {
+        throw new RuntimeException('Prepare revalidação transacional da empresa falhou.');
+    }
+    $stmtEmpresaAtual->bind_param('i', $idEmpresa);
+    if (!$stmtEmpresaAtual->execute()) {
+        $erro = $stmtEmpresaAtual->error;
+        $stmtEmpresaAtual->close();
+        throw new RuntimeException('Falha ao revalidar empresa na transação: ' . $erro);
+    }
+    $empresaAtual = $stmtEmpresaAtual->get_result()->fetch_assoc();
+    $stmtEmpresaAtual->close();
+    if (!$empresaAtual) {
+        editarEmpresaErroTransacional($conexao, 'EMPRESA_NAO_ENCONTRADA', 'Empresa não encontrada.', 404);
+    }
+
+    $empresaAnterior = $empresaAtual;
     $planoMudou = (int)$empresaAnterior['plano_id'] !== $planoId;
     $assinaturaAnteriorId = null;
     $diaVencimentoAssinatura = 10;
     $dataOperacaoAssinatura = date('Y-m-d');
     if ($planoMudou) {
-        $stmtAssinaturaAtiva = $conexao->prepare(
-            "SELECT id_assinatura, dia_vencimento
+        $stmtAssinaturaVigente = $conexao->prepare(
+            "SELECT id_assinatura, id_empresa, id_plano, valor_contratado, periodicidade,
+                    dia_vencimento, status, modalidade, teste_iniciado_em, teste_expira_em,
+                    CASE
+                        WHEN status = 'ativa'
+                         AND modalidade = 'teste'
+                         AND teste_iniciado_em IS NOT NULL
+                         AND teste_expira_em IS NOT NULL
+                         AND teste_expira_em > teste_iniciado_em
+                         AND teste_expira_em > CURRENT_TIMESTAMP
+                        THEN 1 ELSE 0
+                    END AS teste_valido
                FROM assinatura
               WHERE id_empresa = ?
-                AND status = 'ativa'
+                AND status IN ('ativa', 'suspensa')
               ORDER BY id_assinatura DESC
               FOR UPDATE"
         );
-        if (!$stmtAssinaturaAtiva) {
-            throw new RuntimeException('Prepare assinatura ativa falhou.');
+        if (!$stmtAssinaturaVigente) {
+            throw new RuntimeException('Prepare assinatura vigente falhou.');
         }
-        $stmtAssinaturaAtiva->bind_param('i', $idEmpresa);
-        if (!$stmtAssinaturaAtiva->execute()) {
-            $erro = $stmtAssinaturaAtiva->error;
-            $stmtAssinaturaAtiva->close();
-            throw new RuntimeException('Falha ao localizar assinatura ativa: ' . $erro);
+        $stmtAssinaturaVigente->bind_param('i', $idEmpresa);
+        if (!$stmtAssinaturaVigente->execute()) {
+            $erro = $stmtAssinaturaVigente->error;
+            $stmtAssinaturaVigente->close();
+            throw new RuntimeException('Falha ao localizar assinatura vigente: ' . $erro);
         }
-        $resAssinaturaAtiva = $stmtAssinaturaAtiva->get_result();
-        $assinaturasAtivas = $resAssinaturaAtiva ? $resAssinaturaAtiva->fetch_all(MYSQLI_ASSOC) : [];
-        $stmtAssinaturaAtiva->close();
-        if (count($assinaturasAtivas) > 1) {
-            throw new RuntimeException('A empresa possui mais de uma assinatura ativa.');
-        }
-        if ($assinaturasAtivas !== []) {
-            $assinaturaAnteriorId = (int)$assinaturasAtivas[0]['id_assinatura'];
-            $diaVencimentoAssinatura = (int)$assinaturasAtivas[0]['dia_vencimento'];
-            if ($diaVencimentoAssinatura < 1 || $diaVencimentoAssinatura > 28) {
-                throw new RuntimeException('Dia de vencimento da assinatura anterior inválido.');
-            }
+        $resAssinaturaVigente = $stmtAssinaturaVigente->get_result();
+        $assinaturasVigentes = $resAssinaturaVigente ? $resAssinaturaVigente->fetch_all(MYSQLI_ASSOC) : [];
+        $stmtAssinaturaVigente->close();
 
-            $stmtEncerrarAssinatura = $conexao->prepare(
-                "UPDATE assinatura
-                    SET status = 'encerrada', data_fim = ?
-                  WHERE id_assinatura = ? AND status = 'ativa'"
+        if (count($assinaturasVigentes) > 1) {
+            editarEmpresaErroTransacional(
+                $conexao,
+                'ASSINATURA_INCONSISTENTE',
+                'A empresa possui mais de uma assinatura vigente.'
             );
-            if (!$stmtEncerrarAssinatura) {
-                throw new RuntimeException('Prepare encerramento de assinatura falhou.');
+        }
+
+        if ($assinaturasVigentes === []) {
+            editarEmpresaErroTransacional(
+                $conexao,
+                'ASSINATURA_INCONSISTENTE',
+                'Não foi possível determinar uma assinatura vigente para a troca de plano.'
+            );
+        }
+
+        $assinaturaVigente = $assinaturasVigentes[0];
+        if ((string)$assinaturaVigente['status'] !== 'ativa') {
+            if ((string)$assinaturaVigente['modalidade'] === 'teste') {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    'TRIAL_NAO_ELEGIVEL_TROCA_PLANO',
+                    'O período de teste está expirado, suspenso ou inconsistente. Regularize a assinatura antes de alterar o plano.'
+                );
             }
-            $stmtEncerrarAssinatura->bind_param('si', $dataOperacaoAssinatura, $assinaturaAnteriorId);
-            if (!$stmtEncerrarAssinatura->execute()) {
-                $erro = $stmtEncerrarAssinatura->error;
-                $stmtEncerrarAssinatura->close();
-                throw new RuntimeException('Falha ao encerrar assinatura: ' . $erro);
-            }
-            $stmtEncerrarAssinatura->close();
+            editarEmpresaErroTransacional(
+                $conexao,
+                'ASSINATURA_INCONSISTENTE',
+                'Não foi possível determinar uma assinatura ativa para a troca de plano.'
+            );
+        }
+
+        $assinaturaAnteriorId = (int)$assinaturaVigente['id_assinatura'];
+        $diaVencimentoAssinatura = (int)$assinaturaVigente['dia_vencimento'];
+        $statusAssinaturaAnterior = (string)$assinaturaVigente['status'];
+        $modalidadeAssinatura = (string)$assinaturaVigente['modalidade'];
+
+        if ((int)$assinaturaVigente['id_plano'] !== (int)$empresaAnterior['plano_id']) {
+            editarEmpresaErroTransacional(
+                $conexao,
+                'PLANO_ASSINATURA_DIVERGENTE',
+                'A assinatura vigente não corresponde ao plano atual da empresa.'
+            );
+        }
+
+        if ($diaVencimentoAssinatura < 1 || $diaVencimentoAssinatura > 28) {
+            editarEmpresaErroTransacional(
+                $conexao,
+                'ASSINATURA_INCONSISTENTE',
+                'A assinatura vigente possui dados contratuais inválidos.'
+            );
+        }
+
+        if ($modalidadeAssinatura === 'teste' && (int)$assinaturaVigente['teste_valido'] !== 1) {
+            editarEmpresaErroTransacional(
+                $conexao,
+                'TRIAL_NAO_ELEGIVEL_TROCA_PLANO',
+                'O período de teste está expirado, suspenso ou inconsistente. Regularize a assinatura antes de alterar o plano.'
+            );
+        }
+        if (!in_array($modalidadeAssinatura, ['teste', 'paga'], true) || $statusAssinaturaAnterior !== 'ativa') {
+            editarEmpresaErroTransacional(
+                $conexao,
+                'ASSINATURA_INCONSISTENTE',
+                'A assinatura vigente não está em um estado compatível com a troca de plano.'
+            );
         }
 
         $stmtPlanoAssinatura = $conexao->prepare(
@@ -458,34 +549,119 @@ try {
 
         $valorContratado = (float)$planoAssinatura['preco_mensal'];
         $periodicidadeAssinatura = (string)$planoAssinatura['cobranca'];
-        $statusAssinatura = 'ativa';
-        $stmtNovaAssinatura = $conexao->prepare(
-            "INSERT INTO assinatura
-                (id_empresa, id_plano, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim, status)
-             VALUES (?, ?, ?, ?, ?, ?, NULL, ?)"
-        );
-        if (!$stmtNovaAssinatura) {
-            throw new RuntimeException('Prepare nova assinatura falhou.');
-        }
-        $stmtNovaAssinatura->bind_param(
-            'iidsiss',
-            $idEmpresa,
-            $planoId,
-            $valorContratado,
-            $periodicidadeAssinatura,
-            $diaVencimentoAssinatura,
-            $dataOperacaoAssinatura,
-            $statusAssinatura
-        );
-        if (!$stmtNovaAssinatura->execute()) {
-            $erro = $stmtNovaAssinatura->error;
-            $stmtNovaAssinatura->close();
-            throw new RuntimeException('Falha ao criar nova assinatura: ' . $erro);
-        }
-        $novaAssinaturaId = (int)$stmtNovaAssinatura->insert_id;
-        $stmtNovaAssinatura->close();
 
-        if ($assinaturaAnteriorId !== null) {
+        if ($modalidadeAssinatura === 'teste') {
+            $idPlanoAnteriorAssinatura = (int)$assinaturaVigente['id_plano'];
+            $valorAnteriorAssinatura = (float)$assinaturaVigente['valor_contratado'];
+            $periodicidadeAnteriorAssinatura = (string)$assinaturaVigente['periodicidade'];
+
+            $stmtAtualizarTrial = $conexao->prepare(
+                "UPDATE assinatura
+                    SET id_plano = ?, valor_contratado = ?, periodicidade = ?
+                  WHERE id_assinatura = ?
+                    AND id_empresa = ?
+                    AND status = 'ativa'
+                    AND modalidade = 'teste'
+                    AND id_plano = ?
+                    AND teste_iniciado_em IS NOT NULL
+                    AND teste_expira_em IS NOT NULL
+                    AND teste_expira_em > teste_iniciado_em
+                    AND teste_expira_em > CURRENT_TIMESTAMP"
+            );
+            if (!$stmtAtualizarTrial) {
+                throw new RuntimeException('Prepare atualização contratual do trial falhou.');
+            }
+            $stmtAtualizarTrial->bind_param(
+                'idsiii',
+                $planoId,
+                $valorContratado,
+                $periodicidadeAssinatura,
+                $assinaturaAnteriorId,
+                $idEmpresa,
+                $idPlanoAnteriorAssinatura
+            );
+            if (!$stmtAtualizarTrial->execute()) {
+                $erro = $stmtAtualizarTrial->error;
+                $stmtAtualizarTrial->close();
+                throw new RuntimeException('Falha ao atualizar o plano do trial: ' . $erro);
+            }
+            $trialAlterado = $stmtAtualizarTrial->affected_rows;
+            $stmtAtualizarTrial->close();
+            if ($trialAlterado !== 1) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    'TRIAL_NAO_ELEGIVEL_TROCA_PLANO',
+                    'O período de teste expirou antes da conclusão da troca. Regularize a assinatura antes de alterar o plano.'
+                );
+            }
+
+            auditoriaRegistrar($conexao, 'assinatura.trocada', [
+                'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+                'entidade_id' => $assinaturaAnteriorId,
+                'entidade_rotulo' => 'Troca de assinatura da empresa ' . $nome,
+                'descricao' => 'Trocou o plano contratual da assinatura de teste da empresa ' . $nome . '.',
+                'alteracoes' => [
+                    'id_plano' => ['antes' => $idPlanoAnteriorAssinatura, 'depois' => $planoId],
+                    'valor_contratado' => ['antes' => $valorAnteriorAssinatura, 'depois' => $valorContratado],
+                    'periodicidade' => ['antes' => $periodicidadeAnteriorAssinatura, 'depois' => $periodicidadeAssinatura],
+                ],
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
+        } else {
+            $stmtEncerrarAssinatura = $conexao->prepare(
+                "UPDATE assinatura
+                    SET status = 'encerrada', data_fim = ?
+                   WHERE id_assinatura = ?
+                     AND id_empresa = ?
+                     AND status = 'ativa'
+                     AND modalidade = 'paga'"
+            );
+            if (!$stmtEncerrarAssinatura) {
+                throw new RuntimeException('Prepare encerramento de assinatura falhou.');
+            }
+            $stmtEncerrarAssinatura->bind_param('sii', $dataOperacaoAssinatura, $assinaturaAnteriorId, $idEmpresa);
+            if (!$stmtEncerrarAssinatura->execute()) {
+                $erro = $stmtEncerrarAssinatura->error;
+                $stmtEncerrarAssinatura->close();
+                throw new RuntimeException('Falha ao encerrar assinatura: ' . $erro);
+            }
+            $assinaturaEncerrada = $stmtEncerrarAssinatura->affected_rows;
+            $stmtEncerrarAssinatura->close();
+            if ($assinaturaEncerrada !== 1) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    'ASSINATURA_ALTERADA',
+                    'A assinatura foi alterada por outra operação. Atualize a empresa e tente novamente.'
+                );
+            }
+
+            $statusAssinatura = 'ativa';
+            $stmtNovaAssinatura = $conexao->prepare(
+                "INSERT INTO assinatura
+                    (id_empresa, id_plano, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim, status)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL, ?)"
+            );
+            if (!$stmtNovaAssinatura) {
+                throw new RuntimeException('Prepare nova assinatura falhou.');
+            }
+            $stmtNovaAssinatura->bind_param(
+                'iidsiss',
+                $idEmpresa,
+                $planoId,
+                $valorContratado,
+                $periodicidadeAssinatura,
+                $diaVencimentoAssinatura,
+                $dataOperacaoAssinatura,
+                $statusAssinatura
+            );
+            if (!$stmtNovaAssinatura->execute()) {
+                $erro = $stmtNovaAssinatura->error;
+                $stmtNovaAssinatura->close();
+                throw new RuntimeException('Falha ao criar nova assinatura: ' . $erro);
+            }
+            $novaAssinaturaId = (int)$stmtNovaAssinatura->insert_id;
+            $stmtNovaAssinatura->close();
+
             auditoriaRegistrar($conexao, 'assinatura.encerrada', [
                 'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
                 'entidade_id' => $assinaturaAnteriorId,
@@ -494,36 +670,36 @@ try {
                 'alteracoes' => ['status' => ['antes' => 'ativa', 'depois' => 'encerrada'], 'data_fim' => ['antes' => null, 'depois' => $dataOperacaoAssinatura]],
                 'contexto' => ['origem' => 'painel_super_admin'],
             ]);
+            auditoriaRegistrar($conexao, 'assinatura.criada', [
+                'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+                'entidade_id' => $novaAssinaturaId,
+                'entidade_rotulo' => 'Nova assinatura da empresa ' . $nome,
+                'descricao' => 'Criou nova assinatura para a empresa ' . $nome . '.',
+                'alteracoes' => ['depois' => ['antes' => null, 'depois' => [
+                    'id_empresa' => $idEmpresa,
+                    'id_plano' => $planoId,
+                    'valor_contratado' => $valorContratado,
+                    'periodicidade' => $periodicidadeAssinatura,
+                    'dia_vencimento' => $diaVencimentoAssinatura,
+                    'data_inicio' => $dataOperacaoAssinatura,
+                    'status' => $statusAssinatura,
+                ]]],
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
+            auditoriaRegistrar($conexao, 'assinatura.trocada', [
+                'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+                'entidade_id' => $novaAssinaturaId,
+                'entidade_rotulo' => 'Troca de assinatura da empresa ' . $nome,
+                'descricao' => 'Trocou o plano contratual da empresa ' . $nome . '.',
+                'alteracoes' => [
+                    'id_assinatura_anterior' => ['antes' => $assinaturaAnteriorId, 'depois' => null],
+                    'id_plano' => ['antes' => (int)$empresaAnterior['plano_id'], 'depois' => $planoId],
+                    'valor_contratado' => ['antes' => null, 'depois' => $valorContratado],
+                    'periodicidade' => ['antes' => null, 'depois' => $periodicidadeAssinatura],
+                ],
+                'contexto' => ['origem' => 'painel_super_admin'],
+            ]);
         }
-        auditoriaRegistrar($conexao, 'assinatura.criada', [
-            'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
-            'entidade_id' => $novaAssinaturaId,
-            'entidade_rotulo' => 'Nova assinatura da empresa ' . $nome,
-            'descricao' => 'Criou nova assinatura para a empresa ' . $nome . '.',
-            'alteracoes' => ['depois' => ['antes' => null, 'depois' => [
-                'id_empresa' => $idEmpresa,
-                'id_plano' => $planoId,
-                'valor_contratado' => $valorContratado,
-                'periodicidade' => $periodicidadeAssinatura,
-                'dia_vencimento' => $diaVencimentoAssinatura,
-                'data_inicio' => $dataOperacaoAssinatura,
-                'status' => $statusAssinatura,
-            ]]],
-            'contexto' => ['origem' => 'painel_super_admin'],
-        ]);
-        auditoriaRegistrar($conexao, 'assinatura.trocada', [
-            'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
-            'entidade_id' => $novaAssinaturaId,
-            'entidade_rotulo' => 'Troca de assinatura da empresa ' . $nome,
-            'descricao' => 'Trocou o plano contratual da empresa ' . $nome . '.',
-            'alteracoes' => [
-                'id_assinatura_anterior' => ['antes' => $assinaturaAnteriorId, 'depois' => null],
-                'id_plano' => ['antes' => (int)$empresaAnterior['plano_id'], 'depois' => $planoId],
-                'valor_contratado' => ['antes' => null, 'depois' => $valorContratado],
-                'periodicidade' => ['antes' => null, 'depois' => $periodicidadeAssinatura],
-            ],
-            'contexto' => ['origem' => 'painel_super_admin'],
-        ]);
     }
 
     $sql = "

@@ -45,6 +45,18 @@ function exigirSessaoCliente(): array
         ], 401);
     }
 
+    // A6.1: a sessão precisa corresponder à credencial atual do cliente.
+    require_once __DIR__ . '/../_regras/login_multiempresa.php';
+    $conexaoSessaoCliente = null;
+    if ($idCliente !== null) {
+        $conexaoSessaoCliente = $GLOBALS['conexao'] ?? null;
+        if (!($conexaoSessaoCliente instanceof mysqli)) {
+            require __DIR__ . '/../_config/conexao.php';
+            $conexaoSessaoCliente = isset($conexao) && $conexao instanceof mysqli ? $conexao : null;
+        }
+    }
+    sessaoCredencialExigirCliente($conexaoSessaoCliente, $idEmpresa, $idCliente);
+
     return [
         'id_empresa' => $idEmpresa,
         'id_cliente' => $idCliente,

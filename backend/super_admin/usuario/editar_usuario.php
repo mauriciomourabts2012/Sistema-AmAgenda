@@ -7,7 +7,7 @@ declare(strict_types=1);
  * - Atualiza status do vínculo na tabela `empresa_usuario`
  * - Compatível com API central
  * - Sempre retorna JSON válido
- * - Atualiza senha SOMENTE se enviada
+ * - Atualiza senha SOMENTE se enviada (política central: backend/_regras/politica_senha.php)
  * - Email é obrigatório
  * - Nome é obrigatório
  * - Status é obrigatório
@@ -15,6 +15,7 @@ declare(strict_types=1);
  * - Telefone é opcional
  * - tipo_usuario NÃO é atualizado neste endpoint
  * - perfil NÃO é atualizado neste endpoint
+ * - Super Admin NÃO é editado por esta rota (usar superadmin/usuario/editar-super)
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -39,6 +40,9 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require __DIR__ . '/../../_auth/bloquear.php';
+require_once __DIR__ . '/../../_auth/csrf.php';
+csrfValidarSessao();
+require_once __DIR__ . '/../../_regras/politica_senha.php';
 
 /* ==========================================================
    HELPERS
@@ -98,11 +102,9 @@ $nome        = strv('nome', 140, true);
 $email       = mb_strtolower(strv('email', 160, true));
 $telefoneRaw = strv('telefone', 20, false);
 $status      = mb_strtolower(strv('status', 20, true));
+// As senhas não são aparadas nem normalizadas.
 $senha       = (string)($_POST['senha'] ?? '');
 $senha2      = (string)($_POST['senha2'] ?? '');
-
-$senha = trim($senha);
-$senha2 = trim($senha2);
 
 /* ==========================================================
    VALIDAÇÕES
@@ -147,27 +149,17 @@ $alterarSenha = false;
 $senhaHash = null;
 
 if ($senha !== '' || $senha2 !== '') {
-    if ($senha === '') {
-        $erros['senha'] = 'Informe a nova senha.';
-    }
+    // Senha definitiva redefinida pelo Super Admin: política central, sem trim,
+    // confirmação exata. Dados pessoais considerados: os informados nesta edição.
+    $erroSenha = politicaSenhaValidarDefinitiva($senha, $senha2, [
+        'nome'     => $nome,
+        'email'    => $email,
+        'telefone' => $telefoneRaw,
+    ]);
 
-    if ($senha2 === '') {
-        $erros['senha2'] = 'Confirme a nova senha.';
-    }
-
-    if ($senha !== '' && mb_strlen($senha) < 6) {
-        $erros['senha'] = 'A senha deve ter no mínimo 6 caracteres.';
-    }
-
-    if ($senha2 !== '' && mb_strlen($senha2) < 6) {
-        $erros['senha2'] = 'A confirmação deve ter no mínimo 6 caracteres.';
-    }
-
-    if ($senha !== '' && $senha2 !== '' && $senha !== $senha2) {
-        $erros['senha2'] = 'As senhas não conferem.';
-    }
-
-    if (!isset($erros['senha']) && !isset($erros['senha2'])) {
+    if ($erroSenha !== null) {
+        $erros[$erroSenha['campo'] === 'confirmacao' ? 'senha2' : 'senha'] = $erroSenha['user_msg'];
+    } else {
         $alterarSenha = true;
         $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
     }
@@ -240,6 +232,18 @@ try {
 
     $tipoUsuario = (string)($usuario['tipo_usuario'] ?? '');
     $statusUsuarioGlobal = (string)($usuario['status'] ?? '');
+
+    // Super Admins têm rota própria (editar-super), com regras e auditoria específicas.
+    if ($tipoUsuario === 'super_admin') {
+        out([
+            'ok' => false,
+            'code' => 'SUPER_ADMIN_ROTA_INVALIDA',
+            'user_msg' => 'Este cadastro é de um Super Admin. Para editá-lo, utilize a área de Super Admins.',
+            'fields' => [
+                'id_usuario' => 'Este cadastro deve ser editado na área de Super Admins.',
+            ],
+        ], 403);
+    }
 
     /* ==========================================================
        VALIDA DUPLICIDADE DE EMAIL

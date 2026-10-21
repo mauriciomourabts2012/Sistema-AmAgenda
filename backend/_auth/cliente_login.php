@@ -114,6 +114,10 @@ require_once
 require_once
     __DIR__ . '/../_servicos/sms_otp.php';
 
+// Marcador da credencial da sessão (A6.1).
+require_once
+    __DIR__ . '/../_regras/login_multiempresa.php';
+
 
 /*
 |--------------------------------------------------------------------------
@@ -530,6 +534,14 @@ function clienteLoginCriarSessao(
         'login_em' => date('Y-m-d H:i:s'),
     ];
 
+    // Marcador da credencial validada (A6.1), somente no servidor. Cliente sem
+    // cadastro ou sem senha usa a credencial vazia.
+    $_SESSION[SESSAO_CREDENCIAL_CLIENTE] = sessaoCredencialImpressao(
+        $clienteExistente && ($cliente['senha_hash'] ?? null) !== null
+            ? (string)$cliente['senha_hash']
+            : null
+    );
+
     unset($_SESSION['cliente_auth_desafio']);
 
     if ($autorizarRecuperacao && $idCliente !== null) {
@@ -651,6 +663,22 @@ if ($acao === 'login_senha') {
         ], 401);
     }
 
+    // A4: limite persistente de tentativas (conta e conta + IP), verificado
+    // antes da busca do cliente e de password_verify. Afeta somente o login
+    // por senha; OTP e recuperação por código não passam por aqui.
+    require_once __DIR__ . '/../_regras/limite_tentativas.php';
+    $limiteSenhaCliente = limiteTentativasClienteIniciar(
+        $conexao,
+        $idEmpresa,
+        $telefoneE164
+    );
+    // Garante a liberação do lock em qualquer saída (out() encerra com exit).
+    register_shutdown_function(
+        static function () use ($conexao, &$limiteSenhaCliente): void {
+            limiteTentativasLiberarLock($conexao, $limiteSenhaCliente);
+        }
+    );
+
     try {
         $cliente = clienteLoginBuscarCliente(
             $conexao,
@@ -674,12 +702,18 @@ if ($acao === 'login_senha') {
         || $hash === ''
         || !password_verify($senha, $hash)
     ) {
+        // Conta a falha; ao atingir o limite responde 429 (bloqueio temporário).
+        limiteTentativasClienteRegistrarFalha($conexao, $limiteSenhaCliente);
+
         out([
             'ok' => false,
             'code' => 'CLIENT_CREDENTIALS_INVALID',
             'user_msg' => 'Telefone ou senha inválidos.',
         ], 401);
     }
+
+    // Senha correta: zera os contadores da conta antes de criar a sessão.
+    limiteTentativasClienteRegistrarSucesso($conexao, $limiteSenhaCliente);
 
     clienteLoginCriarSessao(
         $conexao,

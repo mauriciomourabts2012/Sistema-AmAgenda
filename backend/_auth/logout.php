@@ -25,6 +25,20 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+// L2: com identidade autenticada na sessão, o logout exige o token CSRF da sessão
+// (mecanismo existente). Sem identidade não há o que proteger: a limpeza segue
+// normalmente, para que o usuário nunca fique impedido de encerrar a sessão.
+$authIdentidadeLogout = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+$clienteIdentidadeLogout = is_array($_SESSION['cliente_auth'] ?? null) ? $_SESSION['cliente_auth'] : [];
+$logoutComIdentidade = (int)($authIdentidadeLogout['id_usuario'] ?? 0) > 0
+    || $clienteIdentidadeLogout !== []
+    || (int)($_SESSION['superadmin_id'] ?? 0) > 0;
+
+if ($logoutComIdentidade) {
+    require_once __DIR__ . '/csrf.php';
+    csrfValidarSessao();
+}
+
 /**
  * Lê empresa_id da sessão em vários formatos
  */

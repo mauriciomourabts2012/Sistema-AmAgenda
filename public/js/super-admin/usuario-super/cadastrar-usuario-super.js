@@ -10,7 +10,6 @@
      ✅ validação reforçada
      ✅ limpeza segura após sucesso
      ✅ fechamento compatível com modal "ativo"
-     ✅ diagnóstico real da senha sem confusão visual
 ========================================================== */
 (() => {
   "use strict";
@@ -23,7 +22,6 @@
 
   const API_BASE = "/api/api_central.php";
   const API_PATH = "superadmin/usuario/cadastrar-super";
-  const DEBUG = true;
 
   const form = document.getElementById("formCadastrarUsuarioSuper");
   if (!form) return;
@@ -42,25 +40,6 @@
   const elTipoUsuario = form.querySelector('input[name="tipo_usuario"]');
 
   let isSubmitting = false;
-
-  /* ==========================================================
-     Debug
-  ========================================================== */
-  function debugLog(...args) {
-    if (!DEBUG) return;
-    console.log("[CadastrarUsuarioSuper]", ...args);
-  }
-
-  function debugPassword(label, value) {
-    if (!DEBUG) return;
-
-    const v = String(value ?? "");
-    const codes = Array.from(v).map((ch) => ch.charCodeAt(0));
-
-    console.log(`[CadastrarUsuarioSuper][${label}] json=`, JSON.stringify(v));
-    console.log(`[CadastrarUsuarioSuper][${label}] length=`, v.length);
-    console.log(`[CadastrarUsuarioSuper][${label}] charCodes=`, codes.join(","));
-  }
 
   /* ==========================================================
      Toast Universal
@@ -369,10 +348,10 @@
     }
 
     if (!senha2) {
-      setFieldError("us_senha2", "Confirme a senha.");
+      setFieldError("us_senha2", "Repita a senha no campo de confirmação.");
       ok = false;
     } else if (senha !== senha2) {
-      setFieldError("us_senha2", "As senhas não coincidem.");
+      setFieldError("us_senha2", "As senhas informadas não coincidem.");
       ok = false;
     }
 
@@ -381,21 +360,6 @@
     }
 
     return ok;
-  }
-
-  /* ==========================================================
-     Eventos auxiliares de diagnóstico
-  ========================================================== */
-  if (elSenha) {
-    elSenha.addEventListener("input", () => {
-      debugPassword("INPUT_senha", elSenha.value);
-    });
-  }
-
-  if (elSenha2) {
-    elSenha2.addEventListener("input", () => {
-      debugPassword("INPUT_senha2", elSenha2.value);
-    });
   }
 
   /* ==========================================================
@@ -408,10 +372,6 @@
 
     const data = buildSafePayload();
 
-    debugLog("submit iniciado");
-    debugPassword("SAFE_senha", data.senha);
-    debugPassword("SAFE_senha2", data.senha2);
-
     if (!validatePayload(data)) {
       toastMsg("warning", "Revise os campos destacados.");
       return;
@@ -423,14 +383,8 @@
     payload.set("telefone", data.telefone);
     payload.set("status", data.status);
     payload.set("senha", data.senha);
+    payload.set("senha2", data.senha2);
     payload.set("tipo_usuario", "super_admin");
-
-    debugPassword("POST_senha", payload.get("senha") || "");
-    debugLog("POST nome =", JSON.stringify(payload.get("nome") || ""));
-    debugLog("POST email =", JSON.stringify(payload.get("email") || ""));
-    debugLog("POST telefone =", JSON.stringify(payload.get("telefone") || ""));
-    debugLog("POST status =", JSON.stringify(payload.get("status") || ""));
-    debugLog("POST tipo_usuario =", JSON.stringify(payload.get("tipo_usuario") || ""));
 
     isSubmitting = true;
     setLoading(true);
@@ -442,7 +396,8 @@
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With": "XMLHttpRequest"
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
         },
         body: payload.toString(),
         cache: "no-store",
@@ -450,9 +405,6 @@
       });
 
       const json = await resp.json().catch(() => null);
-
-      debugLog("HTTP status =", resp.status);
-      debugLog("Resposta JSON =", json);
 
       if (!resp.ok || !json || json.ok !== true) {
         if (json && json.fields && typeof json.fields === "object") {
@@ -506,7 +458,6 @@
       }, 900);
 
     } catch (err) {
-      debugLog("Erro fetch =", err);
       clearSensitiveFields();
       toastMsg("danger", "Falha de rede ao cadastrar o super admin.");
     } finally {

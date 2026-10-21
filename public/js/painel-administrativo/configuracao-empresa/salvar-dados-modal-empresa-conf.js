@@ -288,7 +288,8 @@
       credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json"
+        "Accept": "application/json",
+        "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
       },
       body: JSON.stringify(payload)
     });

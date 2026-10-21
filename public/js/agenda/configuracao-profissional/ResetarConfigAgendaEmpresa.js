@@ -170,7 +170,8 @@
           const response = await fetch(API_URL, {
             method: "POST",
             headers: {
-              "Content-Type": "application/json"
+              "Content-Type": "application/json",
+              "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
             },
             credentials: "same-origin",
             body: JSON.stringify({

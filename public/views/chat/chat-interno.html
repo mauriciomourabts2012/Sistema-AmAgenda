@@ -13,11 +13,12 @@
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.0.19">
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.0.19">
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.0.19">
+  <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.0.22"/>
   <link rel="stylesheet" href="../../css/chat/chat-interno-web.css?v=1.0.19">
   <link rel="stylesheet" href="../../css/chat/chat-interno-mobile.css?v=1.0.19">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-  <script src="/public/_auth/sessao.js?v=1.0.19"></script>
+  <script src="/public/_auth/sessao.js?v=1.0.25"></script>
   <script src="/public/_auth/permissoes.js?v=1.0.19"></script>
   <script src="/public/js/mensagem-universal.js?v=1.0.19"></script>
   <script src="/public/js/PWA/InstalarPWA.js?v=1.0.19"></script>
@@ -214,12 +215,12 @@
               </div>
 
               <div class="modal-campo">
-                <input type="password" id="nova_senha" name="nova_senha" required minlength="6">
+                <input type="password" id="nova_senha" name="nova_senha" required minlength="8">
                 <label for="nova_senha">Nova senha</label>
               </div>
 
               <div class="modal-campo">
-                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6">
+                <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="8">
                 <label for="confirmar_senha">Confirmar nova senha</label>
               </div> <br>
 
@@ -241,14 +242,15 @@
 
   <script src="../../js/core/lista-core.js?v=1.0.19"></script>
   <script src="../../js/menu-lateral/menu-lateral.js?v=1.0.19"></script>
-  <script src="../../js/notificacoes/notificacoes.js?v=1.0.19"></script> <!--Centro de notificações e experiência de senha temporária-->
+  <script src="../../js/notificacoes/notificacoes.js?v=1.0.20"></script> <!--Centro de notificações e experiência de senha temporária-->
   <script src="../../js/identidade-visual/identidade-visual.js?v=1.0.19"></script>
   <script src="../../js/chat/chat-nao-lidas.js?v=1.0.19"></script> <!--Contador global de conversas não lidas (badge do menu)-->
   <script src="../../js/chat/chat-interno.js?v=1.0.19"></script>
-  <script src="/public/_auth/deslogar.js?v=1.0.19"></script> <!--Sair do sistema (botão Sair do modal perfil)-->
-  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.19"></script> <!--Alterar foto do modal perfil-->
+  <script src="/public/_auth/deslogar.js?v=1.0.24"></script> <!--Sair do sistema (botão Sair do modal perfil)-->
+  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.0.24"></script> <!--Alterar foto do modal perfil-->
   <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.0.19"></script> <!--Buscar foto e nome do usuário logado-->
-  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.19"></script> <!--Alterar senha do modal perfil-->
+  <script src="/public/js/componentes/indicador-senha.js?v=1.0.23"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
+  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.0.24"></script> <!--Alterar senha do modal perfil-->
   <script> // Abrir e fechar modais da página: mesmo padrão do script de modais de agenda.html.
   (() => {
     "use strict";
