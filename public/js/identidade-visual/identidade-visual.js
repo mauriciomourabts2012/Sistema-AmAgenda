@@ -33,7 +33,8 @@
     cor_texto: "--am-marca-texto",
     cor_rgb: "--am-marca-rgb"
   };
-  const MAX_BYTES = 5 * 1024 * 1024;
+  const LOGO_MAX_BYTES = 15 * 1024 * 1024;
+  const LOGIN_MAX_BYTES = 5 * 1024 * 1024;
   const TIPOS = ["image/jpeg", "image/png", "image/webp"];
   const LOGIN_LADO_MENOR_MIN = 400;
   const LOGIN_LADO_MAIOR_MIN = 800;
@@ -205,7 +206,7 @@
               <section class="identidade-visual__bloco identidade-visual__bloco-marca">
                 <h3>Logo da empresa</h3>
                 <div class="identidade-visual__logo-linha"><img id="identidadePreviewLogo" class="identidade-visual__preview-logo" alt="Prévia da logo"><label class="botao-geral identidade-visual__upload" for="identidadeLogo">Alterar imagem</label><input id="identidadeLogo" name="logo_empresa" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
-                <small>PNG, JPG ou WebP • máximo 5 MB</small>
+                <small>PNG, JPG ou WebP • máximo 15 MB</small>
                 <div class="identidade-visual__cor">
                   <h3>Cor principal</h3>
                   <div class="identidade-visual__cor-controles">
@@ -242,8 +243,8 @@
     modal.querySelector("#identidadeCorHex").addEventListener("input", sincronizarCorDoHex);
     modal.querySelector("#identidadeCorHex").addEventListener("blur", validarCorFormulario);
     modal.querySelector("#identidadeRestaurarCor").addEventListener("click", restaurarCorPadrao);
-    modal.querySelector("#identidadeLogo").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogo", true));
-    modal.querySelector("#identidadeLogin").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogin", false, true));
+    modal.querySelector("#identidadeLogo").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogo", true, false, LOGO_MAX_BYTES, 15));
+    modal.querySelector("#identidadeLogin").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogin", false, true, LOGIN_MAX_BYTES, 5));
     modal.querySelector("#identidadePreviewLogin").addEventListener("load", atualizarDimensoesPreviewLogin);
     ["#identidadeEscala", "#identidadePosX", "#identidadePosY"].forEach(seletor => modal.querySelector(seletor).addEventListener("input", aplicarAjustePreview));
     modal.querySelector("#identidadeResetarEnquadramento").addEventListener("click", () => {
@@ -381,11 +382,11 @@
     });
   }
 
-  async function previewArquivo(input, seletor, sincronizarLogo, validarLogin = false) {
+  async function previewArquivo(input, seletor, sincronizarLogo, validarLogin, limiteBytes, limiteMb) {
     const arquivo = input.files?.[0];
     if (!arquivo) return;
-    if (!TIPOS.includes(arquivo.type) || arquivo.size > MAX_BYTES) {
-      toast("Envie uma imagem JPG, PNG ou WebP de até 5 MB.", "danger"); input.value = ""; return;
+    if (!TIPOS.includes(arquivo.type) || arquivo.size <= 0 || arquivo.size > limiteBytes) {
+      toast(`Envie uma imagem JPG, PNG ou WebP de até ${limiteMb} MB.`, "danger"); input.value = ""; return;
     }
     if (validarLogin) {
       try {
@@ -439,7 +440,8 @@
     setBusy(true);
     try {
       const resposta = await fetch(`${API}empresa/identidade-visual/salvar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") }, body: dados });
-      const json = await resposta.json();
+      const json = await resposta.json().catch(() => null);
+      if (resposta.status === 413) throw new Error("A requisição excede o limite aceito pelo servidor. A logo pode ter até 15 MB e a imagem lateral do login até 5 MB.");
       if (!resposta.ok || !json?.ok) throw new Error(json?.user_msg || "Não foi possível salvar.");
       aplicar(json.data); document.dispatchEvent(new CustomEvent("amagenda:identidade-atualizada", { detail: identidade }));
       fecharModal(); toast(json.user_msg || "Identidade visual atualizada.");

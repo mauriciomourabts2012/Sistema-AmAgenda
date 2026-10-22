@@ -40,8 +40,8 @@
       urlNormalizada.origin !== window.location.origin ||
       (
         urlNormalizada.pathname !== AVATAR_PADRAO &&
-        !urlNormalizada.pathname.startsWith(
-          "/public/imagens/clientes/"
+        !/^\/public\/(?:uploads|imagens)\/clientes\/[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.(?:jpe?g|png|webp)$/i.test(
+          urlNormalizada.pathname
         )
       )
     ) {

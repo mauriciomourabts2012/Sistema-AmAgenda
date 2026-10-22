@@ -4,7 +4,7 @@
    ✅ Atualiza todos os avatares
    ✅ Mantém fallback
    ✅ Evita cache antigo
-   ✅ Compatível com caminho /public/imagens/usuarios/
+   ✅ Compatível com caminhos /public/uploads/usuarios/ e legado /public/imagens/usuarios/
    ✅ Padrão visual compatível com .ui-toast-stack + .ui-alert
    ✅ Mensagens no mesmo padrão do sistema
    ✅ Estado visual de carregando no botão "Alterar foto"
@@ -20,7 +20,7 @@
 
   const API_URL = "/public/api/api_central.php?path=perfil/alterar-foto";
   const INPUT_ID = "perfil_foto";
-  const MAX_BYTES = 3 * 1024 * 1024;
+  const MAX_BYTES = 10 * 1024 * 1024;
   const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
   const TOAST_TIMEOUT = 3500;
   const TOAST_LEAVE = 180;
@@ -128,6 +128,10 @@
     if (!value) return FALLBACK_AVATAR;
 
     value = value.replace(/\\/g, "/");
+    value = value.replace("/public/uploads/Usuarios/", "/public/uploads/usuarios/");
+    value = value.replace("/uploads/Usuarios/", "/uploads/usuarios/");
+    value = value.replace("public/uploads/Usuarios/", "public/uploads/usuarios/");
+    value = value.replace("uploads/Usuarios/", "uploads/usuarios/");
     value = value.replace("/public/imagens/Usuarios/", "/public/imagens/usuarios/");
     value = value.replace("/imagens/Usuarios/", "/imagens/usuarios/");
     value = value.replace("public/imagens/Usuarios/", "public/imagens/usuarios/");
@@ -239,7 +243,7 @@
     }
 
     if (file.size > MAX_BYTES) {
-      return "A imagem deve ter no máximo 3MB.";
+      return "A imagem deve ter no máximo 10 MB.";
     }
 
     return "";
@@ -262,6 +266,10 @@
         "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "")
       }
     });
+
+    if (res.status === 413) {
+      throw new Error("A requisição excede o limite aceito pelo servidor. A foto de perfil pode ter até 10 MB.");
+    }
 
     let json = null;
     try {

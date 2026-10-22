@@ -47,7 +47,7 @@
       "image/webp"
     ];
 
-    const limite = 5 * 1024 * 1024;
+    const limite = 10 * 1024 * 1024;
 
     if (!tiposPermitidos.includes(file.type)) {
       throw new Error(
@@ -57,7 +57,7 @@
 
     if (file.size <= 0 || file.size > limite) {
       throw new Error(
-        "A imagem deve possuir no máximo 5 MB."
+        "A imagem deve possuir no máximo 10 MB."
       );
     }
   }
@@ -88,6 +88,12 @@
     );
 
     const json = await resposta.json().catch(() => null);
+
+    if (resposta.status === 413) {
+      throw new Error(
+        "A requisição excede o limite aceito pelo servidor. A foto de perfil pode ter até 10 MB."
+      );
+    }
 
     if (resposta.status === 401) {
       window.location.replace(LOGIN);

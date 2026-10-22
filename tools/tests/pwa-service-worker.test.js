@@ -266,6 +266,10 @@ test("fotos de usuários e clientes nunca tocam Cache Storage", async () => {
     "/public/imagens/usuarios/usuario_3_072bb927b30cdd1f.webp",
     "/imagens/clientes/cliente_1_e1f4188d95630ab1.png",
     "/public/imagens/clientes/cliente_2_61cb9dea79056fdc.png",
+    "/uploads/usuarios/usuario_4_64ec18d5a9bba7a4.jpeg",
+    "/public/uploads/usuarios/usuario_5_47efdc01c5a3e285.webp",
+    "/uploads/clientes/cliente_3_9d48ef4db61631ac.png",
+    "/public/uploads/clientes/cliente_4_b44db845bd03acfb.jpeg",
   ];
   for (const pathname of paths) {
     const result = await h.dispatchFetch(request(pathname, { destination: "image" }));

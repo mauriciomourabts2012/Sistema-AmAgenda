@@ -705,102 +705,137 @@ try {
     $gateway = MercadoPagoGateway::daConfiguracao();
     $ambiente = $gateway->ambiente();
 
-    $candidatas = cobrancasRecorrentesConsulta(
-        $conexao,
-        "SELECT c.id_cobranca
-           FROM cobranca c
-           JOIN empresa e
-             ON e.id_empresa = c.id_empresa
-            AND e.status = 'ativo'
-           JOIN assinatura a
-             ON a.id_assinatura = c.id_assinatura
-            AND a.id_empresa = c.id_empresa
-           JOIN plano p
-             ON p.id_plano = a.id_plano
-            AND p.gera_cobranca = 1
-           JOIN assinatura_pagamento_recorrente apr
-             ON apr.id_assinatura = a.id_assinatura
-            AND apr.id_empresa = a.id_empresa
-            AND apr.provedor = 'mercado_pago'
-            AND apr.ambiente = ?
-          WHERE c.status = 'pendente'
-            AND c.data_vencimento <= CURDATE()
-            AND a.status = 'ativa'
-            AND a.modalidade = 'paga'
-            AND apr.status = 'ativa'
-            AND UPPER(apr.status_externo) = 'READY'
-            AND apr.slot_ativo = 1
-            AND apr.cobrar_a_partir_de IS NOT NULL
-            AND apr.cobrar_a_partir_de <= NOW()
-          ORDER BY c.data_vencimento ASC,c.id_cobranca ASC
-          LIMIT " . COBRANCAS_RECORRENTES_LIMITE,
-        's',
-        $ambiente
-    )->fetch_all(MYSQLI_ASSOC);
+    $cursorDataVencimento = null;
+    $cursorIdCobranca = 0;
+    $selecionadasParaProcessamento = 0;
 
-    foreach ($candidatas as $candidata) {
-        $resumo['analisadas']++;
-        try {
-            $reserva = cobrancasRecorrentesReservar(
-                $conexao,
-                (int) $candidata['id_cobranca'],
-                $ambiente
-            );
-            if ($reserva['elegivel']) {
-                $resumo['elegiveis']++;
-            }
-            if ($reserva['resultado'] === 'conciliacao') {
-                $resumo['conciliacao']++;
-                continue;
-            }
-            if ($reserva['resultado'] !== 'enviar' || !isset($reserva['transacao'])) {
-                $resumo['ignoradas']++;
-                continue;
-            }
-            if ($reserva['criada']) {
-                $resumo['transacoes_criadas']++;
-            }
+    while ($selecionadasParaProcessamento < COBRANCAS_RECORRENTES_LIMITE) {
+        // O cursor composto avança mesmo sobre itens não acionáveis, sem depender de OFFSET instável.
+        $candidatas = cobrancasRecorrentesConsulta(
+            $conexao,
+            "SELECT c.id_cobranca,c.data_vencimento AS cursor_data_vencimento
+               FROM cobranca c
+               JOIN empresa e
+                 ON e.id_empresa = c.id_empresa
+                AND e.status = 'ativo'
+               JOIN assinatura a
+                 ON a.id_assinatura = c.id_assinatura
+                AND a.id_empresa = c.id_empresa
+               JOIN plano p
+                 ON p.id_plano = a.id_plano
+                AND p.gera_cobranca = 1
+               JOIN assinatura_pagamento_recorrente apr
+                 ON apr.id_assinatura = a.id_assinatura
+                AND apr.id_empresa = a.id_empresa
+                AND apr.provedor = 'mercado_pago'
+                AND apr.ambiente = ?
+              WHERE c.status = 'pendente'
+                AND c.data_vencimento <= CURDATE()
+                AND a.status = 'ativa'
+                AND a.modalidade = 'paga'
+                AND apr.status = 'ativa'
+                AND UPPER(apr.status_externo) = 'READY'
+                AND apr.slot_ativo = 1
+                AND apr.cobrar_a_partir_de IS NOT NULL
+                AND apr.cobrar_a_partir_de <= NOW()
+                AND (? IS NULL
+                     OR c.data_vencimento > ?
+                     OR (c.data_vencimento = ? AND c.id_cobranca > ?))
+              ORDER BY c.data_vencimento ASC,c.id_cobranca ASC
+              LIMIT " . COBRANCAS_RECORRENTES_LIMITE,
+            'ssssi',
+            $ambiente,
+            $cursorDataVencimento,
+            $cursorDataVencimento,
+            $cursorDataVencimento,
+            $cursorIdCobranca
+        )->fetch_all(MYSQLI_ASSOC);
 
-            $transacao = $reserva['transacao'];
-            if (!assinaturaServicoPlanoGeraCobranca($conexao, (int) $transacao['id_assinatura'])) {
-                cobrancasRecorrentesExecutar(
+        if ($candidatas === []) {
+            break;
+        }
+
+        foreach ($candidatas as $candidata) {
+            $cursorDataVencimento = (string) $candidata['cursor_data_vencimento'];
+            $cursorIdCobranca = (int) $candidata['id_cobranca'];
+            $resumo['analisadas']++;
+
+            try {
+                $reserva = cobrancasRecorrentesReservar(
                     $conexao,
-                    "UPDATE transacao_pagamento
-                        SET status = 'erro',
-                            erro_codigo = 'PLAN_NO_BILLING',
-                            atualizado_em = NOW()
-                      WHERE id_transacao = ?
-                        AND ordem_externa_id IS NULL
-                        AND status IN ('criada', 'enviando')",
-                    'i',
-                    (int) $transacao['id_transacao']
+                    $cursorIdCobranca,
+                    $ambiente
                 );
-                $resumo['ignoradas']++;
-                continue;
-            }
-            $resumo['orders_enviadas']++;
-            $resposta = $gateway->requisitar(
-                'criar_order',
-                [],
-                cobrancasRecorrentesPayload($transacao),
-                (string) $transacao['chave_idempotencia']
-            );
+                if ($reserva['elegivel']) {
+                    $resumo['elegiveis']++;
+                }
+                if ($reserva['resultado'] === 'conciliacao') {
+                    $resumo['conciliacao']++;
+                    continue;
+                }
+                if ($reserva['resultado'] !== 'enviar' || !isset($reserva['transacao'])) {
+                    $resumo['ignoradas']++;
+                    continue;
+                }
 
-            $status = ($resposta['sucesso'] ?? false)
-                ? cobrancasRecorrentesAplicarOrder($conexao, $transacao, $resposta['dados'])
-                : cobrancasRecorrentesTratarFalhaGateway($conexao, $transacao, $resposta);
+                $selecionadasParaProcessamento++;
+                if ($reserva['criada']) {
+                    $resumo['transacoes_criadas']++;
+                }
 
-            if ($status === 'recusada') {
-                $resumo['recusadas']++;
-            } elseif (in_array($status, ['confirmada', 'conciliacao'], true)) {
-                $resumo['conciliacao']++;
-            } elseif ($status === 'erro') {
+                $transacao = $reserva['transacao'];
+                if (!assinaturaServicoPlanoGeraCobranca($conexao, (int) $transacao['id_assinatura'])) {
+                    cobrancasRecorrentesExecutar(
+                        $conexao,
+                        "UPDATE transacao_pagamento
+                            SET status = 'erro',
+                                erro_codigo = 'PLAN_NO_BILLING',
+                                atualizado_em = NOW()
+                          WHERE id_transacao = ?
+                            AND ordem_externa_id IS NULL
+                            AND status IN ('criada', 'enviando')",
+                        'i',
+                        (int) $transacao['id_transacao']
+                    );
+                    $resumo['ignoradas']++;
+
+                    if ($selecionadasParaProcessamento >= COBRANCAS_RECORRENTES_LIMITE) {
+                        break;
+                    }
+                    continue;
+                }
+                $resumo['orders_enviadas']++;
+                $resposta = $gateway->requisitar(
+                    'criar_order',
+                    [],
+                    cobrancasRecorrentesPayload($transacao),
+                    (string) $transacao['chave_idempotencia']
+                );
+
+                $status = ($resposta['sucesso'] ?? false)
+                    ? cobrancasRecorrentesAplicarOrder($conexao, $transacao, $resposta['dados'])
+                    : cobrancasRecorrentesTratarFalhaGateway($conexao, $transacao, $resposta);
+
+                if ($status === 'recusada') {
+                    $resumo['recusadas']++;
+                } elseif (in_array($status, ['confirmada', 'conciliacao'], true)) {
+                    $resumo['conciliacao']++;
+                } elseif ($status === 'erro') {
+                    $resumo['erros']++;
+                }
+            } catch (Throwable) {
+                cobrancasRecorrentesRollback($conexao);
                 $resumo['erros']++;
+                fwrite(STDERR, "Erro ao processar uma cobrança recorrente.\n");
             }
-        } catch (Throwable) {
-            cobrancasRecorrentesRollback($conexao);
-            $resumo['erros']++;
-            fwrite(STDERR, "Erro ao processar uma cobrança recorrente.\n");
+
+            if ($selecionadasParaProcessamento >= COBRANCAS_RECORRENTES_LIMITE) {
+                break;
+            }
+        }
+
+        if (count($candidatas) < COBRANCAS_RECORRENTES_LIMITE) {
+            break;
         }
     }
 } catch (Throwable) {

@@ -10,6 +10,13 @@ require_once __DIR__ . '/../../_auth/csrf.php';
 csrfValidarSessao();
 
 $idEmpresa = (int)$permissao['id_empresa'];
+if (identidadeRequisicaoExcedePostMax()) {
+    out([
+        'ok' => false,
+        'code' => 'REQUEST_TOO_LARGE',
+        'user_msg' => 'A requisição excede o limite aceito pelo servidor. A logo pode ter até 15 MB e a imagem lateral do login até 5 MB.',
+    ], 413);
+}
 $nome = trim((string)($_POST['nome_exibicao'] ?? ''));
 if (mb_strlen($nome, 'UTF-8') > 80) {
     out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'O nome exibido deve ter no máximo 80 caracteres.', 'field_errors' => ['nome_exibicao' => 'Máximo de 80 caracteres.']], 422);
@@ -79,5 +86,12 @@ try {
 } catch (Throwable $e) {
     try { $conexao->rollback(); } catch (Throwable $ignorado) {}
     foreach ($novos as $arquivo) if (is_file($arquivo)) @unlink($arquivo);
+    error_log(sprintf(
+        '[identidade_visual_salvar] empresa=%d tipo=%s codigo=%s mensagem=%s',
+        $idEmpresa,
+        get_class($e),
+        (string)$e->getCode(),
+        $e->getMessage()
+    ));
     out(['ok' => false, 'code' => 'IDENTIDADE_VISUAL_SAVE_ERROR', 'user_msg' => 'Não foi possível salvar a identidade visual.'], 500);
 }

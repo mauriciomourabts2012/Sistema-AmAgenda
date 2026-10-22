@@ -6,7 +6,7 @@
   const LIMITE_MENSAGENS = 50;
   // Modal aberto e visível: busca incremental (after_id) a cada 10 s.
   const INTERVALO_CONVERSA_MS = 10000;
-  const PREFIXOS_FOTO = ["/public/imagens/usuarios/", "/public/imagens/clientes/"];
+  const PREFIXOS_FOTO = ["/public/uploads/usuarios/", "/public/uploads/clientes/", "/public/imagens/usuarios/", "/public/imagens/clientes/"];
   const estado = {
     conversa: null,
     mensagens: [],
@@ -131,7 +131,7 @@
   function urlFotoSegura(valor) {
     const caminho = texto(valor);
     if (!caminho || !PREFIXOS_FOTO.some((prefixo) => caminho.startsWith(prefixo))) return "";
-    return /^[A-Za-z0-9/._-]+$/.test(caminho) ? caminho : "";
+    return /^[A-Za-z0-9/._-]+\.(?:jpe?g|png|webp)$/i.test(caminho) ? caminho : "";
   }
 
   function iniciais(nome) {

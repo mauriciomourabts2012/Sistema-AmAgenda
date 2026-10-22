@@ -93,7 +93,7 @@ function clienteAgendamentoValidarCsrf(): void
 function clienteAgendamentoFotoUrl(?string $foto): string
 {
     $foto = trim((string)$foto);
-    if ($foto === '' || preg_match('#^/public/imagens/usuarios/[A-Za-z0-9._-]+$#', $foto) !== 1) {
+    if ($foto === '' || preg_match('#^/public/(?:uploads|imagens)/usuarios/[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.(?:jpe?g|png|webp)$#i', $foto) !== 1) {
         return CLIENTE_AGENDAMENTO_FOTO_PADRAO;
     }
 

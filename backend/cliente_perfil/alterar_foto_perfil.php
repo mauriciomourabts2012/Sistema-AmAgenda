@@ -17,6 +17,26 @@ require_once __DIR__ . '/../_config/conexao.php';
 $arquivoNovo = null;
 $transacaoAberta = false;
 
+function clientePerfilIniBytes(string $valor): int
+{
+    $valor = trim($valor);
+    if ($valor === '') return 0;
+    $numero = (float)$valor;
+    return match (strtolower(substr($valor, -1))) {
+        'g' => (int)round($numero * 1024 * 1024 * 1024),
+        'm' => (int)round($numero * 1024 * 1024),
+        'k' => (int)round($numero * 1024),
+        default => (int)$numero,
+    };
+}
+
+function clientePerfilRequisicaoExcedePostMax(): bool
+{
+    $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    $postMaxBytes = clientePerfilIniBytes((string)ini_get('post_max_size'));
+    return $contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes;
+}
+
 try {
 
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
@@ -43,6 +63,14 @@ try {
     $idCliente = (int)$clienteSessao['id_cliente'];
     $idEmpresa = (int)$sessao['id_empresa'];
 
+    if (clientePerfilRequisicaoExcedePostMax()) {
+        out([
+            'ok' => false,
+            'code' => 'REQUEST_TOO_LARGE',
+            'user_msg' => 'A requisição excede o limite aceito pelo servidor. A foto de perfil pode ter até 10 MB.',
+        ], 413);
+    }
+
     if (
         !isset($_FILES['perfil_foto']) ||
         !is_array($_FILES['perfil_foto'])
@@ -59,10 +87,20 @@ try {
     $erroUpload = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
 
     if ($erroUpload !== UPLOAD_ERR_OK) {
+        $mensagemUpload = match ($erroUpload) {
+            UPLOAD_ERR_INI_SIZE => 'A imagem excede o limite aceito pelo servidor. O limite da foto de perfil é 10 MB.',
+            UPLOAD_ERR_FORM_SIZE => 'A imagem excede o limite de 10 MB.',
+            UPLOAD_ERR_PARTIAL => 'O upload da imagem foi enviado parcialmente.',
+            UPLOAD_ERR_NO_FILE => 'Selecione uma imagem.',
+            UPLOAD_ERR_NO_TMP_DIR => 'A pasta temporária de upload não está disponível.',
+            UPLOAD_ERR_CANT_WRITE => 'O servidor não conseguiu gravar o arquivo enviado.',
+            UPLOAD_ERR_EXTENSION => 'O upload foi bloqueado por uma extensão do servidor.',
+            default => 'Não foi possível receber a imagem.',
+        };
         out([
             'ok' => false,
             'code' => 'PROFILE_PHOTO_UPLOAD_ERROR',
-            'user_msg' => 'Não foi possível receber a imagem.',
+            'user_msg' => $mensagemUpload,
         ], 422);
     }
 
@@ -82,17 +120,17 @@ try {
 
     /*
     |--------------------------------------------------------------------------
-    | LIMITE DE 5 MB
+    | LIMITE DE 10 MB
     |--------------------------------------------------------------------------
     */
 
-    $limiteBytes = 5 * 1024 * 1024;
+    $limiteBytes = 10 * 1024 * 1024;
 
     if ($tamanho <= 0 || $tamanho > $limiteBytes) {
         out([
             'ok' => false,
             'code' => 'PROFILE_PHOTO_SIZE_INVALID',
-            'user_msg' => 'A imagem deve possuir no máximo 5 MB.',
+            'user_msg' => 'A imagem deve possuir no máximo 10 MB.',
         ], 422);
     }
 
@@ -127,7 +165,7 @@ try {
 
     $infoImagem = @getimagesize($arquivoTemporario);
 
-    if ($infoImagem === false) {
+    if ($infoImagem === false || (string)($infoImagem['mime'] ?? '') !== $mime) {
         out([
             'ok' => false,
             'code' => 'PROFILE_PHOTO_INVALID_IMAGE',
@@ -157,15 +195,44 @@ try {
     |--------------------------------------------------------------------------
     */
 
-    $diretorio = dirname(__DIR__, 2)
+    $raizProjeto = dirname(__DIR__, 2);
+    $publicDirReal = realpath($raizProjeto . DIRECTORY_SEPARATOR . 'public');
+    $uploadsRootConfigurado = $raizProjeto
         . DIRECTORY_SEPARATOR . 'public'
-        . DIRECTORY_SEPARATOR . 'imagens'
+        . DIRECTORY_SEPARATOR . 'uploads';
+    $uploadsRootReal = realpath($uploadsRootConfigurado);
+
+    if (
+        $publicDirReal === false ||
+        $uploadsRootReal === false ||
+        !is_dir($uploadsRootReal) ||
+        is_link($uploadsRootConfigurado) ||
+        dirname($uploadsRootReal) !== $publicDirReal
+    ) {
+        throw new RuntimeException('Raiz de uploads ausente ou inválida.');
+    }
+
+    $diretorioConfigurado = $uploadsRootReal
         . DIRECTORY_SEPARATOR . 'clientes';
 
-    if (!is_dir($diretorio)) {
-        throw new RuntimeException(
-            'Diretório de fotos dos clientes não encontrado.'
-        );
+    if (!is_dir($diretorioConfigurado)) {
+        if (!is_writable($uploadsRootReal)) {
+            throw new RuntimeException('Raiz de uploads sem escrita para criar o diretório de clientes.');
+        }
+
+        if (!@mkdir($diretorioConfigurado, 0775, false) && !is_dir($diretorioConfigurado)) {
+            throw new RuntimeException('Falha ao criar o diretório de fotos dos clientes.');
+        }
+    }
+
+    $diretorio = realpath($diretorioConfigurado);
+    if (
+        $diretorio === false ||
+        !is_dir($diretorio) ||
+        is_link($diretorioConfigurado) ||
+        dirname($diretorio) !== $uploadsRootReal
+    ) {
+        throw new RuntimeException('Diretório de fotos dos clientes fora da raiz autorizada.');
     }
 
     if (!is_writable($diretorio)) {
@@ -247,7 +314,12 @@ try {
         . DIRECTORY_SEPARATOR
         . $nomeArquivo;
 
-    $fotoPublica = '/public/imagens/clientes/' . $nomeArquivo;
+    $fotoPublica = '/public/uploads/clientes/' . $nomeArquivo;
+
+    clearstatcache(true, $diretorioConfigurado);
+    if (is_link($diretorioConfigurado) || realpath($diretorioConfigurado) !== $diretorio) {
+        throw new RuntimeException('Diretório de fotos dos clientes deixou de ser válido.');
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -303,32 +375,35 @@ try {
     |--------------------------------------------------------------------------
     */
 
-    if (
-        $fotoAnterior !== '' &&
-        str_starts_with(
-            $fotoAnterior,
-            '/public/imagens/clientes/'
-        )
-    ) {
-        $caminhoAnterior = parse_url(
-            $fotoAnterior,
-            PHP_URL_PATH
-        );
-
-        $nomeAnterior = basename(
-            (string)$caminhoAnterior
-        );
-
-        $arquivoAnterior = $diretorio
-            . DIRECTORY_SEPARATOR
-            . $nomeAnterior;
-
-        if (
-            $arquivoAnterior !== $arquivoNovo &&
-            is_file($arquivoAnterior)
-        ) {
-            @unlink($arquivoAnterior);
+    $diretoriosFotosCliente = [
+        '/public/uploads/clientes/' => $raizProjeto . '/public/uploads/clientes',
+        '/public/imagens/clientes/' => $raizProjeto . '/public/imagens/clientes',
+    ];
+    foreach ($diretoriosFotosCliente as $prefixoPublico => $diretorioFisico) {
+        if (!str_starts_with($fotoAnterior, $prefixoPublico)) {
+            continue;
         }
+
+        $nomeAnterior = substr($fotoAnterior, strlen($prefixoPublico));
+        if (
+            preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.(?:jpe?g|png|webp)$/i', $nomeAnterior) !== 1 ||
+            basename($nomeAnterior) !== $nomeAnterior
+        ) {
+            break;
+        }
+
+        $diretorioReal = realpath($diretorioFisico);
+        $arquivoAnteriorReal = realpath($diretorioFisico . DIRECTORY_SEPARATOR . $nomeAnterior);
+        if (
+            $diretorioReal !== false &&
+            $arquivoAnteriorReal !== false &&
+            str_starts_with($arquivoAnteriorReal, $diretorioReal . DIRECTORY_SEPARATOR) &&
+            is_file($arquivoAnteriorReal) &&
+            $arquivoAnteriorReal !== realpath($arquivoNovo)
+        ) {
+            @unlink($arquivoAnteriorReal);
+        }
+        break;
     }
 
     out([

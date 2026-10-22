@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * HANDLER: perfil/alterar-foto
  * - Atualiza a foto do usuário logado
- * - Salva arquivo em: /public/imagens/usuarios
+ * - Salva arquivo em: /public/uploads/usuarios
  * - Grava o caminho relativo em: usuario.foto_perfil
  * - Atualiza sessão
  * - Retorna JSON padrão
@@ -52,8 +52,8 @@ csrfValidarSessao();
 function mapUploadError(int $errorCode): string
 {
     return match ($errorCode) {
-        UPLOAD_ERR_INI_SIZE,
-        UPLOAD_ERR_FORM_SIZE  => 'A imagem excede o tamanho permitido.',
+        UPLOAD_ERR_INI_SIZE   => 'A imagem excede o limite aceito pelo servidor. O limite da foto de perfil é 10 MB.',
+        UPLOAD_ERR_FORM_SIZE  => 'A imagem excede o limite de 10 MB.',
         UPLOAD_ERR_PARTIAL    => 'O upload da imagem foi enviado parcialmente.',
         UPLOAD_ERR_NO_FILE    => 'Selecione uma imagem para continuar.',
         UPLOAD_ERR_NO_TMP_DIR => 'Pasta temporária de upload não encontrada.',
@@ -63,9 +63,37 @@ function mapUploadError(int $errorCode): string
     };
 }
 
+function perfilIniBytes(string $valor): int
+{
+    $valor = trim($valor);
+    if ($valor === '') return 0;
+    $numero = (float)$valor;
+    return match (strtolower(substr($valor, -1))) {
+        'g' => (int)round($numero * 1024 * 1024 * 1024),
+        'm' => (int)round($numero * 1024 * 1024),
+        'k' => (int)round($numero * 1024),
+        default => (int)$numero,
+    };
+}
+
+function perfilRequisicaoExcedePostMax(): bool
+{
+    $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    $postMaxBytes = perfilIniBytes((string)ini_get('post_max_size'));
+    return $contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes;
+}
+
 /* ==========================================================
    VALIDAÇÃO DO ARQUIVO
 ========================================================== */
+if (perfilRequisicaoExcedePostMax()) {
+    out([
+        'ok' => false,
+        'code' => 'REQUEST_TOO_LARGE',
+        'user_msg' => 'A requisição excede o limite aceito pelo servidor. A foto de perfil pode ter até 10 MB.',
+    ], 413);
+}
+
 if (!isset($_FILES['perfil_foto'])) {
     out([
         'ok' => false,
@@ -103,16 +131,17 @@ if ($tamanho <= 0) {
     ], 422);
 }
 
-$maxBytes = 3 * 1024 * 1024; // 3MB
+$maxBytes = 10 * 1024 * 1024;
 if ($tamanho > $maxBytes) {
     out([
         'ok' => false,
         'code' => 'FILE_TOO_LARGE',
-        'user_msg' => 'A imagem deve ter no máximo 3MB.',
+        'user_msg' => 'A imagem deve ter no máximo 10 MB.',
     ], 422);
 }
 
 if (!class_exists('finfo')) {
+    error_log('[perfil_usuario_alterar_foto] fileinfo indisponível');
     out([
         'ok' => false,
         'code' => 'FILEINFO_NOT_AVAILABLE',
@@ -139,14 +168,62 @@ if (!isset($allowedMimes[$mime])) {
 
 $ext = $allowedMimes[$mime];
 
+$imageInfo = @getimagesize($tmpName);
+if ($imageInfo === false || (string)($imageInfo['mime'] ?? '') !== $mime) {
+    out([
+        'ok' => false,
+        'code' => 'INVALID_IMAGE_CONTENT',
+        'user_msg' => 'O arquivo selecionado não contém uma imagem válida.',
+    ], 422);
+}
+
+$largura = (int)($imageInfo[0] ?? 0);
+$altura = (int)($imageInfo[1] ?? 0);
+if ($largura <= 0 || $altura <= 0 || $largura > 8000 || $altura > 8000) {
+    out([
+        'ok' => false,
+        'code' => 'INVALID_IMAGE_DIMENSIONS',
+        'user_msg' => 'A imagem possui dimensões inválidas ou muito grandes.',
+    ], 422);
+}
+
 /* ==========================================================
    PASTA DE DESTINO
 ========================================================== */
 $baseDir = dirname(__DIR__, 2);
-$uploadDir = $baseDir . '/public/imagens/usuarios';
+$publicDirReal = realpath($baseDir . '/public');
+$uploadsRootConfigurado = $baseDir . '/public/uploads';
+$uploadsRootReal = realpath($uploadsRootConfigurado);
 
-if (!is_dir($uploadDir)) {
-    if (!mkdir($uploadDir, 0775, true)) {
+if (
+    $publicDirReal === false ||
+    $uploadsRootReal === false ||
+    !is_dir($uploadsRootReal) ||
+    is_link($uploadsRootConfigurado) ||
+    dirname($uploadsRootReal) !== $publicDirReal
+) {
+    error_log('[perfil_usuario_alterar_foto] raiz de uploads ausente ou inválida');
+    out([
+        'ok' => false,
+        'code' => 'UPLOAD_ROOT_INVALID',
+        'user_msg' => 'Não foi possível preparar a pasta de destino.',
+    ], 500);
+}
+
+$uploadDirConfigurado = $uploadsRootReal . DIRECTORY_SEPARATOR . 'usuarios';
+
+if (!is_dir($uploadDirConfigurado)) {
+    if (!is_writable($uploadsRootReal)) {
+        error_log('[perfil_usuario_alterar_foto] raiz de uploads sem escrita para criar diretório');
+        out([
+            'ok' => false,
+            'code' => 'UPLOAD_ROOT_NOT_WRITABLE',
+            'user_msg' => 'Não foi possível preparar a pasta de destino.',
+        ], 500);
+    }
+
+    if (!@mkdir($uploadDirConfigurado, 0775, false) && !is_dir($uploadDirConfigurado)) {
+        error_log('[perfil_usuario_alterar_foto] falha ao criar diretório de destino');
         out([
             'ok' => false,
             'code' => 'UPLOAD_DIR_CREATE_ERROR',
@@ -155,7 +232,23 @@ if (!is_dir($uploadDir)) {
     }
 }
 
+$uploadDir = realpath($uploadDirConfigurado);
+if (
+    $uploadDir === false ||
+    !is_dir($uploadDir) ||
+    is_link($uploadDirConfigurado) ||
+    dirname($uploadDir) !== $uploadsRootReal
+) {
+    error_log('[perfil_usuario_alterar_foto] diretório de destino fora da raiz autorizada');
+    out([
+        'ok' => false,
+        'code' => 'UPLOAD_DIR_INVALID',
+        'user_msg' => 'Não foi possível preparar a pasta de destino.',
+    ], 500);
+}
+
 if (!is_writable($uploadDir)) {
+    error_log('[perfil_usuario_alterar_foto] diretório de destino sem escrita');
     out([
         'ok' => false,
         'code' => 'UPLOAD_DIR_NOT_WRITABLE',
@@ -227,14 +320,15 @@ try {
 
     $novoNome = 'usuario_' . $idUsuario . '_' . $token . '.' . $ext;
     $destinoFisico = $uploadDir . '/' . $novoNome;
-    $caminhoRelativo = '/public/imagens/usuarios/' . $novoNome;
+    $caminhoRelativo = '/public/uploads/usuarios/' . $novoNome;
+
+    clearstatcache(true, $uploadDirConfigurado);
+    if (is_link($uploadDirConfigurado) || realpath($uploadDirConfigurado) !== $uploadDir) {
+        throw new RuntimeException('Diretório de fotos dos usuários deixou de ser válido.');
+    }
 
     if (!move_uploaded_file($tmpName, $destinoFisico)) {
-        out([
-            'ok' => false,
-            'code' => 'MOVE_UPLOAD_FAILED',
-            'user_msg' => 'Não foi possível salvar a imagem enviada.',
-        ], 500);
+        throw new RuntimeException('Falha ao mover o upload para o diretório de fotos de usuários.');
     }
 
     $arquivoNovoMovido = true;
@@ -328,15 +422,36 @@ try {
 
     $_SESSION['auth']['foto_perfil'] = $caminhoRelativo;
 
-    if ($fotoAntiga !== '' && str_starts_with($fotoAntiga, '/public/imagens/usuarios/')) {
-        $fotoAntigaFisica = $baseDir . $fotoAntiga;
-
-        if (
-            is_file($fotoAntigaFisica) &&
-            realpath($fotoAntigaFisica) !== realpath($destinoFisico)
-        ) {
-            @unlink($fotoAntigaFisica);
+    $diretoriosFotosUsuario = [
+        '/public/uploads/usuarios/' => $baseDir . '/public/uploads/usuarios',
+        '/public/imagens/usuarios/' => $baseDir . '/public/imagens/usuarios',
+    ];
+    foreach ($diretoriosFotosUsuario as $prefixoPublico => $diretorioFisico) {
+        if (!str_starts_with($fotoAntiga, $prefixoPublico)) {
+            continue;
         }
+
+        $nomeAntigo = substr($fotoAntiga, strlen($prefixoPublico));
+        if (
+            preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.(?:jpe?g|png|webp)$/i', $nomeAntigo) !== 1 ||
+            basename($nomeAntigo) !== $nomeAntigo
+        ) {
+            break;
+        }
+
+        $diretorioReal = realpath($diretorioFisico);
+        $fotoAntigaFisica = $diretorioFisico . DIRECTORY_SEPARATOR . $nomeAntigo;
+        $fotoAntigaReal = realpath($fotoAntigaFisica);
+        if (
+            $diretorioReal !== false &&
+            $fotoAntigaReal !== false &&
+            str_starts_with($fotoAntigaReal, $diretorioReal . DIRECTORY_SEPARATOR) &&
+            is_file($fotoAntigaReal) &&
+            $fotoAntigaReal !== realpath($destinoFisico)
+        ) {
+            @unlink($fotoAntigaReal);
+        }
+        break;
     }
 
     out([
@@ -361,6 +476,14 @@ try {
     if ($arquivoNovoMovido && is_string($destinoFisico) && is_file($destinoFisico)) {
         @unlink($destinoFisico);
     }
+
+    error_log(sprintf(
+        '[perfil_usuario_alterar_foto] usuario=%d tipo=%s codigo=%s mensagem=%s',
+        $idUsuario,
+        get_class($e),
+        (string)$e->getCode(),
+        $e->getMessage()
+    ));
 
     out([
         'ok' => false,

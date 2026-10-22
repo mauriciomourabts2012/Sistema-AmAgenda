@@ -230,7 +230,7 @@ function chatAuditarConversaDesvinculada(
 
 /**
  * URL pública da foto de perfil somente quando o caminho gravado segue o padrão dos
- * uploads atuais (/public/imagens/usuarios|clientes/arquivo) e o arquivo existe.
+ * uploads atuais ou legados (/public/uploads|imagens/usuarios|clientes/arquivo) e o arquivo existe.
  * Caso contrário devolve null e a interface usa o avatar de iniciais.
  */
 function chatFotoUrl(mixed $caminho, string $pasta): ?string
@@ -238,7 +238,7 @@ function chatFotoUrl(mixed $caminho, string $pasta): ?string
     static $existe = [];
     if (!is_string($caminho) || !in_array($pasta, ['usuarios', 'clientes'], true)) return null;
     $caminho = trim($caminho);
-    if (preg_match('#^/public/imagens/' . $pasta . '/[A-Za-z0-9][A-Za-z0-9._-]{0,180}$#', $caminho) !== 1) return null;
+    if (preg_match('#^/public/(?:uploads|imagens)/' . $pasta . '/[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.(?:jpe?g|png|webp)$#i', $caminho) !== 1) return null;
     if (!array_key_exists($caminho, $existe)) {
         $existe[$caminho] = is_file(dirname(__DIR__, 2) . $caminho);
     }

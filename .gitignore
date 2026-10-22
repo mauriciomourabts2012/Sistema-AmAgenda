@@ -20,11 +20,13 @@ php_errors
 
 # 3. Uploads e arquivos enviados pelos usuarios
 
-# Uploads de empresas e identidade visual
+# Estrutura centralizada de uploads: empresas, usuários e clientes.
+# .gitkeep e .htaccess preservam a estrutura e a proteção em novas instalações.
 /public/uploads/*
 !/public/uploads/.gitkeep
 !/public/uploads/.htaccess
 
+# Caminhos legados mantidos somente para leitura compatível.
 # Fotos de usuarios internos
 /public/imagens/usuarios/*
 

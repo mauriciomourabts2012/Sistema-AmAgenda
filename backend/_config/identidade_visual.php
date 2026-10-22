@@ -9,7 +9,8 @@ const AMAGENDA_NOME_PADRAO = 'AmAgenda';
 const AMAGENDA_LOGO_PADRAO_URL = '/public/imagens/logo-menu.png';
 const AMAGENDA_LOGIN_PADRAO_URL = '/public/imagens/logo.png';
 const AMAGENDA_UPLOAD_EMPRESAS_URL = '/uploads/empresas';
-const AMAGENDA_IDENTIDADE_MAX_BYTES = 5242880; // 5 MB
+const AMAGENDA_IDENTIDADE_LOGO_MAX_BYTES = 15728640; // 15 MB
+const AMAGENDA_IDENTIDADE_LOGIN_MAX_BYTES = 5242880; // 5 MB
 const AMAGENDA_LOGIN_LADO_MENOR_MIN = 400;
 const AMAGENDA_LOGIN_LADO_MAIOR_MIN = 800;
 // Cor oficial do AmAgenda: usada quando configuracao_geral_empresa.cor_primaria é NULL.
@@ -279,6 +280,40 @@ function identidadeDiretorioEmpresa(int $idEmpresa): string
     return identidadeUploadEmpresasDir() . DIRECTORY_SEPARATOR . $idEmpresa . DIRECTORY_SEPARATOR . 'identidade';
 }
 
+function identidadeIniBytes(string $valor): int
+{
+    $valor = trim($valor);
+    if ($valor === '') return 0;
+    $numero = (float)$valor;
+    return match (strtolower(substr($valor, -1))) {
+        'g' => (int)round($numero * 1024 * 1024 * 1024),
+        'm' => (int)round($numero * 1024 * 1024),
+        'k' => (int)round($numero * 1024),
+        default => (int)$numero,
+    };
+}
+
+function identidadeRequisicaoExcedePostMax(): bool
+{
+    $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    $postMaxBytes = identidadeIniBytes((string)ini_get('post_max_size'));
+    return $contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes;
+}
+
+function identidadeMensagemErroUpload(int $erro, int $limiteMb): string
+{
+    return match ($erro) {
+        UPLOAD_ERR_INI_SIZE => "A imagem excede o limite aceito pelo servidor. O limite deste campo é {$limiteMb} MB.",
+        UPLOAD_ERR_FORM_SIZE => "A imagem excede o limite de {$limiteMb} MB.",
+        UPLOAD_ERR_PARTIAL => 'O upload da imagem foi enviado parcialmente.',
+        UPLOAD_ERR_NO_FILE => 'Selecione uma imagem para continuar.',
+        UPLOAD_ERR_NO_TMP_DIR => 'A pasta temporária de upload não está disponível.',
+        UPLOAD_ERR_CANT_WRITE => 'O servidor não conseguiu gravar o arquivo enviado.',
+        UPLOAD_ERR_EXTENSION => 'O upload foi bloqueado por uma extensão do servidor.',
+        default => 'Não foi possível receber a imagem enviada.',
+    };
+}
+
 function identidadeValidarESalvarUpload(string $campo, string $prefixo, int $idEmpresa): ?array
 {
     if (!isset($_FILES[$campo]) || (int)($_FILES[$campo]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
@@ -286,9 +321,13 @@ function identidadeValidarESalvarUpload(string $campo, string $prefixo, int $idE
     }
 
     $arquivo = $_FILES[$campo];
+    $limiteBytes = $prefixo === 'logo'
+        ? AMAGENDA_IDENTIDADE_LOGO_MAX_BYTES
+        : AMAGENDA_IDENTIDADE_LOGIN_MAX_BYTES;
+    $limiteMb = $prefixo === 'logo' ? 15 : 5;
     $erro = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
     if ($erro !== UPLOAD_ERR_OK) {
-        throw new InvalidArgumentException('Não foi possível receber a imagem enviada.');
+        throw new InvalidArgumentException(identidadeMensagemErroUpload($erro, $limiteMb));
     }
 
     $tmp = (string)($arquivo['tmp_name'] ?? '');
@@ -296,8 +335,8 @@ function identidadeValidarESalvarUpload(string $campo, string $prefixo, int $idE
     if ($tmp === '' || !is_uploaded_file($tmp) || $tamanho <= 0) {
         throw new InvalidArgumentException('O arquivo enviado é inválido.');
     }
-    if ($tamanho > AMAGENDA_IDENTIDADE_MAX_BYTES) {
-        throw new InvalidArgumentException('Cada imagem deve ter no máximo 5 MB.');
+    if ($tamanho > $limiteBytes) {
+        throw new InvalidArgumentException("A imagem deve ter no máximo {$limiteMb} MB.");
     }
 
     $mime = (string)(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
@@ -307,7 +346,7 @@ function identidadeValidarESalvarUpload(string $campo, string $prefixo, int $idE
     }
 
     $dimensoes = @getimagesize($tmp);
-    if (!$dimensoes || (int)$dimensoes[0] <= 0 || (int)$dimensoes[1] <= 0 || (int)$dimensoes[0] > 8000 || (int)$dimensoes[1] > 8000) {
+    if (!$dimensoes || (string)($dimensoes['mime'] ?? '') !== $mime || (int)$dimensoes[0] <= 0 || (int)$dimensoes[1] <= 0 || (int)$dimensoes[0] > 8000 || (int)$dimensoes[1] > 8000) {
         throw new InvalidArgumentException('A imagem é inválida ou possui dimensões muito grandes.');
     }
 
@@ -322,6 +361,9 @@ function identidadeValidarESalvarUpload(string $campo, string $prefixo, int $idE
     $diretorio = identidadeDiretorioEmpresa($idEmpresa);
     if (!is_dir($diretorio) && !mkdir($diretorio, 0775, true) && !is_dir($diretorio)) {
         throw new RuntimeException('Não foi possível preparar a pasta da empresa.');
+    }
+    if (!is_writable($diretorio)) {
+        throw new RuntimeException('A pasta da empresa não possui permissão de escrita.');
     }
 
     $nome = $prefixo . '_' . bin2hex(random_bytes(8)) . '.' . $permitidos[$mime];

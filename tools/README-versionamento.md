@@ -70,3 +70,118 @@ No servidor, use apenas `php tools/release-version.php check` (ex.: validação 
 Testes: `php tools/tests/release-version-test.php` (usa fixtures temporárias; não altera o projeto).
 
 `tools/aplicar-versao-assets.ps1` permanece apenas como legado/comparação.
+
+## 12. Uploads de imagens no Ubuntu
+
+Limites funcionais do AmAgenda:
+
+| Campo | Limite | Formatos |
+|---|---:|---|
+| Foto de perfil de usuário ou cliente | 10 MB | JPEG, PNG e WebP |
+| Logo da empresa | 15 MB | JPEG, PNG e WebP |
+| Imagem lateral do login | 5 MB | JPEG, PNG e WebP |
+
+O backend valida o MIME real e o conteúdo da imagem. A configuração PHP deve ser maior que o maior arquivo aceito; `post_max_size` também precisa comportar logo e imagem lateral enviados na mesma requisição, além do overhead de `multipart/form-data`.
+
+### 12.1 Identificar o PHP efetivamente usado pelo Apache
+
+Execute os diagnósticos no servidor antes de editar qualquer arquivo:
+
+```bash
+apache2ctl -M | grep -E 'php|proxy_fcgi'
+ls -l /etc/apache2/mods-enabled/php*.load /etc/apache2/conf-enabled/php*-fpm.conf 2>/dev/null
+grep -R --line-number -E 'SetHandler.*php|proxy:unix:/run/php|LimitRequestBody' /etc/apache2/apache2.conf /etc/apache2/sites-enabled /etc/apache2/conf-enabled 2>/dev/null
+find /etc/php -mindepth 3 -maxdepth 3 -type f -name php.ini -print
+php --ini
+php -r 'foreach (["file_uploads", "upload_max_filesize", "post_max_size", "memory_limit", "upload_tmp_dir"] as $k) echo $k, "=", ini_get($k), PHP_EOL;'
+```
+
+Se `php_module` aparecer, use o `php.ini` da versão apontada por `/etc/apache2/mods-enabled/php*.load`, normalmente `/etc/php/<versão>/apache2/php.ini`. Se aparecer `proxy_fcgi_module`, use a versão indicada pelo arquivo `php*-fpm.conf`, normalmente `/etc/php/<versão>/fpm/php.ini`. O resultado de `php --ini` vale somente para a CLI e não prova qual arquivo o Apache/FPM utiliza.
+
+### 12.2 Configuração recomendada
+
+Edite manualmente o `php.ini` real identificado na etapa anterior com `sudoedit`:
+
+```ini
+file_uploads = On
+upload_max_filesize = 16M
+post_max_size = 32M
+memory_limit = 256M
+upload_tmp_dir = /var/lib/php/amagenda-upload-tmp
+```
+
+Crie a pasta temporária privada e confirme os módulos necessários, substituindo `<versão>` pela versão efetivamente identificada:
+
+```bash
+sudo install -d -o www-data -g www-data -m 0700 /var/lib/php/amagenda-upload-tmp
+php -m | grep -E '^(fileinfo|gd|mbstring|mysqli)$'
+PHP_VERSION=8.3 # substitua pelo número efetivamente identificado
+sudo apt-get install "php${PHP_VERSION}-gd" "php${PHP_VERSION}-mbstring" "php${PHP_VERSION}-mysql"
+```
+
+`fileinfo` normalmente integra o PHP; ele ainda deve aparecer na lista de módulos. A extensão GD é necessária para gerar os ícones PWA derivados da logo. Após editar, valide e recarregue apenas o serviço realmente ativo:
+
+```bash
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+# Somente quando o Apache usar PHP-FPM:
+PHP_VERSION=8.3 # substitua pelo número efetivamente identificado
+sudo systemctl restart "php${PHP_VERSION}-fpm"
+sudo systemctl reload apache2
+```
+
+### 12.3 Diretórios e permissões
+
+Entre primeiro no diretório real da implantação. Os comandos abaixo derivam o caminho absoluto e preservam o proprietário atual, concedendo escrita apenas ao grupo `www-data`:
+
+```bash
+cd /caminho/real/da/implantacao
+APP_DIR="$(pwd -P)"
+APP_OWNER="$(stat -c '%U' "$APP_DIR")"
+
+sudo install -d -o "$APP_OWNER" -g www-data -m 2775 \
+  "$APP_DIR/public/uploads/usuarios" \
+  "$APP_DIR/public/uploads/clientes" \
+  "$APP_DIR/public/uploads/empresas"
+
+sudo chgrp -R www-data \
+  "$APP_DIR/public/uploads/usuarios" \
+  "$APP_DIR/public/uploads/clientes" \
+  "$APP_DIR/public/uploads/empresas"
+
+sudo find "$APP_DIR/public/uploads/usuarios" "$APP_DIR/public/uploads/clientes" "$APP_DIR/public/uploads/empresas" -type d -exec chmod 2775 {} +
+sudo find "$APP_DIR/public/uploads/usuarios" "$APP_DIR/public/uploads/clientes" "$APP_DIR/public/uploads/empresas" -type f -exec chmod 0664 {} +
+
+sudo -u www-data test -w "$APP_DIR/public/uploads/usuarios"
+sudo -u www-data test -w "$APP_DIR/public/uploads/clientes"
+sudo -u www-data test -w "$APP_DIR/public/uploads/empresas"
+sudo -u www-data test -w /var/lib/php/amagenda-upload-tmp
+```
+
+Não use `chmod 777`. Mantenha o `.htaccess` de `public/uploads`, que bloqueia execução de scripts e listagem de diretórios. Se o diagnóstico encontrar `LimitRequestBody`, configure no VirtualHost ou bloco `Directory` específico do AmAgenda um valor de pelo menos `33554432` bytes; não remova limites ou proteções globais sem revisar os demais sites do servidor.
+
+As fotos novas de usuários e clientes são gravadas em `public/uploads/usuarios` e `public/uploads/clientes`. Os caminhos antigos em `public/imagens/usuarios` e `public/imagens/clientes` continuam somente para leitura compatível; não os apague nem altere registros existentes durante esta implantação. Caso uma migração futura seja autorizada, faça backup do banco e dos arquivos, copie e valide os arquivos (incluindo hashes), atualize apenas os caminhos correspondentes em transação e mantenha os originais até a homologação terminar.
+
+### 12.4 Diagnóstico e homologação
+
+Depois da implantação, confira os valores do SAPI do Apache/FPM e os logs enquanto reproduz uma única tentativa autorizada:
+
+```bash
+sudo journalctl -u apache2 -n 100 --no-pager
+sudo tail -n 100 /var/log/apache2/error.log
+# Se usar FPM, substitua pela unidade real identificada:
+PHP_VERSION=8.3 # substitua pelo número efetivamente identificado
+sudo journalctl -u "php${PHP_VERSION}-fpm" -n 100 --no-pager
+```
+
+Checklist obrigatório de homologação, em ambiente autorizado:
+
+- foto válida JPEG, PNG e WebP, até 10 MB;
+- foto acima de 10 MB;
+- logo válida até 15 MB e logo acima de 15 MB;
+- imagem lateral válida até 5 MB e acima de 5 MB;
+- arquivo com extensão permitida e conteúdo inválido;
+- diretório sem escrita para `www-data`;
+- requisição acima de `post_max_size`, esperando HTTP 413 e mensagem de limite;
+- confirmação de que uma falha não altera o banco, não remove o arquivo anterior e não é exibida como sucesso;
+- conferência de `storage/api_errors.log`, `error.log` do Apache e journal do PHP-FPM, sem expor esses detalhes na resposta ao usuário.

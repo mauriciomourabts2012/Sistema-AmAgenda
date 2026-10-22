@@ -7,7 +7,7 @@
   const LIMITE_MENSAGENS = 50;
   // Conversa aberta e visível: busca incremental (after_id) a cada 10 s.
   const INTERVALO_CONVERSA_MS = 10000;
-  const PREFIXOS_FOTO = ["/public/imagens/usuarios/", "/public/imagens/clientes/"];
+  const PREFIXOS_FOTO = ["/public/uploads/usuarios/", "/public/uploads/clientes/", "/public/imagens/usuarios/", "/public/imagens/clientes/"];
   const PAGINA_SEGURA = "/public/views/agenda.html";
   // Super Admin fora do suporte não tem empresa: volta ao próprio painel (mesma rota usada por sessao.js).
   const PAGINA_SEGURA_SUPER_ADMIN = "/views/super-admin/painel-super-admin.html";
@@ -203,7 +203,7 @@
   function urlFotoSegura(valor) {
     const caminho = texto(valor);
     if (!caminho || !PREFIXOS_FOTO.some(prefixo => caminho.startsWith(prefixo))) return "";
-    return /^[A-Za-z0-9/._-]+$/.test(caminho) ? caminho : "";
+    return /^[A-Za-z0-9/._-]+\.(?:jpe?g|png|webp)$/i.test(caminho) ? caminho : "";
   }
 
   function iniciais(nome) {
