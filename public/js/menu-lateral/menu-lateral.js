@@ -384,6 +384,24 @@
       email.textContent = "suporteamagenda@gmail.com";
       contato.append(email);
       mensagem.append(contato);
+
+      const contatoWhatsapp = document.createElement("div");
+      contatoWhatsapp.className = "ui-alert-ajuda-contato";
+
+      const whatsapp = document.createElement("a");
+      whatsapp.className = "ui-alert-ajuda-email";
+      whatsapp.href = "https://wa.me/5538998969407";
+      whatsapp.target = "_blank";
+      whatsapp.rel = "noopener noreferrer";
+      whatsapp.setAttribute("aria-label", "Abrir WhatsApp do Suporte em nova aba");
+
+      const iconeWhatsapp = document.createElement("i");
+      iconeWhatsapp.className = "fa-brands fa-whatsapp";
+      iconeWhatsapp.setAttribute("aria-hidden", "true");
+
+      whatsapp.append(iconeWhatsapp, " WhatsApp do Suporte");
+      contatoWhatsapp.append(whatsapp);
+      mensagem.append(contatoWhatsapp);
     }
 
     function limparTemporizadores() {
