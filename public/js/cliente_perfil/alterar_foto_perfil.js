@@ -1,8 +1,24 @@
+/* ==========================================================
+   alterar_foto_perfil.js — Cliente | Alterar foto do perfil
+   ✅ Otimização no navegador antes do envio, via componente compartilhado
+      /public/js/componentes/processador-imagem.js
+      (deve ser carregado ANTES deste script)
+   ✅ Limite de entrada (original, 30 MB) separado do limite de envio (10 MB)
+   ✅ Prévia do arquivo efetivamente enviado (URL blob: intacta)
+   ✅ Foto anterior restaurada em caso de erro
+========================================================== */
 (() => {
   "use strict";
 
   const API = "/public/api/api_central.php";
   const LOGIN = "/public/views/login-cliente.php";
+  const TIPOS_PERMITIDOS = [
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+  ];
+  const LIMITE_ENVIO = 10 * 1024 * 1024;    // limite do arquivo enviado (backend)
+  const LIMITE_ENTRADA = 30 * 1024 * 1024;  // limite do original para tentativa de otimização
 
   const inputFoto = document.getElementById("perfil_foto");
 
@@ -40,16 +56,17 @@
     }
   }
 
-  function validarArquivo(file) {
-    const tiposPermitidos = [
-      "image/jpeg",
-      "image/png",
-      "image/webp"
-    ];
+  function validarArquivo(file, limite = LIMITE_ENVIO) {
+    if (
+      /^image\/hei[cf]/i.test(file.type || "") ||
+      /\.(heic|heif)$/i.test(file.name || "")
+    ) {
+      throw new Error(
+        "Fotos HEIC/HEIF ainda não são aceitas. Envie a imagem em JPG, PNG ou WebP."
+      );
+    }
 
-    const limite = 10 * 1024 * 1024;
-
-    if (!tiposPermitidos.includes(file.type)) {
+    if (!TIPOS_PERMITIDOS.includes(file.type)) {
       throw new Error(
         "Use uma imagem JPG, PNG ou WebP."
       );
@@ -57,9 +74,24 @@
 
     if (file.size <= 0 || file.size > limite) {
       throw new Error(
-        "A imagem deve possuir no máximo 10 MB."
+        `A imagem deve possuir no máximo ${Math.round(limite / (1024 * 1024))} MB.`
       );
     }
+  }
+
+  function obterProcessador() {
+    const processador = window.AmAgendaImageProcessor;
+
+    if (!processador || typeof processador.process !== "function") {
+      console.error(
+        "[cliente_perfil_alterar_foto] processador-imagem.js não foi carregado antes deste script."
+      );
+      throw new Error(
+        "Não foi possível preparar a imagem para envio. Recarregue a página e tente novamente."
+      );
+    }
+
+    return processador;
   }
 
   async function enviarFoto(file) {
@@ -117,12 +149,30 @@
       return;
     }
 
+    // Foto persistida antes da troca, para restauração imediata em caso de erro.
+    const fotoAnterior = String(
+      window.ClientePerfilEstado?.foto_url || ""
+    ).trim();
+
     try {
-      validarArquivo(file);
+      validarArquivo(file, LIMITE_ENTRADA);
+
+      envioEmAndamento = true;
+      inputFoto.disabled = true;
+
+      const processado = await obterProcessador().process(file, {
+        maxBytes: LIMITE_ENVIO,
+        maxInputBytes: LIMITE_ENTRADA,
+        allowedTypes: TIPOS_PERMITIDOS
+      });
+      const arquivoEnvio = processado.file;
+
+      // Revalidação do arquivo final: nunca enviar formato inválido ou acima de 10 MB.
+      validarArquivo(arquivoEnvio, LIMITE_ENVIO);
 
       limparPreview();
 
-      previewAtual = URL.createObjectURL(file);
+      previewAtual = URL.createObjectURL(arquivoEnvio);
 
       /*
        * URL blob deve permanecer intacta.
@@ -130,10 +180,7 @@
        */
       atualizarAvatares(previewAtual);
 
-      envioEmAndamento = true;
-      inputFoto.disabled = true;
-
-      const json = await enviarFoto(file);
+      const json = await enviarFoto(arquivoEnvio);
 
       const fotoPersistida = String(
         json.data?.foto_url || ""
@@ -172,7 +219,9 @@
 
       limparPreview();
 
-      if (
+      if (fotoAnterior) {
+        atualizarAvatares(fotoAnterior);
+      } else if (
         window.ClientePerfil &&
         typeof window.ClientePerfil.carregar === "function"
       ) {

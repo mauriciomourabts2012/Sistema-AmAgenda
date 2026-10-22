@@ -8,6 +8,11 @@
    ✅ Padrão visual compatível com .ui-toast-stack + .ui-alert
    ✅ Mensagens no mesmo padrão do sistema
    ✅ Estado visual de carregando no botão "Alterar foto"
+   ✅ Prévia local via URL blob: preservada (sem prefixo "/" e sem cache-buster)
+   ✅ Otimização no cliente antes do envio (canvas.toBlob, sem base64)
+      via componente compartilhado /public/js/componentes/processador-imagem.js
+      (deve ser carregado ANTES deste script)
+   ✅ Limite de entrada (original, 30 MB) separado do limite de envio (10 MB)
 ========================================================== */
 (() => {
   "use strict";
@@ -20,7 +25,8 @@
 
   const API_URL = "/public/api/api_central.php?path=perfil/alterar-foto";
   const INPUT_ID = "perfil_foto";
-  const MAX_BYTES = 10 * 1024 * 1024;
+  const MAX_BYTES = 10 * 1024 * 1024;        // limite do arquivo enviado (backend)
+  const MAX_INPUT_BYTES = 30 * 1024 * 1024;  // limite do original para tentativa de otimização
   const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
   const TOAST_TIMEOUT = 3500;
   const TOAST_LEAVE = 180;
@@ -121,11 +127,23 @@
     }
   }
 
+  function isLocalPreviewUrl(url) {
+    return /^blob:/i.test(String(url || "").trim());
+  }
+
+  function withNoCache(url) {
+    // URLs blob: são únicas e não aceitam query string; as demais recebem cache-buster.
+    return isLocalPreviewUrl(url) ? url : appendNoCache(url);
+  }
+
   function normalizeAvatarUrl(url) {
     if (!url || typeof url !== "string") return FALLBACK_AVATAR;
 
     let value = String(url).trim();
     if (!value) return FALLBACK_AVATAR;
+
+    // Prévia local (URL.createObjectURL): deve ser usada exatamente como gerada.
+    if (isLocalPreviewUrl(value)) return value;
 
     value = value.replace(/\\/g, "/");
     value = value.replace("/public/uploads/Usuarios/", "/public/uploads/usuarios/");
@@ -156,7 +174,7 @@
   }
 
   function updateAllAvatars(url) {
-    const finalUrl = appendNoCache(normalizeAvatarUrl(url));
+    const finalUrl = withNoCache(normalizeAvatarUrl(url));
 
     getPreviewImages().forEach((img) => {
       bindFallback(img);
@@ -226,35 +244,40 @@
       }
 
       img.dataset.fallbackApplied = "0";
-      img.src = appendNoCache(normalizeAvatarUrl(srcAtual));
+      img.src = withNoCache(normalizeAvatarUrl(srcAtual));
     });
   }
 
   /* ==========================================================
      VALIDAÇÃO
   ========================================================== */
-  function validateFile(file) {
+  function validateFile(file, maxBytes = MAX_BYTES) {
     if (!file) {
       return "Selecione uma imagem para continuar.";
+    }
+
+    if (/^image\/hei[cf]/i.test(file.type || "") || /\.(heic|heif)$/i.test(file.name || "")) {
+      return "Fotos HEIC/HEIF ainda não são aceitas. Envie a imagem em JPG, PNG ou WEBP.";
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
       return "Formato inválido. Envie uma imagem JPG, PNG ou WEBP.";
     }
 
-    if (file.size > MAX_BYTES) {
-      return "A imagem deve ter no máximo 10 MB.";
+    if (file.size > maxBytes) {
+      return `A imagem deve ter no máximo ${Math.round(maxBytes / (1024 * 1024))} MB.`;
     }
 
     return "";
   }
+
 
   /* ==========================================================
      API
   ========================================================== */
   async function sendPhoto(file) {
     const fd = new FormData();
-    fd.append("perfil_foto", file);
+    fd.append("perfil_foto", file, file.name || "foto");
 
     const res = await fetch(API_URL, {
       method: "POST",
@@ -296,7 +319,7 @@
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const error = validateFile(file);
+    const error = validateFile(file, MAX_INPUT_BYTES);
     if (error) {
       showToast(error, "warning");
       input.value = "";
@@ -309,10 +332,29 @@
     try {
       setBusy(true);
 
-      localPreviewUrl = URL.createObjectURL(file);
+      const ImageProcessor = window.AmAgendaImageProcessor;
+      if (!ImageProcessor || typeof ImageProcessor.process !== "function") {
+        console.error("[PerfilFoto] processador-imagem.js não foi carregado antes deste script.");
+        throw new Error("Não foi possível preparar a imagem para envio. Recarregue a página e tente novamente.");
+      }
+
+      const processed = await ImageProcessor.process(file, {
+        maxBytes: MAX_BYTES,
+        maxInputBytes: MAX_INPUT_BYTES,
+        allowedTypes: ALLOWED_TYPES
+      });
+      const uploadFile = processed.file;
+
+      // Revalidação do arquivo final: nunca enviar formato inválido ou acima do limite.
+      const finalError = validateFile(uploadFile, MAX_BYTES);
+      if (finalError) {
+        throw new Error(finalError);
+      }
+
+      localPreviewUrl = URL.createObjectURL(uploadFile);
       updateAllAvatars(localPreviewUrl);
 
-      const json = await sendPhoto(file);
+      const json = await sendPhoto(uploadFile);
       const fotoUrl =
         json?.data?.foto_url ||
         json?.data?.foto_perfil ||
