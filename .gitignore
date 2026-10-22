@@ -1,4 +1,10 @@
-# Configuracoes locais e credenciais
+
+# ============================================================
+# AMAGENDA — GITIGNORE
+# Ambientes: DEV e PRODUCAO
+# ============================================================
+
+# 1. Configuracoes locais e credenciais
 .env
 .env.*
 !.env.example
@@ -7,29 +13,36 @@
 /backend/_config/twilio.php
 /backend/_config/mercado_pago.php
 
-
-# Logs e arquivos de diagnostico
+# 2. Logs e arquivos de diagnostico
 *.log
 *.log.*
 php_errors
 
-# Conteudo gerado ou enviado por usuarios
+# 3. Uploads e arquivos enviados pelos usuarios
+
+# Uploads de empresas e identidade visual
 /public/uploads/*
 !/public/uploads/.gitkeep
 !/public/uploads/.htaccess
-/public/imagens/usuarios/*
-!/public/imagens/usuarios/.gitkeep
 
-# Arquivos temporarios
+# Fotos de usuarios internos
+/public/imagens/usuarios/*
+
+# Fotos de clientes
+/public/imagens/clientes/*
+
+# 4. Arquivos temporarios da identidade visual
 /storage/identidade-visual/temporarios/*
 !/storage/identidade-visual/temporarios/.gitkeep
+
+# 5. Arquivos temporarios
 /tmp/
 /temp/
 *.tmp
 *.temp
 *.cache
 
-# Backups locais e dumps de banco (migrations continuam versionadas)
+# 6. Backups e dumps de banco
 *.bak
 *.backup
 *.orig
@@ -37,14 +50,14 @@ php_errors
 *.sql.zip
 *.dump
 
-# Dependencias e artefatos de ferramentas
+# 7. Dependencias e artefatos de ferramentas
 /vendor/
 /node_modules/
 /.phpunit.cache/
 /.phpunit.result.cache
 /coverage/
 
-# Editores e sistema operacional
+# 8. Editores e arquivos do sistema operacional
 /.idea/
 /.vscode/
 *.swp
