@@ -13,11 +13,11 @@ declare(strict_types=1);
  * servidor (nunca por cabecalho controlavel pelo cliente). TODAS as condicoes
  * precisam ser verdadeiras; qualquer duvida resulta em "nao local" (Secure ligado).
  *  - requisicao nao e HTTPS (sem HTTPS, porta diferente de 443);
- *  - origem (REMOTE_ADDR) e destino (SERVER_ADDR) ambos em loopback: conexao
- *    originada na propria maquina;
+ *  - origem (REMOTE_ADDR) e destino (SERVER_ADDR) locais/privados;
  *  - nenhum cabecalho de proxy/encaminhamento presente;
  *  - DOCUMENT_ROOT (configuracao do Apache) dentro de uma instalacao XAMPP;
- *  - Host solicitado restrito a localhost / amagenda.local (so pode restringir).
+ *  - Host solicitado restrito a localhost / amagenda.local ou ao proprio IP
+ *    local/privado do servidor (so pode restringir).
  */
 function amagendaAmbienteLocalHttp(): bool
 {
@@ -29,12 +29,21 @@ function amagendaAmbienteLocalHttp(): bool
         return false;
     }
 
-    $loopback = static function (string $ip): bool {
-        $ip = strtolower(trim($ip));
-        return $ip === '::1' || $ip === '0:0:0:0:0:0:0:1' || $ip === '127.0.0.1' || strpos($ip, '127.') === 0
-            || strpos($ip, '::ffff:127.') === 0;
+    $ipLocalOuPrivado = static function (string $ip): bool {
+        $ip = trim($ip);
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+
+        return filter_var(
+            $ip,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+        ) === false;
     };
-    if (!$loopback((string)($_SERVER['REMOTE_ADDR'] ?? '')) || !$loopback((string)($_SERVER['SERVER_ADDR'] ?? ''))) {
+    $ipOrigem = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+    $ipServidor = (string)($_SERVER['SERVER_ADDR'] ?? '');
+    if (!$ipLocalOuPrivado($ipOrigem) || !$ipLocalOuPrivado($ipServidor)) {
         return false;
     }
 
@@ -54,7 +63,13 @@ function amagendaAmbienteLocalHttp(): bool
 
     $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
     $host = preg_replace('/:\d+$/', '', $host);
-    return in_array($host, ['localhost', '127.0.0.1', 'amagenda.local'], true);
+    if (in_array($host, ['localhost', '127.0.0.1', 'amagenda.local'], true)) {
+        return true;
+    }
+
+    return filter_var($host, FILTER_VALIDATE_IP) !== false
+        && $ipLocalOuPrivado($host)
+        && $host === $ipServidor;
 }
 
 /**
