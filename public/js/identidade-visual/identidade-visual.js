@@ -65,7 +65,7 @@
 
   function urlSemCache(url) {
     const valor = String(url || "");
-    if (!valor.startsWith("/uploads/")) return valor;
+    if (!valor.startsWith("/public/uploads/empresas/") && !valor.startsWith("/uploads/")) return valor;
     return `${valor}${valor.includes("?") ? "&" : "?"}v=${Date.now()}`;
   }
 

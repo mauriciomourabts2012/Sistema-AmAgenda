@@ -8,7 +8,10 @@ declare(strict_types=1);
 const AMAGENDA_NOME_PADRAO = 'AmAgenda';
 const AMAGENDA_LOGO_PADRAO_URL = '/public/imagens/logo-menu.png';
 const AMAGENDA_LOGIN_PADRAO_URL = '/public/imagens/logo.png';
-const AMAGENDA_UPLOAD_EMPRESAS_URL = '/uploads/empresas';
+// Caminho público servido diretamente pelo Apache (mesmo padrão das fotos em /public/uploads/usuarios).
+const AMAGENDA_UPLOAD_EMPRESAS_URL = '/public/uploads/empresas';
+// Prefixo legado gravado até 10/2026; aceito somente para leitura, exibição e remoção segura.
+const AMAGENDA_UPLOAD_EMPRESAS_URL_LEGADO = '/uploads/empresas';
 const AMAGENDA_IDENTIDADE_LOGO_MAX_BYTES = 15728640; // 15 MB
 const AMAGENDA_IDENTIDADE_LOGIN_MAX_BYTES = 5242880; // 5 MB
 const AMAGENDA_LOGIN_LADO_MENOR_MIN = 400;
@@ -240,6 +243,33 @@ function identidadeExigirProprietario(mysqli $conexao): array
     return ['id_empresa' => $idEmpresa, 'perfil_id' => $perfilId, 'perfil_nome' => $perfilNome, 'tipo_usuario' => $tipoUsuario];
 }
 
+/** Converte o prefixo legado /uploads/empresas/ para o caminho público atual; demais valores ficam inalterados. */
+function identidadeUrlPublica(string $url): string
+{
+    $legado = AMAGENDA_UPLOAD_EMPRESAS_URL_LEGADO . '/';
+    return str_starts_with($url, $legado)
+        ? AMAGENDA_UPLOAD_EMPRESAS_URL . '/' . substr($url, strlen($legado))
+        : $url;
+}
+
+/**
+ * Nome do arquivo quando a URL pertence à pasta de identidade da própria empresa,
+ * no formato atual ou no legado; null para qualquer outro caminho.
+ */
+function identidadeNomeArquivoEmpresa(?string $url, int $idEmpresa): ?string
+{
+    $url = trim((string)$url);
+    if ($idEmpresa <= 0 || $url === '') return null;
+    foreach ([AMAGENDA_UPLOAD_EMPRESAS_URL, AMAGENDA_UPLOAD_EMPRESAS_URL_LEGADO] as $base) {
+        $prefixo = $base . '/' . $idEmpresa . '/identidade/';
+        if (str_starts_with($url, $prefixo)) {
+            $nome = substr($url, strlen($prefixo));
+            return $nome !== '' && !str_contains($nome, '/') ? $nome : null;
+        }
+    }
+    return null;
+}
+
 function identidadeFallback(array $row = []): array
 {
     $nome = trim((string)($row['nome_exibicao'] ?? ''));
@@ -251,8 +281,8 @@ function identidadeFallback(array $row = []): array
 
     return [
         'nome_exibicao' => $nome !== '' ? $nome : AMAGENDA_NOME_PADRAO,
-        'logo_url' => $logo !== '' ? $logo : AMAGENDA_LOGO_PADRAO_URL,
-        'imagem_login_url' => $login !== '' ? $login : AMAGENDA_LOGIN_PADRAO_URL,
+        'logo_url' => $logo !== '' ? identidadeUrlPublica($logo) : AMAGENDA_LOGO_PADRAO_URL,
+        'imagem_login_url' => $login !== '' ? identidadeUrlPublica($login) : AMAGENDA_LOGIN_PADRAO_URL,
         'imagem_login_escala' => $escala,
         'imagem_login_pos_x' => $posX,
         'imagem_login_pos_y' => $posY,
@@ -381,14 +411,8 @@ function identidadeValidarESalvarUpload(string $campo, string $prefixo, int $idE
 
 function identidadeRemoverArquivoSeguro(?string $url, int $idEmpresa): void
 {
-    $url = trim((string)$url);
-    $prefixo = AMAGENDA_UPLOAD_EMPRESAS_URL . '/' . $idEmpresa . '/identidade/';
-    if ($url === '' || !str_starts_with($url, $prefixo)) {
-        return;
-    }
-
-    $nome = basename(parse_url($url, PHP_URL_PATH) ?: '');
-    if ($nome === '' || !preg_match('/^(?:(?:logo|login)_[a-f0-9]{16}\.(?:jpg|png|webp)|pwa_[a-f0-9]{16}(?:_maskable)?_(?:192|512)\.png)$/', $nome)) {
+    $nome = identidadeNomeArquivoEmpresa($url, $idEmpresa);
+    if ($nome === null || !preg_match('/^(?:(?:logo|login)_[a-f0-9]{16}\.(?:jpg|png|webp)|pwa_[a-f0-9]{16}(?:_maskable)?_(?:192|512)\.png)$/', $nome)) {
         return;
     }
 
@@ -411,12 +435,10 @@ const AMAGENDA_PWA_ICONE_PIXELS_MAX = 16000000; // limite de memória para decod
 /** Identificador (16 hex) do logo da própria empresa, ou null se o valor não for um logo válido dela. */
 function identidadeIdLogoEmpresa(?string $logoUrl, int $idEmpresa): ?string
 {
-    $logoUrl = trim((string)$logoUrl);
-    $prefixo = AMAGENDA_UPLOAD_EMPRESAS_URL . '/' . $idEmpresa . '/identidade/';
-    if ($idEmpresa <= 0 || $logoUrl === '' || !str_starts_with($logoUrl, $prefixo)) {
+    $nome = identidadeNomeArquivoEmpresa($logoUrl, $idEmpresa);
+    if ($nome === null) {
         return null;
     }
-    $nome = substr($logoUrl, strlen($prefixo));
     return preg_match('/^logo_([a-f0-9]{16})\.(?:jpg|png|webp)$/D', $nome, $m) === 1 ? $m[1] : null;
 }
 
