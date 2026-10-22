@@ -58,29 +58,21 @@ function pagamentoOnlineExec(mysqli $db, string $sql, string $tipos, mixed ...$v
     return $afetadas;
 }
 
-function pagamentoOnlineGatewayTeste(): MercadoPagoGateway
+function pagamentoOnlineGatewayAtivo(): MercadoPagoGateway
 {
     try {
-        $gateway = MercadoPagoGateway::daConfiguracao();
-        if ($gateway->ambiente() !== 'teste') {
-            throw new RuntimeException('Ambiente de teste indisponível.');
-        }
-        return $gateway;
+        return MercadoPagoGateway::daConfiguracao();
     } catch (RuntimeException $e) {
-        pagamentoOnlineFalhar('PIX_CONFIGURACAO', 'O pagamento PIX de teste não está configurado.', 503);
+        pagamentoOnlineFalhar('PIX_CONFIGURACAO', 'O pagamento PIX não está configurado.', 503);
     }
 }
 
-function pagamentoCartaoGatewayTeste(): MercadoPagoGateway
+function pagamentoCartaoGatewayAtivo(): MercadoPagoGateway
 {
     try {
-        $gateway = MercadoPagoGateway::daConfiguracao();
-        if ($gateway->ambiente() !== 'teste') {
-            throw new RuntimeException('Ambiente de teste indisponível.');
-        }
-        return $gateway;
+        return MercadoPagoGateway::daConfiguracao();
     } catch (RuntimeException $e) {
-        pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão de teste não está configurado.', 503);
+        pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão não está configurado.', 503);
     }
 }
 
@@ -268,6 +260,7 @@ function pagamentoOnlineRegistrarErro(mysqli $db, array $transacao, string $codi
 
 function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $empresa, int $cobranca, string $email, string $perfil = ''): array
 {
+    $ambiente = $gateway->ambiente();
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar pagamento.');
     try {
         $c = pagamentoOnlineConsulta($db,
@@ -311,13 +304,13 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
         $valor = pagamentoGatewayValorDecimal($saldo);
 
         $ativas = pagamentoOnlineConsulta($db,
-            "SELECT id_transacao,id_empresa,id_cobranca,valor,metodo,ambiente,status,chave_idempotencia,referencia_interna,ordem_externa_id,pagamento_externo_id,expira_em FROM transacao_pagamento WHERE id_empresa=? AND id_cobranca=? AND status IN ('criada','enviando','aguardando','processando','confirmada','conciliacao') ORDER BY id_transacao DESC FOR UPDATE",
-            'ii', $empresa, $cobranca)->fetch_all(MYSQLI_ASSOC);
+            "SELECT id_transacao,id_empresa,id_cobranca,valor,metodo,ambiente,status,chave_idempotencia,referencia_interna,ordem_externa_id,pagamento_externo_id,expira_em FROM transacao_pagamento WHERE id_empresa=? AND id_cobranca=? AND ambiente=? AND status IN ('criada','enviando','aguardando','processando','confirmada','conciliacao') ORDER BY id_transacao DESC FOR UPDATE",
+            'iis', $empresa, $cobranca, $ambiente)->fetch_all(MYSQLI_ASSOC);
         if (count($ativas) > 1) pagamentoOnlineFalhar('PIX_CONCILIACAO', 'Existe mais de uma transação pendente de verificação.', 409);
         $reutilizada = (bool)$ativas;
         if ($ativas) {
             $transacao = $ativas[0];
-            if ($transacao['metodo'] !== 'pix' || $transacao['ambiente'] !== 'teste'
+            if ($transacao['metodo'] !== 'pix' || $transacao['ambiente'] !== $ambiente
                 || pagamentoGatewayValorCentavos((string)$transacao['valor']) !== $saldo
                 || in_array($transacao['status'], ['confirmada', 'conciliacao'], true)) {
                 pagamentoOnlineFalhar('PIX_CONCILIACAO', 'Existe uma transação financeira que precisa de verificação.', 409);
@@ -329,11 +322,11 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
             $chave = pagamentoGatewayChaveIdempotencia();
             $referencia = pagamentoGatewayReferenciaInterna();
             pagamentoOnlineExec($db,
-                "INSERT INTO transacao_pagamento (id_empresa,id_cobranca,provedor,ambiente,metodo,tipo_operacao,valor,moeda,status,chave_idempotencia,referencia_interna) VALUES (?,?,'mercado_pago','teste','pix','pix',?,'BRL','criada',?,?)",
-                'iisss', $empresa, $cobranca, $valor, $chave, $referencia);
+                "INSERT INTO transacao_pagamento (id_empresa,id_cobranca,provedor,ambiente,metodo,tipo_operacao,valor,moeda,status,chave_idempotencia,referencia_interna) VALUES (?,?,'mercado_pago',?,'pix','pix',?,'BRL','criada',?,?)",
+                'iissss', $empresa, $cobranca, $ambiente, $valor, $chave, $referencia);
             $id = (int)$db->insert_id;
             $transacao = ['id_transacao'=>$id,'id_empresa'=>$empresa,'id_cobranca'=>$cobranca,'valor'=>$valor,
-                'metodo'=>'pix','ambiente'=>'teste','status'=>'criada','chave_idempotencia'=>$chave,
+                'metodo'=>'pix','ambiente'=>$ambiente,'status'=>'criada','chave_idempotencia'=>$chave,
                 'referencia_interna'=>$referencia,'ordem_externa_id'=>null,'pagamento_externo_id'=>null,'expira_em'=>null];
         }
         if ($transacao['ordem_externa_id'] === null && (int)($c['gera_cobranca'] ?? 0) !== 1) {
@@ -388,9 +381,10 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
 
 function pagamentoOnlineConsultar(mysqli $db, MercadoPagoGateway $gateway, int $empresa, int $id): array
 {
+    $ambiente = $gateway->ambiente();
     $transacao = pagamentoOnlineConsulta($db,
-        "SELECT id_transacao,id_empresa,id_cobranca,valor,status,status_externo,expira_em,referencia_interna,ordem_externa_id,pagamento_externo_id FROM transacao_pagamento WHERE id_transacao=? AND id_empresa=? AND metodo='pix' AND ambiente='teste' LIMIT 1",
-        'ii', $id, $empresa)->fetch_assoc();
+        "SELECT id_transacao,id_empresa,id_cobranca,valor,status,status_externo,expira_em,referencia_interna,ordem_externa_id,pagamento_externo_id FROM transacao_pagamento WHERE id_transacao=? AND id_empresa=? AND metodo='pix' AND ambiente=? LIMIT 1",
+        'iis', $id, $empresa, $ambiente)->fetch_assoc();
     if (!$transacao) pagamentoOnlineFalhar('PIX_NAO_ENCONTRADO', 'Transação PIX não encontrada.', 404);
     if ($transacao['ordem_externa_id'] === null) {
         return pagamentoOnlineDadosPublicos([], $transacao);
@@ -483,12 +477,12 @@ function pagamentoCartaoIdExterno(mixed $valor, int $maximo = 150): ?string
     return $texto;
 }
 
-function pagamentoCartaoVinculoAtual(mysqli $db, int $empresa, bool $bloquear = false): ?array
+function pagamentoCartaoVinculoAtual(mysqli $db, int $empresa, string $ambiente, bool $bloquear = false): ?array
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     return pagamentoOnlineConsulta($db,
-        "SELECT id_assinatura_pagamento,id_empresa,id_assinatura,cliente_externo_id,perfil_externo_id,meio_pagamento_externo_id,cartao_externo_id,bandeira,final_cartao,status,status_externo,chave_idempotencia_criacao,cobrar_a_partir_de,slot_ativo FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente='teste' ORDER BY (slot_ativo=1) DESC,id_assinatura_pagamento DESC LIMIT 1{$sufixo}",
-        'i', $empresa)->fetch_assoc() ?: null;
+        "SELECT id_assinatura_pagamento,id_empresa,id_assinatura,ambiente,cliente_externo_id,perfil_externo_id,meio_pagamento_externo_id,cartao_externo_id,bandeira,final_cartao,status,status_externo,chave_idempotencia_criacao,cobrar_a_partir_de,slot_ativo FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? ORDER BY (slot_ativo=1) DESC,id_assinatura_pagamento DESC LIMIT 1{$sufixo}",
+        'is', $empresa, $ambiente)->fetch_assoc() ?: null;
 }
 
 function pagamentoCartaoDadosPublicos(?array $vinculo, ?array $assinatura, ?string $chavePublica = null): array
@@ -509,21 +503,21 @@ function pagamentoCartaoDadosPublicos(?array $vinculo, ?array $assinatura, ?stri
     ];
 }
 
-function pagamentoCartaoConfiguracao(mysqli $db, int $empresa): array
+function pagamentoCartaoConfiguracao(mysqli $db, MercadoPagoGateway $gateway, int $empresa): array
 {
     try {
-        $chave = MercadoPagoGateway::chavePublicaTeste();
+        $chave = MercadoPagoGateway::chavePublicaAtiva();
     } catch (RuntimeException $e) {
-        pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão de teste não está configurado.', 503);
+        pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão não está configurado.', 503);
     }
     return pagamentoCartaoDadosPublicos(
-        pagamentoCartaoVinculoAtual($db, $empresa),
+        pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()),
         pagamentoCartaoAssinaturaAtiva($db, $empresa),
         $chave
     );
 }
 
-function pagamentoCartaoReservar(mysqli $db, int $empresa): array
+function pagamentoCartaoReservar(mysqli $db, int $empresa, string $ambiente): array
 {
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar autorização do cartão.');
     try {
@@ -533,8 +527,8 @@ function pagamentoCartaoReservar(mysqli $db, int $empresa): array
             pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
         }
         $bloqueios = pagamentoOnlineConsulta($db,
-            "SELECT id_assinatura_pagamento,status FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente='teste' AND status IN ('pendente','ativa','suspensa','atualizacao_necessaria','cancelamento_pendente') ORDER BY id_assinatura_pagamento DESC FOR UPDATE",
-            'i', $empresa)->fetch_all(MYSQLI_ASSOC);
+            "SELECT id_assinatura_pagamento,status FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? AND status IN ('pendente','ativa','suspensa','atualizacao_necessaria','cancelamento_pendente') ORDER BY id_assinatura_pagamento DESC FOR UPDATE",
+            'is', $empresa, $ambiente)->fetch_all(MYSQLI_ASSOC);
         if ($bloqueios) {
             $mensagem = $bloqueios[0]['status'] === 'ativa'
                 ? 'Já existe um cartão ativo para o pagamento automático.'
@@ -542,16 +536,16 @@ function pagamentoCartaoReservar(mysqli $db, int $empresa): array
             pagamentoOnlineFalhar('CARTAO_VINCULO_EXISTENTE', $mensagem, 409);
         }
         $clienteAnterior = pagamentoOnlineConsulta($db,
-            "SELECT cliente_externo_id FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente='teste' AND cliente_externo_id IS NOT NULL ORDER BY id_assinatura_pagamento DESC LIMIT 1",
-            'i', $empresa)->fetch_assoc();
+            "SELECT cliente_externo_id FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? AND cliente_externo_id IS NOT NULL ORDER BY id_assinatura_pagamento DESC LIMIT 1",
+            'is', $empresa, $ambiente)->fetch_assoc();
         $chave = pagamentoGatewayChaveIdempotencia();
         $cliente = $clienteAnterior['cliente_externo_id'] ?? null;
         pagamentoOnlineExec($db,
-            "INSERT INTO assinatura_pagamento_recorrente (id_empresa,id_assinatura,provedor,ambiente,cliente_externo_id,status,chave_idempotencia_criacao,slot_ativo) VALUES (?,?,'mercado_pago','teste',?,'pendente',?,NULL)",
-            'iiss', $empresa, (int)$assinatura['id_assinatura'], $cliente, $chave);
+            "INSERT INTO assinatura_pagamento_recorrente (id_empresa,id_assinatura,provedor,ambiente,cliente_externo_id,status,chave_idempotencia_criacao,slot_ativo) VALUES (?,?,'mercado_pago',?,?,'pendente',?,NULL)",
+            'iisss', $empresa, (int)$assinatura['id_assinatura'], $ambiente, $cliente, $chave);
         $id = (int)$db->insert_id;
         if (!$db->commit()) throw new RuntimeException('Falha ao confirmar autorização do cartão.');
-        return ['id_assinatura_pagamento'=>$id,'id_empresa'=>$empresa,'id_assinatura'=>(int)$assinatura['id_assinatura'],
+        return ['id_assinatura_pagamento'=>$id,'id_empresa'=>$empresa,'id_assinatura'=>(int)$assinatura['id_assinatura'],'ambiente'=>$ambiente,
             'cliente_externo_id'=>$cliente,'perfil_externo_id'=>null,'status'=>'pendente',
             'chave_idempotencia_criacao'=>$chave];
     } catch (Throwable $e) {
@@ -702,7 +696,7 @@ function pagamentoCartaoAplicarPerfil(mysqli $db, array $vinculo, array $perfil,
         $db->rollback();
         throw $e;
     }
-    $vinculoAtual = pagamentoCartaoVinculoAtual($db, (int)$vinculo['id_empresa']);
+    $vinculoAtual = pagamentoCartaoVinculoAtual($db, (int)$vinculo['id_empresa'], (string)$vinculo['ambiente']);
     return pagamentoCartaoDadosPublicos($vinculoAtual, pagamentoCartaoAssinaturaAtiva($db, (int)$vinculo['id_empresa']));
 }
 
@@ -711,7 +705,7 @@ function pagamentoCartaoAutorizar(mysqli $db, MercadoPagoGateway $gateway, int $
     if (!preg_match('/^[A-Za-z0-9_-]{32,33}$/D', $token)) pagamentoOnlineFalhar('CARTAO_TOKEN_INVALIDO', 'O token do cartão é inválido ou expirou.', 422);
     $bandeira = strtolower($bandeira);
     if (!preg_match('/^[a-z0-9_]{2,30}$/D', $bandeira)) pagamentoOnlineFalhar('CARTAO_BANDEIRA_INVALIDA', 'Não foi possível identificar a bandeira do cartão.', 422);
-    $vinculo = pagamentoCartaoReservar($db, $empresa);
+    $vinculo = pagamentoCartaoReservar($db, $empresa, $gateway->ambiente());
     if (!assinaturaServicoPlanoGeraCobranca($db, (int)$vinculo['id_assinatura'])) {
         pagamentoCartaoMarcarErro($db, $vinculo, 'PLAN_NO_BILLING');
         pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
@@ -748,7 +742,8 @@ function pagamentoCartaoAutorizar(mysqli $db, MercadoPagoGateway $gateway, int $
 function pagamentoCartaoConsultarStatus(mysqli $db, MercadoPagoGateway $gateway, int $empresa, string $email): array
 {
     $assinatura = pagamentoCartaoAssinaturaAtiva($db, $empresa);
-    $vinculo = pagamentoCartaoVinculoAtual($db, $empresa);
+    $ambiente = $gateway->ambiente();
+    $vinculo = pagamentoCartaoVinculoAtual($db, $empresa, $ambiente);
     if (!$vinculo) return pagamentoCartaoDadosPublicos(null, $assinatura);
     if ($vinculo['cliente_externo_id'] === null) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return pagamentoCartaoDadosPublicos($vinculo, $assinatura);
@@ -770,7 +765,7 @@ function pagamentoCartaoConsultarStatus(mysqli $db, MercadoPagoGateway $gateway,
         if ($clientes) {
             pagamentoCartaoPersistirCliente($db, $vinculo, (string)reset($clientes));
             pagamentoCartaoMarcarErro($db, $vinculo, 'CUSTOMER_RECOVERED');
-            return pagamentoCartaoDadosPublicos(pagamentoCartaoVinculoAtual($db, $empresa), $assinatura);
+            return pagamentoCartaoDadosPublicos(pagamentoCartaoVinculoAtual($db, $empresa, $ambiente), $assinatura);
         }
         return pagamentoCartaoDadosPublicos($vinculo, $assinatura);
     }
@@ -817,7 +812,7 @@ try {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             pagamentoOnlineFalhar('EMAIL_INDISPONIVEL', 'Seu e-mail de acesso precisa ser válido para gerar o PIX.', 422);
         }
-        $dados = pagamentoOnlineIniciar($conexao, pagamentoOnlineGatewayTeste(), $empresa, $id, $email, (string)($contexto['perfil'] ?? ''));
+        $dados = pagamentoOnlineIniciar($conexao, pagamentoOnlineGatewayAtivo(), $empresa, $id, $email, (string)($contexto['perfil'] ?? ''));
         out(['ok'=>true,'code'=>$dados['reutilizado'] ? 'PIX_REUTILIZADO' : 'PIX_CRIADO',
             'user_msg'=>$dados['reutilizado'] ? 'PIX existente reutilizado com segurança.' : 'PIX criado com sucesso.',
             'data'=>$dados]);
@@ -837,13 +832,13 @@ try {
     if ($rota === 'painel/faturamento/pagamento/transacao' && $metodo === 'GET') {
         exigirPermissao($conexao, 'faturamento.visualizar', $contexto);
         $id = pagamentoOnlineId($_GET['id_transacao'] ?? null);
-        $dados = pagamentoOnlineConsultar($conexao, pagamentoOnlineGatewayTeste(), $empresa, $id);
+        $dados = pagamentoOnlineConsultar($conexao, pagamentoOnlineGatewayAtivo(), $empresa, $id);
         out(['ok'=>true,'code'=>'PIX_CONSULTADO','user_msg'=>'Situação do PIX consultada.','data'=>$dados]);
     }
     if ($rota === 'painel/faturamento/pagamento/cartao/configuracao' && $metodo === 'GET') {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);
         out(['ok'=>true,'code'=>'CARTAO_CONFIGURACAO','user_msg'=>'Configuração do cartão consultada.',
-            'data'=>pagamentoCartaoConfiguracao($conexao, $empresa)]);
+            'data'=>pagamentoCartaoConfiguracao($conexao, pagamentoCartaoGatewayAtivo(), $empresa)]);
     }
     if ($rota === 'painel/faturamento/pagamento/cartao/autorizar' && $metodo === 'POST') {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);
@@ -855,7 +850,7 @@ try {
         $tokenTemporario = trim((string)($_POST['token'] ?? ''));
         unset($_POST['token']);
         try {
-            $dados = pagamentoCartaoAutorizar($conexao, pagamentoCartaoGatewayTeste(), $empresa, $email,
+            $dados = pagamentoCartaoAutorizar($conexao, pagamentoCartaoGatewayAtivo(), $empresa, $email,
                 $tokenTemporario, trim((string)($_POST['payment_method_id'] ?? '')));
         } finally {
             if (function_exists('sodium_memzero')) sodium_memzero($tokenTemporario); else $tokenTemporario = '';
@@ -868,7 +863,7 @@ try {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);
         $email = trim((string)($_SESSION['auth']['email'] ?? ''));
         out(['ok'=>true,'code'=>'CARTAO_STATUS','user_msg'=>'Situação do cartão atualizada.',
-            'data'=>pagamentoCartaoConsultarStatus($conexao, pagamentoCartaoGatewayTeste(), $empresa, $email)]);
+            'data'=>pagamentoCartaoConsultarStatus($conexao, pagamentoCartaoGatewayAtivo(), $empresa, $email)]);
     }
     pagamentoOnlineFalhar('ROTA_INVALIDA', 'Operação de pagamento inválida.', 404);
 } catch (PagamentoOnlineErro $e) {

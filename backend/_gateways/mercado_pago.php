@@ -34,13 +34,10 @@ final class MercadoPagoGateway
         return new self($ambiente, $token);
     }
 
-    /** Somente a chave pública do ambiente de teste pode sair para o MercadoPago.js. */
-    public static function chavePublicaTeste(): string
+    /** Somente a chave pública validada do ambiente ativo pode sair para o MercadoPago.js. */
+    public static function chavePublicaAtiva(): string
     {
         $ativa = self::configuracaoAtiva();
-        if ($ativa['ambiente'] !== 'teste') {
-            throw new RuntimeException('Configuração pública de pagamento indisponível.');
-        }
         $chave = $ativa['dados']['public_key'] ?? null;
         if (!is_string($chave) || strlen($chave) < 20 || strlen($chave) > 200
             || trim($chave) !== $chave || preg_match('/[\x00-\x20\x7F]/', $chave)) {
