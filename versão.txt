@@ -1,0 +1,13 @@
+#TODA VEZ ANTES DE INICIAR UM COMMIT FAÇA A INFORMAÇÃO DE VERSÃO DO SISTEMA, PARA ISSO EXECUTE UM DOS COMANDOS ABAIXO:
+
+1- php tools/release-version.php minor --dry-run 
+2- php tools/release-version.php minor 
+3- php tools/release-version.php check
+
+
+#SERVIDOR DE PRODUCAO 
+
+cd /var/www/html/Sistema-AmAgenda
+git status
+git pull --ff-only origin main
+php tools/release-version.php check
