@@ -209,10 +209,14 @@ try {
             ]);
             $conexao->commit();
             $resumo['testes_expirados']++;
-        } catch (Throwable) {
+        } catch (Throwable $erro) {
             cobrancasAutomaticasRollback($conexao);
             $resumo['erros']++;
-            fwrite(STDERR, "Erro ao persistir expiração do teste da assinatura #{$idAssinaturaExpirada}.\n");
+            $classeErro = get_debug_type($erro);
+            fwrite(
+                STDERR,
+                "Falha técnica [{$classeErro}] ao persistir expiração do teste da assinatura #{$idAssinaturaExpirada}.\n"
+            );
         }
     }
 
@@ -471,16 +475,21 @@ try {
 
                 $resumo['cobrancas_geradas']++;
                 $cobrancasGeradasNestaAssinatura++;
-            } catch (Throwable) {
+            } catch (Throwable $erro) {
                 cobrancasAutomaticasRollback($conexao);
                 $resumo['erros']++;
-                fwrite(STDERR, "Erro ao processar assinatura #{$idAssinaturaReferencia}.\n");
+                $classeErro = get_debug_type($erro);
+                fwrite(
+                    STDERR,
+                    "Falha técnica [{$classeErro}] ao processar assinatura #{$idAssinaturaReferencia} da empresa #{$idEmpresaReferencia}.\n"
+                );
                 break;
             }
         }
     }
-} catch (Throwable) {
-    fwrite(STDERR, "Falha global ao preparar a execução automática.\n");
+} catch (Throwable $erro) {
+    $classeErro = get_debug_type($erro);
+    fwrite(STDERR, "Falha técnica global [{$classeErro}] ao preparar a execução automática.\n");
     exit(1);
 }
 
@@ -490,3 +499,5 @@ echo "Cobranças geradas: {$resumo['cobrancas_geradas']}\n";
 echo "Sem cobrança necessária: {$resumo['sem_cobranca_necessaria']}\n";
 echo "Inconsistências: {$resumo['inconsistencias']}\n";
 echo "Erros: {$resumo['erros']}\n";
+
+exit($resumo['erros'] > 0 ? 1 : 0);

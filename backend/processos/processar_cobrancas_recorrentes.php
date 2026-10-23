@@ -240,7 +240,7 @@ function cobrancasRecorrentesAplicarOrder(
     $dados = cobrancasRecorrentesValidarOrder($transacao, $order);
     if ($dados === null) {
         cobrancasRecorrentesMarcarIncerta($conexao, $transacao, 'resposta_order_divergente');
-        return 'conciliacao';
+        return 'resultado_incerto';
     }
 
     $conexao->begin_transaction();
@@ -376,10 +376,16 @@ function cobrancasRecorrentesTratarFalhaGateway(
     $incertos = ['idempotency_key_already_used', 'resource_locked', 'too_many_requests',
         'usage_quota_exceeded', 'idempotency_validation_failed', 'internal_error'];
 
+    if (in_array($httpStatus, [401, 403], true)) {
+        cobrancasRecorrentesMarcarIncerta($conexao, $transacao, $codigo);
+        return 'configuracao_gateway';
+    }
+
     if ($httpStatus === 0 || $httpStatus >= 500 || in_array($httpStatus, [409, 423, 429], true)
+        || ($httpStatus >= 200 && $httpStatus < 300)
         || in_array($codigo, $incertos, true)) {
         cobrancasRecorrentesMarcarIncerta($conexao, $transacao, $codigo);
-        return 'conciliacao';
+        return 'resultado_incerto';
     }
 
     if ($httpStatus === 402) {
@@ -685,11 +691,15 @@ $resumo = [
     'analisadas' => 0,
     'elegiveis' => 0,
     'transacoes_criadas' => 0,
-    'orders_enviadas' => 0,
-    'recusadas' => 0,
-    'ignoradas' => 0,
-    'conciliacao' => 0,
-    'erros' => 0,
+    'orders_encaminhadas' => 0,
+    'confirmacoes_recebidas' => 0,
+    'recusas_definitivas' => 0,
+    'resultados_incertos' => 0,
+    'pendencias_conciliacao' => 0,
+    'aguardando_webhook' => 0,
+    'encerradas_sem_confirmacao' => 0,
+    'inelegiveis_bloqueadas' => 0,
+    'erros_tecnicos' => 0,
 ];
 
 try {
@@ -759,6 +769,7 @@ try {
             $cursorDataVencimento = (string) $candidata['cursor_data_vencimento'];
             $cursorIdCobranca = (int) $candidata['id_cobranca'];
             $resumo['analisadas']++;
+            $idTransacaoLog = null;
 
             try {
                 $reserva = cobrancasRecorrentesReservar(
@@ -770,11 +781,11 @@ try {
                     $resumo['elegiveis']++;
                 }
                 if ($reserva['resultado'] === 'conciliacao') {
-                    $resumo['conciliacao']++;
+                    $resumo['pendencias_conciliacao']++;
                     continue;
                 }
                 if ($reserva['resultado'] !== 'enviar' || !isset($reserva['transacao'])) {
-                    $resumo['ignoradas']++;
+                    $resumo['inelegiveis_bloqueadas']++;
                     continue;
                 }
 
@@ -784,6 +795,7 @@ try {
                 }
 
                 $transacao = $reserva['transacao'];
+                $idTransacaoLog = (int) $transacao['id_transacao'];
                 if (!assinaturaServicoPlanoGeraCobranca($conexao, (int) $transacao['id_assinatura'])) {
                     cobrancasRecorrentesExecutar(
                         $conexao,
@@ -797,36 +809,60 @@ try {
                         'i',
                         (int) $transacao['id_transacao']
                     );
-                    $resumo['ignoradas']++;
+                    $resumo['inelegiveis_bloqueadas']++;
 
                     if ($selecionadasParaProcessamento >= COBRANCAS_RECORRENTES_LIMITE) {
                         break;
                     }
                     continue;
                 }
-                $resumo['orders_enviadas']++;
                 $resposta = $gateway->requisitar(
                     'criar_order',
                     [],
                     cobrancasRecorrentesPayload($transacao),
                     (string) $transacao['chave_idempotencia']
                 );
+                $httpStatus = (int) ($resposta['http_status'] ?? 0);
+                if ($httpStatus >= 100 && $httpStatus <= 599) {
+                    $resumo['orders_encaminhadas']++;
+                }
 
                 $status = ($resposta['sucesso'] ?? false)
                     ? cobrancasRecorrentesAplicarOrder($conexao, $transacao, $resposta['dados'])
                     : cobrancasRecorrentesTratarFalhaGateway($conexao, $transacao, $resposta);
 
-                if ($status === 'recusada') {
-                    $resumo['recusadas']++;
-                } elseif (in_array($status, ['confirmada', 'conciliacao'], true)) {
-                    $resumo['conciliacao']++;
-                } elseif ($status === 'erro') {
-                    $resumo['erros']++;
+                if ($status === 'configuracao_gateway') {
+                    $resumo['resultados_incertos']++;
+                    break 2;
                 }
-            } catch (Throwable) {
+
+                if ($status === 'recusada') {
+                    $resumo['recusas_definitivas']++;
+                } elseif ($status === 'confirmada') {
+                    $resumo['confirmacoes_recebidas']++;
+                } elseif ($status === 'resultado_incerto') {
+                    $resumo['resultados_incertos']++;
+                } elseif ($status === 'conciliacao') {
+                    $resumo['pendencias_conciliacao']++;
+                } elseif (in_array($status, ['aguardando', 'processando'], true)) {
+                    $resumo['aguardando_webhook']++;
+                } elseif (in_array($status, ['expirada', 'cancelada'], true)) {
+                    $resumo['encerradas_sem_confirmacao']++;
+                } elseif ($status === 'erro') {
+                    $resumo['erros_tecnicos']++;
+                }
+            } catch (Throwable $erro) {
                 cobrancasRecorrentesRollback($conexao);
-                $resumo['erros']++;
-                fwrite(STDERR, "Erro ao processar uma cobrança recorrente.\n");
+                $resumo['erros_tecnicos']++;
+                $classeErro = get_debug_type($erro);
+                $identificadores = "cobrança #{$cursorIdCobranca}";
+                if ($idTransacaoLog !== null) {
+                    $identificadores .= ", transação #{$idTransacaoLog}";
+                }
+                fwrite(
+                    STDERR,
+                    "Falha técnica [{$classeErro}] ao processar {$identificadores}.\n"
+                );
             }
 
             if ($selecionadasParaProcessamento >= COBRANCAS_RECORRENTES_LIMITE) {
@@ -838,18 +874,23 @@ try {
             break;
         }
     }
-} catch (Throwable) {
-    fwrite(STDERR, "Falha global ao preparar cobranças recorrentes.\n");
+} catch (Throwable $erro) {
+    $classeErro = get_debug_type($erro);
+    fwrite(STDERR, "Falha técnica global [{$classeErro}] ao preparar cobranças recorrentes.\n");
     exit(1);
 }
 
 echo "Cobranças analisadas: {$resumo['analisadas']}\n";
 echo "Cobranças elegíveis: {$resumo['elegiveis']}\n";
 echo "Transações criadas: {$resumo['transacoes_criadas']}\n";
-echo "Orders enviadas: {$resumo['orders_enviadas']}\n";
-echo "Recusadas: {$resumo['recusadas']}\n";
-echo "Ignoradas: {$resumo['ignoradas']}\n";
-echo "Conciliação necessária: {$resumo['conciliacao']}\n";
-echo "Erros: {$resumo['erros']}\n";
+echo "Orders encaminhadas: {$resumo['orders_encaminhadas']}\n";
+echo "Confirmações recebidas: {$resumo['confirmacoes_recebidas']}\n";
+echo "Recusas definitivas: {$resumo['recusas_definitivas']}\n";
+echo "Resultados incertos: {$resumo['resultados_incertos']}\n";
+echo "Pendências de conciliação: {$resumo['pendencias_conciliacao']}\n";
+echo "Aguardando webhook: {$resumo['aguardando_webhook']}\n";
+echo "Encerradas sem confirmação: {$resumo['encerradas_sem_confirmacao']}\n";
+echo "Inelegíveis ou bloqueadas: {$resumo['inelegiveis_bloqueadas']}\n";
+echo "Erros técnicos: {$resumo['erros_tecnicos']}\n";
 
-exit($resumo['erros'] > 0 ? 1 : 0);
+exit($resumo['erros_tecnicos'] > 0 ? 1 : 0);
