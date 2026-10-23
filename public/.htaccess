@@ -1,0 +1,61 @@
+RewriteEngine On
+
+# Página inicial quando public/ é o DocumentRoot.
+<IfModule mod_dir.c>
+    DirectoryIndex index.php
+</IfModule>
+
+# Impede listagem de diretórios.
+Options -Indexes
+
+# ==========================================================
+# SEGURANÇA — ARQUIVOS E DIRETÓRIOS SENSÍVEIS
+# ==========================================================
+
+# Bloqueia arquivos e diretórios ocultos.
+# Mantém /.well-known/ disponível para certificados ACME.
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,NC,L]
+
+# Bloqueia referências a diretórios internos, mesmo que sejam criadas
+# ligações, aliases ou estruturas com esses nomes futuramente.
+RewriteRule ^(?:backend|tools|storage)[.\x20]*(?:/|$) - [F,NC,L]
+
+# Bloqueia nomes curtos do Windows e cópias temporárias de editores.
+RewriteRule (~[0-9]|~$) - [F,L]
+
+# Bloqueia logs, bancos, backups, configurações e scripts administrativos.
+RewriteRule \.(?:log|sql|sqlite3?|db|dump|bak|backup|old|orig|save|swp|swo|tmp|temp|dist|ini|conf|cnf|env|sh|bash|ps1|bat|cmd|md|lock|ya?ml|gz|tgz|zip|rar|7z|tar)[.\x20]*$ - [F,NC,L]
+
+# Bloqueia manifestos de dependências.
+RewriteRule (^|/)(?:composer|package)(?:-lock)?\.json[.\x20]*$ - [F,NC,L]
+
+# ==========================================================
+# AGENDA ONLINE
+# ==========================================================
+
+# /agendar/{slug} -> resolvedor da Agenda Online.
+# O REQUEST_URI original continua disponível para public/login.php.
+RewriteRule ^agendar/[^/]+/?$ login.php [QSD,END]
+
+# ==========================================================
+# COMPATIBILIDADE COM URLs /public/...
+# ==========================================================
+
+# Em produção, public/ já é o DocumentRoot. Estas regras permitem
+# que URLs históricas iniciadas por /public continuem funcionando.
+RewriteRule ^public/?$ index.php [END]
+RewriteRule ^public/(.+)$ $1 [END]
+
+# /api/..., /sw.js, manifests, imagens, CSS, JavaScript e demais
+# arquivos existentes são atendidos diretamente pelo DocumentRoot.
+
+# ==========================================================
+# CABEÇALHOS HTTP — H3
+# ==========================================================
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Content-Security-Policy "frame-ancestors 'self'"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
