@@ -35,6 +35,10 @@
   };
   const LOGO_MAX_BYTES = 15 * 1024 * 1024;
   const LOGIN_MAX_BYTES = 5 * 1024 * 1024;
+  const LOGIN_MAX_INPUT_BYTES = 30 * 1024 * 1024;
+  // Mantém margem abaixo do upload_max_filesize=2M ainda presente em instalações antigas.
+  const LOGIN_UPLOAD_TARGET_BYTES = 1800 * 1024;
+  const LOGIN_MAX_SIDE = 2560;
   const TIPOS = ["image/jpeg", "image/png", "image/webp"];
   const LOGIN_LADO_MENOR_MIN = 400;
   const LOGIN_LADO_MAIOR_MIN = 800;
@@ -225,7 +229,7 @@
                   </div>
                 </div>
               </section>
-              <section class="identidade-visual__bloco identidade-visual__bloco-login"><h3>Imagem da tela de login</h3><div class="identidade-visual__preview-login-moldura"><img id="identidadePreviewLogin" class="identidade-visual__preview-login" alt="Prévia da imagem de login"><span>Prévia do enquadramento</span></div><div class="identidade-visual__ajustes"><label>Zoom <output id="identidadeEscalaValor">100%</output><input id="identidadeEscala" name="imagem_login_escala" type="range" min="60" max="150" value="100"></label><label>Posição horizontal <output id="identidadePosXValor">0</output><input id="identidadePosX" name="imagem_login_pos_x" type="range" min="-30" max="30" value="0"></label><label>Posição vertical <output id="identidadePosYValor">0</output><input id="identidadePosY" name="imagem_login_pos_y" type="range" min="-30" max="30" value="0"></label><button id="identidadeResetarEnquadramento" class="identidade-visual__reset-enquadramento" type="button">Restaurar enquadramento</button></div><label class="botao-geral identidade-visual__upload" for="identidadeLogin">Alterar imagem</label><input id="identidadeLogin" name="imagem_login" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="identidade-visual__requisitos"><b>Aceita imagem vertical, horizontal ou quadrada.</b> O lado menor deve ter pelo menos 400 px e o maior pelo menos 800 px. JPG, PNG ou WebP, máximo 5 MB. No login do cliente a imagem preenche a área lateral exatamente como nesta prévia; em telas de outras proporções o recorte se ajusta mantendo o mesmo centro.</small><small id="identidadeLoginDimensoes" class="identidade-visual__dimensoes" aria-live="polite"></small></section>
+              <section class="identidade-visual__bloco identidade-visual__bloco-login"><h3>Imagem da tela de login</h3><div class="identidade-visual__preview-login-moldura"><img id="identidadePreviewLogin" class="identidade-visual__preview-login" alt="Prévia da imagem de login"><span>Prévia do enquadramento</span></div><div class="identidade-visual__ajustes"><label>Zoom <output id="identidadeEscalaValor">100%</output><input id="identidadeEscala" name="imagem_login_escala" type="range" min="60" max="150" value="100"></label><label>Posição horizontal <output id="identidadePosXValor">0</output><input id="identidadePosX" name="imagem_login_pos_x" type="range" min="-30" max="30" value="0"></label><label>Posição vertical <output id="identidadePosYValor">0</output><input id="identidadePosY" name="imagem_login_pos_y" type="range" min="-30" max="30" value="0"></label><button id="identidadeResetarEnquadramento" class="identidade-visual__reset-enquadramento" type="button">Restaurar enquadramento</button></div><label class="botao-geral identidade-visual__upload" for="identidadeLogin">Alterar imagem</label><input id="identidadeLogin" name="imagem_login" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="identidade-visual__requisitos"><b>Aceita imagem vertical, horizontal ou quadrada.</b> O lado menor deve ter pelo menos 400 px e o maior pelo menos 800 px. Fotos JPG, PNG ou WebP de até 30 MB são otimizadas antes do envio; o arquivo salvo respeita o limite de 5 MB. No login do cliente a imagem preenche a área lateral exatamente como nesta prévia; em telas de outras proporções o recorte se ajusta mantendo o mesmo centro.</small><small id="identidadeLoginDimensoes" class="identidade-visual__dimensoes" aria-live="polite"></small></section>
             </div>
             <section class="identidade-visual__resultado" aria-label="Pré-visualização da marca"><span>Pré-visualização</span><div><img id="identidadePreviewMarcaLogo" alt=""><strong id="identidadePreviewMarcaNome">AmAgenda</strong></div></section>
             <div class="modal-acoes identidade-visual__acoes"><button id="identidadeRestaurar" class="botao-geral identidade-visual__restaurar" type="button">Restaurar identidade completa</button><span class="identidade-visual__acoes-direita"><button class="botao-geral" type="button" data-identidade-fechar>Cancelar</button><button id="identidadeSalvar" class="botao-geral destaque" type="submit">Salvar alterações</button></span></div>
@@ -244,7 +248,7 @@
     modal.querySelector("#identidadeCorHex").addEventListener("blur", validarCorFormulario);
     modal.querySelector("#identidadeRestaurarCor").addEventListener("click", restaurarCorPadrao);
     modal.querySelector("#identidadeLogo").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogo", true, false, LOGO_MAX_BYTES, 15));
-    modal.querySelector("#identidadeLogin").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogin", false, true, LOGIN_MAX_BYTES, 5));
+    modal.querySelector("#identidadeLogin").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogin", false, true, LOGIN_MAX_INPUT_BYTES, 30));
     modal.querySelector("#identidadePreviewLogin").addEventListener("load", atualizarDimensoesPreviewLogin);
     ["#identidadeEscala", "#identidadePosX", "#identidadePosY"].forEach(seletor => modal.querySelector(seletor).addEventListener("input", aplicarAjustePreview));
     modal.querySelector("#identidadeResetarEnquadramento").addEventListener("click", () => {
@@ -410,6 +414,29 @@
     salvar.textContent = ativo ? texto : "Salvar alterações";
   }
 
+  async function prepararImagemLoginParaEnvio(form, dados) {
+    const arquivo = form.querySelector("#identidadeLogin")?.files?.[0];
+    if (!arquivo) return;
+
+    const processador = window.AmAgendaImageProcessor;
+    if (!processador || typeof processador.process !== "function") {
+      throw new Error("Não foi possível preparar a imagem para envio. Recarregue a página e tente novamente.");
+    }
+
+    const processado = await processador.process(arquivo, {
+      maxBytes: LOGIN_UPLOAD_TARGET_BYTES,
+      maxInputBytes: LOGIN_MAX_INPUT_BYTES,
+      maxSide: LOGIN_MAX_SIDE,
+      allowedTypes: TIPOS
+    });
+    const arquivoEnvio = processado.file;
+    if (!arquivoEnvio || arquivoEnvio.size <= 0 || arquivoEnvio.size > LOGIN_UPLOAD_TARGET_BYTES || !TIPOS.includes(arquivoEnvio.type)) {
+      throw new Error("Não foi possível reduzir a imagem para o limite aceito pelo servidor.");
+    }
+
+    dados.set("imagem_login", arquivoEnvio, arquivoEnvio.name || arquivo.name || "imagem-login");
+  }
+
   function abrirModal() {
     if (!podeEditar()) return;
     criarModal(); preencherModal(); focoAnterior = document.activeElement;
@@ -439,6 +466,7 @@
     dados.set("cor_primaria", corPadraoPendente ? "" : form.querySelector("#identidadeCorHex").value.toUpperCase());
     setBusy(true);
     try {
+      await prepararImagemLoginParaEnvio(form, dados);
       const resposta = await fetch(`${API}empresa/identidade-visual/salvar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") }, body: dados });
       const json = await resposta.json().catch(() => null);
       if (resposta.status === 413) throw new Error("A requisição excede o limite aceito pelo servidor. A logo pode ter até 15 MB e a imagem lateral do login até 5 MB.");
