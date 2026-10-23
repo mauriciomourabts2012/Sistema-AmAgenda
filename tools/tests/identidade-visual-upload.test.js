@@ -117,7 +117,12 @@ test("salvar envia a imagem de login processada em vez do arquivo original", asy
   await window.__salvarIdentidadeTeste({ preventDefault() {}, currentTarget: form });
 
   assert.ok(opcoesProcessamento, "o processador compartilhado deve ser chamado");
-  assert.equal(opcoesProcessamento.maxInputBytes, 30 * 1024 * 1024);
-  assert.ok(opcoesProcessamento.maxBytes < 2 * 1024 * 1024);
+  // Fase 3: original de até 40 MB; arquivo final de até 4,5 MB (backend aceita 5 MB).
+  assert.equal(opcoesProcessamento.maxInputBytes, 40 * 1024 * 1024);
+  assert.equal(opcoesProcessamento.maxBytes, Math.round(4.5 * 1024 * 1024));
+  assert.ok(opcoesProcessamento.maxBytes < 5 * 1024 * 1024);
+  assert.equal(opcoesProcessamento.minShortSide, 400);
+  assert.equal(opcoesProcessamento.minLongSide, 800);
+  assert.equal(opcoesProcessamento.allowHeic, true);
   assert.equal(corpoEnviado.get("imagem_login"), processada);
 });

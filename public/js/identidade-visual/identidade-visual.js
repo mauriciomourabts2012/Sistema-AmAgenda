@@ -35,9 +35,10 @@
   };
   const LOGO_MAX_BYTES = 15 * 1024 * 1024;
   const LOGIN_MAX_BYTES = 5 * 1024 * 1024;
-  const LOGIN_MAX_INPUT_BYTES = 30 * 1024 * 1024;
-  // Mantém margem abaixo do upload_max_filesize=2M ainda presente em instalações antigas.
-  const LOGIN_UPLOAD_TARGET_BYTES = 1800 * 1024;
+  // Imagem lateral do login: original de até 40 MB, otimizado no navegador para
+  // no máximo 4,5 MB (margem abaixo dos 5 MB validados pelo backend).
+  const LOGIN_MAX_INPUT_BYTES = 40 * 1024 * 1024;
+  const LOGIN_UPLOAD_TARGET_BYTES = Math.round(4.5 * 1024 * 1024);
   const LOGIN_MAX_SIDE = 2560;
   const TIPOS = ["image/jpeg", "image/png", "image/webp"];
   const LOGIN_LADO_MENOR_MIN = 400;
@@ -48,6 +49,11 @@
   let urlsTemporarias = [];
   let focoAnterior = null;
   let corPadraoPendente = true;
+  // Imagem de login já preparada (arquivo final + URL da prévia) e preparo em andamento.
+  let loginPreparado = null;
+  let loginPreparacao = null;
+  let loginSelecaoToken = 0;
+  let salvando = false;
 
   function contextoEmpresarialValido() {
     const sessaoAtual = window.__AUTH__ || auth || {};
@@ -229,7 +235,7 @@
                   </div>
                 </div>
               </section>
-              <section class="identidade-visual__bloco identidade-visual__bloco-login"><h3>Imagem da tela de login</h3><div class="identidade-visual__preview-login-moldura"><img id="identidadePreviewLogin" class="identidade-visual__preview-login" alt="Prévia da imagem de login"><span>Prévia do enquadramento</span></div><div class="identidade-visual__ajustes"><label>Zoom <output id="identidadeEscalaValor">100%</output><input id="identidadeEscala" name="imagem_login_escala" type="range" min="60" max="150" value="100"></label><label>Posição horizontal <output id="identidadePosXValor">0</output><input id="identidadePosX" name="imagem_login_pos_x" type="range" min="-30" max="30" value="0"></label><label>Posição vertical <output id="identidadePosYValor">0</output><input id="identidadePosY" name="imagem_login_pos_y" type="range" min="-30" max="30" value="0"></label><button id="identidadeResetarEnquadramento" class="identidade-visual__reset-enquadramento" type="button">Restaurar enquadramento</button></div><label class="botao-geral identidade-visual__upload" for="identidadeLogin">Alterar imagem</label><input id="identidadeLogin" name="imagem_login" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="identidade-visual__requisitos"><b>Aceita imagem vertical, horizontal ou quadrada.</b> O lado menor deve ter pelo menos 400 px e o maior pelo menos 800 px. Fotos JPG, PNG ou WebP de até 30 MB são otimizadas antes do envio; o arquivo salvo respeita o limite de 5 MB. No login do cliente a imagem preenche a área lateral exatamente como nesta prévia; em telas de outras proporções o recorte se ajusta mantendo o mesmo centro.</small><small id="identidadeLoginDimensoes" class="identidade-visual__dimensoes" aria-live="polite"></small></section>
+              <section class="identidade-visual__bloco identidade-visual__bloco-login"><h3>Imagem da tela de login</h3><div class="identidade-visual__preview-login-moldura"><img id="identidadePreviewLogin" class="identidade-visual__preview-login" alt="Prévia da imagem de login"><span>Prévia do enquadramento</span></div><div class="identidade-visual__ajustes"><label>Zoom <output id="identidadeEscalaValor">100%</output><input id="identidadeEscala" name="imagem_login_escala" type="range" min="60" max="150" value="100"></label><label>Posição horizontal <output id="identidadePosXValor">0</output><input id="identidadePosX" name="imagem_login_pos_x" type="range" min="-30" max="30" value="0"></label><label>Posição vertical <output id="identidadePosYValor">0</output><input id="identidadePosY" name="imagem_login_pos_y" type="range" min="-30" max="30" value="0"></label><button id="identidadeResetarEnquadramento" class="identidade-visual__reset-enquadramento" type="button">Restaurar enquadramento</button></div><label class="botao-geral identidade-visual__upload" for="identidadeLogin">Alterar imagem</label><input id="identidadeLogin" name="imagem_login" type="file" accept="image/png,image/jpeg,image/webp" hidden><small class="identidade-visual__requisitos"><b>Aceita imagem vertical, horizontal ou quadrada.</b> O lado menor deve ter pelo menos 400 px e o maior pelo menos 800 px. Fotos JPG, PNG ou WebP de até 40 MB são preparadas automaticamente antes do envio; o arquivo salvo respeita o limite de 5 MB. No login do cliente a imagem preenche a área lateral exatamente como nesta prévia; em telas de outras proporções o recorte se ajusta mantendo o mesmo centro.</small><small id="identidadeLoginDimensoes" class="identidade-visual__dimensoes" aria-live="polite"></small></section>
             </div>
             <section class="identidade-visual__resultado" aria-label="Pré-visualização da marca"><span>Pré-visualização</span><div><img id="identidadePreviewMarcaLogo" alt=""><strong id="identidadePreviewMarcaNome">AmAgenda</strong></div></section>
             <div class="modal-acoes identidade-visual__acoes"><button id="identidadeRestaurar" class="botao-geral identidade-visual__restaurar" type="button">Restaurar identidade completa</button><span class="identidade-visual__acoes-direita"><button class="botao-geral" type="button" data-identidade-fechar>Cancelar</button><button id="identidadeSalvar" class="botao-geral destaque" type="submit">Salvar alterações</button></span></div>
@@ -248,7 +254,7 @@
     modal.querySelector("#identidadeCorHex").addEventListener("blur", validarCorFormulario);
     modal.querySelector("#identidadeRestaurarCor").addEventListener("click", restaurarCorPadrao);
     modal.querySelector("#identidadeLogo").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogo", true, false, LOGO_MAX_BYTES, 15));
-    modal.querySelector("#identidadeLogin").addEventListener("change", e => previewArquivo(e.target, "#identidadePreviewLogin", false, true, LOGIN_MAX_INPUT_BYTES, 30));
+    modal.querySelector("#identidadeLogin").addEventListener("change", e => { selecionarImagemLogin(e.target).catch(() => {}); });
     modal.querySelector("#identidadePreviewLogin").addEventListener("load", atualizarDimensoesPreviewLogin);
     ["#identidadeEscala", "#identidadePosX", "#identidadePosY"].forEach(seletor => modal.querySelector(seletor).addEventListener("input", aplicarAjustePreview));
     modal.querySelector("#identidadeResetarEnquadramento").addEventListener("click", () => {
@@ -264,6 +270,7 @@
   function limparUrls() { urlsTemporarias.forEach(URL.revokeObjectURL); urlsTemporarias = []; }
 
   function preencherModal() {
+    cancelarImagemLogin();
     limparUrls();
     const modal = document.getElementById("modalIdentidadeVisual");
     modal.querySelector("#formIdentidadeVisual").reset();
@@ -414,27 +421,110 @@
     salvar.textContent = ativo ? texto : "Salvar alterações";
   }
 
-  async function prepararImagemLoginParaEnvio(form, dados) {
-    const arquivo = form.querySelector("#identidadeLogin")?.files?.[0];
+  /* ----------------------------------------------------------
+     Imagem lateral do login: preparada logo após a seleção.
+     A prévia exibe exatamente o arquivo que será enviado.
+  ---------------------------------------------------------- */
+  function arquivoHeif(arquivo) {
+    return /^image\/hei[cf]/i.test(arquivo?.type || "") || /\.(heic|heif)$/i.test(arquivo?.name || "");
+  }
+
+  function mensagemPreparoLogin(erro) {
+    const codigo = String(erro?.code || "");
+    if (codigo === "INPUT_TOO_LARGE") return "A imagem deve ter no máximo 40 MB.";
+    if (codigo === "BELOW_MIN_DIMENSIONS") return "A imagem precisa ter o lado menor com pelo menos 400 px e o maior com pelo menos 800 px.";
+    if (codigo === "FORMAT_UNSUPPORTED" || codigo === "TYPE_NOT_ALLOWED") return "Este formato não é compatível com seu navegador.";
+    if (codigo === "UNSUPPORTED_BROWSER") return "Este navegador não consegue preparar esta imagem. Escolha uma imagem menor ou atualize o navegador.";
+    if (["DIMENSIONS_EXCEEDED", "PROCESS_FAILED", "CANVAS_UNAVAILABLE", "ENCODE_FAILED", "OUTPUT_TOO_LARGE"].includes(codigo)) {
+      return "Esta imagem é muito grande para ser processada neste aparelho.";
+    }
+    if (codigo === "BUSY") return "Aguarde a imagem atual ser preparada.";
+    return "Não foi possível preparar esta imagem. Escolha outra foto ou tente novamente.";
+  }
+
+  function descartarLoginPreparado() {
+    if (loginPreparado?.url) URL.revokeObjectURL(loginPreparado.url);
+    loginPreparado = null;
+  }
+
+  function definirPreparoLogin(ativo) {
+    const modal = document.getElementById("modalIdentidadeVisual");
+    if (!modal) return;
+    const input = modal.querySelector("#identidadeLogin");
+    const botaoSalvar = modal.querySelector("#identidadeSalvar");
+    if (input) input.disabled = ativo;
+    if (botaoSalvar) botaoSalvar.disabled = ativo;
+    modal.querySelector(".identidade-visual__bloco-login")?.setAttribute?.("aria-busy", ativo ? "true" : "false");
+    const status = modal.querySelector("#identidadeLoginDimensoes");
+    if (ativo && status) status.textContent = "Estamos preparando sua imagem...";
+  }
+
+  /** Cancela a seleção em andamento (modal fechado/reaberto) e descarta o preparo. */
+  function cancelarImagemLogin() {
+    loginSelecaoToken += 1;
+    descartarLoginPreparado();
+    definirPreparoLogin(false);
+  }
+
+  async function selecionarImagemLogin(input) {
+    const arquivo = input?.files?.[0];
     if (!arquivo) return;
 
-    const processador = window.AmAgendaImageProcessor;
-    if (!processador || typeof processador.process !== "function") {
-      throw new Error("Não foi possível preparar a imagem para envio. Recarregue a página e tente novamente.");
+    const modal = document.getElementById("modalIdentidadeVisual");
+    const preview = modal?.querySelector("#identidadePreviewLogin");
+    const token = ++loginSelecaoToken;
+
+    if (!TIPOS.includes(arquivo.type) && !arquivoHeif(arquivo)) {
+      toast("Envie uma imagem JPG, PNG ou WebP.", "danger"); input.value = ""; return;
+    }
+    if (arquivo.size <= 0 || arquivo.size > LOGIN_MAX_INPUT_BYTES) {
+      toast("A imagem deve ter no máximo 40 MB.", "danger"); input.value = ""; return;
     }
 
-    const processado = await processador.process(arquivo, {
-      maxBytes: LOGIN_UPLOAD_TARGET_BYTES,
-      maxInputBytes: LOGIN_MAX_INPUT_BYTES,
-      maxSide: LOGIN_MAX_SIDE,
-      allowedTypes: TIPOS
-    });
-    const arquivoEnvio = processado.file;
-    if (!arquivoEnvio || arquivoEnvio.size <= 0 || arquivoEnvio.size > LOGIN_UPLOAD_TARGET_BYTES || !TIPOS.includes(arquivoEnvio.type)) {
-      throw new Error("Não foi possível reduzir a imagem para o limite aceito pelo servidor.");
-    }
+    definirPreparoLogin(true);
+    // Um preparo cancelado ainda pode estar terminando: aguarda (processador é exclusivo).
+    if (loginPreparacao) await loginPreparacao.catch(() => {});
+    if (token !== loginSelecaoToken) return;
 
-    dados.set("imagem_login", arquivoEnvio, arquivoEnvio.name || arquivo.name || "imagem-login");
+    const tarefa = (async () => {
+      const processador = window.AmAgendaImageProcessor;
+      if (!processador || typeof processador.process !== "function") {
+        throw new Error("Não foi possível preparar esta imagem. Recarregue a página e tente novamente.");
+      }
+      return processador.process(arquivo, {
+        maxBytes: LOGIN_UPLOAD_TARGET_BYTES,
+        maxInputBytes: LOGIN_MAX_INPUT_BYTES,
+        maxSide: LOGIN_MAX_SIDE,
+        minShortSide: LOGIN_LADO_MENOR_MIN,
+        minLongSide: LOGIN_LADO_MAIOR_MIN,
+        allowedTypes: TIPOS,
+        allowHeic: true
+      });
+    })();
+    loginPreparacao = tarefa;
+
+    try {
+      const resultado = await tarefa;
+      if (token !== loginSelecaoToken) return;
+      const final = resultado?.file;
+      if (!final || final.size <= 0 || final.size > LOGIN_UPLOAD_TARGET_BYTES || !TIPOS.includes(final.type)) {
+        throw new Error("Não foi possível preparar esta imagem. Escolha outra foto ou tente novamente.");
+      }
+      descartarLoginPreparado();
+      loginPreparado = { file: final, url: URL.createObjectURL(final) };
+      if (preview) preview.src = loginPreparado.url;
+    } catch (erro) {
+      if (token !== loginSelecaoToken) return;
+      // Mantém a imagem anterior (persistida ou preparada antes) e libera a seleção.
+      input.value = "";
+      toast(erro?.code ? mensagemPreparoLogin(erro) : (erro?.message || mensagemPreparoLogin(erro)), "danger");
+    } finally {
+      if (loginPreparacao === tarefa) loginPreparacao = null;
+      if (token === loginSelecaoToken) {
+        definirPreparoLogin(false);
+        if (!loginPreparado || preview?.complete) atualizarDimensoesPreviewLogin();
+      }
+    }
   }
 
   function abrirModal() {
@@ -450,7 +540,7 @@
     const modal = document.getElementById("modalIdentidadeVisual");
     if (!modal) return;
     modal.classList.remove("ativo"); modal.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-aberto"); limparUrls();
+    document.body.classList.remove("modal-aberto"); cancelarImagemLogin(); limparUrls();
     modal.querySelector("#formIdentidadeVisual").reset();
     focoAnterior?.focus?.();
   }
@@ -458,15 +548,31 @@
   async function salvar(e) {
     e.preventDefault();
     const form = e.currentTarget;
+    if (salvando) return;
+    if (loginPreparacao) { toast("Aguarde a imagem ser preparada.", "danger"); return; }
     const nome = form.querySelector("#identidadeNome").value.trim();
     if (nome.length > 80) { toast("O nome exibido deve ter no máximo 80 caracteres.", "danger"); return; }
     if (!validarCorFormulario()) { toast("Informe a cor principal no formato #RRGGBB.", "danger"); return; }
     // FormData deve ser criado antes de desabilitar os inputs; controles disabled não são enviados.
+    salvando = true;
+    try {
+      // Seleção sem preparo concluído (evento não disparado): prepara antes de enviar.
+      const inputLogin = form.querySelector("#identidadeLogin");
+      if (inputLogin?.files?.[0] && !loginPreparado) {
+        await selecionarImagemLogin(inputLogin);
+        if (!loginPreparado) return;
+      }
+    } finally {
+      salvando = false;
+    }
     const dados = new FormData(form);
     dados.set("cor_primaria", corPadraoPendente ? "" : form.querySelector("#identidadeCorHex").value.toUpperCase());
+    // Nunca envia o original selecionado: somente o arquivo preparado (= prévia).
+    if (loginPreparado) dados.set("imagem_login", loginPreparado.file, loginPreparado.file.name || "imagem-login");
+    else if (typeof dados.delete === "function") dados.delete("imagem_login");
+    salvando = true;
     setBusy(true);
     try {
-      await prepararImagemLoginParaEnvio(form, dados);
       const resposta = await fetch(`${API}empresa/identidade-visual/salvar`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") }, body: dados });
       const json = await resposta.json().catch(() => null);
       if (resposta.status === 413) throw new Error("A requisição excede o limite aceito pelo servidor. A logo pode ter até 15 MB e a imagem lateral do login até 5 MB.");
@@ -474,7 +580,7 @@
       aplicar(json.data); document.dispatchEvent(new CustomEvent("amagenda:identidade-atualizada", { detail: identidade }));
       fecharModal(); toast(json.user_msg || "Identidade visual atualizada.");
     } catch (erro) { toast(erro.message || "Não foi possível salvar.", "danger"); }
-    finally { setBusy(false); }
+    finally { salvando = false; setBusy(false); }
   }
 
   async function restaurar() {

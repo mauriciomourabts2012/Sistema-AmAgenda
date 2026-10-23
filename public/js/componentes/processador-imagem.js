@@ -23,9 +23,16 @@
    - O canvas de saída nunca passa de maxSide × maxSide (padrão 1024), bem abaixo
      do limite de área de canvas do iOS (~16,7 MP).
 
-   HEIC/HEIF (fase futura): o ponto de extensão é decodeImage() + readImageInfo().
-   Um decodificador futuro deve devolver { source, width, height, release } e o
-   restante do fluxo permanece igual. Nada é liberado nesta fase.
+   Fase 3 (compatível com os contratos das Fases 1 e 2):
+   - Transparência detectada pelos pixels (não pela extensão/tipo).
+   - Sem transparência: WebP quando o navegador realmente codifica WebP (tipo
+     conferido no Blob gerado); caso contrário JPEG. JPEG de origem segue JPEG.
+   - Com transparência: WebP real ou, sem encoder WebP (ex.: iPhone), PNG.
+   - Se o arquivo final ainda exceder maxBytes, as dimensões são reduzidas
+     progressivamente (passos limitados), respeitando minShortSide/minLongSide.
+   - HEIC/HEIF: somente com allowHeic=true; usa a decodificação nativa do
+     navegador e sempre converte para um formato aceito. Sem suporte nativo,
+     informa "Este formato não é compatível com seu navegador."
 ========================================================== */
 (() => {
   "use strict";
@@ -44,6 +51,10 @@
     maxInputSide: 16384
   });
   const QUALITY_STEPS = [0.85, 0.78, 0.7, 0.6];
+  const DOWNSCALE_FACTOR = 0.85;
+  const DOWNSCALE_MAX_STEPS = 10;
+  const DOWNSCALE_QUALITY = 0.75;
+  const HEIF_BRANDS = ["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"];
   const EXT_BY_TYPE = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -53,8 +64,10 @@
   const MSG_INVALID = "Não foi possível ler a imagem. O arquivo pode estar corrompido ou em um formato não suportado.";
   const MSG_TYPE = "Formato inválido. Envie uma imagem JPG, PNG ou WEBP.";
   const MSG_MEMORY = "Não foi possível processar a imagem neste dispositivo. Tente uma imagem menor.";
+  const MSG_FORMAT = "Este formato não é compatível com seu navegador.";
 
   let busy = false;
+  let webpSupportPromise = null;
 
   class ImageProcessError extends Error {
     constructor(code, message) {
@@ -193,7 +206,31 @@
       return readJpegInfo(file);
     }
 
+    // HEIF/HEIC: caixa ftyp com marca HEIF (dimensões pela caixa ispe, se houver)
+    if (ascii(head, 4, 4) === "ftyp" && HEIF_BRANDS.includes(ascii(head, 8, 4).toLowerCase())) {
+      return readHeifInfo(file);
+    }
+
     return null;
+  }
+
+  async function readHeifInfo(file) {
+    // Melhor esforço: maior caixa "ispe" nos primeiros 256 KB. Sem ela, as
+    // dimensões ficam 0 e o limite de pixels é conferido após a decodificação.
+    const v = await readBytes(file, 0, 256 * 1024);
+    let width = 0;
+    let height = 0;
+    for (let i = 0; i + 16 <= v.byteLength; i++) {
+      if (v.getUint8(i) === 0x69 && ascii(v, i, 4) === "ispe") {
+        const w = v.getUint32(i + 8);
+        const h = v.getUint32(i + 12);
+        if (w > 0 && h > 0 && w * h > width * height) {
+          width = w;
+          height = h;
+        }
+      }
+    }
+    return { type: "image/heic", width, height, heif: true };
   }
 
   /* ==========================================================
@@ -259,22 +296,58 @@
     });
   }
 
-  async function encode(canvas, preferredType, maxBytes) {
-    const steps = preferredType === "image/png" ? [undefined] : QUALITY_STEPS;
+  /** Suporte REAL à codificação WebP (o Blob gerado precisa ser image/webp). */
+  function webpEncodeSupported() {
+    if (!webpSupportPromise) {
+      webpSupportPromise = (async () => {
+        const probe = document.createElement("canvas");
+        probe.width = 2;
+        probe.height = 2;
+        try {
+          const blob = await canvasToBlob(probe, "image/webp", 0.8);
+          return !!blob && blob.type === "image/webp";
+        } finally {
+          probe.width = 0;
+          probe.height = 0;
+        }
+      })().catch(() => false);
+    }
+    return webpSupportPromise;
+  }
+
+  /** Transparência real: procura algum pixel com alfa < 255 (leitura em faixas). */
+  function hasTransparency(ctx, width, height) {
+    const rowsPerStrip = Math.max(1, Math.floor(4194304 / Math.max(1, width * 4))); // ~4 MB por faixa
+    try {
+      for (let y = 0; y < height; y += rowsPerStrip) {
+        const rows = Math.min(rowsPerStrip, height - y);
+        const data = ctx.getImageData(0, y, width, rows).data;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] < 255) return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      // Sem leitura de pixels: assume transparência para nunca descartar o alfa.
+      return true;
+    }
+  }
+
+  /**
+   * Codifica no tipo pedido. Retorna null quando o navegador não codifica esse
+   * tipo (o Blob volta com outro MIME), para o chamador escolher o fallback.
+   */
+  async function encode(canvas, type, maxBytes, qualitySteps = QUALITY_STEPS) {
+    const steps = type === "image/png" ? [undefined] : qualitySteps;
     let last = null;
 
     for (const quality of steps) {
-      const blob = await canvasToBlob(canvas, preferredType, quality);
+      const blob = await canvasToBlob(canvas, type, quality);
       if (!blob) {
         throw new ImageProcessError("ENCODE_FAILED", MSG_MEMORY);
       }
-
-      // Encoder sem suporte ao tipo (ex.: WebP em Safari antigo devolve PNG).
-      if (blob.type !== preferredType) {
-        if (preferredType === "image/webp") {
-          return encode(canvas, "image/png", maxBytes);
-        }
-        throw new ImageProcessError("ENCODE_UNSUPPORTED", MSG_MEMORY);
+      if (blob.type !== type) {
+        return null;
       }
 
       last = blob;
@@ -282,6 +355,37 @@
     }
 
     return last;
+  }
+
+  /** Ordem de formatos de saída conforme a origem e a transparência real. */
+  async function outputCandidates(sourceType, transparent, allowedTypes) {
+    const webp = (await webpEncodeSupported()) ? ["image/webp"] : [];
+    let order;
+    if (transparent) {
+      order = [...webp, "image/png"];
+    } else if (sourceType === "image/jpeg" || sourceType === "image/heic") {
+      // Fotografias (JPEG/HEIC) seguem em JPEG, o formato mais compatível.
+      order = ["image/jpeg"];
+    } else {
+      order = [...webp, "image/jpeg", "image/png"];
+    }
+    return order.filter((type) => allowedTypes.includes(type));
+  }
+
+  function downscaleCanvas(source, width, height) {
+    const next = document.createElement("canvas");
+    next.width = width;
+    next.height = height;
+    const ctx = next.getContext("2d");
+    if (!ctx) {
+      next.width = 0;
+      next.height = 0;
+      throw new ImageProcessError("CANVAS_UNAVAILABLE", MSG_MEMORY);
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(source, 0, 0, width, height);
+    return next;
   }
 
   function buildFileName(originalName, type) {
@@ -319,8 +423,25 @@
       maxInputBytes: Math.max(num(opts.maxInputBytes, DEFAULTS.maxInputBytes), maxBytes),
       keepOriginalMaxBytes: Math.min(num(opts.keepOriginalMaxBytes, DEFAULTS.keepOriginalMaxBytes), maxBytes),
       maxPixels: num(opts.maxPixels, isLowMemoryDevice() ? DEFAULTS.lowMemoryMaxPixels : DEFAULTS.maxPixels),
-      maxInputSide: num(opts.maxInputSide, DEFAULTS.maxInputSide)
+      maxInputSide: num(opts.maxInputSide, DEFAULTS.maxInputSide),
+      minShortSide: num(opts.minShortSide, 0),
+      minLongSide: num(opts.minLongSide, 0),
+      allowHeic: opts.allowHeic === true
     };
+  }
+
+  function belowMinimum(width, height, opts) {
+    return (
+      (opts.minShortSide > 0 && Math.min(width, height) < opts.minShortSide) ||
+      (opts.minLongSide > 0 && Math.max(width, height) < opts.minLongSide)
+    );
+  }
+
+  function belowMinimumError(opts) {
+    return new ImageProcessError(
+      "BELOW_MIN_DIMENSIONS",
+      `A imagem precisa ter o lado menor com pelo menos ${opts.minShortSide} px e o maior com pelo menos ${opts.minLongSide} px.`
+    );
   }
 
   /* ==========================================================
@@ -332,8 +453,10 @@
        maxSide                  lado maior da saída (padrão 1024 px)
        keepOriginalMaxBytes     até este tamanho e <= maxSide, mantém o original
        maxPixels / maxInputSide limites de segurança de memória
+       minShortSide / minLongSide resolução mínima da saída (padrão 0 = sem mínimo)
+       allowHeic                aceita HEIC/HEIF com decodificação nativa (padrão false)
      retorno: { file, optimized, reason, width, height,
-                originalWidth, originalHeight, originalSize }
+                originalWidth, originalHeight, originalSize, transparent? }
   ========================================================== */
   async function process(file, options) {
     const opts = resolveOptions(options);
@@ -392,18 +515,29 @@
         throw new ImageProcessError("HEADER_INVALID", MSG_INVALID);
       }
 
-      if (!opts.allowedTypes.includes(info.type)) {
+      if (info.heif) {
+        if (!opts.allowHeic) {
+          throw new ImageProcessError("TYPE_NOT_ALLOWED", MSG_TYPE);
+        }
+      } else if (!opts.allowedTypes.includes(info.type)) {
         throw new ImageProcessError("TYPE_NOT_ALLOWED", MSG_TYPE);
       }
 
-      if (!(info.width > 0 && info.height > 0)) {
+      // HEIF sem caixa ispe: dimensões desconhecidas até a decodificação.
+      const dimensoesConhecidas = info.width > 0 && info.height > 0;
+      if (!dimensoesConhecidas && !info.heif) {
         throw new ImageProcessError("INVALID_DIMENSIONS", MSG_INVALID);
       }
 
+      if (dimensoesConhecidas && belowMinimum(info.width, info.height, opts)) {
+        throw belowMinimumError(opts);
+      }
+
       if (
+        dimensoesConhecidas && (
         info.width > opts.maxInputSide ||
         info.height > opts.maxInputSide ||
-        info.width * info.height > opts.maxPixels
+        info.width * info.height > opts.maxPixels)
       ) {
         const mp = Math.round(opts.maxPixels / 1000000);
         throw new ImageProcessError(
@@ -415,6 +549,10 @@
       try {
         decoded = await decodeImage(file);
       } catch (err) {
+        if (info.heif) {
+          // HEIC/HEIF sem decodificação nativa neste navegador.
+          throw new ImageProcessError("FORMAT_UNSUPPORTED", MSG_FORMAT);
+        }
         if (err instanceof ImageProcessError) throw err;
         throw new ImageProcessError("DECODE_FAILED", MSG_INVALID);
       }
@@ -424,21 +562,33 @@
       if (width <= 0 || height <= 0 || width * height > opts.maxPixels) {
         throw new ImageProcessError("INVALID_DIMENSIONS", MSG_INVALID);
       }
+      if (belowMinimum(width, height, opts)) {
+        throw belowMinimumError(opts);
+      }
 
-      const scale = Math.min(1, opts.maxSide / Math.max(width, height));
+      // Escala limitada pelo lado maior, sem nunca violar a resolução mínima.
+      let scale = Math.min(1, opts.maxSide / Math.max(width, height));
+      if (opts.minShortSide > 0) {
+        scale = Math.max(scale, Math.min(1, opts.minShortSide / Math.min(width, height)));
+      }
+      if (opts.minLongSide > 0) {
+        scale = Math.max(scale, Math.min(1, opts.minLongSide / Math.max(width, height)));
+      }
       const needsResize = scale < 1;
+      // HEIC (ou outro tipo não aceito no envio) nunca é enviado como original.
+      const originalAceito = !info.heif && opts.allowedTypes.includes(info.type);
       const base = {
         originalWidth: width,
         originalHeight: height,
         originalSize: file.size
       };
 
-      if (!needsResize && file.size <= opts.keepOriginalMaxBytes) {
+      if (!needsResize && originalAceito && file.size <= opts.keepOriginalMaxBytes) {
         return { ...base, file, optimized: false, reason: "original", width, height };
       }
 
-      const targetWidth = Math.max(1, Math.round(width * scale));
-      const targetHeight = Math.max(1, Math.round(height * scale));
+      let targetWidth = Math.max(1, Math.round(width * scale));
+      let targetHeight = Math.max(1, Math.round(height * scale));
 
       canvas = document.createElement("canvas");
       canvas.width = targetWidth;
@@ -457,13 +607,58 @@
       decoded.release();
       decoded = null;
 
-      const preferredType = info.type === "image/jpeg" ? "image/jpeg" : "image/webp";
-      const blob = await encode(canvas, preferredType, opts.maxBytes);
+      // JPEG não possui canal alfa; demais origens são verificadas pelos pixels.
+      const transparent = info.type === "image/jpeg"
+        ? false
+        : hasTransparency(ctx, targetWidth, targetHeight);
+
+      let outputType = "";
+      let blob = null;
+      for (const candidate of await outputCandidates(info.type, transparent, opts.allowedTypes)) {
+        blob = await encode(canvas, candidate, opts.maxBytes);
+        if (blob) {
+          outputType = candidate;
+          break;
+        }
+      }
+
+      if (!blob) {
+        throw new ImageProcessError("OUTPUT_TYPE_INVALID", info.heif ? MSG_FORMAT : MSG_MEMORY);
+      }
 
       // Sem redimensionamento e sem ganho: mantém o original somente se ele
       // respeitar o limite final (nunca envia original acima do backend).
-      if (!needsResize && blob.size >= file.size && file.size <= opts.maxBytes) {
+      if (!needsResize && originalAceito && blob.size >= file.size && file.size <= opts.maxBytes) {
         return { ...base, file, optimized: false, reason: "original", width, height };
+      }
+
+      // Ainda acima do limite: reduz as dimensões em passos limitados, sem
+      // ultrapassar a resolução mínima (necessário, p.ex., para PNG com alfa
+      // em navegadores sem encoder WebP).
+      let atual = canvas;
+      for (let step = 0; blob.size > opts.maxBytes && step < DOWNSCALE_MAX_STEPS; step++) {
+        const nextWidth = Math.round(targetWidth * DOWNSCALE_FACTOR);
+        const nextHeight = Math.round(targetHeight * DOWNSCALE_FACTOR);
+        if (nextWidth < 1 || nextHeight < 1 || belowMinimum(nextWidth, nextHeight, opts)) break;
+
+        const proximo = downscaleCanvas(atual, nextWidth, nextHeight);
+        if (atual !== canvas) {
+          atual.width = 0;
+          atual.height = 0;
+        }
+        atual = proximo;
+        targetWidth = nextWidth;
+        targetHeight = nextHeight;
+
+        const reduzido = await encode(atual, outputType, opts.maxBytes, [DOWNSCALE_QUALITY]);
+        if (!reduzido) {
+          throw new ImageProcessError("ENCODE_FAILED", MSG_MEMORY);
+        }
+        blob = reduzido;
+      }
+      if (atual !== canvas) {
+        atual.width = 0;
+        atual.height = 0;
       }
 
       if (!opts.allowedTypes.includes(blob.type)) {
@@ -483,7 +678,8 @@
         optimized: true,
         reason: "optimized",
         width: targetWidth,
-        height: targetHeight
+        height: targetHeight,
+        transparent
       };
     } catch (err) {
       if (err instanceof ImageProcessError) throw err;

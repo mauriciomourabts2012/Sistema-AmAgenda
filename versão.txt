@@ -1,7 +1,7 @@
 #TODA VEZ ANTES DE INICIAR UM COMMIT FAÇA A INFORMAÇÃO DE VERSÃO DO SISTEMA, PARA ISSO EXECUTE UM DOS COMANDOS ABAIXO:
 
-1- php tools/release-version.php minor --dry-run 
-2- php tools/release-version.php minor 
+1- php tools/release-version.php patch --dry-run
+2- php tools/release-version.php patch 
 3- php tools/release-version.php check
 
 
