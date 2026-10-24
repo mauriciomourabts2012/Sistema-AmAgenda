@@ -12,6 +12,7 @@ declare(strict_types=1);
  * - Email é OBRIGATÓRIO
  * - Plano é OBRIGATÓRIO
  * - Status é OBRIGATÓRIO
+ * - conceder_teste_gratis é OBRIGATÓRIO ('1' concede 30 dias de teste; '0' cria a assinatura paga)
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -150,6 +151,10 @@ if ($observacao === '') {
 
 $planoId = intOrNull('plano_id');
 
+// Decisão explícita do Super Admin; o período e as datas são definidos somente no servidor.
+$concederTesteRaw = trim((string)($_POST['conceder_teste_gratis'] ?? ''));
+$concederTeste = $concederTesteRaw === '1';
+
 /* ==========================================================
    VALIDAÇÕES
 ========================================================== */
@@ -202,6 +207,11 @@ if ($status === '') {
     $erros['status'] = 'Selecione o status.';
 } elseif (!in_array($status, $allowedStatus, true)) {
     $erros['status'] = 'Status inválido.';
+}
+
+// teste grátis obrigatório e estritamente booleano
+if (!in_array($concederTesteRaw, ['0', '1'], true)) {
+    $erros['conceder_teste_gratis'] = 'Informe se a empresa receberá o teste grátis.';
 }
 
 if (!empty($erros)) {
@@ -363,8 +373,33 @@ try {
     $statusAssinatura = 'ativa';
     $valorContratado = (float)$plano['preco_mensal'];
     $periodicidadeAssinatura = (string)$plano['cobranca'];
+    $modalidadeAssinatura = 'paga';
+    $testeIniciadoEm = null;
+    $testeExpiraEm = null;
 
-    $assinaturaCriada = assinaturaServicoCriar($conexao, [
+    if ($concederTeste) {
+        // Mesmo critério do cadastro público: as três datas derivam do mesmo CURRENT_TIMESTAMP do banco,
+        // a referência usada pelas regras de acesso e pela expiração automática do teste.
+        $resInstantes = $conexao->query(
+            "SELECT DATE_FORMAT(CURRENT_TIMESTAMP, '%Y-%m-%d %H:%i:%s') AS teste_iniciado_em,
+                    DATE_FORMAT(DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 30 DAY), '%Y-%m-%d %H:%i:%s') AS teste_expira_em,
+                    DATE_FORMAT(CURRENT_TIMESTAMP, '%Y-%m-%d') AS data_inicio"
+        );
+        $instanteTeste = $resInstantes instanceof mysqli_result ? $resInstantes->fetch_assoc() : null;
+        if ($resInstantes instanceof mysqli_result) {
+            $resInstantes->free();
+        }
+        if (!$instanteTeste) {
+            throw new RuntimeException('Não foi possível determinar o período de teste.');
+        }
+
+        $dataInicioAssinatura = (string)$instanteTeste['data_inicio'];
+        $modalidadeAssinatura = 'teste';
+        $testeIniciadoEm = (string)$instanteTeste['teste_iniciado_em'];
+        $testeExpiraEm = (string)$instanteTeste['teste_expira_em'];
+    }
+
+    $dadosAssinatura = [
         'id_empresa' => $idEmpresa,
         'id_plano' => $planoId,
         'valor_contratado' => $valorContratado,
@@ -372,8 +407,14 @@ try {
         'dia_vencimento' => $diaVencimentoAssinatura,
         'data_inicio' => $dataInicioAssinatura,
         'status' => $statusAssinatura,
-        'modalidade' => 'paga',
-    ]);
+        'modalidade' => $modalidadeAssinatura,
+    ];
+    if ($concederTeste) {
+        $dadosAssinatura['teste_iniciado_em'] = $testeIniciadoEm;
+        $dadosAssinatura['teste_expira_em'] = $testeExpiraEm;
+    }
+
+    $assinaturaCriada = assinaturaServicoCriar($conexao, $dadosAssinatura);
     $idAssinatura = (int)$assinaturaCriada['id_assinatura'];
 
     auditoriaRegistrar($conexao, 'assinatura.criada', [
@@ -389,6 +430,9 @@ try {
             'dia_vencimento' => $diaVencimentoAssinatura,
             'data_inicio' => $dataInicioAssinatura,
             'status' => $statusAssinatura,
+            'modalidade' => $modalidadeAssinatura,
+            'teste_iniciado_em' => $testeIniciadoEm,
+            'teste_expira_em' => $testeExpiraEm,
         ]]],
         'contexto' => ['origem' => 'painel_super_admin'],
     ]);
@@ -428,6 +472,12 @@ try {
             'status' => $status,
             'endereco' => $endereco,
             'observacao' => $observacao,
+            'assinatura' => [
+                'id_assinatura' => $idAssinatura,
+                'modalidade' => $modalidadeAssinatura,
+                'teste_iniciado_em' => $testeIniciadoEm,
+                'teste_expira_em' => $testeExpiraEm,
+            ],
             'configuracao_geral_empresa' => [
                 'inicio_semana' => 'segunda',
                 'intervalo_padrao_min' => 10,

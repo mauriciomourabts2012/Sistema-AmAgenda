@@ -666,9 +666,21 @@ function pagamentoCartaoAplicarPerfil(mysqli $db, array $vinculo, array $perfil,
         pagamentoCartaoMarcarErro($db, $vinculo, 'PROFILE_CONFLICT');
         pagamentoOnlineFalhar('CARTAO_PERFIL_CONFLITO', 'O perfil de pagamento precisa de verificação.', 409);
     }
-    $ativo = $statusPerfil === 'READY' && $statusMetodo === 'READY' && $meioId !== null && $cartaoId !== null && $final !== null;
+    // Os 4 últimos dígitos (last_four_digits) servem somente para exibição: são gravados quando
+    // vierem no formato válido, mas não condicionam a ativação. A ativação continua exigindo perfil
+    // e método READY e os identificadores do meio de pagamento e do cartão.
+    $ativo = $statusPerfil === 'READY' && $statusMetodo === 'READY' && $meioId !== null && $cartaoId !== null;
     $rejeitado = $statusPerfil === 'CANCELLED' || in_array($statusMetodo, ['REJECTED','DISABLED'], true);
     $statusLocal = $ativo ? 'ativa' : ($rejeitado ? 'erro' : 'pendente');
+    // Diagnóstico sem dado sensível, na coluna existente status_externo (somente quando não ativo;
+    // o vínculo ativo mantém 'READY', exigido pelo processador recorrente). Códigos com no máximo
+    // 18 caracteres, o mesmo limite já usado por pagamentoCartaoMarcarErro ('CUSTOMER_RECOVERED').
+    $statusExternoLocal = $statusPerfil;
+    if (!$ativo && $statusPerfil === 'READY') {
+        $statusExternoLocal = $statusMetodo !== 'READY'
+            ? 'METHOD_' . $statusMetodo
+            : 'PROFILE_INCOMPLETE';
+    }
 
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar atualização do perfil de pagamento.');
     try {
@@ -693,7 +705,7 @@ function pagamentoCartaoAplicarPerfil(mysqli $db, array $vinculo, array $perfil,
         } else {
             pagamentoOnlineExec($db,
                 'UPDATE assinatura_pagamento_recorrente SET perfil_externo_id=?,meio_pagamento_externo_id=?,cartao_externo_id=?,bandeira=?,final_cartao=?,status=?,status_externo=?,slot_ativo=NULL,cobrar_a_partir_de=NULL WHERE id_assinatura_pagamento=? AND id_empresa=?',
-                'sssssssii', $perfilId, $meioId, $cartaoId, $bandeira, $final, $statusLocal, $statusPerfil,
+                'sssssssii', $perfilId, $meioId, $cartaoId, $bandeira, $final, $statusLocal, $statusExternoLocal,
                 (int)$vinculo['id_assinatura_pagamento'], (int)$vinculo['id_empresa']);
         }
         if (!$db->commit()) throw new RuntimeException('Falha ao confirmar perfil de pagamento.');

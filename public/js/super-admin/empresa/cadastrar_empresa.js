@@ -35,6 +35,7 @@
   const elStatus = document.getElementById("emp_status");
   const elEndereco = document.getElementById("emp_endereco");
   const elObservacao = document.getElementById("emp_obs");
+  const elTesteGratis = document.getElementById("emp_teste_gratis");
 
   let reloadTimer = null;
 
@@ -243,6 +244,7 @@
       endereco: "emp_endereco",
       observacao: "emp_obs",
       obs: "emp_obs",
+      conceder_teste_gratis: "emp_teste_gratis",
     };
 
     const realFieldId = alias[fieldId] || fieldId;
@@ -288,6 +290,7 @@
     elStatus,
     elEndereco,
     elObservacao,
+    elTesteGratis,
   ].forEach(bindClearOnInput);
 
   // ==========================================================
@@ -370,6 +373,7 @@
       status: normalizarTexto(elStatus?.value),
       endereco: normalizarTexto(elEndereco?.value),
       observacao: normalizarTexto(elObservacao?.value),
+      conceder_teste_gratis: elTesteGratis ? elTesteGratis.checked : null,
     };
   }
 
@@ -461,6 +465,12 @@
       ok = false;
     }
 
+    // TESTE GRÁTIS obrigatório (o controle precisa existir para a decisão ser explícita)
+    if (typeof dados.conceder_teste_gratis !== "boolean") {
+      setFieldError("emp_teste_gratis", "Não foi possível identificar a opção de teste grátis.");
+      ok = false;
+    }
+
     if (!ok) focusFirstError();
     return ok;
   }
@@ -489,6 +499,7 @@
     clearErrors();
 
     if (elStatus) elStatus.value = "ativo";
+    if (elTesteGratis) elTesteGratis.checked = true;
 
     if (elPlanoId && window.SelectListaUniversal?.carregar) {
       window.SelectListaUniversal.carregar("planos_ativos", "emp_plano", { force: true });
@@ -535,6 +546,7 @@
     fd.append("status", dados.status);
     fd.append("endereco", dados.endereco || "");
     fd.append("observacao", dados.observacao || "");
+    fd.append("conceder_teste_gratis", dados.conceder_teste_gratis ? "1" : "0");
 
     setLoading(true);
 
