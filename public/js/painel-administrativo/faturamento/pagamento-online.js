@@ -233,7 +233,7 @@
       cartao.controller = await bricksBuilder.create("cardPayment", "cardPaymentBrick_container", {
         initialization: { amount: Number(cfg.valor_referencia || 0) },
         customization: {
-          paymentMethods: { minInstallments: 1, maxInstallments: 1, types: { excluded: ["debit_card", "prepaid_card"] } },
+          paymentMethods: { minInstallments: 1, maxInstallments: 1, types: { excluded: ["debit_card", "prepaid-card"] } },
           visual: { style: { theme: "default" }, texts: { formTitle: "Cartão de crédito", installmentsSectionTitle: "", formSubmit: "Autorizar cartão" } }
         },
         callbacks: {
