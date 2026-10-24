@@ -5,6 +5,10 @@
    - 30 s com a aba visível; pausa com a aba oculta e atualiza
      imediatamente ao voltar;
    - backoff progressivo em erro e parada definitiva em 401/403;
+   - parada definitiva quando o sessao.js confirma a perda da sessão
+     (evento "amagenda:sessao-encerrada"); durante inatividade, as
+     consultas automáticas ficam retidas pelo sessao.js e só seguem após
+     nova interação e revalidação, sem manter a sessão PHP viva;
    - publica o estado no evento "amagenda:chat-nao-lidas".
    Os consumidores (menu, página do Chat, modais, cards e a Central de
    Notificações do cliente) apenas reagem ao evento; nenhum deles cria
@@ -190,6 +194,8 @@
     atualizarAgora();
   });
   document.addEventListener("amagenda:sessao-carregada", iniciar);
+  // Sessão encerrada: nenhum ciclo é reiniciado (nem pelo retorno à aba).
+  document.addEventListener("amagenda:sessao-encerrada", parar);
   document.addEventListener("DOMContentLoaded", iniciar);
 
   window.ChatNaoLidas = Object.freeze({

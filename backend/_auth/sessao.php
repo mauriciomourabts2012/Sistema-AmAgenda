@@ -58,6 +58,35 @@ if ($clienteAuth) {
       $clienteId
     );
 
+    // Identificador público da empresa do cliente, obtido do banco (mesmo
+    // contrato da sessão interna). Permite ao frontend voltar ao resolvedor
+    // oficial /agendar/{slug} mesmo após a perda completa da sessão PHP.
+    // Nunca usa dado do navegador; falha na consulta não invalida a sessão.
+    $clienteEmpresaSlug = '';
+    if (!isset($conexao) || !($conexao instanceof mysqli)) {
+      require __DIR__ . '/../_config/conexao.php';
+    }
+    $stmtSlugCliente = $conexao->prepare(
+      "SELECT slug
+         FROM empresa
+        WHERE id_empresa = ?
+          AND status = 'ativo'
+        LIMIT 1"
+    );
+    if ($stmtSlugCliente) {
+      $stmtSlugCliente->bind_param('i', $clienteEmpresaId);
+      if ($stmtSlugCliente->execute()) {
+        $resultadoSlugCliente = $stmtSlugCliente->get_result();
+        $empresaCliente = $resultadoSlugCliente ? ($resultadoSlugCliente->fetch_assoc() ?: null) : null;
+        $slugCandidato = trim((string)($empresaCliente['slug'] ?? ''));
+        if (strlen($slugCandidato) <= 160
+          && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slugCandidato) === 1) {
+          $clienteEmpresaSlug = $slugCandidato;
+        }
+      }
+      $stmtSlugCliente->close();
+    }
+
     out([
       'ok' => true,
       'code' => 'CLIENT_AUTHENTICATED',
@@ -66,6 +95,8 @@ if ($clienteAuth) {
           'id_cliente' => $clienteId,
           'id_empresa' => $clienteEmpresaId,
           'empresa_id' => $clienteEmpresaId,
+          'empresa_slug' => $clienteEmpresaSlug,
+          'agenda_online_path' => $clienteEmpresaSlug !== '' ? '/agendar/' . rawurlencode($clienteEmpresaSlug) : '',
           'telefone' => $clienteTelefone,
           'telefone_verificado' => true,
           'cadastro_completo' => $cadastroCompleto,
@@ -75,6 +106,9 @@ if ($clienteAuth) {
           'tipo_usuario' => 'cliente',
           'status' => 'ativo',
           'modo_visualizacao' => true,
+          // Prazo de inatividade calculado pelo servidor (somente informativo ao frontend).
+          'sessao_inatividade_limite_segundos' => sessaoInatividadeLimite('cliente'),
+          'sessao_expira_em_segundos' => sessaoInatividadeRestante('cliente'),
           'csrf_token' => csrfTokenSessao(),
         ]
       ]
@@ -93,6 +127,10 @@ if (!$auth || empty($auth['id_usuario'])) {
     'user_msg' => 'Sessão expirada. Faça login novamente.'
   ], 401);
 }
+
+// Inatividade (política do servidor) antes de qualquer outra validação.
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
+sessaoInatividadeExigir('interno');
 
 // (Opcional) Bloqueia usuário inativo mesmo com sessão antiga
 $status = (string)($auth['status'] ?? '');
@@ -264,6 +302,9 @@ out([
       'deve_alterar_senha' => $deveAlterarSenha,
       'senha_temporaria_vencida' => $senhaTemporariaVencida,
       'permissoes'    => $permissoesEfetivas,
+      // Prazo de inatividade calculado pelo servidor (somente informativo ao frontend).
+      'sessao_inatividade_limite_segundos' => sessaoInatividadeLimite('interno'),
+      'sessao_expira_em_segundos' => sessaoInatividadeRestante('interno'),
       'csrf_token'    => csrfTokenSessao(),
     ]
   ]

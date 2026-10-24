@@ -16,6 +16,11 @@ if ($idUsuarioSuperAdmin <= 0) {
     out(['ok' => false, 'code' => 'NOT_AUTHENTICATED', 'user_msg' => 'Sessão expirada. Faça login novamente.'], 401);
 }
 
+// Inatividade (política do servidor; Super Admin 1800 s, inclusive em Modo Suporte)
+// antes da verificação de perfil e status.
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
+sessaoInatividadeExigir('interno');
+
 if ($tipoUsuarioSuperAdmin !== 'super_admin') {
     out(['ok' => false, 'code' => 'ACCESS_DENIED', 'user_msg' => 'Você não possui permissão para acessar este recurso.'], 403);
 }

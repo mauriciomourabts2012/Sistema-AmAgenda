@@ -27,6 +27,10 @@ if ($idUsuario <= 0) {
     ], 401);
 }
 
+// Inatividade (política do servidor) antes de status, permissões e contrato.
+require_once __DIR__ . '/../_regras/login_multiempresa.php';
+sessaoInatividadeExigir('interno');
+
 if ($statusUsuario !== '' && $statusUsuario !== 'ativo') {
     out([
         'ok' => false,

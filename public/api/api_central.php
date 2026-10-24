@@ -878,6 +878,47 @@ if (!in_array($rota, $rotasPermitidasComSenhaTemporariaVencida, true)
     }
 }
 
+/* Autenticação antes da autorização: rotas internas (funcionários e Super Admin)
+   sem identidade interna na sessão respondem 401 NOT_AUTHENTICATED, nunca
+   403 PERMISSION_DENIED. Sessão presente segue a revalidação acima (401
+   SESSION_REAUTH_REQUIRED/403 conforme require_auth.php) e depois as permissões.
+   Rotas públicas, do cliente (cliente/*), de login/logout e documentos legais
+   do ator autenticado não pertencem a esta lista e mantêm o próprio tratamento. */
+$prefixosRotasInternas = [
+    'painel/',
+    'agenda/',
+    'chat/',
+    'notificacoes/',
+    'perfil/',
+    'superadmin/',
+    'documentos-legais/admin/',
+];
+$rotasInternasExatas = [
+    'empresa/identidade-visual',
+    'empresa/identidade-visual/salvar',
+    'empresa/identidade-visual/restaurar',
+];
+$rotaInternaProtegida = in_array($rota, $rotasInternasExatas, true);
+foreach ($prefixosRotasInternas as $prefixoRotaInterna) {
+    if (str_starts_with($rota, $prefixoRotaInterna)) {
+        $rotaInternaProtegida = true;
+        break;
+    }
+}
+
+if ($rotaInternaProtegida) {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+    if ((int)($_SESSION['auth']['id_usuario'] ?? 0) <= 0) {
+        out([
+            'ok' => false,
+            'code' => 'NOT_AUTHENTICATED',
+            'user_msg' => 'Sessão expirada. Faça login novamente.'
+        ], 401);
+    }
+}
+
 /* Autorização central das áreas administrativas e da agenda. O backend
    continua sendo a fonte de verdade, independentemente do menu exibido. */
 $permissoesPorRota = [

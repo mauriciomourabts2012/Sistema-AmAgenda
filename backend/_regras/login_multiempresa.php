@@ -325,6 +325,171 @@ function loginMultiempresaResponderLoginOk(array $data): void
 }
 
 /* ==========================================================
+   INATIVIDADE DA SESSÃO — política autoritativa do servidor
+   ----------------------------------------------------------
+   Prazo de inatividade (relógio do servidor, time()):
+   - funcionários e profissionais: 2700 s; clientes: 2700 s;
+   - Super Admin, inclusive em Modo Suporte: 1800 s (a identidade real
+     tipo_usuario='super_admin' prevalece sobre o contexto assumido).
+   O marcador fica somente em $_SESSION, separado por escopo (interno/cliente),
+   vinculado à identidade e ao id da sessão. Vencido o prazo, a identidade do
+   escopo é revogada e a resposta é 401, ainda que o arquivo da sessão exista
+   (não depende do garbage collector do PHP).
+   Renovação (o servidor não detecta atividade humana):
+   - escrita autenticada (POST/PUT/PATCH/DELETE) com o token CSRF da sessão,
+     exceto rotas de escrita automática (marcação de leitura do chat);
+   - GET _auth/session (carregamento de página e retorno/interação do
+     usuário), salvo quando chamado com renovar=0 (somente verificação).
+   Consultas GET (polling de chat, notificações, resumos) nunca renovam.
+   Sem marcador válido (login recém-concluído, regeneração explícita do id da
+   sessão ou sessão anterior a esta política), o prazo começa na requisição
+   atual; isso só ocorre após login, troca de senha ou entrada/saída do Modo
+   Suporte, sempre depois de o guard ter validado o prazo anterior.
+   Não há duração absoluta: o prazo é exclusivamente de inatividade.
+   ========================================================== */
+const SESSAO_INATIVIDADE_CHAVE = 'sessao_inatividade';
+const SESSAO_INATIVIDADE_INTERNO_SEGUNDOS = 2700;
+const SESSAO_INATIVIDADE_SUPER_ADMIN_SEGUNDOS = 1800;
+const SESSAO_INATIVIDADE_CLIENTE_SEGUNDOS = 2700;
+const SESSAO_INATIVIDADE_ROTAS_ESCRITA_AUTOMATICA = [
+    'chat/leitura/marcar',
+    'cliente/chat/leitura/marcar',
+];
+
+/** Prazo do escopo. Interno: Super Admin (inclusive em suporte) 1800 s; demais 2700 s. */
+function sessaoInatividadeLimite(string $escopo): int
+{
+    if ($escopo === 'cliente') {
+        return SESSAO_INATIVIDADE_CLIENTE_SEGUNDOS;
+    }
+    $tipo = mb_strtolower(trim((string)($_SESSION['auth']['tipo_usuario'] ?? '')), 'UTF-8');
+
+    return $tipo === 'super_admin'
+        ? SESSAO_INATIVIDADE_SUPER_ADMIN_SEGUNDOS
+        : SESSAO_INATIVIDADE_INTERNO_SEGUNDOS;
+}
+
+/** Identidade do escopo; o contexto empresarial assumido (suporte) não participa. */
+function sessaoInatividadeIdentidade(string $escopo): string
+{
+    if ($escopo === 'cliente') {
+        $cliente = is_array($_SESSION['cliente_auth'] ?? null) ? $_SESSION['cliente_auth'] : [];
+        return 'cliente:' . (int)($cliente['id_empresa'] ?? 0) . ':' . (string)($cliente['telefone'] ?? '');
+    }
+    $auth = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
+
+    return 'interno:'
+        . mb_strtolower(trim((string)($auth['tipo_usuario'] ?? '')), 'UTF-8')
+        . ':' . (int)($auth['id_usuario'] ?? 0);
+}
+
+/** Decide, somente com dados do servidor e da rota, se esta requisição renova o prazo. */
+function sessaoInatividadeRequisicaoRenova(): bool
+{
+    $metodo = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    $rota = trim((string)($_GET['path'] ?? ''), "/ \t\n\r\0\x0B");
+
+    if ($rota === '_auth/session') {
+        return $metodo === 'GET' && (string)($_GET['renovar'] ?? '1') !== '0';
+    }
+    if (in_array($metodo, ['GET', 'HEAD', 'OPTIONS'], true)) {
+        return false;
+    }
+    if (in_array($rota, SESSAO_INATIVIDADE_ROTAS_ESCRITA_AUTOMATICA, true)) {
+        return false;
+    }
+
+    // Somente escrita originada pela própria aplicação (mesmo token CSRF da sessão).
+    $recebido = trim((string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
+    $esperado = (string)($_SESSION['csrf_token'] ?? '');
+
+    return $esperado !== '' && $recebido !== '' && hash_equals($esperado, $recebido);
+}
+
+/** @return array{ultima_atividade:int}|null marcador válido do escopo, se houver */
+function sessaoInatividadeMarcador(string $escopo): ?array
+{
+    $marcadores = is_array($_SESSION[SESSAO_INATIVIDADE_CHAVE] ?? null) ? $_SESSION[SESSAO_INATIVIDADE_CHAVE] : [];
+    $marcador = $marcadores[$escopo] ?? null;
+    if (!is_array($marcador)
+        || !is_int($marcador['ultima_atividade'] ?? null)
+        || !is_string($marcador['sid'] ?? null)
+        || !is_string($marcador['identidade'] ?? null)
+        || !hash_equals($marcador['sid'], (string)session_id())
+        || !hash_equals($marcador['identidade'], sessaoInatividadeIdentidade($escopo))) {
+        return null;
+    }
+
+    return $marcador;
+}
+
+/** Segundos restantes do escopo, sem renovar (0 quando ausente ou vencido). */
+function sessaoInatividadeRestante(string $escopo): int
+{
+    $marcador = sessaoInatividadeMarcador($escopo);
+    if ($marcador === null) {
+        return 0;
+    }
+    $decorrido = max(0, time() - $marcador['ultima_atividade']);
+
+    return max(0, sessaoInatividadeLimite($escopo) - $decorrido);
+}
+
+/**
+ * Exige que o escopo ('interno' ou 'cliente') esteja dentro do prazo de
+ * inatividade. Vencido: revoga a identidade do escopo e responde 401.
+ * Dentro do prazo: renova somente quando a requisição é renovadora.
+ * A sessão PHP permanece bloqueada durante a requisição, então verificação
+ * e renovação ocorrem juntas; requisições concorrentes não renovam um prazo vencido.
+ */
+function sessaoInatividadeExigir(string $escopo): void
+{
+    $escopo = $escopo === 'cliente' ? 'cliente' : 'interno';
+    $agora = time();
+    $marcador = sessaoInatividadeMarcador($escopo);
+
+    if ($marcador !== null) {
+        // Relógio do servidor recuado não amplia o prazo.
+        $ultima = min($marcador['ultima_atividade'], $agora);
+        if ($agora - $ultima >= sessaoInatividadeLimite($escopo)) {
+            $marcadores = is_array($_SESSION[SESSAO_INATIVIDADE_CHAVE] ?? null) ? $_SESSION[SESSAO_INATIVIDADE_CHAVE] : [];
+            unset($marcadores[$escopo]);
+            $_SESSION[SESSAO_INATIVIDADE_CHAVE] = $marcadores;
+
+            if ($escopo === 'cliente') {
+                sessaoCredencialRevogarCliente();
+                out([
+                    'ok' => false,
+                    'code' => 'CLIENT_NOT_AUTHENTICATED',
+                    'user_msg' => 'Sua sessão expirou por inatividade. Faça login novamente.',
+                    'data' => ['motivo' => 'inatividade'],
+                ], 401);
+            }
+
+            sessaoCredencialRevogarInterna();
+            out([
+                'ok' => false,
+                'code' => 'NOT_AUTHENTICATED',
+                'user_msg' => 'Sua sessão expirou por inatividade. Faça login novamente.',
+                'data' => ['motivo' => 'inatividade'],
+            ], 401);
+        }
+
+        if (!sessaoInatividadeRequisicaoRenova()) {
+            return;
+        }
+    }
+
+    $marcadores = is_array($_SESSION[SESSAO_INATIVIDADE_CHAVE] ?? null) ? $_SESSION[SESSAO_INATIVIDADE_CHAVE] : [];
+    $marcadores[$escopo] = [
+        'ultima_atividade' => $agora,
+        'sid' => (string)session_id(),
+        'identidade' => sessaoInatividadeIdentidade($escopo),
+    ];
+    $_SESSION[SESSAO_INATIVIDADE_CHAVE] = $marcadores;
+}
+
+/* ==========================================================
    CREDENCIAL DA SESSÃO (A6.1) — funções
    ========================================================== */
 
@@ -407,6 +572,9 @@ function sessaoCredencialRevogarCliente(): void
  */
 function sessaoCredencialExigirInterna(?mysqli $conexao, int $idUsuario, bool $senhaJaLida = false, ?string $senhaHashAtual = null): void
 {
+    // Inatividade antes de qualquer consulta: sessão vencida não chega à credencial.
+    sessaoInatividadeExigir('interno');
+
     if (!$senhaJaLida) {
         if (!($conexao instanceof mysqli) || $conexao->connect_errno) {
             out(['ok' => false, 'code' => 'SESSION_USER_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
@@ -449,6 +617,9 @@ function sessaoCredencialExigirInterna(?mysqli $conexao, int $idUsuario, bool $s
  */
 function sessaoCredencialExigirCliente(?mysqli $conexao, int $idEmpresa, ?int $idCliente): void
 {
+    // Inatividade antes de qualquer consulta: sessão vencida não chega à credencial.
+    sessaoInatividadeExigir('cliente');
+
     $senhaHashAtual = null;
     if ($idCliente !== null && $idCliente > 0) {
         if (!($conexao instanceof mysqli) || $conexao->connect_errno) {
