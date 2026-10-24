@@ -205,7 +205,7 @@ function pagamentoOnlineAplicarOrder(mysqli $db, array $transacao, array $order)
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar atualização de pagamento.');
     try {
         $atual = pagamentoOnlineConsulta($db,
-            'SELECT id_transacao,id_empresa,id_cobranca,valor,status,status_externo,expira_em,referencia_interna,ordem_externa_id,pagamento_externo_id FROM transacao_pagamento WHERE id_transacao=? AND id_empresa=? FOR UPDATE',
+            'SELECT id_transacao,id_empresa,id_cobranca,id_pagamento,valor,status,status_externo,expira_em,referencia_interna,ordem_externa_id,pagamento_externo_id FROM transacao_pagamento WHERE id_transacao=? AND id_empresa=? FOR UPDATE',
             'ii', (int)$transacao['id_transacao'], (int)$transacao['id_empresa'])->fetch_assoc();
         if (!$atual) {
             pagamentoOnlineFalhar('PIX_CONCILIACAO', 'Este PIX precisa de verificação antes de uma nova tentativa.', 409);
@@ -223,6 +223,11 @@ function pagamentoOnlineAplicarOrder(mysqli $db, array $transacao, array $order)
         $terminal = ['confirmada', 'expirada', 'cancelada', 'recusada', 'conciliacao'];
         if (in_array((string)$atual['status'], $terminal, true) && $statusNovo !== 'confirmada') $statusNovo = (string)$atual['status'];
         if ($atual['status'] === 'processando' && $statusNovo === 'aguardando') $statusNovo = 'processando';
+        // Aprovação externa não é baixa financeira: 'confirmada' só existe com o pagamento interno
+        // vinculado (webhook ou conciliação). Até lá, a transação permanece em processamento.
+        if ($statusNovo === 'confirmada' && $atual['status'] !== 'confirmada' && $atual['id_pagamento'] === null) {
+            $statusNovo = 'processando';
+        }
         $expiraEm = $expiraEm ?? $atual['expira_em'];
         $paymentId = $paymentId ?? $atual['pagamento_externo_id'];
         pagamentoOnlineExec($db,

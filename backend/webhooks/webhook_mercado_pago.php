@@ -11,6 +11,21 @@ const MP_WEBHOOK_PROVEDOR = 'mercado_pago';
 const MP_WEBHOOK_CORPO_MAX_BYTES = 1048576;
 const MP_WEBHOOK_LEASE_SEGUNDOS = 60;
 
+/**
+ * Origem registrada no contexto da auditoria financeira. O webhook usa o padrão;
+ * a conciliação CLI (backend/processos/conciliar_pagamentos_mercado_pago.php)
+ * informa a própria origem antes de reutilizar as mesmas regras.
+ */
+function mpWebhookOrigemAuditoria(?string $definir = null): string
+{
+    static $origem = 'webhook_mercado_pago';
+    if ($definir !== null && in_array($definir, ['webhook_mercado_pago', 'conciliacao_mercado_pago'], true)) {
+        $origem = $definir;
+    }
+
+    return $origem;
+}
+
 function mpWebhookResponder(int $httpStatus, string $codigo, bool $ok = false): never
 {
     http_response_code($httpStatus);
@@ -414,10 +429,14 @@ function mpWebhookAlteracoes(array $depois, array $antes = []): array
 
 function mpWebhookFinalizarEvento(
     mysqli $conexao,
-    int $idEvento,
+    ?int $idEvento,
     int $idTransacao,
     ?int $idAssinaturaPagamento
 ): void {
+    // Sem evento (conciliação CLI): não há notificação a finalizar.
+    if ($idEvento === null) {
+        return;
+    }
     mpWebhookExecutar(
         $conexao,
         "UPDATE evento_gateway_pagamento
@@ -503,14 +522,14 @@ function mpWebhookAuditarConciliacao(
             'detalhe_status_externo' => $detalheExterno,
             'motivo' => $motivo,
         ]),
-        'contexto' => ['origem' => 'webhook_mercado_pago', 'motivo' => $motivo],
+        'contexto' => ['origem' => mpWebhookOrigemAuditoria(), 'motivo' => $motivo],
     ]);
 }
 
 function mpWebhookMarcarConciliacao(
     mysqli $conexao,
     array $transacao,
-    int $idEvento,
+    ?int $idEvento,
     string $statusExterno,
     ?string $detalheExterno,
     string $motivo
@@ -581,12 +600,23 @@ function mpWebhookPagamentoOrder(array $order): ?array
     ];
 }
 
+/**
+ * Aplica o estado autoritativo de uma Order à transação local.
+ * - $idEvento: notificação do webhook reservada como 'processando'.
+ * - $idEvento null: conciliação CLI (consulta autoritativa feita pelo chamador);
+ *   exige $ambienteConciliacao e não lê nem finaliza evento.
+ * As demais regras, locks e transações são idênticos nos dois casos.
+ */
 function mpWebhookAplicarOrder(
     mysqli $conexao,
-    int $idEvento,
+    ?int $idEvento,
     int $idTransacao,
-    array $order
+    array $order,
+    ?string $ambienteConciliacao = null
 ): void {
+    if ($idEvento === null && !in_array($ambienteConciliacao, ['teste', 'producao'], true)) {
+        throw new InvalidArgumentException('Ambiente da conciliação inválido.');
+    }
     $pagamentoOrder = mpWebhookPagamentoOrder($order);
     $idPagamentoExterno = $pagamentoOrder['id'] ?? null;
     $referenciaTransacao = mpWebhookConsulta(
@@ -681,22 +711,27 @@ function mpWebhookAplicarOrder(
                 (int) $transacao['id_transacao']
             )->fetch_assoc();
         }
-        $evento = mpWebhookConsulta(
-            $conexao,
-            'SELECT id_evento_gateway,ambiente,status_processamento
-               FROM evento_gateway_pagamento
-              WHERE id_evento_gateway=?
-              FOR UPDATE',
-            'i',
-            $idEvento
-        )->fetch_assoc();
-        if (!$evento || $evento['status_processamento'] !== 'processando') {
-            $conexao->commit();
-            return;
+        if ($idEvento !== null) {
+            $evento = mpWebhookConsulta(
+                $conexao,
+                'SELECT id_evento_gateway,ambiente,status_processamento
+                   FROM evento_gateway_pagamento
+                  WHERE id_evento_gateway=?
+                  FOR UPDATE',
+                'i',
+                $idEvento
+            )->fetch_assoc();
+            if (!$evento || $evento['status_processamento'] !== 'processando') {
+                $conexao->commit();
+                return;
+            }
+            $ambienteEsperado = (string) $evento['ambiente'];
+        } else {
+            $ambienteEsperado = (string) $ambienteConciliacao;
         }
 
         $inconsistente = $transacao['provedor'] !== MP_WEBHOOK_PROVEDOR
-            || $transacao['ambiente'] !== $evento['ambiente']
+            || $transacao['ambiente'] !== $ambienteEsperado
             || $transacao['referencia_interna'] !== $order['referencia']
             || $transacao['moeda'] !== 'BRL'
             || ($transacao['ordem_externa_id'] !== null
@@ -917,7 +952,7 @@ function mpWebhookAplicarOrder(
                     $conexao,
                     (int) $transacao['id_cobranca'],
                     mpWebhookAtorSistema((int) $transacao['id_empresa']),
-                    ['origem' => 'webhook_mercado_pago']
+                    ['origem' => mpWebhookOrigemAuditoria()]
                 );
                 if ($conversaoTrial['requer_atencao']) {
                     $motivos[] = 'Cobrança de conversão quitada, mas a assinatura não pôde ser convertida automaticamente.';
@@ -962,7 +997,7 @@ function mpWebhookAplicarOrder(
                         'total_pago_confirmado' => pagamentoGatewayValorDecimal($totalConfirmado),
                         'saldo_restante' => pagamentoGatewayValorDecimal($recalculo['saldo']),
                     ]),
-                    'contexto' => ['origem' => 'webhook_mercado_pago'],
+                    'contexto' => ['origem' => mpWebhookOrigemAuditoria()],
                 ]);
             }
             if ($requerConciliacao === 1 && (int) $transacao['requer_conciliacao'] !== 1) {
@@ -1048,7 +1083,7 @@ function mpWebhookAplicarOrder(
                 $conexao,
                 (int) $transacao['id_cobranca'],
                 mpWebhookAtorSistema((int) $transacao['id_empresa']),
-                ['origem' => 'webhook_mercado_pago']
+                ['origem' => mpWebhookOrigemAuditoria()]
             );
             $vinculoPagamentoDivergente = $transacao['id_pagamento'] !== null
                 && (int) $transacao['id_pagamento'] !== (int) $pagamento['id_pagamento'];
@@ -1089,7 +1124,7 @@ function mpWebhookAplicarOrder(
                         'total_pago_confirmado' => pagamentoGatewayValorDecimal($totalConfirmado),
                         'saldo_restante' => pagamentoGatewayValorDecimal($recalculo['saldo']),
                     ], ['status' => 'confirmado']),
-                    'contexto' => ['origem' => 'webhook_mercado_pago'],
+                    'contexto' => ['origem' => mpWebhookOrigemAuditoria()],
                 ]);
             }
             if ($vinculoPagamentoDivergente || $valorEstornoDivergente) {
@@ -1184,7 +1219,7 @@ function mpWebhookAplicarOrder(
                     'status_externo' => $statusOrder,
                     'detalhe_status_externo' => $detalheOrder,
                 ], ['status' => $transacao['status']]),
-                'contexto' => ['origem' => 'webhook_mercado_pago'],
+                'contexto' => ['origem' => mpWebhookOrigemAuditoria()],
             ]);
         }
         mpWebhookFinalizarEvento(
@@ -1200,6 +1235,12 @@ function mpWebhookAplicarOrder(
         mpWebhookRollback($conexao);
         throw $erro;
     }
+}
+
+// Modo biblioteca (somente CLI): a conciliação reutiliza as funções acima sem
+// executar o tratamento HTTP da notificação. Requisições web nunca entram aqui.
+if (PHP_SAPI === 'cli' && defined('MP_WEBHOOK_BIBLIOTECA') && MP_WEBHOOK_BIBLIOTECA === true) {
+    return;
 }
 
 if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
