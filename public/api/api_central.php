@@ -84,7 +84,7 @@ $routes = [
 
     // Webhook público autenticado criptograficamente pelo Mercado Pago
     'webhooks/mercado-pago' => [
-        'POST' => __DIR__ . '/../../backend/webhooks/mercado_pago.php',
+        'POST' => __DIR__ . '/../../backend/webhooks/webhook_mercado_pago.php',
     ],
 
     // Documentos legais e manifestações obrigatórias
