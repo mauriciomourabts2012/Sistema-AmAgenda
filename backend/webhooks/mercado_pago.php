@@ -295,6 +295,39 @@ function mpWebhookEventoIgnorado(mysqli $conexao, int $idEvento, string $codigo)
     );
 }
 
+/**
+ * Diagnóstico de falha (somente registro no log de erros da API): etapa, código
+ * e metadados estruturais. Nunca registra token, segredo, assinatura, payload,
+ * dados do pagador nem valores financeiros.
+ */
+function mpWebhookRegistrarFalha(string $etapa, array $detalhes = []): void
+{
+    $partes = [];
+    foreach ($detalhes as $chave => $valor) {
+        $texto = is_scalar($valor) || $valor === null ? (string)$valor : (string)json_encode($valor);
+        $partes[] = $chave . '=' . mb_substr(preg_replace('/[\x00-\x1F\x7F]/', ' ', $texto) ?? '', 0, 300);
+    }
+    error_log('[webhook_mercado_pago] ' . $etapa . ($partes === [] ? '' : ' ' . implode(' ', $partes)));
+}
+
+/** Estrutura da Order recebida (presença e tipo dos campos validados), sem valores. */
+function mpWebhookEstruturaOrder(array $order): array
+{
+    $tipoCampo = static fn (mixed $valor): string => $valor === null ? 'ausente' : get_debug_type($valor);
+
+    return [
+        'chaves' => implode(',', array_slice(array_map('strval', array_keys($order)), 0, 40)),
+        'id' => $tipoCampo($order['id'] ?? null),
+        'external_reference' => $tipoCampo($order['external_reference'] ?? null),
+        'status' => $tipoCampo($order['status'] ?? null),
+        'currency' => $tipoCampo($order['currency'] ?? null),
+        'currency_id' => $tipoCampo($order['currency_id'] ?? null),
+        'type' => is_string($order['type'] ?? null) ? (string)$order['type'] : $tipoCampo($order['type'] ?? null),
+        'total_amount' => $tipoCampo($order['total_amount'] ?? null),
+        'payments' => $tipoCampo($order['transactions']['payments'] ?? null),
+    ];
+}
+
 /** @return array<string,mixed>|null */
 function mpWebhookNormalizarOrder(array $order, string $idEsperado): ?array
 {
@@ -302,7 +335,10 @@ function mpWebhookNormalizarOrder(array $order, string $idEsperado): ?array
     $referencia = mpWebhookCampoExterno($order['external_reference'] ?? null, 64);
     $status = mpWebhookCampoExterno($order['status'] ?? null, 50);
     $detalhe = mpWebhookCampoExterno($order['status_detail'] ?? null, 100);
-    $moeda = $order['currency_id'] ?? null;
+    // API Orders V1: a moeda vem em "currency" (string ISO 4217). "currency_id"
+    // pertence à API de Payments e não é aceito como substituto. Ausente, não
+    // textual ou diferente de BRL: a Order é rejeitada (comparação estrita abaixo).
+    $moeda = $order['currency'] ?? null;
     $tipo = $order['type'] ?? null;
     $total = $order['total_amount'] ?? null;
     $pagamentos = $order['transactions']['payments'] ?? null;
@@ -1181,6 +1217,7 @@ if ($dataId === null || $tipoQuery !== 'order' || $requestId === null
 try {
     $configuracao = mpWebhookConfiguracao();
 } catch (Throwable) {
+    mpWebhookRegistrarFalha('configuracao_indisponivel');
     mpWebhookResponder(503, 'TEMPORARY_FAILURE');
 }
 
@@ -1233,6 +1270,11 @@ try {
         ['order_id' => $dataId]
     );
     if (!($resposta['sucesso'] ?? false) || !is_array($resposta['dados'] ?? null)) {
+        mpWebhookRegistrarFalha('consulta_order_falhou', [
+            'evento' => $idEvento,
+            'codigo' => (string)($resposta['codigo'] ?? ''),
+            'http' => (int)($resposta['http_status'] ?? 0),
+        ]);
         mpWebhookEventoErro(
             $conexao,
             $idEvento,
@@ -1242,6 +1284,7 @@ try {
     }
     $order = mpWebhookNormalizarOrder($resposta['dados'], $dataId);
     if ($order === null) {
+        mpWebhookRegistrarFalha('resposta_order_invalida', ['evento' => $idEvento] + mpWebhookEstruturaOrder($resposta['dados']));
         mpWebhookEventoErro($conexao, $idEvento, 'resposta_order_invalida');
         mpWebhookResponder(503, 'TEMPORARY_FAILURE');
     }
@@ -1253,7 +1296,12 @@ try {
 
     mpWebhookAplicarOrder($conexao, $idEvento, $idTransacao, $order);
     mpWebhookResponder(200, 'PROCESSED', true);
-} catch (Throwable) {
+} catch (Throwable $erroProcessamento) {
+    mpWebhookRegistrarFalha('falha_processamento', [
+        'evento' => $idEvento,
+        'classe' => get_class($erroProcessamento),
+        'mensagem' => $erroProcessamento->getMessage(),
+    ]);
     if (isset($conexao) && $conexao instanceof mysqli) {
         mpWebhookRollback($conexao);
         if ($idEvento > 0) {
