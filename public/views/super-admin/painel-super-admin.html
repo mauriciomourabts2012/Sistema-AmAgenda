@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.0.0"/>
     <link rel="stylesheet" href="../../css/filtro-paginacao-web.css"/>
     <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=20260828_2"/>
-    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=20260915_7"/>
+    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=20261024_8"/>
     <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=20260915_1"/>
     <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=20261003_1"/>
     <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.0.22"/>
@@ -995,16 +995,25 @@
             <form id="formCancelarAssinatura" autocomplete="off">
               <input type="hidden" id="cancelamentoAssinaturaId" name="id_assinatura" value="">
               <input type="hidden" id="cancelamentoAssinaturaEmpresaId" name="id_empresa" value="">
-              <fieldset class="modal-campo cancelamento-modalidades">
-                <legend>Quando encerrar o acesso?</legend>
-                <label class="cancelamento-opcao" for="cancelamentoModalidadeImediato">
-                  <input type="radio" id="cancelamentoModalidadeImediato" name="modalidade_cancelamento" value="imediato" checked>
-                  <span><strong>Imediatamente</strong> — o acesso contratado termina agora.</span>
-                </label>
-                <label class="cancelamento-opcao" for="cancelamentoModalidadeFimPeriodo">
-                  <input type="radio" id="cancelamentoModalidadeFimPeriodo" name="modalidade_cancelamento" value="fim_periodo_pago">
-                  <span><strong>Ao fim do período integralmente pago</strong> — mantém o acesso até a data confirmada pelo servidor e impede a renovação automática.</span>
-                </label>
+              <fieldset class="cancelamento-modalidades">
+                <legend>Escolha a modalidade de cancelamento</legend>
+                <div class="cancelamento-opcoes">
+                  <label class="cancelamento-opcao" for="cancelamentoModalidadeImediato">
+                    <input type="radio" id="cancelamentoModalidadeImediato" name="modalidade_cancelamento" value="imediato">
+                    <span class="cancelamento-opcao-conteudo">
+                      <strong>Cancelar imediatamente</strong>
+                      <span>O acesso será encerrado agora.</span>
+                    </span>
+                  </label>
+                  <label class="cancelamento-opcao" for="cancelamentoModalidadeFimPeriodo">
+                    <input type="radio" id="cancelamentoModalidadeFimPeriodo" name="modalidade_cancelamento" value="fim_periodo_pago" disabled>
+                    <span class="cancelamento-opcao-conteudo">
+                      <strong>Ao fim do período pago</strong>
+                      <span>Mantém o acesso até a data confirmada pelo servidor e impede a renovação automática.</span>
+                      <span id="cancelamentoPreviaFim" class="cancelamento-previa" aria-live="polite" hidden></span>
+                    </span>
+                  </label>
+                </div>
               </fieldset>
               <div class="modal-campo">
                 <textarea id="cancelamentoAssinaturaMotivo" name="motivo" rows="3" maxlength="500" placeholder=" " required></textarea>
@@ -2301,7 +2310,7 @@
     <script src="../../js/super-admin/empresa/cadastrar_empresa.js?v=20261023_1" ></script> <!--Cadastrar novas empresas-->
     <script src="../../js/super-admin/empresa/editar_empresa.js" ></script> <!--Editar dados de cadastro da empresa -->
     <script src="../../js/super-admin/cobranca/gerenciar-cobranca.js?v=20260915_5" ></script> <!--Listar e gerar cobranças -->
-    <script src="../../js/super-admin/assinatura/gerenciar-assinatura.js?v=20260915_2" ></script> <!--Gerenciar contratos e histórico de assinaturas -->
+    <script src="../../js/super-admin/assinatura/gerenciar-assinatura.js?v=20261024_3" ></script> <!--Gerenciar contratos e histórico de assinaturas -->
 
     
     <!--ABA USUARIOS-->

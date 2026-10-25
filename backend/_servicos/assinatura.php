@@ -369,7 +369,8 @@ function assinaturaServicoFimPeriodoPago(mysqli $conexao, int $idEmpresa, int $i
         $conexao,
         "SELECT id_cobranca, periodo_inicio, periodo_fim, valor, status
            FROM cobranca
-          WHERE id_empresa = ? AND id_assinatura = ? AND finalidade = 'regular'
+          WHERE id_empresa = ? AND id_assinatura = ?
+            AND finalidade IN ('regular', 'conversao_trial')
           ORDER BY periodo_inicio, id_cobranca FOR UPDATE",
         'ii', $idEmpresa, $idAssinatura
     );
@@ -389,6 +390,31 @@ function assinaturaServicoFimPeriodoPago(mysqli $conexao, int $idEmpresa, int $i
         }
     }
     return $fim;
+}
+
+/** Prévia somente leitura da elegibilidade para o cancelamento ao fim do período pago. */
+function assinaturaServicoPreviaCancelamento(mysqli $conexao, int $idEmpresa, int $idAssinatura): array
+{
+    $assinaturas = assinaturaServicoLinhas(
+        $conexao,
+        "SELECT status, modalidade, data_fim
+           FROM assinatura
+          WHERE id_empresa = ? AND id_assinatura = ?
+          LIMIT 1",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    );
+    $assinatura = $assinaturas[0] ?? null;
+    if ($assinatura === null
+        || (string)$assinatura['status'] !== 'ativa'
+        || (string)$assinatura['modalidade'] !== 'paga'
+        || $assinatura['data_fim'] !== null) {
+        return ['pode_fim_periodo_pago' => false, 'data_fim_periodo_pago' => null];
+    }
+
+    $dataFim = assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura);
+    return ['pode_fim_periodo_pago' => $dataFim !== null, 'data_fim_periodo_pago' => $dataFim];
 }
 
 /**
@@ -1672,15 +1698,17 @@ function assinaturaServicoPlanoComportaEmpresa(mysqli $conexao, int $idEmpresa, 
 
 /**
  * Planos disponíveis para a nova contratação pelo Proprietário: as mesmas condições comerciais do cadastro
- * público (ativo, disponível ao público, com proprietário e usuários), com cobrança e preço positivos, e que
- * comportam os usuários atuais sem bloqueio. Com $idPlano, valida somente esse plano (com lock).
+ * público (ativo, disponível ao público, na mesma ordem e com os mesmos dados exibidos no site), com cobrança e
+ * preço positivos. Planos que não comportam a estrutura atual permanecem na lista apenas para informação, mas
+ * indisponíveis para escolha. Com $idPlano, valida somente um plano elegível (com lock).
  *
- * @return list<array{id_plano: int, nome: string, valor: string, periodicidade: string}>
+ * @return list<array<string, mixed>>
  */
 function assinaturaServicoNovaContratacaoPlanos(mysqli $conexao, int $idEmpresa, ?int $idPlano = null): array
 {
-    $sql = "SELECT id_plano, nome, preco_mensal, cobranca, limite_usuarios, limite_proprietarios,
-                   limite_profissionais, limite_recepcionistas
+    $sql = "SELECT id_plano, nome, preco_mensal, cobranca, descricao, limite_usuarios, limite_proprietarios,
+                   limite_profissionais, limite_recepcionistas, limite_servicos, limite_agendamentos,
+                   agenda_online, destaque, ref
               FROM plano
              WHERE status = 'ativo'
                AND disponivel_cadastro_publico = 1
@@ -1692,7 +1720,8 @@ function assinaturaServicoNovaContratacaoPlanos(mysqli $conexao, int $idEmpresa,
         $tipos = 'i';
         $valores[] = $idPlano;
     } else {
-        $sql .= ' ORDER BY preco_mensal ASC, id_plano ASC';
+        // Mesma ordenação da rota pública planos/listar.
+        $sql .= ' ORDER BY CAST(ref AS UNSIGNED) ASC, id_plano ASC';
     }
 
     $planos = [];
@@ -1700,8 +1729,12 @@ function assinaturaServicoNovaContratacaoPlanos(mysqli $conexao, int $idEmpresa,
         $valor = trim((string)$plano['preco_mensal']);
         if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $valor) || pagamentoGatewayValorCentavos($valor) <= 0
             || !in_array((string)$plano['cobranca'], ['mensal', 'trimestral', 'semestral', 'anual'], true)
-            || (int)$plano['limite_proprietarios'] < 1 || (int)$plano['limite_usuarios'] < 1
-            || !assinaturaServicoPlanoComportaEmpresa($conexao, $idEmpresa, $plano)) {
+            || (int)$plano['limite_proprietarios'] < 1 || (int)$plano['limite_usuarios'] < 1) {
+            continue;
+        }
+        $comportaEmpresa = assinaturaServicoPlanoComportaEmpresa($conexao, $idEmpresa, $plano);
+        // A validação autoritativa de uma escolha não pode aceitar plano incompatível.
+        if ($idPlano !== null && !$comportaEmpresa) {
             continue;
         }
         $planos[] = [
@@ -1709,6 +1742,19 @@ function assinaturaServicoNovaContratacaoPlanos(mysqli $conexao, int $idEmpresa,
             'nome' => (string)$plano['nome'],
             'valor' => pagamentoGatewayValorDecimal(pagamentoGatewayValorCentavos($valor)),
             'periodicidade' => (string)$plano['cobranca'],
+            'descricao' => (string)($plano['descricao'] ?? ''),
+            'limite_usuarios' => (int)$plano['limite_usuarios'],
+            'limite_proprietarios' => (int)$plano['limite_proprietarios'],
+            'limite_profissionais' => (int)$plano['limite_profissionais'],
+            'limite_recepcionistas' => (int)$plano['limite_recepcionistas'],
+            'limite_servicos' => (int)$plano['limite_servicos'],
+            'limite_agendamentos' => (int)$plano['limite_agendamentos'],
+            'agenda_online' => (int)$plano['agenda_online'],
+            'destaque' => (int)$plano['destaque'],
+            'disponivel' => $comportaEmpresa,
+            'motivo_indisponibilidade' => $comportaEmpresa
+                ? null
+                : 'Este plano não comporta a estrutura atual da empresa.',
         ];
     }
 
@@ -2408,8 +2454,11 @@ function assinaturaServicoSituacaoNovaContratacao(mysqli $conexao, int $idEmpres
                 $situacao['mensagem'] = 'A nova contratação ainda não está disponível. Entre em contato com o suporte.';
             } elseif (!$situacao['pode_concluir']) {
                 $situacao['planos'] = assinaturaServicoNovaContratacaoPlanos($conexao, $idEmpresa);
-                $situacao['disponivel'] = $situacao['planos'] !== [];
-                if ($situacao['planos'] === [] && $pendente === null) {
+                $situacao['disponivel'] = array_filter(
+                    $situacao['planos'],
+                    static fn (array $plano): bool => ($plano['disponivel'] ?? false) === true
+                ) !== [];
+                if (!$situacao['disponivel'] && $pendente === null) {
                     $situacao['codigo'] = 'PLANO_INDISPONIVEL';
                     $situacao['mensagem'] = 'Nenhum plano disponível comporta os usuários ativos da empresa. Entre em contato com o suporte.';
                 }
@@ -2700,8 +2749,9 @@ function assinaturaServicoCicloPagoVigente(mysqli $conexao, int $idEmpresa, int 
  */
 function assinaturaServicoTrocaPlanos(mysqli $conexao, int $idEmpresa, array $assinatura, ?int $idPlano = null): array
 {
-    $sql = "SELECT id_plano, nome, preco_mensal, cobranca, limite_usuarios, limite_proprietarios,
-                   limite_profissionais, limite_recepcionistas
+    $sql = "SELECT id_plano, nome, preco_mensal, cobranca, descricao, limite_usuarios, limite_proprietarios,
+                   limite_profissionais, limite_recepcionistas, limite_servicos, limite_agendamentos,
+                   agenda_online, destaque, ref
               FROM plano
              WHERE status = 'ativo' AND disponivel_cadastro_publico = 1 AND gera_cobranca = 1
                AND cobranca = ? AND id_plano <> ?";
@@ -2712,7 +2762,8 @@ function assinaturaServicoTrocaPlanos(mysqli $conexao, int $idEmpresa, array $as
         $tipos .= 'i';
         $valores[] = $idPlano;
     } else {
-        $sql .= ' ORDER BY preco_mensal ASC, id_plano ASC';
+        // Mesma ordenação da rota pública planos/listar.
+        $sql .= ' ORDER BY CAST(ref AS UNSIGNED) ASC, id_plano ASC';
     }
     $atual = pagamentoGatewayValorCentavos(pagamentoGatewayValorDecimal(pagamentoGatewayValorCentavos(
         number_format((float)$assinatura['valor_contratado'], 2, '.', '')
@@ -2731,6 +2782,16 @@ function assinaturaServicoTrocaPlanos(mysqli $conexao, int $idEmpresa, array $as
             'valor' => pagamentoGatewayValorDecimal($centavos),
             'valor_centavos' => $centavos,
             'periodicidade' => (string)$plano['cobranca'],
+            'descricao' => (string)($plano['descricao'] ?? ''),
+            'limite_usuarios' => (int)$plano['limite_usuarios'],
+            'limite_proprietarios' => (int)$plano['limite_proprietarios'],
+            'limite_profissionais' => (int)$plano['limite_profissionais'],
+            'limite_recepcionistas' => (int)$plano['limite_recepcionistas'],
+            'limite_servicos' => (int)$plano['limite_servicos'],
+            'limite_agendamentos' => (int)$plano['limite_agendamentos'],
+            'agenda_online' => (int)$plano['agenda_online'],
+            'destaque' => (int)$plano['destaque'],
+            'ordem' => (int)$plano['ref'],
             'tipo' => $centavos < $atual ? 'downgrade' : 'upgrade',
             'comporta_usuarios' => assinaturaServicoPlanoComportaEmpresa($conexao, $idEmpresa, $plano),
         ];
@@ -3648,9 +3709,37 @@ function assinaturaServicoSituacaoTrocaPlano(mysqli $conexao, int $idEmpresa): ?
             'plano_atual' => (string)$assinatura['plano'],
             'valor_atual' => pagamentoGatewayValorDecimal(pagamentoGatewayValorCentavos(number_format((float)$assinatura['valor_contratado'], 2, '.', ''))),
             'periodicidade' => (string)$assinatura['periodicidade'],
+            'plano_atual_dados' => null,
             'opcoes' => [],
             'pendente' => null,
         ];
+        // Dados de exibição do plano atual (mesmos campos do site público); não participa de regra financeira.
+        $dadosAtual = assinaturaServicoConsultaFinanceira(
+            $conexao,
+            'SELECT id_plano, nome, descricao, limite_usuarios, limite_proprietarios, limite_profissionais,
+                    limite_recepcionistas, limite_servicos, limite_agendamentos, agenda_online, ref
+               FROM plano WHERE id_plano = ? LIMIT 1',
+            'i',
+            (int)$assinatura['id_plano']
+        );
+        if ($dadosAtual !== []) {
+            $d = $dadosAtual[0];
+            $situacao['plano_atual_dados'] = [
+                'id_plano' => (int)$d['id_plano'],
+                'nome' => (string)$d['nome'],
+                'valor' => $situacao['valor_atual'],
+                'periodicidade' => $situacao['periodicidade'],
+                'descricao' => (string)($d['descricao'] ?? ''),
+                'limite_usuarios' => (int)$d['limite_usuarios'],
+                'limite_proprietarios' => (int)$d['limite_proprietarios'],
+                'limite_profissionais' => (int)$d['limite_profissionais'],
+                'limite_recepcionistas' => (int)$d['limite_recepcionistas'],
+                'limite_servicos' => (int)$d['limite_servicos'],
+                'limite_agendamentos' => (int)$d['limite_agendamentos'],
+                'agenda_online' => (int)$d['agenda_online'],
+                'ordem' => (int)$d['ref'],
+            ];
+        }
         if ($contexto['troca'] !== null) {
             $troca = $contexto['troca'];
             $resumo = assinaturaServicoTrocaResumo($conexao, $troca);
@@ -3682,6 +3771,17 @@ function assinaturaServicoSituacaoTrocaPlano(mysqli $conexao, int $idEmpresa): ?
                 'id_plano' => $plano['id_plano'],
                 'nome' => $plano['nome'],
                 'valor' => $plano['valor'],
+                'periodicidade' => $plano['periodicidade'],
+                'descricao' => $plano['descricao'],
+                'limite_usuarios' => $plano['limite_usuarios'],
+                'limite_proprietarios' => $plano['limite_proprietarios'],
+                'limite_profissionais' => $plano['limite_profissionais'],
+                'limite_recepcionistas' => $plano['limite_recepcionistas'],
+                'limite_servicos' => $plano['limite_servicos'],
+                'limite_agendamentos' => $plano['limite_agendamentos'],
+                'agenda_online' => $plano['agenda_online'],
+                'destaque' => $plano['destaque'],
+                'ordem' => $plano['ordem'],
                 'tipo' => $plano['tipo'],
                 'disponivel' => (bool)$previa['ok'],
                 'valor_confirmacao' => $previa['ok'] ? ($plano['tipo'] === 'upgrade' ? (int)$previa['valor_proporcional_centavos'] : (int)$plano['valor_centavos']) : null,

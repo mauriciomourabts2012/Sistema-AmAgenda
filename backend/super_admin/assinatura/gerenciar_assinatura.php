@@ -131,6 +131,27 @@ function assinaturaListar(mysqli $conexao): void
     ]);
 }
 
+function assinaturaPreviaCancelamento(mysqli $conexao): void
+{
+    $idAssinatura = assinaturaIdEntrada($_GET, 'id_assinatura');
+    $idEmpresa = assinaturaIdEntrada($_GET, 'id_empresa');
+    if ($idAssinatura === null || $idEmpresa === null) {
+        out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Dados da assinatura inválidos.'], 422);
+    }
+
+    $previa = assinaturaServicoPreviaCancelamento($conexao, $idEmpresa, $idAssinatura);
+    out([
+        'ok' => true,
+        'code' => 'CANCELAMENTO_PREVIA_CONSULTADA',
+        'user_msg' => 'Prévia de cancelamento consultada.',
+        'data' => [
+            'id_assinatura' => $idAssinatura,
+            'id_empresa' => $idEmpresa,
+            ...$previa,
+        ],
+    ]);
+}
+
 function assinaturaAlterarStatus(mysqli $conexao): void
 {
     require_once __DIR__ . '/../../_auth/csrf.php';
@@ -468,11 +489,15 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     require __DIR__ . '/../../_auth/bloquear.php';
     require_once __DIR__ . '/../../_config/conexao.php';
     require_once __DIR__ . '/../../_servicos/auditoria.php';
+    require_once __DIR__ . '/../../_servicos/assinatura.php';
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out(['ok' => false, 'code' => 'DB_CONN_ERROR', 'user_msg' => 'Falha ao conectar no banco.'], 500);
     }
     $conexao->set_charset('utf8mb4');
     try {
+        if ((string)($_GET['previa_cancelamento'] ?? '') === '1') {
+            assinaturaPreviaCancelamento($conexao);
+        }
         assinaturaListar($conexao);
     } catch (Throwable $erro) {
         error_log('LISTA_ASSINATURA_EXCEPTION: ' . $erro->getMessage());

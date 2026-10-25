@@ -291,6 +291,18 @@ function faturamentoSituacaoTroca(mysqli $db, int $empresa): ?array {
     }
 }
 
+/** Prévia somente leitura do cancelamento ao fim do período pago; falha nunca impede o restante do faturamento. */
+function faturamentoPreviaCancelamento(mysqli $db, int $empresa, ?array $assinatura): ?array {
+    if ($assinatura === null || ($assinatura['data_fim'] ?? null) !== null || ($assinatura['status'] ?? '') !== 'ativa') return null;
+    try {
+        require_once __DIR__ . '/../../_servicos/assinatura.php';
+        return assinaturaServicoPreviaCancelamento($db, $empresa, (int)$assinatura['id_assinatura']);
+    } catch (Throwable $erro) {
+        error_log('FATURAMENTO_PREVIA_CANCELAMENTO_EXCEPTION: ' . $erro->getMessage());
+        return null;
+    }
+}
+
 /** Situação da nova contratação no resumo; falha nunca impede o restante do faturamento. */
 function faturamentoSituacaoContratacao(mysqli $db, int $empresa): ?array {
     try {
@@ -310,7 +322,7 @@ try {
     if ($trocaPlano) faturamentoTrocaPlano($conexao, $contexto);
     if ($rotaAtual === 'painel/faturamento/resumo') {
         $assinatura=faturamentoAssinatura($conexao,$idEmpresa); $receber=0.0;$vencido=0.0;$pago=0.0;$proximo=null;
-        $stmt=$conexao->prepare("SELECT c.valor,c.status,c.data_vencimento,COALESCE(pg.total_pago,0) pago FROM cobranca c LEFT JOIN (SELECT id_cobranca,SUM(CASE WHEN status='confirmado' THEN valor_pago ELSE 0 END) total_pago FROM pagamento GROUP BY id_cobranca) pg ON pg.id_cobranca=c.id_cobranca WHERE c.id_empresa=? ORDER BY c.data_vencimento ASC,c.id_cobranca ASC"); if(!$stmt)throw new RuntimeException('Falha ao preparar resumo.');$stmt->bind_param('i',$idEmpresa);$stmt->execute();$res=$stmt->get_result();while($r=$res->fetch_assoc()){ $saldo=max(0,round((float)$r['valor']-(float)$r['pago'],2));$pago+=faturamentoDecimal($r['pago']);if($r['status']!=='cancelada')$receber+=$saldo;if($r['status']==='pendente'&&$r['data_vencimento']<date('Y-m-d'))$vencido+=$saldo;if($proximo===null&&$r['status']==='pendente'&&$r['data_vencimento']>=date('Y-m-d'))$proximo=(string)$r['data_vencimento'];}$stmt->close();out(['ok'=>true,'code'=>'FATURAMENTO_RESUMO','user_msg'=>'Resumo de faturamento consultado com sucesso.','data'=>['assinatura'=>$assinatura,'contratacao'=>faturamentoSituacaoContratacao($conexao,$idEmpresa),'troca'=>faturamentoSituacaoTroca($conexao,$idEmpresa),'indicadores'=>['total_a_receber'=>round($receber,2),'total_vencido'=>round($vencido,2),'total_pago_confirmado'=>round($pago,2),'proximo_vencimento'=>$proximo]]]);
+        $stmt=$conexao->prepare("SELECT c.valor,c.status,c.data_vencimento,COALESCE(pg.total_pago,0) pago FROM cobranca c LEFT JOIN (SELECT id_cobranca,SUM(CASE WHEN status='confirmado' THEN valor_pago ELSE 0 END) total_pago FROM pagamento GROUP BY id_cobranca) pg ON pg.id_cobranca=c.id_cobranca WHERE c.id_empresa=? ORDER BY c.data_vencimento ASC,c.id_cobranca ASC"); if(!$stmt)throw new RuntimeException('Falha ao preparar resumo.');$stmt->bind_param('i',$idEmpresa);$stmt->execute();$res=$stmt->get_result();while($r=$res->fetch_assoc()){ $saldo=max(0,round((float)$r['valor']-(float)$r['pago'],2));$pago+=faturamentoDecimal($r['pago']);if($r['status']!=='cancelada')$receber+=$saldo;if($r['status']==='pendente'&&$r['data_vencimento']<date('Y-m-d'))$vencido+=$saldo;if($proximo===null&&$r['status']==='pendente'&&$r['data_vencimento']>=date('Y-m-d'))$proximo=(string)$r['data_vencimento'];}$stmt->close();out(['ok'=>true,'code'=>'FATURAMENTO_RESUMO','user_msg'=>'Resumo de faturamento consultado com sucesso.','data'=>['assinatura'=>$assinatura,'contratacao'=>faturamentoSituacaoContratacao($conexao,$idEmpresa),'cancelamento'=>faturamentoPreviaCancelamento($conexao,$idEmpresa,$assinatura),'troca'=>faturamentoSituacaoTroca($conexao,$idEmpresa),'indicadores'=>['total_a_receber'=>round($receber,2),'total_vencido'=>round($vencido,2),'total_pago_confirmado'=>round($pago,2),'proximo_vencimento'=>$proximo]]]);
     } elseif ($rotaAtual === 'painel/faturamento/cobrancas') faturamentoCobrancas($conexao,$idEmpresa);
     elseif ($rotaAtual === 'painel/faturamento/pagamentos') faturamentoPagamentos($conexao,$idEmpresa);
     else out(['ok'=>false,'code'=>'ROUTE_NOT_FOUND','user_msg'=>'Rota de faturamento inválida.'],404);

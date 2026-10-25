@@ -37,6 +37,8 @@
 /* ===== FATURAMENTO: consulta da assinatura, cobranças e pagamentos ===== */
 #faturamento .faturamento-conteudo { display:grid; align-content:start; height:auto; gap:28px; padding:2px 4px 24px; }
 #faturamento .faturamento-bloco { display:grid; gap:14px; min-width:0; }
+/* O display:grid acima anularia o atributo hidden; seções sem conteúdo aplicável ficam ocultas. */
+#faturamento .faturamento-bloco[hidden] { display:none; }
 #faturamento .faturamento-secao-cabecalho { display:flex; align-items:center; gap:13px; min-width:0; }
 #faturamento .faturamento-secao-icone { display:grid; place-items:center; flex:0 0 46px; width:46px; height:46px; border-radius:50%; background:#eaf3ff; color:#1163dd; font-size:18px; }
 #faturamento .faturamento-secao-cabecalho h2 { margin:0; color:#102c57; font-size:20px; line-height:1.2; }
@@ -1169,4 +1171,93 @@
 .permissoes-modal-acoes .secundario { margin-right: auto; }
 /* ==========================================================
    FIM — MODAL PERMISSÕES DO USUÁRIO
+========================================================== */
+
+/* ==========================================================
+   MODAIS DO FATURAMENTO — recontratação, troca de plano e cancelamento
+========================================================== */
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .modal-conteudo { width:min(760px,94vw); }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .modal-corpo { max-height:calc(100dvh - 150px); overflow-y:auto; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-planos { display:grid; gap:10px; margin:16px 0 0; padding:0; border:0; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-planos > legend { margin-bottom:10px; color:#173b63; font-size:14px; font-weight:800; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) #planosContratarFaturamento { display:grid; gap:10px; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano { display:flex; align-items:flex-start; gap:12px; width:100%; box-sizing:border-box; padding:14px; border:1px solid #d7e3f0; border-radius:12px; background:#fff; color:#263f5d; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease, background .18s ease; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano:hover { border-color:#8bb8ee; background:#f8fbff; box-shadow:0 5px 15px rgba(28,62,105,.07); }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano:has(input:checked) { border-color:#1163dd; background:#f3f8ff; box-shadow:0 0 0 2px rgba(17,99,221,.1); }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano > input { position:static; flex:0 0 auto; width:18px; height:18px; margin:3px 0 0; accent-color:#1163dd; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-conteudo { display:grid; min-width:0; gap:4px; line-height:1.4; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-conteudo > strong { color:#173b63; font-size:15px; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-preco { color:#075cca; font-weight:800; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-conteudo > small { color:#60738c; font-size:12px; overflow-wrap:anywhere; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-recursos { color:#36577c; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano--indisponivel { border-style:dashed; background:#f8fafc; cursor:not-allowed; opacity:.76; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano--indisponivel:hover { border-color:#d7e3f0; background:#f8fafc; box-shadow:none; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-motivo { color:#9a6700 !important; font-weight:700; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-resumo { min-height:20px; margin:14px 0 0; color:#315579; font-size:13px; line-height:1.45; }
+/* Cartão de plano: descrição em destaque, limites em duas linhas e selo do plano atual */
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-conteudo { flex:1 1 auto; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-cabecalho { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-cabecalho > strong { color:#173b63; font-size:16px; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-preco { font-size:20px; line-height:1.25; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-conteudo > small.faturamento-contratacao-plano-descricao { color:#263f5d; font-size:13px; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-conteudo > small.faturamento-contratacao-plano-recursos { color:#60738c; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano-selo { flex:0 0 auto; padding:3px 10px; border-radius:999px; background:#5b8def; color:#fff; font-size:11px; font-weight:700; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano--atual { border-style:solid; opacity:1; background:#fafcff; }
+:is(#modalContratarFaturamento, #modalTrocaPlano, #modalCancelarFaturamento) .faturamento-contratacao-plano--atual :is(.faturamento-contratacao-plano-cabecalho > strong, .faturamento-contratacao-plano-preco, small) { color:#8a99ad !important; }
+/* Resumo do plano atual (troca e cancelamento) */
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-modal-intro { margin:0 0 14px; color:#263f5d; font-size:15px; line-height:1.5; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual { display:flex; align-items:center; gap:16px; padding:14px 18px; border:1px solid #d7e3f0; border-radius:12px; background:#f3f8ff; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-icone { display:grid; place-items:center; flex:0 0 auto; width:52px; height:52px; border-radius:50%; background:#e3eefc; color:#1163dd; font-size:20px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-dados { display:grid; gap:2px; flex:1 1 auto; min-width:0; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-dados > span { color:#60738c; font-size:12px; font-weight:600; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-dados > strong { color:#0b56c4; font-size:18px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-dados > p { margin:0; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-dados b { color:#0b56c4; font-size:20px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-dados small { color:#60738c; font-weight:600; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas { display:flex; flex:0 0 auto; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas > div { display:grid; gap:4px; padding:0 18px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas > div + div { border-left:1px solid #d7e3f0; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas span { color:#60738c; font-size:12px; font-weight:600; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas strong { color:#173b63; font-size:14px; }
+/* Avisos (prévia da troca e aviso importante do cancelamento) */
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso { display:flex; align-items:flex-start; gap:14px; margin:14px 0 0; padding:14px 18px; border:1px solid #f3dfa6; border-radius:12px; background:#fffaeb; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso[hidden] { display:none; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso-icone { display:grid; place-items:center; flex:0 0 auto; width:28px; height:28px; color:#e0a100; font-size:22px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso--importante .faturamento-aviso-icone { border-radius:50%; background:#f2b705; color:#fff; font-size:14px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso strong { display:block; margin-bottom:2px; color:#8a5a00; font-size:15px; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso p { margin:0; color:#3d4b5c; font-size:13px; line-height:1.5; }
+:is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-aviso p b { color:#173b63; }
+#modalTrocaPlano #opcoesTrocaPlano { display:grid; gap:10px; }
+/* Modalidades de cancelamento */
+#modalCancelarFaturamento .faturamento-cancelamento-opcoes { display:grid; gap:12px; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao { display:flex; align-items:center; gap:14px; margin:0; padding:16px 18px; border:1px solid #d7e3f0; border-radius:12px; background:#f7faff; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao--imediato { border-color:#f3c4c4; background:#fff6f6; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao > input { position:static; flex:0 0 auto; width:18px; height:18px; margin:0; accent-color:#1163dd; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao--imediato > input { accent-color:#dc2626; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao:has(input:checked) { border-color:#1163dd; box-shadow:0 0 0 2px rgba(17,99,221,.12); }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao--imediato:has(input:checked) { border-color:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.12); }
+#modalCancelarFaturamento .faturamento-cancelamento-icone { display:grid; place-items:center; flex:0 0 auto; width:48px; height:48px; border-radius:50%; background:#e3eefc; color:#1163dd; font-size:20px; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao--imediato .faturamento-cancelamento-icone { background:#fde2e2; color:#dc2626; }
+#modalCancelarFaturamento .faturamento-cancelamento-texto { display:grid; gap:4px; min-width:0; line-height:1.45; }
+#modalCancelarFaturamento .faturamento-cancelamento-texto strong { color:#173b63; font-size:15px; }
+#modalCancelarFaturamento .faturamento-cancelamento-texto small { color:#3d4b5c; font-size:13px; overflow-wrap:anywhere; }
+#modalCancelarFaturamento .faturamento-cancelamento-texto small b { color:#0b56c4; font-size:16px; }
+#modalCancelarFaturamento .faturamento-cancelamento-opcao--indisponivel { border-style:dashed; cursor:not-allowed; opacity:.7; }
+#modalCancelarFaturamento .faturamento-cancelamento-motivo { display:grid; gap:8px; margin-top:18px; }
+#modalCancelarFaturamento .faturamento-cancelamento-motivo > label { position:static; color:#173b63; font-size:14px; font-weight:800; }
+#modalCancelarFaturamento .faturamento-cancelamento-motivo > textarea { width:100%; box-sizing:border-box; min-height:96px; padding:12px 14px; border:1px solid #d7e3f0; border-radius:10px; background:#fff; color:#263f5d; font:inherit; font-size:14px; resize:vertical; }
+#modalCancelarFaturamento .faturamento-cancelamento-motivo > textarea:focus { outline:none; border-color:#1163dd; box-shadow:0 0 0 3px rgba(17,99,221,.12); }
+#modalCancelarFaturamento .faturamento-cancelamento-motivo > small { justify-self:end; color:#60738c; font-size:12px; }
+#modalCancelarFaturamento .faturamento-botao-perigo { background:#ef4444; border-color:#ef4444; color:#fff; }
+#modalCancelarFaturamento .faturamento-botao-perigo:hover { background:#dc2626; border-color:#dc2626; }
+@media (max-width: 640px) {
+  :is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual { flex-wrap:wrap; padding:12px 14px; }
+  :is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas { width:100%; padding-top:10px; border-top:1px solid #d7e3f0; }
+  :is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas > div { flex:1 1 0; padding:0 10px; }
+  :is(#modalTrocaPlano, #modalCancelarFaturamento) .faturamento-plano-atual-datas > div:first-child { padding-left:0; }
+  #modalCancelarFaturamento .faturamento-cancelamento-opcao { padding:14px; gap:10px; }
+  #modalCancelarFaturamento .faturamento-cancelamento-icone { width:38px; height:38px; font-size:16px; }
+}
+/* ==========================================================
+   FIM — MODAIS DO FATURAMENTO
 ========================================================== */

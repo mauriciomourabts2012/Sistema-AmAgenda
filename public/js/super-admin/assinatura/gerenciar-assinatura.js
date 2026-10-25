@@ -11,6 +11,7 @@
 
   const API = "/public/api/api_central.php";
   const LISTAR = `${API}?path=superadmin/assinatura/listar`;
+  const PREVIA_CANCELAMENTO = `${LISTAR}&previa_cancelamento=1`;
   const ALTERAR_STATUS = `${API}?path=superadmin/assinatura/status`;
   const EMPRESAS = `${API}?path=superadmin/empresa/listar&status=todos&ordem=nome_asc&limit=100`;
   const menuCtrl = C.createFloatingMenuController({ rootSelector: "#assinaturas" });
@@ -265,11 +266,44 @@
     if (id) id.value = "";
     if (empresa) empresa.value = "";
     if (motivo) motivo.value = "";
-    const imediato = document.querySelector('#formCancelarAssinatura input[name="modalidade_cancelamento"][value="imediato"]');
-    if (imediato) imediato.checked = true;
+    document.querySelectorAll('#formCancelarAssinatura input[name="modalidade_cancelamento"]').forEach(campo => {
+      campo.checked = false;
+      campo.disabled = campo.value === "fim_periodo_pago";
+    });
+    const previa = document.getElementById("cancelamentoPreviaFim");
+    if (previa) {
+      previa.hidden = true;
+      previa.textContent = "";
+    }
   }
 
-  function abrirCancelamento(botao) {
+  async function carregarPreviaCancelamento() {
+    const fimPeriodo = document.querySelector('#formCancelarAssinatura input[name="modalidade_cancelamento"][value="fim_periodo_pago"]');
+    const previa = document.getElementById("cancelamentoPreviaFim");
+    if (fimPeriodo) fimPeriodo.disabled = true;
+    if (previa) {
+      previa.hidden = false;
+      previa.textContent = "Consultando a data de encerramento no servidor...";
+    }
+    try {
+      const parametros = new URLSearchParams({ id_assinatura: idAssinaturaCancelamento, id_empresa: idEmpresaCancelamento });
+      const resposta = await fetch(`${PREVIA_CANCELAMENTO}&${parametros.toString()}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
+      const json = await resposta.json();
+      if (!resposta.ok || !json.ok) throw new Error(json.user_msg || "Não foi possível consultar o período pago.");
+      if (String(json.data?.id_assinatura || "") !== idAssinaturaCancelamento || String(json.data?.id_empresa || "") !== idEmpresaCancelamento) return;
+      const fim = json.data?.data_fim_periodo_pago;
+      if (json.data?.pode_fim_periodo_pago && fim) {
+        if (fimPeriodo) fimPeriodo.disabled = false;
+        if (previa) previa.textContent = `Cancelamento ao fim do período pago: acesso até ${dataBr(fim)}.`;
+      } else if (previa) {
+        previa.textContent = "Não há período integralmente pago vigente para programar o cancelamento. O cancelamento imediato continua disponível.";
+      }
+    } catch (erro) {
+      if (previa) previa.textContent = erro.message || "Não foi possível consultar o período pago.";
+    }
+  }
+
+  async function abrirCancelamento(botao) {
     // O motivo é coletado separadamente para impedir cancelamento acidental e manter a justificativa auditável.
     idAssinaturaCancelamento = String(botao.dataset.idAssinatura || "");
     idEmpresaCancelamento = String(botao.dataset.idEmpresa || "");
@@ -278,6 +312,7 @@
     document.getElementById("cancelamentoAssinaturaMotivo").value = "";
     window.abrirModal?.("modalCancelarAssinatura");
     document.getElementById("cancelamentoAssinaturaMotivo")?.focus();
+    await carregarPreviaCancelamento();
   }
 
   async function enviarStatus(idAssinatura, idEmpresa, acao, motivo = "", modalidadeCancelamento = "") {
@@ -387,7 +422,7 @@
       const botao = evento.target.closest("#assinaturas .assinatura-menu .agenda-menu-item, .assinatura-menu.menu-flutuante .agenda-menu-item");
       if (!botao) return;
       menuCtrl.fechar();
-      if (botao.dataset.acao === "cancelar") abrirCancelamento(botao);
+      if (botao.dataset.acao === "cancelar") void abrirCancelamento(botao);
       else alterarStatus(botao);
     });
     document.getElementById("formCancelarAssinatura")?.addEventListener("submit", cancelar);
