@@ -1191,6 +1191,30 @@ function notificacaoAtualizarEstado(
     return ['encontrada' => $encontrada, 'alterada' => false];
 }
 
+/** Notificações apenas informativas: a leitura as encerra, pois não representam pendência. */
+const NOTIFICACAO_CODIGOS_INFORMATIVOS_LEITURA = ['faturamento.upgrade_concluido'];
+
+function notificacaoConcluirInformativaLida(
+    mysqli $conexao,
+    int $idNotificacao,
+    string $destinatarioTipo,
+    int $destinatarioId,
+    ?int $idEmpresa
+): void {
+    $destinatarioTipo = notificacaoDestinatarioTipo($destinatarioTipo);
+    $marcadores = implode(',', array_fill(0, count(NOTIFICACAO_CODIGOS_INFORMATIVOS_LEITURA), '?'));
+    $stmt = notificacaoPreparar($conexao, "UPDATE notificacao SET concluida_em=CURRENT_TIMESTAMP WHERE id_notificacao=? AND destinatario_tipo=? AND destinatario_id=? AND id_empresa <=> ? AND codigo IN ({$marcadores}) AND lida_em IS NOT NULL AND concluida_em IS NULL AND cancelada_em IS NULL");
+    $valores = array_merge([$idNotificacao, $destinatarioTipo, $destinatarioId, $idEmpresa], NOTIFICACAO_CODIGOS_INFORMATIVOS_LEITURA);
+    $stmt->bind_param('isii' . str_repeat('s', count(NOTIFICACAO_CODIGOS_INFORMATIVOS_LEITURA)), ...$valores);
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível encerrar a notificação informativa.');
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível encerrar a notificação informativa.');
+    } finally {
+        $stmt->close();
+    }
+}
+
 function notificacaoMarcarComoLida(
     mysqli $conexao,
     int $idNotificacao,

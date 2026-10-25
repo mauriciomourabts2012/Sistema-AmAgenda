@@ -271,7 +271,7 @@
       if (document.getElementById("faturamento")) ativarAbaContexto(contexto, "faturamento", false);
 
       if (!avisoRegularizacaoExibido) {
-        window.MensagemSistema?.aviso?.("A assinatura está suspensa. Regularize o faturamento para continuar usando o sistema.");
+        window.MensagemSistema?.aviso?.("O faturamento está disponível em modo restrito. Consulte a situação da assinatura nesta aba.");
         avisoRegularizacaoExibido = true;
       }
     }

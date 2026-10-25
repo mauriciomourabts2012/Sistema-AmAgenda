@@ -318,7 +318,7 @@ function loginMultiempresaResponderLoginOk(array $data): void
         'step' => 'done',
         'code' => 'LOGIN_OK',
         'user_msg' => !empty($data['modo_regularizacao'])
-            ? 'A assinatura está suspensa. Regularize o faturamento para continuar usando o sistema.'
+            ? 'O faturamento está disponível em modo restrito.'
             : 'Login realizado com sucesso.',
         'data' => $data,
     ], 200);

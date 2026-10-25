@@ -29,6 +29,9 @@ function permissoesCatalogo(): array
         // A futura interface apenas ocultará a aba; este código continuará sendo a autoridade no backend.
         'auditoria.visualizar' => ['grupo'=>'auditoria','rotulo'=>'Visualizar auditoria','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'faturamento.visualizar' => ['grupo'=>'faturamento','rotulo'=>'Visualizar faturamento','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
+        'faturamento.cancelar' => ['grupo'=>'faturamento','rotulo'=>'Cancelar assinatura','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
+        'faturamento.contratar' => ['grupo'=>'faturamento','rotulo'=>'Contratar novamente','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
+        'faturamento.trocar_plano' => ['grupo'=>'faturamento','rotulo'=>'Trocar de plano','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
         'faturamento.pagar' => ['grupo'=>'faturamento','rotulo'=>'Iniciar pagamento online','proprietario'=>true,'profissional'=>false,'recepcionista'=>false,'critica'=>'proprietario'],
         'empresa.visualizar_configuracoes' => ['grupo'=>'configuracoes','rotulo'=>'Visualizar configurações da empresa','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],
         'empresa.editar_configuracoes' => ['grupo'=>'configuracoes','rotulo'=>'Editar configurações da empresa','proprietario'=>true,'profissional'=>false,'recepcionista'=>false],

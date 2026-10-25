@@ -10,7 +10,8 @@
 
   const API_NOTIFICACOES = "/public/api/api_central.php?path=notificacoes/listar";
   const API_MARCAR_LIDA = "/public/api/api_central.php?path=notificacoes/marcar-lida";
-  const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto", "agenda.abrir_agendamento", "chat.abrir_conversa"]);
+  const ACOES_NOTIFICACAO = new Set(["perfil.alterar_senha", "perfil.alterar_foto", "agenda.abrir_agendamento", "chat.abrir_conversa", "faturamento.abrir"]);
+  const PAGINA_PAINEL = "/public/views/painel-administrativo/painel-administrativo.html";
   const PAGINA_AGENDA = "/public/views/agenda.html";
   const PAGINA_CHAT = "/public/views/chat/chat-interno.html";
   const CHAVE_AVISO_SENHA_TEMPORARIA = "amagenda:senha-temporaria:aviso-24h";
@@ -294,6 +295,14 @@
     window.location.assign(destino.toString());
   }
 
+  // Faturamento: abre a aba no painel atual ou navega até ela (a aba ativa é lembrada pelo menu lateral).
+  function abrirFaturamentoDaNotificacao() {
+    const item = document.querySelector('[data-menu-aba="faturamento"]');
+    if (item) { item.click(); return; }
+    try { localStorage.setItem("aba_proprietario_ativa", "faturamento"); } catch (erro) { /* navegação segue sem preferência */ }
+    window.location.assign(new URL(PAGINA_PAINEL, window.location.origin).toString());
+  }
+
   function executarAcaoNotificacao(codigo, item = null) {
     if (!ACOES_NOTIFICACAO.has(codigo)) return;
     fecharDropdownNotificacoes(false);
@@ -301,6 +310,7 @@
     if (codigo === "perfil.alterar_foto") abrirPerfilNaArea("foto", false);
     if (codigo === "agenda.abrir_agendamento") abrirAgendamentoDaNotificacao(item);
     if (codigo === "chat.abrir_conversa") abrirConversaDaNotificacao(item);
+    if (codigo === "faturamento.abrir") abrirFaturamentoDaNotificacao();
   }
 
   function renderizarNotificacoes() {

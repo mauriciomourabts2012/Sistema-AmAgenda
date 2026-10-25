@@ -455,6 +455,15 @@ $routes = [
     'painel/faturamento/resumo' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
     ],
+    'painel/faturamento/cancelar' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
+    'painel/faturamento/contratacao' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
+    'painel/faturamento/troca-plano' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
+    ],
     'painel/faturamento/cobrancas' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_faturamento.php',
     ],
@@ -827,6 +836,7 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
     if (!($resultadoLeitura['encontrada'] ?? false)) {
         out(['ok' => false, 'code' => 'NOTIFICATION_NOT_FOUND', 'user_msg' => 'Notificação não encontrada.'], 404);
     }
+    notificacaoConcluirInformativaLida($conexao, (int)$idNotificacaoRaw, $destinatarioTipo, $idDestinatario, $idEmpresaNotificacoes);
 
     out([
         'ok' => true,
@@ -937,6 +947,9 @@ $permissoesPorRota = [
     'painel/usuario/alterar-status' => 'usuarios.alterar_status',
     'painel/auditoria/listar' => 'auditoria.visualizar',
     'painel/faturamento/resumo' => 'faturamento.visualizar',
+    'painel/faturamento/cancelar' => 'faturamento.cancelar',
+    'painel/faturamento/contratacao' => 'faturamento.contratar',
+    'painel/faturamento/troca-plano' => 'faturamento.trocar_plano',
     'painel/faturamento/cobrancas' => 'faturamento.visualizar',
     'painel/faturamento/pagamentos' => 'faturamento.visualizar',
     // A regularização valida Proprietário, modo de regularização e CSRF no handler específico.

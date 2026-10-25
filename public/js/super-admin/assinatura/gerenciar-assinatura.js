@@ -58,6 +58,7 @@
 
   function buildMenuAcoes(item, status) {
     if (!['ativa', 'suspensa'].includes(status)) return "";
+    if (item.data_fim) return "";
 
     const acaoPrincipal = status === "ativa" ? "suspender" : "reativar";
     const iconePrincipal = status === "ativa" ? "fa-pause" : "fa-play";
@@ -104,7 +105,7 @@
         <div class="assinatura-card-cabecalho">
           <div class="agenda-nome">${esc(item.empresa_nome)}</div>
           <div class="assinatura-status-acoes">
-            <span class="agenda-status ${statusClass(status)}">${esc(statusLabel(status))}</span>
+            <span class="agenda-status ${statusClass(status)}">${esc(item.data_fim && ['ativa', 'suspensa'].includes(status) ? `Cancelamento programado: ${dataBr(item.data_fim)}` : statusLabel(status))}</span>
             ${menuAcoes ? `<div class="agenda-acoes assinatura-acoes" aria-haspopup="menu">
               <button class="agenda-btn-acoes" type="button" data-acao="toggle-menu" aria-expanded="false" title="Ações" aria-label="Abrir ações da assinatura">
                 ${iconAcoes()}
@@ -264,6 +265,8 @@
     if (id) id.value = "";
     if (empresa) empresa.value = "";
     if (motivo) motivo.value = "";
+    const imediato = document.querySelector('#formCancelarAssinatura input[name="modalidade_cancelamento"][value="imediato"]');
+    if (imediato) imediato.checked = true;
   }
 
   function abrirCancelamento(botao) {
@@ -277,7 +280,7 @@
     document.getElementById("cancelamentoAssinaturaMotivo")?.focus();
   }
 
-  async function enviarStatus(idAssinatura, idEmpresa, acao, motivo = "") {
+  async function enviarStatus(idAssinatura, idEmpresa, acao, motivo = "", modalidadeCancelamento = "") {
     const csrf = String(window.__AUTH__?.csrf_token || "");
     if (!csrf) throw new Error("Token de segurança indisponível. Atualize a página.");
     const corpo = new FormData();
@@ -285,6 +288,7 @@
     corpo.append("id_empresa", idEmpresa);
     corpo.append("acao", acao);
     if (motivo) corpo.append("motivo", motivo);
+    if (modalidadeCancelamento) corpo.append("modalidade_cancelamento", modalidadeCancelamento);
     const resposta = await fetch(ALTERAR_STATUS, {
       method: "POST",
       body: corpo,
@@ -323,19 +327,35 @@
 
   async function cancelar(evento) {
     evento.preventDefault();
+    const botao = evento.submitter || document.querySelector('#formCancelarAssinatura button[type="submit"]');
+    if (botao?.disabled) return;
     const motivo = String(document.getElementById("cancelamentoAssinaturaMotivo")?.value || "").trim();
+    const modalidade = document.querySelector('#formCancelarAssinatura input[name="modalidade_cancelamento"]:checked')?.value || "";
+    if (!["imediato", "fim_periodo_pago"].includes(modalidade)) {
+      avisar("aviso", "Escolha a modalidade do cancelamento.");
+      return;
+    }
     if (!motivo) {
       avisar("aviso", "Informe um motivo para cancelar a assinatura.");
       return;
     }
     try {
-      await enviarStatus(idAssinaturaCancelamento, idEmpresaCancelamento, "cancelar", motivo);
-      avisar("sucesso", "Assinatura cancelada com sucesso.");
+      if (botao) botao.disabled = true;
+      const resultado = await enviarStatus(idAssinaturaCancelamento, idEmpresaCancelamento, "cancelar", motivo, modalidade);
+      const fim = resultado.data?.data_fim;
+      avisar("sucesso", modalidade === "fim_periodo_pago"
+        ? `Cancelamento programado. Acesso até ${dataBr(fim)}; a renovação automática foi bloqueada.`
+        : "Assinatura cancelada imediatamente. O histórico financeiro foi preservado.");
+      if (Number(resultado.data?.operacoes_em_andamento || 0) > 0) {
+        avisar("aviso", "Há operações de pagamento em andamento ou incertas. Elas devem ser conciliadas; o cancelamento não as estorna.");
+      }
       window.fecharModal?.(document.getElementById("modalCancelarAssinatura"));
       limparCancelamento();
       await carregarAssinaturas();
     } catch (erro) {
       avisar("erro", erro.message || "Não foi possível cancelar a assinatura.");
+    } finally {
+      if (botao) botao.disabled = false;
     }
   }
 

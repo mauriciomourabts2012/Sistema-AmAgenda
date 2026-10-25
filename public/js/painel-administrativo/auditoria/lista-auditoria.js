@@ -19,9 +19,10 @@
     perfil: ["perfil.senha_alterada"],
     empresas: ["empresa.criada", "empresa.editada", "empresa.status_alterado"],
     planos: ["plano.criado", "plano.editado", "plano.status_alterado"],
+    financeiro: ["assinatura.troca_solicitada", "assinatura.upgrade_pagamento_confirmado", "assinatura.upgrade_ativado", "assinatura.downgrade_programado", "assinatura.downgrade_efetivado", "assinatura.troca_cancelada"],
     autenticacao: ["autenticacao.credenciais_invalidas", "autenticacao.usuario_inativo", "autenticacao.empresa_inativa", "autenticacao.vinculo_inativo", "autenticacao.acesso_negado", "suporte.iniciado", "suporte.finalizado"]
   };
-  const ROTULOS_MODULOS = { agenda: "Agenda", clientes: "Clientes", usuarios: "Usuários", permissoes: "Permissões", servicos: "Serviços", configuracoes: "Configurações", perfil: "Perfil", empresas: "Empresas", planos: "Planos", autenticacao: "Autenticação" };
+  const ROTULOS_MODULOS = { agenda: "Agenda", clientes: "Clientes", usuarios: "Usuários", permissoes: "Permissões", servicos: "Serviços", configuracoes: "Configurações", perfil: "Perfil", empresas: "Empresas", planos: "Planos", financeiro: "Financeiro", autenticacao: "Autenticação" };
   const ROTULOS_ORIGENS = { empresa: "Empresa", plataforma: "Plataforma", modo_suporte: "Modo suporte", autenticacao: "Autenticação" };
   const ROTULOS_CAMPOS = {
     nome: "Nome", telefone: "Telefone", email: "E-mail", perfil: "Perfil", status: "Status",
@@ -36,7 +37,11 @@
     senha_alterada: "Senha", repetir_semanalmente: "Repetição semanal", recorrencia_data_fim: "Fim da recorrência",
     cnpj: "CNPJ", plano: "Plano", preco_mensal: "Preço mensal", cobranca: "Cobrança",
     limite_usuarios: "Limite de usuários", limite_profissionais: "Limite de profissionais",
-    limite_servicos: "Limite de serviços", limite_agendamentos: "Limite de agendamentos", destaque: "Destaque"
+    limite_servicos: "Limite de serviços", limite_agendamentos: "Limite de agendamentos", destaque: "Destaque",
+    plano_anterior: "Plano anterior", plano_novo: "Novo plano", valor_anterior: "Mensalidade anterior", valor_novo: "Nova mensalidade",
+    valor_ciclo: "Valor do ciclo pago", dias_ciclo: "Dias do ciclo", dias_restantes: "Dias restantes", ciclo_inicio: "Início do ciclo",
+    ciclo_fim: "Fim do ciclo", valor_proporcional: "Valor proporcional", proxima_renovacao: "Próxima renovação",
+    data_efetivacao: "Efetivação", valor_contratado: "Valor contratado"
   };
 
   const aba = document.getElementById("auditoria");
@@ -129,6 +134,34 @@
     return caixa;
   }
 
+  function moedaAuditoria(valor) {
+    return Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+
+  // Super Admin: mensagem pronta para o cliente após o upgrade, sem canal de envio automático.
+  function mensagemUpgradeCliente(alteracoes) {
+    const valor = campo => alteracoes?.[campo]?.depois;
+    const proporcional = Number(valor("valor_proporcional") || 0);
+    const pagamento = proporcional > 0
+      ? `O valor proporcional pago foi de ${moedaAuditoria(proporcional)}, referente aos dias restantes do ciclo.`
+      : "Não houve valor proporcional a pagar.";
+    return `Olá! Seu upgrade do plano ${valor("plano_anterior") || "anterior"} para o ${valor("plano_novo") || "novo plano"} foi confirmado. ${pagamento} Seu novo plano já está disponível e a próxima mensalidade será de ${moedaAuditoria(valor("valor_novo"))}.`;
+  }
+
+  async function copiarTexto(textoCopia) {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(textoCopia); return; }
+    const campo = document.createElement("textarea");
+    campo.value = textoCopia;
+    campo.setAttribute("readonly", "");
+    campo.style.position = "fixed";
+    campo.style.opacity = "0";
+    document.body.append(campo);
+    campo.select();
+    const ok = document.execCommand("copy");
+    campo.remove();
+    if (!ok) throw new Error("copia");
+  }
+
   function renderizarItem(item) {
     const artigo = elemento("article", "auditoria-item");
     const topo = elemento("div", "auditoria-item-topo");
@@ -157,6 +190,20 @@
     if (alteracoesVisiveis && typeof alteracoesVisiveis === "object") delete alteracoesVisiveis.login_tentado;
     const alteracoes = renderizarAlteracoes(alteracoesVisiveis);
     if (alteracoes) artigo.append(alteracoes);
+    if (AUDITORIA_GLOBAL && item?.evento?.codigo === "assinatura.upgrade_ativado") {
+      const mensagem = mensagemUpgradeCliente(item.alteracoes);
+      const caixa = elemento("div", "auditoria-mensagem-cliente");
+      caixa.append(elemento("p", "auditoria-descricao", mensagem));
+      const botao = elemento("button", "botao-geral", "Copiar mensagem");
+      botao.type = "button";
+      botao.addEventListener("click", async () => {
+        try { await copiarTexto(mensagem); botao.textContent = "Mensagem copiada"; }
+        catch (erro) { botao.textContent = "Não foi possível copiar"; }
+        setTimeout(() => { botao.textContent = "Copiar mensagem"; }, 2500);
+      });
+      caixa.append(botao);
+      artigo.append(caixa);
+    }
     return artigo;
   }
 

@@ -269,9 +269,9 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
     if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar pagamento.');
     try {
         $c = pagamentoOnlineConsulta($db,
-            "SELECT c.id_assinatura,c.valor,c.status,c.finalidade,p.gera_cobranca,
+            "SELECT c.id_assinatura,c.valor,c.status,c.finalidade,c.periodo_inicio,p.gera_cobranca,
                     a.modalidade,a.teste_iniciado_em,a.teste_expira_em,
-                    a.status AS assinatura_status,a.motivo_suspensao,
+                    a.status AS assinatura_status,a.motivo_suspensao,a.data_fim,
                     (a.teste_expira_em IS NOT NULL AND CURRENT_TIMESTAMP >= a.teste_expira_em) AS teste_expirado
                FROM cobranca c
                JOIN assinatura a
@@ -282,6 +282,10 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
               WHERE c.id_cobranca=? AND c.id_empresa=?
               FOR UPDATE", 'ii', $cobranca, $empresa)->fetch_assoc();
         if (!$c) pagamentoOnlineFalhar('COBRANCA_NAO_ENCONTRADA', 'Cobrança não encontrada.', 404);
+        if ($c['data_fim'] !== null && $c['periodo_inicio'] !== null
+            && (string)$c['periodo_inicio'] > (string)$c['data_fim']) {
+            pagamentoOnlineFalhar('COBRANCA_APOS_ENCERRAMENTO', 'Esta cobrança requer revisão antes do pagamento.', 409);
+        }
         if ($c['modalidade'] === 'teste') {
             if ($c['teste_iniciado_em'] === null || $c['teste_expira_em'] === null) {
                 pagamentoOnlineFalhar('ASSINATURA_TRIAL_INCONSISTENTE', 'Os dados do período de teste da assinatura precisam de verificação.', 409);

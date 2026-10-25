@@ -708,7 +708,7 @@
                   </div>
                   <div class="linha">
                     <label class="label-filtro" for="modulo_auditoria">Módulo
-                      <select class="input-filtro" id="modulo_auditoria"><option value="">Todos</option><option value="agenda">Agenda</option><option value="clientes">Clientes</option><option value="usuarios">Usuários</option><option value="permissoes">Permissões</option><option value="servicos">Serviços</option><option value="configuracoes">Configurações</option><option value="perfil">Perfil</option><option value="empresas">Empresas</option><option value="planos">Planos</option><option value="autenticacao">Autenticação</option></select>
+                      <select class="input-filtro" id="modulo_auditoria"><option value="">Todos</option><option value="financeiro">Financeiro</option><option value="agenda">Agenda</option><option value="clientes">Clientes</option><option value="usuarios">Usuários</option><option value="permissoes">Permissões</option><option value="servicos">Serviços</option><option value="configuracoes">Configurações</option><option value="perfil">Perfil</option><option value="empresas">Empresas</option><option value="planos">Planos</option><option value="autenticacao">Autenticação</option></select>
                     </label>
                     <label class="label-filtro" for="evento_auditoria">Evento<select class="input-filtro" id="evento_auditoria"><option value="">Todos</option></select></label>
                   </div>
@@ -991,10 +991,21 @@
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
           <div class="modal-corpo">
-            <p>A assinatura será encerrada contratualmente e permanecerá no histórico.</p>
+            <p>O histórico financeiro e as dívidas existentes serão preservados. Pagamentos em andamento serão conciliados; não haverá estorno automático.</p>
             <form id="formCancelarAssinatura" autocomplete="off">
               <input type="hidden" id="cancelamentoAssinaturaId" name="id_assinatura" value="">
               <input type="hidden" id="cancelamentoAssinaturaEmpresaId" name="id_empresa" value="">
+              <fieldset class="modal-campo cancelamento-modalidades">
+                <legend>Quando encerrar o acesso?</legend>
+                <label class="cancelamento-opcao" for="cancelamentoModalidadeImediato">
+                  <input type="radio" id="cancelamentoModalidadeImediato" name="modalidade_cancelamento" value="imediato" checked>
+                  <span><strong>Imediatamente</strong> — o acesso contratado termina agora.</span>
+                </label>
+                <label class="cancelamento-opcao" for="cancelamentoModalidadeFimPeriodo">
+                  <input type="radio" id="cancelamentoModalidadeFimPeriodo" name="modalidade_cancelamento" value="fim_periodo_pago">
+                  <span><strong>Ao fim do período integralmente pago</strong> — mantém o acesso até a data confirmada pelo servidor e impede a renovação automática.</span>
+                </label>
+              </fieldset>
               <div class="modal-campo">
                 <textarea id="cancelamentoAssinaturaMotivo" name="motivo" rows="3" maxlength="500" placeholder=" " required></textarea>
                 <label for="cancelamentoAssinaturaMotivo">Motivo do cancelamento</label>
@@ -1330,6 +1341,39 @@
                 </div>
 
               </div>
+
+              <section id="emp_edit_contratacao" class="plano-selecao-usuarios contratacao-admin" hidden aria-live="polite">
+                <div class="plano-selecao-cabecalho">
+                  <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+                  <div>
+                    <strong id="emp_edit_contratacao_titulo">Contratação do plano</strong>
+                    <p id="emp_edit_contratacao_msg"></p>
+                  </div>
+                </div>
+                <div id="emp_edit_contratacao_nova" class="contratacao-admin-bloco" hidden>
+                  <label for="emp_edit_contratacao_plano">Plano da nova contratação</label>
+                  <select id="emp_edit_contratacao_plano">
+                    <option value="">Selecione o plano</option>
+                  </select>
+                  <button id="emp_edit_btn_contratar" class="botao-geral destaque" type="button">
+                    <i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i>
+                    Nova contratação
+                  </button>
+                </div>
+                <div id="emp_edit_contratacao_pendente" class="contratacao-admin-bloco" hidden>
+                  <dl class="contratacao-admin-dados">
+                    <div><dt>Plano</dt><dd id="emp_edit_contratacao_plano_nome"></dd></div>
+                    <div><dt>Primeira cobrança</dt><dd id="emp_edit_contratacao_cobranca"></dd></div>
+                    <div><dt>Vencimento</dt><dd id="emp_edit_contratacao_vencimento"></dd></div>
+                    <div><dt>Situação</dt><dd id="emp_edit_contratacao_situacao"></dd></div>
+                  </dl>
+                  <p id="emp_edit_contratacao_orientacao" class="contratacao-admin-orientacao"></p>
+                  <button id="emp_edit_btn_ativar" class="botao-geral destaque" type="button">
+                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                    Verificar pagamento e ativar
+                  </button>
+                </div>
+              </section>
 
               <section id="emp_edit_selecao_plano" class="plano-selecao-usuarios" hidden aria-live="polite">
                 <div class="plano-selecao-cabecalho">

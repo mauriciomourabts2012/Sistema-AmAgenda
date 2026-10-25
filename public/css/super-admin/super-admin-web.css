@@ -1129,5 +1129,78 @@
 }
 
 /* =========================
+   MODAL CANCELAR ASSINATURA — modalidades
+   (neutraliza o estilo de campo flutuante de .modal-campo, que cortava/sobrepunha os rádios)
+========================= */
+#formCancelarAssinatura .cancelamento-modalidades {
+  display: block;
+  position: static;
+  min-width: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+#formCancelarAssinatura .cancelamento-modalidades legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+#formCancelarAssinatura .cancelamento-modalidades label.cancelamento-opcao {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: #f8fafc;
+  color: var(--text, #111);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  pointer-events: auto;
+}
+#formCancelarAssinatura .cancelamento-modalidades label.cancelamento-opcao:has(input:checked) {
+  border-color: #1976d2;
+  background: #eef5fe;
+}
+#formCancelarAssinatura .cancelamento-modalidades input[type="radio"] {
+  flex: 0 0 18px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  border-radius: 50%;
+  accent-color: #1976d2;
+  cursor: pointer;
+}
+
+/* =========================
+   MODAL EDITAR EMPRESA — contratação administrativa
+========================= */
+.contratacao-admin-bloco { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.contratacao-admin-bloco > label { font-size: 13px; font-weight: 700; }
+.contratacao-admin-bloco select {
+  padding: 12px; border-radius: 10px; border: 1px solid var(--border, #e2e8f0);
+  background: #fff; font-size: 14px; width: 100%;
+}
+.contratacao-admin-bloco > .botao-geral { align-self: flex-start; }
+.contratacao-admin-dados { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.contratacao-admin-dados dt { font-size: 12px; color: var(--muted, #64748b); }
+.contratacao-admin-dados dd { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.contratacao-admin-orientacao { margin: 0; font-size: 13px; line-height: 1.45; }
+@media (max-width: 680px) {
+  .contratacao-admin-dados { grid-template-columns: 1fr; }
+  .contratacao-admin-bloco > .botao-geral { width: 100%; align-self: stretch; }
+}
+
+/* =========================
    FIM
 ========================= */

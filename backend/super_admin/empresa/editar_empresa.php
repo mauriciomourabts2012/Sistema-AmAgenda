@@ -147,6 +147,76 @@ function editarEmpresaErroTransacional(mysqli $conexao, string $code, string $me
 }
 
 /* ==========================================================
+   CONTRATAÇÃO ADMINISTRATIVA (empresa sem assinatura vigente)
+   ----------------------------------------------------------
+   Reutiliza integralmente o serviço da recontratação (Fase 3): situação, solicitação (primeira cobrança) e
+   conclusão após a quitação confirmada. Nenhuma regra financeira é duplicada aqui.
+========================================================== */
+function editarEmpresaAcaoContratual(string $acao): void
+{
+    require __DIR__ . '/../../_config/conexao.php';
+    require_once __DIR__ . '/../../_servicos/auditoria.php';
+    require_once __DIR__ . '/../../_servicos/assinatura.php';
+    if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
+        out(['ok' => false, 'code' => 'DB_CONN_ERROR', 'user_msg' => 'Falha ao conectar no banco.'], 500);
+    }
+    $conexao->set_charset('utf8mb4');
+    $idEmpresa = intOrNull('id_empresa');
+    if ($idEmpresa === null || $idEmpresa < 1) {
+        out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Empresa inválida.'], 422);
+    }
+    try {
+        if ($acao === 'situacao_contratual') {
+            $situacao = assinaturaServicoSituacaoNovaContratacao($conexao, $idEmpresa);
+            out(['ok' => true, 'code' => 'SITUACAO_CONTRATUAL', 'user_msg' => '', 'data' => ['situacao' => $situacao]]);
+        }
+        $ator = auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa);
+        $conexao->begin_transaction();
+        if ($acao === 'nova_contratacao') {
+            $idPlano = intOrNull('plano_contratacao');
+            if ($idPlano === null || $idPlano < 1) {
+                try {
+                    $conexao->rollback();
+                } catch (Throwable) {
+                }
+                out(['ok' => false, 'code' => 'PLANO_INDISPONIVEL', 'user_msg' => 'Selecione o plano da nova contratação.'], 422);
+            }
+            $resultado = assinaturaServicoSolicitarNovaContratacao($conexao, $idEmpresa, $idPlano, $ator);
+        } else {
+            $resultado = assinaturaServicoConcluirNovaContratacao($conexao, $idEmpresa, $ator, ['origem' => 'painel_super_admin']);
+        }
+        if (!($resultado['ok'] ?? false)) {
+            $conexao->rollback();
+            out(['ok' => false, 'code' => (string)($resultado['codigo'] ?? 'CONTRATACAO_NEGADA'), 'user_msg' => (string)($resultado['mensagem'] ?? 'Não foi possível concluir a operação.')], 409);
+        }
+        if (!$conexao->commit()) {
+            throw new RuntimeException('Falha ao confirmar a contratação.');
+        }
+        $dados = array_intersect_key($resultado, array_flip(['resultado', 'id_assinatura', 'id_cobranca', 'valor', 'data_vencimento']));
+        out(['ok' => true, 'code' => $acao === 'nova_contratacao' ? 'NOVA_CONTRATACAO_SOLICITADA' : 'NOVA_CONTRATACAO_ATIVADA',
+            'user_msg' => (string)$resultado['mensagem'], 'data' => $dados]);
+    } catch (Throwable $e) {
+        try {
+            $conexao->rollback();
+        } catch (Throwable) {
+        }
+        if (in_array((int)$e->getCode(), [1205, 1213], true)) {
+            out(['ok' => false, 'code' => 'FINANCEIRO_EM_ATUALIZACAO', 'user_msg' => 'O financeiro desta empresa está em atualização. Tente novamente.'], 409);
+        }
+        error_log('EDITAR_EMPRESA_CONTRATACAO_EXCEPTION: ' . $e->getMessage());
+        out(['ok' => false, 'code' => 'CONTRATACAO_ERROR', 'user_msg' => 'Não foi possível concluir a operação de contratação. Tente novamente.'], 500);
+    }
+}
+
+$acaoContratual = is_scalar($_POST['acao'] ?? null) ? trim((string)$_POST['acao']) : '';
+if ($acaoContratual !== '') {
+    if (!in_array($acaoContratual, ['situacao_contratual', 'nova_contratacao', 'concluir_contratacao'], true)) {
+        out(['ok' => false, 'code' => 'ACAO_INVALIDA', 'user_msg' => 'Ação inválida.'], 422);
+    }
+    editarEmpresaAcaoContratual($acaoContratual);
+}
+
+/* ==========================================================
    ENTRADAS
 ========================================================== */
 $idEmpresa  = intOrNull('id_empresa');
@@ -396,6 +466,61 @@ try {
     }
 
     $conexao->begin_transaction();
+
+    // Troca de plano de assinatura PAGA: segue exatamente as regras do Faturamento (Fase 4) — upgrade com
+    // cobrança proporcional liberado só após o pagamento, downgrade programado para a próxima competência,
+    // bloqueio por dívida/pagamento incerto e limites validados na ativação. O contrato nunca é alterado
+    // diretamente por aqui. Ordem de locks do projeto: empresa -> assinatura -> troca -> cobrança.
+    $trocaAdministrativa = null;
+    require_once __DIR__ . '/../../_servicos/assinatura.php';
+    $linhasEmpresaTroca = assinaturaServicoConsultaFinanceira($conexao, 'SELECT plano_id FROM empresa WHERE id_empresa = ? LIMIT 1 FOR UPDATE', 'i', $idEmpresa);
+    if ($linhasEmpresaTroca !== [] && (int)$linhasEmpresaTroca[0]['plano_id'] !== $planoId) {
+        $vigentesTroca = assinaturaServicoConsultaFinanceira(
+            $conexao,
+            "SELECT modalidade FROM assinatura WHERE id_empresa = ? AND status IN ('ativa', 'suspensa') FOR UPDATE",
+            'i',
+            $idEmpresa
+        );
+        $modalidadesTroca = array_column($vigentesTroca, 'modalidade');
+        if (in_array('paga', $modalidadesTroca, true)) {
+            $confirmadoBruto = $_POST['troca_valor_confirmado_centavos'] ?? null;
+            $valorConfirmadoTroca = is_scalar($confirmadoBruto) && preg_match('/^\d{1,12}$/', (string)$confirmadoBruto)
+                ? (int)$confirmadoBruto
+                : null;
+            $trocaAdministrativa = assinaturaServicoSolicitarTrocaPlano(
+                $conexao,
+                $idEmpresa,
+                $planoId,
+                $valorConfirmadoTroca,
+                auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa)
+            );
+            if (!($trocaAdministrativa['ok'] ?? false)) {
+                try {
+                    $conexao->rollback();
+                } catch (Throwable) {
+                }
+                $codigoTroca = (string)($trocaAdministrativa['codigo'] ?? 'TROCA_PLANO_NEGADA');
+                $previaTroca = is_array($trocaAdministrativa['previa'] ?? null) ? $trocaAdministrativa['previa'] : null;
+                if ($codigoTroca === 'VALOR_ALTERADO' && $previaTroca !== null) {
+                    $valorConfirmacao = (string)$previaTroca['tipo'] === 'upgrade'
+                        ? (int)$previaTroca['valor_proporcional_centavos']
+                        : pagamentoGatewayValorCentavos((string)$previaTroca['valor_novo']);
+                    out([
+                        'ok' => false,
+                        'code' => 'TROCA_PLANO_CONFIRMACAO_NECESSARIA',
+                        'user_msg' => (string)$previaTroca['mensagem'],
+                        'data' => ['previa' => $previaTroca, 'valor_confirmacao_centavos' => $valorConfirmacao],
+                    ], 409);
+                }
+                out(['ok' => false, 'code' => $codigoTroca, 'user_msg' => (string)($trocaAdministrativa['mensagem'] ?? 'Não foi possível trocar o plano.')], 409);
+            }
+            // O plano da empresa só muda quando o serviço o aplica (upgrade sem valor adicional); o restante
+            // da edição segue com o plano efetivo atual.
+            $linhasEmpresaTroca = assinaturaServicoConsultaFinanceira($conexao, 'SELECT plano_id FROM empresa WHERE id_empresa = ? LIMIT 1', 'i', $idEmpresa);
+            $planoId = (int)$linhasEmpresaTroca[0]['plano_id'];
+        }
+    }
+
     $resultadoTrocaPlano = limitesPlanoPrepararTrocaEmpresa($conexao, $idEmpresa, $planoId, $idsPermanentesPlano);
     limitesPlanoAbortarSeNegado($conexao, $resultadoTrocaPlano);
 
@@ -431,7 +556,7 @@ try {
     if ($planoMudou) {
         $stmtAssinaturaVigente = $conexao->prepare(
             "SELECT id_assinatura, id_empresa, id_plano, valor_contratado, periodicidade,
-                    dia_vencimento, status, modalidade, teste_iniciado_em, teste_expira_em,
+                    dia_vencimento, status, modalidade, data_fim, teste_iniciado_em, teste_expira_em,
                     CASE
                         WHEN status = 'ativa'
                          AND modalidade = 'teste'
@@ -471,12 +596,21 @@ try {
         if ($assinaturasVigentes === []) {
             editarEmpresaErroTransacional(
                 $conexao,
-                'ASSINATURA_INCONSISTENTE',
-                'Não foi possível determinar uma assinatura vigente para a troca de plano.'
+                'SEM_ASSINATURA_VIGENTE',
+                'Esta empresa não possui assinatura vigente, então o plano não pode ser trocado por aqui. Para contratar um plano, use a seção "Nova contratação" deste formulário.'
             );
         }
 
         $assinaturaVigente = $assinaturasVigentes[0];
+        require_once __DIR__ . '/../../_servicos/assinatura.php';
+        if (assinaturaServicoTrocaPendenteEmpresa($conexao, $idEmpresa)) {
+            editarEmpresaErroTransacional($conexao, 'TROCA_PLANO_PENDENTE',
+                'A empresa tem uma troca de plano em andamento pelo faturamento. Conclua ou cancele essa troca antes.');
+        }
+        if ($assinaturaVigente['data_fim'] !== null) {
+            editarEmpresaErroTransacional($conexao, 'CANCELAMENTO_PROGRAMADO',
+                'A assinatura tem encerramento programado. A troca de plano exige uma decisão contratual separada.');
+        }
         if ((string)$assinaturaVigente['status'] !== 'ativa') {
             if ((string)$assinaturaVigente['modalidade'] === 'teste') {
                 editarEmpresaErroTransacional(
@@ -487,8 +621,8 @@ try {
             }
             editarEmpresaErroTransacional(
                 $conexao,
-                'ASSINATURA_INCONSISTENTE',
-                'Não foi possível determinar uma assinatura ativa para a troca de plano.'
+                'ASSINATURA_NAO_ATIVA',
+                'A assinatura da empresa está suspensa. Regularize ou reative a assinatura antes de trocar o plano.'
             );
         }
 
@@ -767,9 +901,11 @@ try {
     out([
         'ok' => true,
         'code' => 'UPDATED',
-        'user_msg' => ($affected > 0)
-            ? 'Empresa atualizada com sucesso.'
-            : 'Nenhuma alteração foi realizada.',
+        'user_msg' => ($trocaAdministrativa !== null)
+            ? 'Empresa atualizada. ' . (string)($trocaAdministrativa['mensagem'] ?? '')
+            : (($affected > 0)
+                ? 'Empresa atualizada com sucesso.'
+                : 'Nenhuma alteração foi realizada.'),
         'data' => [
             'id_empresa' => $idEmpresa,
             'nome' => $nome,
@@ -781,11 +917,21 @@ try {
             'endereco' => $endereco,
             'observacao' => $observacao,
             'quantidade_usuarios_bloqueados_plano' => (int)($resultadoTrocaPlano['data']['quantidade_bloqueada'] ?? 0),
+            'troca_plano' => $trocaAdministrativa === null ? null : [
+                'resultado' => (string)($trocaAdministrativa['resultado'] ?? ''),
+                'id_troca' => $trocaAdministrativa['id_troca'] ?? null,
+                'id_cobranca' => $trocaAdministrativa['id_cobranca'] ?? null,
+                'valor' => $trocaAdministrativa['valor'] ?? null,
+                'data_efetivacao' => $trocaAdministrativa['data_efetivacao'] ?? null,
+            ],
         ],
     ], 200);
 
 } catch (Throwable $e) {
     if (isset($conexao) && $conexao instanceof mysqli) { try { $conexao->rollback(); } catch (Throwable) {} }
+    if (in_array((int)$e->getCode(), [1205, 1213], true)) {
+        out(['ok' => false, 'code' => 'FINANCEIRO_EM_ATUALIZACAO', 'user_msg' => 'O financeiro desta empresa está em atualização. Tente novamente.'], 409);
+    }
     out([
         'ok' => false,
         'code' => 'SERVER_ERROR',

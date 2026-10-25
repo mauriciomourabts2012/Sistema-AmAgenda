@@ -328,6 +328,7 @@ function registrarPagamento(mysqli $conexao): void
         $dataPagamentoSql = $dataPagamento->format('Y-m-d') . ' 00:00:00';
         $valorSql = pagamentoCentavosDecimal($valorCentavos);
         $conexao->begin_transaction();
+        assinaturaServicoTravarContratoDaCobranca($conexao, $idCobranca);
         $cobranca = pagamentoCarregarCobranca($conexao, $idCobranca, true);
         if (!$cobranca) {
             cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'COBRANCA_NAO_ENCONTRADA', 'user_msg' => 'Cobrança não encontrada.'], 404);
@@ -419,6 +420,9 @@ function registrarPagamento(mysqli $conexao): void
             $conexao->rollback();
         } catch (Throwable) {
         }
+        if (in_array((int)$e->getCode(), [1205, 1213], true)) {
+            out(['ok' => false, 'code' => 'FINANCEIRO_EM_ATUALIZACAO', 'user_msg' => 'O financeiro desta empresa está em atualização. Tente novamente.'], 409);
+        }
         error_log('REGISTRA_PAGAMENTO_EXCEPTION: ' . $e->getMessage());
         out(['ok' => false, 'code' => 'REGISTRA_PAGAMENTO_ERROR', 'user_msg' => 'Erro ao registrar pagamento.'], 500);
     }
@@ -452,6 +456,7 @@ function alterarStatusPagamento(mysqli $conexao): void
         }
         $idCobranca = (int)$pagamentoBase['id_cobranca'];
         $conexao->begin_transaction();
+        assinaturaServicoTravarContratoDaCobranca($conexao, $idCobranca);
         $cobranca = pagamentoCarregarCobranca($conexao, $idCobranca, true);
         if (!$cobranca) {
             cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'COBRANCA_NAO_ENCONTRADA', 'user_msg' => 'Cobrança não encontrada.'], 404);
@@ -556,6 +561,9 @@ function alterarStatusPagamento(mysqli $conexao): void
             $conexao->rollback();
         } catch (Throwable) {
         }
+        if (in_array((int)$e->getCode(), [1205, 1213], true)) {
+            out(['ok' => false, 'code' => 'FINANCEIRO_EM_ATUALIZACAO', 'user_msg' => 'O financeiro desta empresa está em atualização. Tente novamente.'], 409);
+        }
         error_log('STATUS_PAGAMENTO_EXCEPTION: ' . $e->getMessage());
         out(['ok' => false, 'code' => 'STATUS_PAGAMENTO_ERROR', 'user_msg' => 'Erro ao alterar pagamento.'], 500);
     }
@@ -573,6 +581,7 @@ function cancelarCobranca(mysqli $conexao): void
 
     try {
         $conexao->begin_transaction();
+        assinaturaServicoTravarContratoDaCobranca($conexao, $idCobranca);
         $cobranca = pagamentoCarregarCobranca($conexao, $idCobranca, true);
         if (!$cobranca) {
             cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'COBRANCA_NAO_ENCONTRADA', 'user_msg' => 'Cobrança não encontrada.'], 404);
@@ -584,6 +593,15 @@ function cancelarCobranca(mysqli $conexao): void
                 'ok' => false,
                 'code' => 'COBRANCA_COM_PAGAMENTO_CONFIRMADO',
                 'user_msg' => 'A cobrança possui pagamento confirmado. Cancele ou estorne os pagamentos antes.',
+            ], 409);
+        }
+        // Pagamento já iniciado (PIX/cartão aguardando, em processamento ou a conciliar): a cobrança não pode ser
+        // cancelada por baixo da transação, senão o crédito posterior cairia em conciliação manual.
+        if (assinaturaServicoCobrancaPagamentoEmAndamento($conexao, (int)$cobranca['id_empresa'], $idCobranca)) {
+            cobrancaErroTransacional($conexao, [
+                'ok' => false,
+                'code' => 'COBRANCA_PAGAMENTO_EM_ANDAMENTO',
+                'user_msg' => 'Há um pagamento iniciado para esta cobrança. Aguarde a conclusão ou a conciliação antes de cancelar.',
             ], 409);
         }
         if ((string)$cobranca['status'] !== 'pendente') {
@@ -628,6 +646,14 @@ function cancelarCobranca(mysqli $conexao): void
             'alteracoes' => $alteracoes,
             'contexto' => ['origem' => 'painel_super_admin', 'motivo' => $motivo],
         ]);
+        // Cobrança proporcional de upgrade cancelada: encerra a troca pendente (plano atual permanece).
+        assinaturaServicoEncerrarTrocaPorCobrancaCancelada(
+            $conexao,
+            (int)$cobranca['id_empresa'],
+            $idCobranca,
+            auditoriaResolverAtorSuperAdmin($conexao, (int)$cobranca['id_empresa']),
+            ['origem' => 'painel_super_admin']
+        );
         $conexao->commit();
         out([
             'ok' => true,
@@ -639,6 +665,9 @@ function cancelarCobranca(mysqli $conexao): void
         try {
             $conexao->rollback();
         } catch (Throwable) {
+        }
+        if (in_array((int)$e->getCode(), [1205, 1213], true)) {
+            out(['ok' => false, 'code' => 'FINANCEIRO_EM_ATUALIZACAO', 'user_msg' => 'O financeiro desta empresa está em atualização. Tente novamente.'], 409);
         }
         error_log('CANCELA_COBRANCA_EXCEPTION: ' . $e->getMessage());
         out(['ok' => false, 'code' => 'CANCELA_COBRANCA_ERROR', 'user_msg' => 'Erro ao cancelar cobrança.'], 500);
@@ -808,8 +837,11 @@ try {
     if (!$empresa) {
         cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'EMPRESA_NAO_ENCONTRADA', 'user_msg' => 'Empresa não encontrada.'], 404);
     }
+    // Trocas de plano devidas são aplicadas antes do cálculo, como no CRON (upgrade pago, downgrade na competência).
+    assinaturaServicoProcessarTrocasEmpresa($conexao, $idEmpresa, auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa));
     $stmtAssinaturas = $conexao->prepare("SELECT id_assinatura, id_plano, valor_contratado, periodicidade, dia_vencimento,
                 DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio,
+                DATE_FORMAT(data_fim, '%Y-%m-%d') AS data_fim,
                 modalidade, teste_iniciado_em, teste_expira_em
            FROM assinatura WHERE id_empresa = ? AND status = 'ativa' ORDER BY id_assinatura DESC FOR UPDATE");
     if (!$stmtAssinaturas) {
@@ -902,6 +934,14 @@ try {
     $dataVencimento = cobrancaCalcularVencimento($periodoInicio, (int)$assinatura['dia_vencimento']);
     $periodoInicioSql = $periodoInicio->format('Y-m-d');
     $periodoFimSql = $periodoFim->format('Y-m-d');
+    if (assinaturaServicoDowngradeProgramadoAte($conexao, $idAssinatura, $periodoInicioSql)) {
+        cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'DOWNGRADE_PROGRAMADO',
+            'user_msg' => 'Há downgrade programado para este período. A cobrança será gerada após a efetivação na data prevista.'], 409);
+    }
+    if ($assinatura['data_fim'] !== null && $periodoFimSql > (string)$assinatura['data_fim']) {
+        cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'CANCELAMENTO_PROGRAMADO',
+            'user_msg' => 'O próximo período ultrapassa o encerramento da assinatura.'], 409);
+    }
     $dataVencimentoSql = $dataVencimento->format('Y-m-d');
     $stmtDuplicidade = $conexao->prepare('SELECT id_cobranca FROM cobranca WHERE id_assinatura = ? AND periodo_inicio = ? AND periodo_fim = ? LIMIT 1');
     if (!$stmtDuplicidade) {

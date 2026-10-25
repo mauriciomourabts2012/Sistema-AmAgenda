@@ -153,6 +153,13 @@
             <div class="a-loading">Carregando assinatura...</div>
           </div>
         </section>
+        <section id="faturamentoContratacao" class="faturamento-bloco" aria-labelledby="tituloNovaContratacao" hidden>
+          <header class="faturamento-secao-cabecalho">
+            <span class="faturamento-secao-icone" aria-hidden="true"><i class="fa-solid fa-file-signature"></i></span>
+            <div><h2 id="tituloNovaContratacao">Nova contratação</h2><p>Contrate novamente mantendo os dados e o histórico da empresa.</p></div>
+          </header>
+          <div id="faturamentoContratacaoConteudo" class="faturamento-assinatura-card" aria-live="polite"></div>
+        </section>
         <section id="faturamentoPagamentoAutomatico" class="faturamento-bloco faturamento-automatico" aria-labelledby="tituloPagamentoAutomatico" hidden>
           <header class="faturamento-secao-cabecalho">
             <span class="faturamento-secao-icone" aria-hidden="true"><i class="fa-regular fa-credit-card"></i></span>
@@ -479,6 +486,7 @@
                       <option value="servicos">Serviços</option>
                       <option value="configuracoes">Configurações</option>
                       <option value="perfil">Perfil</option>
+                      <option value="financeiro">Financeiro</option>
                     </select>
                   </label>
                   <label class="label-filtro" for="evento_auditoria">Evento
@@ -1290,6 +1298,45 @@
          MODAIS — FATURAMENTO E PAGAMENTOS
          Estruturas fixas para consulta, PIX e cartão recorrente.
     ========================================================== -->
+    <div id="modalContratarFaturamento" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-md" role="dialog" aria-modal="true" aria-labelledby="tituloContratarFaturamento">
+        <div class="modal-topo"><h2 id="tituloContratarFaturamento">Contratar novamente</h2><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
+        <div class="modal-corpo">
+          <p>Escolha o plano. A cobrança do primeiro período é gerada agora e o acesso é liberado após a confirmação do pagamento. Não há novo período de teste.</p>
+          <form id="formContratarFaturamento" autocomplete="off">
+            <fieldset class="modal-campo"><legend>Plano</legend><div id="planosContratarFaturamento"></div></fieldset>
+            <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Voltar</button><button class="botao-geral destaque" type="submit">Gerar cobrança de contratação</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div id="modalTrocaPlano" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-md" role="dialog" aria-modal="true" aria-labelledby="tituloTrocaPlano">
+        <div class="modal-topo"><h2 id="tituloTrocaPlano">Alterar plano</h2><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
+        <div class="modal-corpo">
+          <p>Upgrade: você paga agora apenas a diferença proporcional aos dias restantes do ciclo pago e o novo plano é liberado após a confirmação do pagamento. Downgrade: vale a partir da próxima competência, sem estorno.</p>
+          <fieldset class="modal-campo"><legend>Novo plano</legend><div id="opcoesTrocaPlano"></div></fieldset>
+          <div id="previaTrocaPlano" aria-live="polite"></div>
+          <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Voltar</button><button id="confirmarTrocaPlano" class="botao-geral destaque" type="button" disabled>Confirmar</button></div>
+        </div>
+      </div>
+    </div>
+    <div id="modalCancelarFaturamento" class="modal-geral" aria-hidden="true">
+      <div class="modal-conteudo modal-md" role="dialog" aria-modal="true" aria-labelledby="tituloCancelarFaturamento">
+        <div class="modal-topo"><h2 id="tituloCancelarFaturamento">Cancelar assinatura</h2><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
+        <div class="modal-corpo">
+          <p>Seus dados, cobranças e pagamentos permanecem no histórico. Operações já iniciadas serão conciliadas; não há estorno automático.</p>
+          <form id="formCancelarFaturamento" autocomplete="off">
+            <fieldset class="modal-campo"><legend>Quando encerrar o acesso?</legend>
+              <label><input type="radio" name="modalidade_cancelamento" value="imediato" checked> Imediatamente — acesso contratado encerrado agora.</label><br>
+              <label><input type="radio" name="modalidade_cancelamento" value="fim_periodo_pago"> Ao fim do período integralmente pago — a data será confirmada pelo servidor e a renovação automática será bloqueada.</label>
+            </fieldset>
+            <div class="modal-campo"><textarea id="motivoCancelarFaturamento" name="motivo" rows="3" maxlength="500" required placeholder=" "></textarea><label for="motivoCancelarFaturamento">Motivo do cancelamento</label></div>
+            <div class="modal-acoes"><button class="botao-geral" data-fechar-modal type="button">Voltar</button><button class="botao-geral destaque" type="submit">Confirmar cancelamento</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
     <div id="modalPagamentosFaturamento" class="modal-geral" aria-hidden="true">
       <div class="modal-conteudo modal-md faturamento-pagamentos-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalPagamentosFaturamento">
         <div class="modal-topo"><div><h2 id="tituloModalPagamentosFaturamento">Pagamentos da cobrança</h2><p>Histórico somente para consulta.</p></div><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>

@@ -108,7 +108,7 @@ function auditoriaSanitizarContexto(array $contexto): array
     $permitidos = [
         'origem', 'origem_geracao', 'id_empresa', 'id_agendamento', 'id_assinatura', 'id_plano', 'status_anterior', 'status_novo', 'data_fim',
         'aba', 'recorrencia', 'quantidade_afetada', 'escopo', 'grupo_recorrencia',
-        'data_referencia', 'motivo', 'versao', 'documento_codigo', 'documento_versao',
+        'data_referencia', 'motivo', 'modalidade_cancelamento', 'versao', 'documento_codigo', 'documento_versao',
         'documento_hash', 'tipo_manifestacao', 'tipo_manifestante',
     ];
     $resultado = [];

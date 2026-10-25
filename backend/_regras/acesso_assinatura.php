@@ -35,7 +35,7 @@ function acessoAssinaturaValidar(mysqli $conexao, int $idEmpresa, string $perfil
     }
 
     $stmt = $conexao->prepare(
-        "SELECT status, modalidade, teste_iniciado_em, teste_expira_em, motivo_suspensao,
+        "SELECT status, modalidade, teste_iniciado_em, teste_expira_em, motivo_suspensao, data_fim,
                 CASE
                     WHEN modalidade = 'teste'
                      AND teste_iniciado_em IS NOT NULL
@@ -74,6 +74,7 @@ function acessoAssinaturaValidar(mysqli $conexao, int $idEmpresa, string $perfil
             $testeIniciadoEm,
             $testeExpiraEm,
             $motivoSuspensao,
+            $dataFim,
             $testeConfigurado,
             $testeExpirado
         )) {
@@ -101,6 +102,7 @@ function acessoAssinaturaValidar(mysqli $conexao, int $idEmpresa, string $perfil
                 'teste_iniciado_em' => $testeIniciadoEm,
                 'teste_expira_em' => $testeExpiraEm,
                 'motivo_suspensao' => mb_strtolower(trim((string)$motivoSuspensao), 'UTF-8'),
+                'data_fim' => $dataFim,
                 'teste_configurado' => (int)$testeConfigurado === 1,
                 'teste_expirado' => (int)$testeExpirado === 1,
             ];
@@ -125,6 +127,14 @@ function acessoAssinaturaValidar(mysqli $conexao, int $idEmpresa, string $perfil
     }
 
     if ($quantidadeAtivas === 1 && ($assinaturaMaisRecente['status'] ?? '') === 'ativa') {
+        if (($assinaturaMaisRecente['data_fim'] ?? null) !== null
+            && (string)$assinaturaMaisRecente['data_fim'] < date('Y-m-d')) {
+            return acessoAssinaturaResultadoSuspenso(
+                acessoAssinaturaPerfilProprietario($perfilNome), 'assinatura_cancelada',
+                (string)($assinaturaMaisRecente['modalidade'] ?? ''),
+                'A assinatura foi cancelada. Consulte o histórico financeiro no faturamento.'
+            );
+        }
         $modalidadeAtual = (string)($assinaturaMaisRecente['modalidade'] ?? '');
 
         if ($modalidadeAtual === 'paga') {
@@ -167,13 +177,31 @@ function acessoAssinaturaValidar(mysqli $conexao, int $idEmpresa, string $perfil
     }
 
     if ($quantidadeAtivas === 0 && ($assinaturaMaisRecente['status'] ?? '') === 'suspensa') {
+        if (($assinaturaMaisRecente['data_fim'] ?? null) !== null
+            && (string)$assinaturaMaisRecente['data_fim'] < date('Y-m-d')) {
+            return acessoAssinaturaResultadoSuspenso(
+                acessoAssinaturaPerfilProprietario($perfilNome), 'assinatura_cancelada',
+                (string)($assinaturaMaisRecente['modalidade'] ?? ''),
+                'A assinatura foi cancelada. Consulte o histórico financeiro no faturamento.'
+            );
+        }
         $motivoAtual = (string)($assinaturaMaisRecente['motivo_suspensao'] ?? '');
 
         return acessoAssinaturaResultadoSuspenso(
             acessoAssinaturaPerfilProprietario($perfilNome),
             $motivoAtual !== '' ? $motivoAtual : 'suspensa',
             (string)($assinaturaMaisRecente['modalidade'] ?? ''),
-            $mensagemSuspensa
+            $motivoAtual === 'contratacao_pendente'
+                ? 'A nova contratação aguarda o pagamento da primeira cobrança no faturamento.'
+                : $mensagemSuspensa
+        );
+    }
+
+    if ($quantidadeAtivas === 0 && ($assinaturaMaisRecente['status'] ?? '') === 'cancelada') {
+        return acessoAssinaturaResultadoSuspenso(
+            acessoAssinaturaPerfilProprietario($perfilNome), 'assinatura_cancelada',
+            (string)($assinaturaMaisRecente['modalidade'] ?? ''),
+            'A assinatura foi cancelada. Consulte o histórico financeiro no faturamento.'
         );
     }
 

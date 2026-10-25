@@ -130,6 +130,12 @@ function cobrancasAutomaticasPossuiCobrancaDoPeriodo(
 
 $resumo = [
     'testes_expirados' => 0,
+    'contratacoes_ativadas' => 0,
+    'upgrades_ativados' => 0,
+    'downgrades_efetivados' => 0,
+    'trocas_encerradas' => 0,
+    'assinaturas_regularizadas' => 0,
+    'assinaturas_suspensas_inadimplencia' => 0,
     'assinaturas_analisadas' => 0,
     'cobrancas_geradas' => 0,
     'sem_cobranca_necessaria' => 0,
@@ -217,6 +223,164 @@ try {
                 STDERR,
                 "Falha técnica [{$classeErro}] ao persistir expiração do teste da assinatura #{$idAssinaturaExpirada}.\n"
             );
+        }
+    }
+
+    // Efetiva o fim programado antes da regularização: pagamento tardio não reativa contrato encerrado.
+    $finsProgramados = $conexao->query("SELECT id_empresa, id_assinatura FROM assinatura
+        WHERE status IN ('ativa','suspensa') AND data_fim IS NOT NULL AND data_fim < CURDATE()
+        ORDER BY id_empresa, id_assinatura");
+    if ($finsProgramados === false) throw new RuntimeException('Falha ao consultar cancelamentos programados.');
+    foreach ($finsProgramados->fetch_all(MYSQLI_ASSOC) as $fimProgramado) {
+        try {
+            $conexao->begin_transaction();
+            $idEmpresaFim = (int)$fimProgramado['id_empresa'];
+            $idAssinaturaFim = (int)$fimProgramado['id_assinatura'];
+            $empresaFim = assinaturaServicoLinhas($conexao,
+                'SELECT id_empresa FROM empresa WHERE id_empresa = ? FOR UPDATE', 'i', $idEmpresaFim);
+            $assinaturaFim = assinaturaServicoLinhas($conexao,
+                "SELECT id_plano, status, data_fim FROM assinatura WHERE id_empresa = ? AND id_assinatura = ? FOR UPDATE",
+                'ii', $idEmpresaFim, $idAssinaturaFim);
+            if ($empresaFim === [] || $assinaturaFim === []
+                || !in_array((string)$assinaturaFim[0]['status'], ['ativa', 'suspensa'], true)
+                || $assinaturaFim[0]['data_fim'] === null
+                || (string)$assinaturaFim[0]['data_fim'] >= date('Y-m-d')) {
+                cobrancasAutomaticasRollback($conexao);
+                continue;
+            }
+            $statusFimAnterior = (string)$assinaturaFim[0]['status'];
+            $stmtFim = $conexao->prepare("UPDATE assinatura SET status = 'cancelada'
+                WHERE id_empresa = ? AND id_assinatura = ? AND status = ? AND data_fim < CURDATE()");
+            if (!$stmtFim) throw new RuntimeException('Falha ao preparar fim programado.');
+            $stmtFim->bind_param('iis', $idEmpresaFim, $idAssinaturaFim, $statusFimAnterior);
+            if (!$stmtFim->execute() || $stmtFim->affected_rows !== 1) {
+                $stmtFim->close();
+                throw new RuntimeException('Falha ao efetivar fim programado.');
+            }
+            $stmtFim->close();
+            auditoriaRegistrar($conexao, 'assinatura.cancelada', [
+                'ator' => auditoriaResolverAtorSistema($conexao, $idEmpresaFim),
+                'entidade_id' => $idAssinaturaFim,
+                'entidade_rotulo' => 'Assinatura da empresa #' . $idEmpresaFim,
+                'descricao' => 'Efetivou o cancelamento programado da assinatura.',
+                'alteracoes' => ['status' => ['antes' => $statusFimAnterior, 'depois' => 'cancelada']],
+                'contexto' => ['origem' => 'geracao_automatica', 'id_empresa' => $idEmpresaFim,
+                    'id_assinatura' => $idAssinaturaFim, 'data_fim' => (string)$assinaturaFim[0]['data_fim']],
+            ]);
+            $conexao->commit();
+        } catch (Throwable $erro) {
+            cobrancasAutomaticasRollback($conexao);
+            $resumo['erros']++;
+            fwrite(STDERR, 'Falha técnica ao efetivar cancelamento programado da assinatura #' . (int)$fimProgramado['id_assinatura'] . ".\n");
+        }
+    }
+    $finsProgramados->free();
+
+    // Trocas de plano: upgrade pago é ativado, upgrade vencido sem pagamento expira e downgrade devido é
+    // efetivado antes da geração, para que a nova competência já use o plano e o valor corretos.
+    foreach (assinaturaServicoListarEmpresasComTroca($conexao) as $idEmpresaTroca) {
+        try {
+            $conexao->begin_transaction();
+            $trocas = assinaturaServicoProcessarTrocasEmpresa($conexao, $idEmpresaTroca, cobrancasAutomaticasAtorSistema($idEmpresaTroca));
+            $conexao->commit();
+            $resumo['upgrades_ativados'] += $trocas['ativados'];
+            $resumo['downgrades_efetivados'] += $trocas['downgrades'];
+            $resumo['trocas_encerradas'] += $trocas['expirados'] + $trocas['encerradas'];
+            $resumo['inconsistencias'] += $trocas['atencao'];
+        } catch (Throwable $erro) {
+            cobrancasAutomaticasRollback($conexao);
+            $resumo['erros']++;
+            $classeErro = get_debug_type($erro);
+            fwrite(STDERR, "Falha técnica [{$classeErro}] ao processar trocas de plano da empresa #{$idEmpresaTroca}.\n");
+        }
+    }
+
+    // Nova contratação paga é ativada pelo serviço, sob lock; o Proprietário também pode concluir pelo faturamento.
+    foreach (assinaturaServicoListarContratacoesPagas($conexao) as $candidata) {
+        $idEmpresaCandidata = $candidata['id_empresa'];
+        $idAssinaturaCandidata = $candidata['id_assinatura'];
+        try {
+            $conexao->begin_transaction();
+            $contratacao = assinaturaServicoConcluirNovaContratacao(
+                $conexao,
+                $idEmpresaCandidata,
+                cobrancasAutomaticasAtorSistema($idEmpresaCandidata),
+                ['origem' => 'geracao_automatica']
+            );
+            if ($contratacao['ok']) {
+                $conexao->commit();
+                $resumo['contratacoes_ativadas']++;
+            } else {
+                cobrancasAutomaticasRollback($conexao);
+                if (!empty($contratacao['requer_atencao'])) {
+                    $resumo['inconsistencias']++;
+                }
+            }
+        } catch (Throwable $erro) {
+            cobrancasAutomaticasRollback($conexao);
+            $resumo['erros']++;
+            $classeErro = get_debug_type($erro);
+            fwrite(STDERR, "Falha técnica [{$classeErro}] ao ativar a nova contratação #{$idAssinaturaCandidata}.\n");
+        }
+    }
+
+    // Regularização e suspensão por inadimplência ocorrem antes da geração: assinatura suspensa não recebe nova cobrança.
+    // A decisão contratual é do serviço de assinatura, refeita sob lock em transação própria por assinatura.
+    foreach (assinaturaServicoListarCandidatasRegularizacao($conexao) as $candidata) {
+        $idEmpresaCandidata = $candidata['id_empresa'];
+        $idAssinaturaCandidata = $candidata['id_assinatura'];
+        try {
+            $conexao->begin_transaction();
+            $regularizacao = assinaturaServicoRegularizarInadimplencia(
+                $conexao,
+                $idEmpresaCandidata,
+                $idAssinaturaCandidata,
+                cobrancasAutomaticasAtorSistema($idEmpresaCandidata),
+                ['origem' => 'geracao_automatica']
+            );
+
+            if ($regularizacao['reativada']) {
+                $conexao->commit();
+                $resumo['assinaturas_regularizadas']++;
+            } else {
+                cobrancasAutomaticasRollback($conexao);
+                if ($regularizacao['requer_atencao']) {
+                    $resumo['inconsistencias']++;
+                }
+            }
+        } catch (Throwable $erro) {
+            cobrancasAutomaticasRollback($conexao);
+            $resumo['erros']++;
+            $classeErro = get_debug_type($erro);
+            fwrite(STDERR, "Falha técnica [{$classeErro}] ao regularizar a assinatura #{$idAssinaturaCandidata} por inadimplência.\n");
+        }
+    }
+
+    foreach (assinaturaServicoListarCandidatasInadimplencia($conexao) as $candidata) {
+        $idEmpresaCandidata = $candidata['id_empresa'];
+        $idAssinaturaCandidata = $candidata['id_assinatura'];
+        try {
+            $conexao->begin_transaction();
+            $suspensao = assinaturaServicoSuspenderPorInadimplencia(
+                $conexao,
+                $idEmpresaCandidata,
+                $idAssinaturaCandidata,
+                cobrancasAutomaticasAtorSistema($idEmpresaCandidata),
+                ['origem' => 'geracao_automatica']
+            );
+
+            if ($suspensao['suspensa']) {
+                $conexao->commit();
+                $resumo['assinaturas_suspensas_inadimplencia']++;
+            } else {
+                // Empresas com mais de uma assinatura ativa já são contadas como inconsistência adiante.
+                cobrancasAutomaticasRollback($conexao);
+            }
+        } catch (Throwable $erro) {
+            cobrancasAutomaticasRollback($conexao);
+            $resumo['erros']++;
+            $classeErro = get_debug_type($erro);
+            fwrite(STDERR, "Falha técnica [{$classeErro}] ao suspender a assinatura #{$idAssinaturaCandidata} por inadimplência.\n");
         }
     }
 
@@ -316,7 +480,8 @@ try {
                 // O bloqueio mantém o cálculo do próximo período consistente entre execuções concorrentes.
                 $consultaAssinatura = $conexao->prepare(
                     "SELECT id_assinatura, id_empresa, valor_contratado, periodicidade, dia_vencimento,
-                            DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio
+                            DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio,
+                            DATE_FORMAT(data_fim, '%Y-%m-%d') AS data_fim
                      FROM assinatura
                      WHERE id_assinatura = ?
                        AND status = 'ativa'
@@ -401,6 +566,12 @@ try {
 
                 $meses = cobrancasAutomaticasMesesPeriodicidade((string) $assinaturaBloqueada['periodicidade']);
                 $periodoFim = $periodoInicio->modify("+{$meses} months")->modify('-1 day');
+                if ($assinaturaBloqueada['data_fim'] !== null
+                    && $periodoFim->format('Y-m-d') > (string)$assinaturaBloqueada['data_fim']) {
+                    cobrancasAutomaticasRollback($conexao);
+                    $resumo['sem_cobranca_necessaria']++;
+                    break;
+                }
                 $diaVencimento = (int) $assinaturaBloqueada['dia_vencimento'];
                 $dataVencimento = cobrancasAutomaticasCalcularVencimento($periodoInicio, $diaVencimento);
                 $valor = trim((string) $assinaturaBloqueada['valor_contratado']);
@@ -494,6 +665,12 @@ try {
 }
 
 echo "Testes expirados: {$resumo['testes_expirados']}\n";
+echo "Upgrades ativados: {$resumo['upgrades_ativados']}\n";
+echo "Downgrades efetivados: {$resumo['downgrades_efetivados']}\n";
+echo "Trocas encerradas: {$resumo['trocas_encerradas']}\n";
+echo "Contratações ativadas: {$resumo['contratacoes_ativadas']}\n";
+echo "Assinaturas regularizadas: {$resumo['assinaturas_regularizadas']}\n";
+echo "Assinaturas suspensas por inadimplência: {$resumo['assinaturas_suspensas_inadimplencia']}\n";
 echo "Assinaturas analisadas: {$resumo['assinaturas_analisadas']}\n";
 echo "Cobranças geradas: {$resumo['cobrancas_geradas']}\n";
 echo "Sem cobrança necessária: {$resumo['sem_cobranca_necessaria']}\n";

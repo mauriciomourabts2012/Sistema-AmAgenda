@@ -91,6 +91,43 @@ function auditoriaCatalogo(): array
         'assinatura.cancelada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Cancelou uma assinatura.', [
             'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo', 'data_fim', 'depois',
         ]),
+        'assinatura.troca_solicitada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Solicitou upgrade de plano com pagamento proporcional.', [
+            'id_empresa', 'id_assinatura', 'id_troca', 'id_cobranca', 'tipo', 'id_plano_anterior', 'id_plano_novo', 'plano_anterior', 'plano_novo',
+            'valor_anterior', 'valor_novo', 'valor_ciclo', 'dias_ciclo', 'dias_restantes', 'ciclo_inicio', 'ciclo_fim', 'valor_proporcional',
+            'proxima_renovacao', 'data_efetivacao', 'depois',
+        ]),
+        'assinatura.upgrade_pagamento_confirmado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Confirmou o pagamento proporcional de um upgrade.', [
+            'id_empresa', 'id_assinatura', 'id_troca', 'id_cobranca', 'tipo', 'id_plano_anterior', 'id_plano_novo', 'plano_anterior', 'plano_novo',
+            'valor_anterior', 'valor_novo', 'valor_ciclo', 'dias_ciclo', 'dias_restantes', 'ciclo_inicio', 'ciclo_fim', 'valor_proporcional',
+            'proxima_renovacao', 'data_efetivacao', 'depois',
+        ]),
+        'assinatura.upgrade_ativado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Ativou um upgrade de plano.', [
+            'id_empresa', 'id_assinatura', 'id_troca', 'id_cobranca', 'tipo', 'id_plano_anterior', 'id_plano_novo', 'plano_anterior', 'plano_novo',
+            'valor_anterior', 'valor_novo', 'valor_ciclo', 'dias_ciclo', 'dias_restantes', 'ciclo_inicio', 'ciclo_fim', 'valor_proporcional',
+            'proxima_renovacao', 'data_efetivacao', 'id_plano', 'valor_contratado', 'depois',
+        ]),
+        'assinatura.downgrade_programado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Programou um downgrade de plano para a próxima competência.', [
+            'id_empresa', 'id_assinatura', 'id_troca', 'id_cobranca', 'tipo', 'id_plano_anterior', 'id_plano_novo', 'plano_anterior', 'plano_novo',
+            'valor_anterior', 'valor_novo', 'valor_ciclo', 'dias_ciclo', 'dias_restantes', 'ciclo_inicio', 'ciclo_fim', 'valor_proporcional',
+            'proxima_renovacao', 'data_efetivacao', 'depois',
+        ]),
+        'assinatura.downgrade_efetivado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Efetivou um downgrade de plano programado.', [
+            'id_empresa', 'id_assinatura', 'id_troca', 'id_cobranca', 'tipo', 'id_plano_anterior', 'id_plano_novo', 'plano_anterior', 'plano_novo',
+            'valor_anterior', 'valor_novo', 'valor_ciclo', 'dias_ciclo', 'dias_restantes', 'ciclo_inicio', 'ciclo_fim', 'valor_proporcional',
+            'proxima_renovacao', 'data_efetivacao', 'id_plano', 'valor_contratado', 'depois',
+        ]),
+        'assinatura.troca_cancelada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Encerrou uma troca de plano pendente.', [
+            'id_empresa', 'id_assinatura', 'id_troca', 'id_cobranca', 'tipo', 'id_plano_anterior', 'id_plano_novo', 'plano_anterior', 'plano_novo',
+            'valor_anterior', 'valor_novo', 'valor_ciclo', 'dias_ciclo', 'dias_restantes', 'ciclo_inicio', 'ciclo_fim', 'valor_proporcional',
+            'proxima_renovacao', 'data_efetivacao', 'status', 'depois',
+        ]),
+        'assinatura.contratacao_ativada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Ativou uma nova contratação após a quitação do primeiro período.', [
+            'id_empresa', 'id_assinatura', 'id_cobranca', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo',
+            'data_inicio', 'motivo_suspensao', 'suspensa_em', 'depois',
+        ]),
+        'assinatura.cancelamento_programado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Programou o cancelamento de uma assinatura.', [
+            'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo', 'data_fim', 'depois',
+        ]),
         'assinatura.teste_iniciado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Iniciou o período de teste de uma assinatura.', [
             'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'teste_iniciado_em', 'teste_expira_em', 'depois',
         ]),

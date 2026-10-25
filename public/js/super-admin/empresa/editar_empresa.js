@@ -735,6 +735,10 @@
     if (selecaoPlano) {
       fd.append("plano_usuarios_permanentes", JSON.stringify(idsSelecionadosPlano()));
     }
+    if (form.dataset.trocaConfirmada) {
+      fd.append("troca_valor_confirmado_centavos", form.dataset.trocaConfirmada);
+      delete form.dataset.trocaConfirmada;
+    }
 
     setLoading(true);
 
@@ -769,6 +773,23 @@
       }
 
       if (!resp.ok || json.ok !== true) {
+        // Troca de plano de assinatura paga: o servidor devolve a prévia (valor proporcional ou data do
+        // downgrade) e só aplica depois da confirmação explícita do administrador.
+        if (json.code === "TROCA_PLANO_CONFIRMACAO_NECESSARIA" && json.data?.valor_confirmacao_centavos !== undefined) {
+          setLoading(false);
+          const confirmouTroca = await toastConfirm({
+            title: "Confirmar troca de plano",
+            message: json.user_msg || "Confirma a troca de plano desta assinatura?",
+            type: "warning",
+            confirmText: "Confirmar troca",
+          });
+          if (confirmouTroca) {
+            form.dataset.trocaConfirmada = String(json.data.valor_confirmacao_centavos);
+            form.requestSubmit();
+          }
+          return;
+        }
+
         if (
           ["PLAN_USER_SELECTION_REQUIRED", "PLAN_USER_SELECTION_INVALID"].includes(json.code) &&
           json.data?.usuarios_para_selecao
@@ -847,6 +868,169 @@
       resetForm();
     }, 80);
   });
+
+  // ==========================================================
+  // Contratação administrativa (empresa sem assinatura vigente)
+  // Reutiliza o serviço de recontratação; este bloco só apresenta a situação e dispara as ações.
+  // ==========================================================
+  const contrEl = document.getElementById("emp_edit_contratacao");
+  const contrMsg = document.getElementById("emp_edit_contratacao_msg");
+  const contrNova = document.getElementById("emp_edit_contratacao_nova");
+  const contrPlano = document.getElementById("emp_edit_contratacao_plano");
+  const contrPendente = document.getElementById("emp_edit_contratacao_pendente");
+  const btnContratar = document.getElementById("emp_edit_btn_contratar");
+  const btnAtivar = document.getElementById("emp_edit_btn_ativar");
+  let contrSituacao = null;
+  let contrOcupado = false;
+
+  const moedaBr = (v) => Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const dataBrTexto = (v) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ""));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+  };
+  const periodicidadeTexto = (p) => ({ mensal: "mensal", trimestral: "trimestral", semestral: "semestral", anual: "anual" }[p] || p || "");
+
+  function ocultarContratacao() {
+    contrSituacao = null;
+    if (contrEl) contrEl.hidden = true;
+    if (contrNova) contrNova.hidden = true;
+    if (contrPendente) contrPendente.hidden = true;
+    if (contrPlano) contrPlano.innerHTML = '<option value="">Selecione o plano</option>';
+  }
+
+  async function chamarContratacao(acao, extra = {}) {
+    const fd = new FormData();
+    fd.append("acao", acao);
+    fd.append("id_empresa", String(elId?.value || ""));
+    Object.entries(extra).forEach(([k, v]) => fd.append(k, String(v)));
+    const resp = await fetch(API_URL, {
+      method: "POST",
+      body: fd,
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") },
+    });
+    const raw = await resp.text();
+    try {
+      return JSON.parse(raw);
+    } catch (_) {
+      return { ok: false, user_msg: "Resposta inválida do servidor." };
+    }
+  }
+
+  function renderizarContratacao(situacao) {
+    ocultarContratacao();
+    if (!situacao || !contrEl) return;
+    contrSituacao = situacao;
+    contrEl.hidden = false;
+    contrMsg.textContent = situacao.mensagem || "";
+    const pendente = situacao.pendente;
+
+    if (pendente) {
+      document.getElementById("emp_edit_contratacao_plano_nome").textContent =
+        `${pendente.plano || "—"} — ${moedaBr(pendente.valor)} (${periodicidadeTexto(pendente.periodicidade)})`;
+      document.getElementById("emp_edit_contratacao_cobranca").textContent =
+        pendente.id_cobranca ? `#${pendente.id_cobranca}` : "Ainda não gerada";
+      document.getElementById("emp_edit_contratacao_vencimento").textContent = dataBrTexto(pendente.data_vencimento);
+      document.getElementById("emp_edit_contratacao_situacao").textContent = pendente.paga
+        ? "Paga — pronta para ativar"
+        : "Aguardando pagamento";
+      document.getElementById("emp_edit_contratacao_orientacao").textContent = pendente.paga
+        ? "Pagamento confirmado. Use \"Verificar pagamento e ativar\" para liberar o acesso."
+        : "O proprietário paga a cobrança pelo Faturamento da empresa (PIX). Se o pagamento for recebido por outro meio, registre-o em Cobranças. A assinatura só é ativada depois que o pagamento estiver confirmado; use \"Verificar pagamento e ativar\" em seguida.";
+      contrPendente.hidden = false;
+      return;
+    }
+
+    if (situacao.disponivel && Array.isArray(situacao.planos) && situacao.planos.length) {
+      situacao.planos.forEach((p) => {
+        const o = document.createElement("option");
+        o.value = String(p.id_plano);
+        o.textContent = `${p.nome} — ${moedaBr(p.valor)} (${periodicidadeTexto(p.periodicidade)})`;
+        contrPlano.appendChild(o);
+      });
+      contrNova.hidden = false;
+    }
+  }
+
+  async function carregarContratacao() {
+    ocultarContratacao();
+    const id = String(elId?.value || "");
+    if (!id) return;
+    try {
+      const json = await chamarContratacao("situacao_contratual");
+      if (String(elId?.value || "") !== id) return; // modal já mudou de empresa
+      if (json.ok && json.data?.situacao) renderizarContratacao(json.data.situacao);
+    } catch (err) {
+      console.error("[EditarEmpresa] situação contratual:", err);
+    }
+  }
+
+  function definirOcupado(ocupado) {
+    contrOcupado = ocupado;
+    [btnContratar, btnAtivar].forEach((b) => b && (b.disabled = ocupado));
+  }
+
+  btnContratar?.addEventListener("click", async () => {
+    if (contrOcupado) return;
+    const idPlano = String(contrPlano?.value || "");
+    if (!idPlano) {
+      toastMsg("warning", "Selecione o plano da nova contratação.");
+      return;
+    }
+    const nomePlano = contrPlano.options[contrPlano.selectedIndex]?.textContent || "";
+    const ok = await toastConfirm({
+      title: "Nova contratação",
+      message: `Será gerada a cobrança do primeiro período para o plano ${nomePlano}. O acesso só é liberado depois do pagamento confirmado. O histórico da assinatura anterior é preservado.`,
+      type: "warning",
+      confirmText: "Gerar cobrança",
+    });
+    if (!ok) return;
+    definirOcupado(true);
+    try {
+      const json = await chamarContratacao("nova_contratacao", { plano_contratacao: idPlano });
+      if (!json.ok) {
+        toastMsg("danger", json.user_msg || "Não foi possível solicitar a nova contratação.");
+        return;
+      }
+      toastMsg("success", json.user_msg || "Cobrança de contratação gerada.");
+      await carregarContratacao();
+    } catch (err) {
+      console.error("[EditarEmpresa] nova contratação:", err);
+      toastMsg("danger", "Falha de rede ao solicitar a nova contratação.");
+    } finally {
+      definirOcupado(false);
+    }
+  });
+
+  btnAtivar?.addEventListener("click", async () => {
+    if (contrOcupado) return;
+    definirOcupado(true);
+    try {
+      const json = await chamarContratacao("concluir_contratacao");
+      if (!json.ok) {
+        toastMsg("warning", json.user_msg || "O pagamento ainda não foi confirmado.");
+        return;
+      }
+      toastMsg("success", json.user_msg || "Nova contratação ativada.");
+      ocultarContratacao();
+      recarregarListaEmpresas();
+    } catch (err) {
+      console.error("[EditarEmpresa] ativar contratação:", err);
+      toastMsg("danger", "Falha de rede ao ativar a contratação.");
+    } finally {
+      definirOcupado(false);
+    }
+  });
+
+  // A lista preenche o formulário e abre o modal; a situação é consultada na abertura.
+  new MutationObserver(() => {
+    if (modal.getAttribute("aria-hidden") === "false") {
+      window.setTimeout(carregarContratacao, 80);
+    } else {
+      ocultarContratacao();
+    }
+  }).observe(modal, { attributes: true, attributeFilter: ["aria-hidden"] });
 
   window.EditarEmpresa = {
     reset: resetForm,

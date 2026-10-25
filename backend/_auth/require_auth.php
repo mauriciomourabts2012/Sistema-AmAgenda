@@ -188,6 +188,8 @@ if ($tipoUsuario !== 'super_admin') {
     $_SESSION['auth']['modo_regularizacao'] = $modoRegularizacao;
 
     if ($modoRegularizacao) {
+        $assinaturaCancelada = (string)($acessoAssinatura['motivo'] ?? '') === 'assinatura_cancelada';
+        $contratacaoPendente = (string)($acessoAssinatura['motivo'] ?? '') === 'contratacao_pendente';
         // A sessão suspensa nunca recebe acesso por prefixo: somente rotas exatas de regularização e aceite legal.
         $rotasPermitidasRegularizacao = [
             '_auth/session',
@@ -195,6 +197,8 @@ if ($tipoUsuario !== 'super_admin') {
             // Troca obrigatória da própria senha (senha temporária) antes da regularização.
             'perfil/alterar-senha',
             'painel/faturamento/resumo',
+            'painel/faturamento/cancelar',
+            'painel/faturamento/contratacao',
             'painel/faturamento/cobrancas',
             'painel/faturamento/pagamentos',
             'painel/faturamento/regularizacao/cobranca',
@@ -209,11 +213,26 @@ if ($tipoUsuario !== 'super_admin') {
         ];
         $rotaAutenticada = isset($rota) && is_string($rota) ? $rota : '';
 
+        if ($assinaturaCancelada) {
+            $rotasPermitidasRegularizacao = [
+                '_auth/session', '_auth/logout', 'perfil/alterar-senha',
+                'painel/faturamento/resumo', 'painel/faturamento/contratacao', 'painel/faturamento/cobrancas',
+                'painel/faturamento/pagamentos', 'painel/faturamento/pagamento/transacao',
+                'painel/faturamento/pagamento/pix/iniciar',
+                'documentos-legais/pendencias', 'documentos-legais/conteudo',
+                'documentos-legais/manifestar',
+            ];
+        }
+
         if (!in_array($rotaAutenticada, $rotasPermitidasRegularizacao, true)) {
             out([
                 'ok' => false,
                 'code' => 'SESSION_REGULARIZATION_REQUIRED',
-                'user_msg' => 'A assinatura está suspensa. Regularize o faturamento para continuar usando o sistema.'
+                'user_msg' => $assinaturaCancelada
+                    ? 'A assinatura foi cancelada. Consulte o histórico financeiro ou contrate novamente no faturamento.'
+                    : ($contratacaoPendente
+                        ? 'A nova contratação aguarda o pagamento da primeira cobrança no faturamento.'
+                        : 'A assinatura está suspensa. Regularize o faturamento para continuar usando o sistema.')
             ], 403);
         }
     }
