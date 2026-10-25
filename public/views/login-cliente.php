@@ -37,27 +37,27 @@ if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.4.5" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.4.6" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.4.5"
+    href="../css/login/login-web.css?v=1.4.6"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.4.5"
+    href="../css/login/login-mobile.css?v=1.4.6"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.4.5"
+    href="../css/login/login-cliente.css?v=1.4.6"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.4.5"
+    href="../css/identidade-visual/identidade-visual.css?v=1.4.6"
   />
 
   <link
@@ -71,7 +71,7 @@ if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.4.5"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.4.6"></script>
 
 </head>
 
@@ -1261,10 +1261,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.4.5" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.4.6" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.4.5"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.4.6"
 ></script>
 
 </body>
