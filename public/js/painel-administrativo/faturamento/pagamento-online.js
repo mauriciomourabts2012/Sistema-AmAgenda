@@ -8,7 +8,16 @@
   const CARTAO_AUTORIZAR = `${API}?path=painel/faturamento/pagamento/cartao/autorizar`;
   const CARTAO_STATUS = `${API}?path=painel/faturamento/pagamento/cartao/status`;
   const estado = { idCobranca: 0, idTransacao: 0, valor: 0, codigo: "" };
-  const cartao = { configuracao: null, carregando: false, controller: null };
+  const cartao = { configuracao: null, carregando: false, controller: null, redirecionando: false, retornoProcessado: false, retornoEmCurso: false };
+  // Destino do redirecionamento de autorização: somente o checkout de assinaturas do Mercado Pago (o servidor valida antes).
+  const initPointValido = url => {
+    try {
+      const u = new URL(String(url || ""));
+      return u.protocol === "https:" && ["www.mercadopago.com.br", "mercadopago.com.br"].includes(u.hostname)
+        && u.pathname === "/subscriptions/checkout" && /^\?preapproval_id=[A-Za-z0-9_-]{1,150}$/.test(u.search)
+        && !u.username && !u.password && !u.hash && (u.port === "" || u.port === "443");
+    } catch (erro) { return false; }
+  };
   const moeda = valor => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const avisar = (tipo, mensagem) => (window.MensagemSistema?.[tipo] || window.MensagemSistema?.info)?.(mensagem);
   const esc = valor => String(valor ?? "").replace(/[&<>'"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
@@ -150,6 +159,7 @@
     secao.hidden = !podePagar();
     if (secao.hidden) return;
     const atual = cartao.configuracao;
+    if (atual.motor_recorrencia === "preapproval") { renderizarAutorizacao(alvo, atual); return; }
     if (atual.configurado) {
       alvo.innerHTML = `<div class="faturamento-cartao-identidade"><span class="faturamento-cartao-icone" aria-hidden="true"><i class="fa-regular fa-credit-card"></i></span><div><span>Cartão cadastrado</span><strong>${esc(String(atual.bandeira || "Cartão").toUpperCase())} •••• ${esc(atual.final_cartao || "••••")}</strong><small>Autorizado para pagamentos automáticos futuros.</small></div></div><span class="faturamento-status faturamento-status--ativa">Ativo</span>`;
       return;
@@ -167,8 +177,107 @@
     alvo.innerHTML = `<div class="faturamento-cartao-identidade"><span class="faturamento-cartao-icone" aria-hidden="true"><i class="fa-regular fa-credit-card"></i></span><div><span>Pagamento automático</span><strong>Nenhum cartão configurado</strong><small>${esc(detalhe)}</small></div></div>${acao}`;
   }
 
+  // Contratos com Preapproval: o servidor indica o fluxo; o navegador só mostra o estado e redireciona ao Mercado Pago.
+  function renderizarAutorizacao(alvo, atual) {
+    const cabecalho = (icone, rotulo, titulo, texto) => `<div class="faturamento-cartao-identidade"><span class="faturamento-cartao-icone" aria-hidden="true"><i class="${icone}"></i></span><div><span>${esc(rotulo)}</span><strong>${esc(titulo)}</strong><small>${esc(texto)}</small></div></div>`;
+    const botaoAutorizar = rotulo => `<button class="botao-geral destaque" type="button" data-autorizar-assinatura><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${esc(rotulo)}</button>`;
+    const botaoVerificar = atual.pode_verificar
+      ? '<button class="botao-geral" type="button" data-atualizar-cartao><i class="fa-solid fa-rotate" aria-hidden="true"></i>Atualizar situação</button>' : "";
+    const status = String(atual.status || "nao_configurado");
+    if (atual.configurado) {
+      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", "Autorizado no Mercado Pago", "Os pagamentos futuros serão cobrados automaticamente no cartão autorizado.")}<span class="faturamento-status faturamento-status--ativa">Ativo</span>`;
+      return;
+    }
+    if (status === "pendente") {
+      alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Autorização pendente", "Aguardando sua autorização", "A autorização só vale depois da confirmação do Mercado Pago. Nenhuma cobrança é feita nesta etapa.")}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar("Continuar no Mercado Pago") : ""}${botaoVerificar}</div>`;
+      return;
+    }
+    const mensagens = {
+      cancelamento_pendente: ["fa-solid fa-hourglass-half", "Cancelamento em andamento", "O cancelamento do pagamento automático está sendo confirmado."],
+      cancelada: ["fa-regular fa-credit-card", "Pagamento automático cancelado", "Esta autorização foi encerrada e não será reaproveitada."],
+      suspensa: ["fa-solid fa-circle-pause", "Pagamento automático pausado", "As cobranças automáticas estão pausadas."],
+      atualizacao_necessaria: ["fa-solid fa-triangle-exclamation", "Atualização necessária", "O pagamento automático precisa de atenção. Atualize a situação."],
+      erro: ["fa-solid fa-triangle-exclamation", "Não foi possível concluir", "Tente novamente ou atualize a situação."]
+    };
+    if (mensagens[status]) {
+      const [icone, titulo, texto] = mensagens[status];
+      alvo.innerHTML = `${cabecalho(icone, "Pagamento automático", titulo, texto)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar("Autorizar cartão no Mercado Pago") : ""}${botaoVerificar}</div>`;
+      return;
+    }
+    const detalhe = atual.valor_referencia
+      ? `Sua assinatura atual é de ${moeda(atual.valor_referencia)}. Você autoriza o cartão no Mercado Pago e nada é cobrado agora.`
+      : "É necessário possuir uma assinatura ativa para configurar o pagamento automático.";
+    const indisponivel = atual.subscriptions_habilitado === false ? "O pagamento automático por este meio ainda não está disponível." : detalhe;
+    alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", "Nenhum cartão autorizado", indisponivel)}${atual.pode_configurar ? botaoAutorizar("Autorizar cartão no Mercado Pago") : ""}`;
+  }
+
+  async function iniciarAutorizacaoAssinatura() {
+    if (cartao.redirecionando || !cartao.configuracao?.pode_configurar) return;
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    if (!/^[a-f0-9]{64}$/.test(csrf)) { avisar("erro", "Atualize a página para renovar sua sessão."); return; }
+    cartao.redirecionando = true;
+    const botoes = document.querySelectorAll("[data-autorizar-assinatura]");
+    botoes.forEach(b => { b.disabled = true; });
+    try {
+      // Sem corpo contratual: empresa, valor e contrato são sempre os do servidor.
+      const resposta = await fetch(CARTAO_AUTORIZAR, { method: "POST", body: new FormData(), credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
+      const retorno = await json(resposta);
+      const dados = retorno.data || {};
+      if (initPointValido(dados.init_point)) {
+        avisar("info", retorno.user_msg || "Redirecionando ao Mercado Pago...");
+        window.location.assign(dados.init_point);
+        return;
+      }
+      renderizarCartao(dados);
+      avisar("info", retorno.user_msg || "Situação do pagamento automático atualizada.");
+    } catch (erro) {
+      avisar("erro", erro.message);
+    }
+    cartao.redirecionando = false;
+    botoes.forEach(b => { b.disabled = false; });
+  }
+
+  // Retorno do Mercado Pago: a URL não prova nada. O servidor consulta o provedor (POST com CSRF) e devolve o estado real.
+  function limparRetornoDaUrl() {
+    try { window.history.replaceState(null, "", window.location.pathname + window.location.hash); } catch (erro) { /* histórico indisponível */ }
+  }
+
+  async function verificarRetornoAssinatura() {
+    const alvo = document.getElementById("faturamentoCartaoEstado");
+    if (alvo) alvo.innerHTML = '<div class="faturamento-cartao-identidade"><span class="faturamento-cartao-icone" aria-hidden="true"><i class="fa-solid fa-hourglass-half"></i></span><div><span>Verificando autorização</span><strong>Consultando o Mercado Pago</strong><small>Aguarde: a confirmação vem do provedor, não desta página.</small></div></div>';
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    try {
+      if (!/^[a-f0-9]{64}$/.test(csrf)) throw new Error("Atualize a página para renovar sua sessão.");
+      const resposta = await fetch(CARTAO_STATUS, { method: "POST", body: new FormData(), credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
+      const retorno = await json(resposta);
+      renderizarCartao(retorno.data || {});
+      avisar(retorno.data?.configurado ? "sucesso" : "info", retorno.user_msg || "Situação da autorização atualizada.");
+    } catch (erro) {
+      avisar("erro", erro.message || "Não foi possível confirmar a autorização agora.");
+      cartao.carregando = false;
+      cartao.retornoEmCurso = false;
+      await carregarConfiguracaoCartao();
+    } finally {
+      cartao.retornoEmCurso = false;
+    }
+  }
+
+  function tentarRetornoAssinatura() {
+    if (cartao.retornoProcessado || !podePagar()) return;
+    const parametros = new URLSearchParams(window.location.search);
+    if (parametros.get("mp_assinatura_retorno") !== "1") return;
+    cartao.retornoProcessado = true;
+    cartao.retornoEmCurso = true;
+    limparRetornoDaUrl();
+    document.querySelector('[data-menu-aba="faturamento"]')?.click();
+    const secao = document.getElementById("faturamentoPagamentoAutomatico");
+    if (secao) secao.hidden = false;
+    verificarRetornoAssinatura();
+  }
+
   async function carregarConfiguracaoCartao() {
-    if (!podePagar() || cartao.carregando) return;
+    // Durante a verificação do retorno, uma leitura anterior ao POST não pode sobrescrever o estado confirmado.
+    if (!podePagar() || cartao.carregando || cartao.retornoEmCurso) return;
     const secao = document.getElementById("faturamentoPagamentoAutomatico");
     if (secao) secao.hidden = false;
     cartao.carregando = true;
@@ -251,12 +360,18 @@
   }
 
   async function abrirCartao() {
-    if (!cartao.configuracao?.pode_configurar) return;
+    if (!cartao.configuracao?.pode_configurar || cartao.configuracao?.motor_recorrencia === "preapproval") return;
     abrirModalId("modalCartaoRecorrenteFaturamento");
     await renderizarBrick();
   }
 
   async function atualizarCartao() {
+    if (cartao.configuracao?.motor_recorrencia === "preapproval") {
+      if (cartao.carregando) return;
+      cartao.carregando = true;
+      try { await verificarRetornoAssinatura(); } finally { cartao.carregando = false; }
+      return;
+    }
     try {
       const resposta = await fetch(CARTAO_STATUS, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
       const retorno = await json(resposta);
@@ -270,6 +385,7 @@
     if (pagar) abrir(pagar);
     if (evento.target.closest("[data-configurar-cartao]")) abrirCartao();
     if (evento.target.closest("[data-atualizar-cartao]")) atualizarCartao();
+    if (evento.target.closest("[data-autorizar-assinatura]")) iniciarAutorizacaoAssinatura();
     if (evento.target.closest("#modalCartaoRecorrenteFaturamento [data-fechar-modal]")) desmontarBrick();
   });
   document.addEventListener("keydown", evento => { if (evento.key === "Escape") desmontarBrick(); });
@@ -278,7 +394,8 @@
     document.getElementById("btnAtualizarPixFaturamento")?.addEventListener("click", consultar);
     document.getElementById("btnCopiarPixFaturamento")?.addEventListener("click", copiar);
     document.addEventListener("amagenda:painel-aba-alterada", evento => { if (evento.detail?.aba === "faturamento") carregarConfiguracaoCartao(); });
-    document.addEventListener("amagenda:sessao-carregada", carregarConfiguracaoCartao);
-    if (document.getElementById("faturamento")?.classList.contains("ativa")) carregarConfiguracaoCartao();
+    document.addEventListener("amagenda:sessao-carregada", () => { tentarRetornoAssinatura(); carregarConfiguracaoCartao(); });
+    tentarRetornoAssinatura();
+    if (!cartao.retornoProcessado && document.getElementById("faturamento")?.classList.contains("ativa")) carregarConfiguracaoCartao();
   });
 })();

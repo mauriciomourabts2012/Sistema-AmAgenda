@@ -34,6 +34,21 @@ declare(strict_types=1);
 | tokens ou dados do pagador). Código 0 = sem falhas; 1 = falha técnica,
 | inclusive banco indisponível durante o carregamento da conexão.
 | Execuções simultâneas são impedidas por GET_LOCK do MySQL.
+|
+| MODO SUBSCRIPTIONS (--modo=subscriptions; o padrão continua sendo Orders)
+|   Diagnóstico (padrão): somente leitura do banco, sem rede. Lista operações em
+|   erro/conciliação, vínculos sinalizados ou sem sincronia, cancelamentos sem
+|   operação, transações em conciliação, eventos em erro e downgrades em risco.
+|   Efetivo (--executar): processa o outbox (pausar/reativar/cancelar/atualizar_valor),
+|   sincroniza os vínculos sem notícia recente (recupera webhooks perdidos, faturas
+|   e pagamentos) e conclui criações incertas. Não cria Preapproval nem cobra.
+|   Exige subscriptions.habilitado = true; desligado, não faz nada.
+|   Opções: --limite=N  --sincronia-min=N (1..1440, padrão 30)  --pausa-ms=N
+|   --empresa=ID restringe diagnóstico, outbox, vínculos e reabertura à empresa.
+|   Reabertura controlada de uma operação em erro (auditada):
+|     --modo=subscriptions --executar --reabrir-operacao=ID --confirmar-reabertura=ID
+|     --motivo=texto_sem_espacos [--causa-corrigida]
+|   (--causa-corrigida é obrigatório para PROVEDOR_REJEITOU e DESTINO_INCOMPATIVEL)
 */
 
 if (PHP_SAPI !== 'cli') {
@@ -44,6 +59,7 @@ if (PHP_SAPI !== 'cli') {
 date_default_timezone_set('America/Sao_Paulo');
 
 const CONCILIACAO_MP_LOCK = 'amagenda:conciliacao_mercado_pago';
+const CONCILIACAO_MP_LOCK_SUBSCRIPTIONS = 'amagenda:subscriptions_mercado_pago';
 const CONCILIACAO_MP_ORIGEM = 'conciliacao_mercado_pago';
 const CONCILIACAO_MP_METODOS = ['pix', 'cartao_recorrente'];
 
@@ -60,6 +76,12 @@ function conciliacaoMpOpcoes(array $argumentos): array
         'order' => null,
         'executar' => false,
         'confirmar' => null,
+        'modo' => 'orders',
+        'sincronia-min' => 30,
+        'reabrir-operacao' => null,
+        'confirmar-reabertura' => null,
+        'motivo' => null,
+        'causa-corrigida' => false,
     ];
     $faixas = [
         'limite' => [1, 50],
@@ -68,6 +90,9 @@ function conciliacaoMpOpcoes(array $argumentos): array
         'pausa-ms' => [0, 5000],
         'empresa' => [1, PHP_INT_MAX],
         'transacao' => [1, PHP_INT_MAX],
+        'sincronia-min' => [1, 1440],
+        'reabrir-operacao' => [1, PHP_INT_MAX],
+        'confirmar-reabertura' => [1, PHP_INT_MAX],
     ];
 
     foreach (array_slice($argumentos, 1) as $argumento) {
@@ -75,8 +100,12 @@ function conciliacaoMpOpcoes(array $argumentos): array
             $opcoes['executar'] = true;
             continue;
         }
+        if ($argumento === '--causa-corrigida') {
+            $opcoes['causa-corrigida'] = true;
+            continue;
+        }
         if (preg_match('/^--([a-z-]+)=(.+)$/D', (string) $argumento, $partes) !== 1
-            || !array_key_exists($partes[1], $opcoes) || $partes[1] === 'executar') {
+            || !array_key_exists($partes[1], $opcoes) || in_array($partes[1], ['executar', 'causa-corrigida'], true)) {
             throw new InvalidArgumentException('Argumento não reconhecido.');
         }
         [$chave, $valor] = [$partes[1], $partes[2]];
@@ -94,6 +123,22 @@ function conciliacaoMpOpcoes(array $argumentos): array
         $opcoes[$chave] = $valor;
     }
 
+    if (!in_array($opcoes['modo'], ['orders', 'subscriptions'], true)) {
+        throw new InvalidArgumentException('Valor inválido para --modo.');
+    }
+    if ($opcoes['modo'] === 'subscriptions') {
+        if ($opcoes['transacao'] !== null || $opcoes['order'] !== null || $opcoes['confirmar'] !== null) {
+            throw new InvalidArgumentException('Subscriptions não aceita seletores de Orders; use --empresa.');
+        }
+        if (($opcoes['reabrir-operacao'] !== null) !== ($opcoes['confirmar-reabertura'] !== null)
+            || ($opcoes['reabrir-operacao'] !== null && ($opcoes['confirmar-reabertura'] !== $opcoes['reabrir-operacao']
+                || !$opcoes['executar'] || $opcoes['motivo'] === null))) {
+            throw new InvalidArgumentException('A reabertura exige --executar, --reabrir-operacao e --confirmar-reabertura iguais e --motivo.');
+        }
+        $opcoes['individual'] = false;
+
+        return $opcoes;
+    }
     $individuais = array_filter([$opcoes['empresa'], $opcoes['transacao'], $opcoes['order']], static fn ($v) => $v !== null);
     if ($individuais !== [] && count($individuais) !== 3) {
         throw new InvalidArgumentException('A seleção individual exige --empresa, --transacao e --order juntos.');
@@ -142,6 +187,7 @@ function conciliacaoMpCandidatos(mysqli $conexao, array $opcoes, string $ambient
             "SELECT {$colunas}
                FROM transacao_pagamento
               WHERE id_transacao = ? AND id_empresa = ? AND provedor = ? AND ordem_externa_id = ?
+                AND tipo_operacao <> 'assinatura_preapproval'
               LIMIT 1",
             'iiss',
             (int) $opcoes['transacao'],
@@ -160,6 +206,7 @@ function conciliacaoMpCandidatos(mysqli $conexao, array $opcoes, string $ambient
           WHERE provedor = ?
             AND ambiente = ?
             AND metodo IN ('pix', 'cartao_recorrente')
+            AND tipo_operacao <> 'assinatura_preapproval'
             AND ordem_externa_id IS NOT NULL
             AND requer_conciliacao = 0
             AND (status IN ('aguardando', 'processando')
@@ -306,7 +353,8 @@ try {
     $gateway = MercadoPagoGateway::daConfiguracao();
     $ambiente = $gateway->ambiente();
 
-    $lock = mpWebhookConsulta($conexao, 'SELECT GET_LOCK(?, 0) AS obtido', 's', CONCILIACAO_MP_LOCK)->fetch_assoc();
+    $nomeLock = $opcoes['modo'] === 'subscriptions' ? CONCILIACAO_MP_LOCK_SUBSCRIPTIONS : CONCILIACAO_MP_LOCK;
+    $lock = mpWebhookConsulta($conexao, 'SELECT GET_LOCK(?, 0) AS obtido', 's', $nomeLock)->fetch_assoc();
     if ((int) ($lock['obtido'] ?? 0) !== 1) {
         echo "Outra execução da conciliação está em andamento. Nada foi feito.\n";
         exit(0);
@@ -314,6 +362,57 @@ try {
     $lockObtido = true;
 
     $modo = $opcoes['executar'] ? 'EFETIVO' : 'DIAGNOSTICO';
+
+    if ($opcoes['modo'] === 'subscriptions') {
+        $empresaSubscriptions = $opcoes['empresa'];
+        echo "Subscriptions Mercado Pago — modo {$modo} — ambiente {$ambiente} — empresa " . ($empresaSubscriptions ?? 'todas') . "\n";
+        $falhasSubscriptions = 0;
+        $habilitado = MercadoPagoGateway::subscriptionsHabilitado();
+        if ($opcoes['reabrir-operacao'] !== null) {
+            $idOperacaoReabrir = (int) $opcoes['reabrir-operacao'];
+            $dono = mpSubConsultaEmpresa($conexao, 'SELECT id_empresa FROM operacao_assinatura_gateway WHERE /*empresa*/ id_operacao = ?', $empresaSubscriptions, 'id_empresa', 'i', $idOperacaoReabrir)[0] ?? null;
+            if (!$habilitado || !$dono) {
+                echo "Reabertura recusada: " . (!$habilitado ? 'subscriptions_desabilitado' : 'operacao_inexistente') . "\n";
+                $falhasSubscriptions++;
+            } else {
+                mpSubConferirEmpresa($empresaSubscriptions, $dono);
+                $ator = ['ator_nome' => 'Operação (CLI)'] + mpWebhookAtorSistema((int) $dono['id_empresa']);
+                $r = mpSubOperacaoReabrir($conexao, $gateway, $idOperacaoReabrir, $ator, str_replace('_', ' ', (string) $opcoes['motivo']), (bool) $opcoes['causa-corrigida'], $empresaSubscriptions);
+                conciliacaoMpLinha(['operacao' => $idOperacaoReabrir, 'resultado' => $r['resultado'], 'codigo' => $r['codigo'] ?? '-']);
+                if ($r['resultado'] !== 'reaberta') {
+                    $falhasSubscriptions++;
+                }
+            }
+        } elseif (!$opcoes['executar']) {
+            foreach (mpSubDiagnostico($conexao, max(1, (int) $opcoes['sincronia-min']), $empresaSubscriptions) as $grupo => $linhas) {
+                echo str_replace('_', ' ', ucfirst($grupo)), ': ', count($linhas), "\n";
+                foreach ($linhas as $linhaGrupo) {
+                    conciliacaoMpLinha($linhaGrupo);
+                }
+            }
+            echo $habilitado ? '' : "Observação: subscriptions.habilitado = false; o modo efetivo não faria nada.\n";
+        } elseif (!$habilitado) {
+            echo "Subscriptions desabilitado na configuração. Nada foi feito.\n";
+        } else {
+            $r = mpSubRotina($conexao, $gateway, [
+                'limite' => (int) $opcoes['limite'],
+                'sincronia-min' => (int) $opcoes['sincronia-min'],
+                'pausa-ms' => (int) $opcoes['pausa-ms'],
+                'empresa' => $empresaSubscriptions,
+            ]);
+            conciliacaoMpLinha(['outbox_garantidas' => $r['outbox']['garantidas'], 'outbox_processadas' => $r['outbox']['processadas'],
+                'outbox_concluidas' => $r['outbox']['concluidas'], 'outbox_erros' => $r['outbox']['erros'],
+                'vinculos_sincronizados' => $r['vinculos'], 'criacoes_conciliadas' => $r['criacoes'], 'erros' => $r['erros']]);
+            if ($r['erros'] > 0 || $r['outbox']['erros'] > 0) {
+                $falhasSubscriptions++;
+            }
+        }
+        try {
+            mpWebhookConsulta($conexao, 'SELECT RELEASE_LOCK(?) AS liberado', 's', $nomeLock);
+        } catch (Throwable) {
+        }
+        exit($falhasSubscriptions > 0 ? 1 : 0);
+    }
     echo "Conciliação Mercado Pago — modo {$modo} — ambiente {$ambiente}\n";
 
     $candidatas = conciliacaoMpCandidatos($conexao, $opcoes, $ambiente);
@@ -436,7 +535,7 @@ try {
     fwrite(STDERR, 'Falha global na conciliação (' . get_class($erro) . ").\n");
     if ($lockObtido && isset($conexao) && $conexao instanceof mysqli) {
         try {
-            mpWebhookConsulta($conexao, 'SELECT RELEASE_LOCK(?) AS liberado', 's', CONCILIACAO_MP_LOCK);
+            mpWebhookConsulta($conexao, 'SELECT RELEASE_LOCK(?) AS liberado', 's', $nomeLock ?? CONCILIACAO_MP_LOCK);
         } catch (Throwable) {
         }
     }
@@ -445,7 +544,7 @@ try {
 
 if ($lockObtido) {
     try {
-        mpWebhookConsulta($conexao, 'SELECT RELEASE_LOCK(?) AS liberado', 's', CONCILIACAO_MP_LOCK);
+        mpWebhookConsulta($conexao, 'SELECT RELEASE_LOCK(?) AS liberado', 's', $nomeLock ?? CONCILIACAO_MP_LOCK);
     } catch (Throwable) {
     }
 }

@@ -443,7 +443,9 @@ function cobrancasRecorrentesReservar(
                 AND apr.id_empresa = a.id_empresa
                 AND apr.provedor = 'mercado_pago'
                 AND apr.ambiente = ?
+                AND apr.motor_recorrencia = 'orders'
               WHERE c.id_cobranca = ?
+                AND c.motor_cobranca = 'local'
               LIMIT 1
               FOR UPDATE",
             'si',
@@ -739,7 +741,9 @@ try {
                 AND apr.id_empresa = a.id_empresa
                 AND apr.provedor = 'mercado_pago'
                 AND apr.ambiente = ?
+                AND apr.motor_recorrencia = 'orders'
               WHERE c.status = 'pendente'
+                AND c.motor_cobranca = 'local'
                 AND c.data_vencimento <= CURDATE()
                 AND a.status = 'ativa'
                 AND a.modalidade = 'paga'

@@ -155,7 +155,7 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
         $stmt->close();
         $stmt = $db->prepare("UPDATE assinatura_pagamento_recorrente
             SET status = 'cancelamento_pendente', slot_ativo = NULL, cobrar_a_partir_de = NULL
-            WHERE id_empresa = ? AND id_assinatura = ?
+            WHERE id_empresa = ? AND id_assinatura = ? AND motor_recorrencia = 'orders'
               AND status IN ('pendente','ativa','suspensa','atualizacao_necessaria')");
         if (!$stmt) throw new RuntimeException('Falha ao preparar bloqueio da recorrência.');
         $stmt->bind_param('ii', $empresa, $idAssinatura);
@@ -164,6 +164,9 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
             throw new RuntimeException('Falha ao bloquear recorrência.');
         }
         $stmt->close();
+        // Preapproval: registra a intenção de cancelar no provedor e mantém o slot ativo até a confirmação externa
+        // (chk_aspr_slot_ativo). A cobrança externa só termina quando o provedor confirmar.
+        assinaturaServicoPreapprovalSolicitarCancelamento($db, $empresa, $idAssinatura);
         auditoriaRegistrar($db, $modalidade === 'fim_periodo_pago' ? 'assinatura.cancelamento_programado' : 'assinatura.cancelada', [
             'entidade_id' => $idAssinatura,
             'entidade_rotulo' => 'Assinatura da empresa ' . (string)$empresas[0]['nome'],

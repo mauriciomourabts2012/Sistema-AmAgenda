@@ -487,6 +487,7 @@ $routes = [
     ],
     'painel/faturamento/pagamento/cartao/status' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
     ],
 
     // Editar Usuário (FUNCIONARIO)

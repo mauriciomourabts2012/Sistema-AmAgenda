@@ -305,6 +305,9 @@ function pagamentoOnlineIniciar(mysqli $db, MercadoPagoGateway $gateway, int $em
         }
         if ($c['status'] === 'cancelada') pagamentoOnlineFalhar('COBRANCA_CANCELADA', 'Esta cobrança está cancelada.', 409);
         if ($c['status'] === 'paga') pagamentoOnlineFalhar('COBRANCA_PAGA', 'Esta cobrança já está paga.', 409);
+        // Competência governada por assinatura recorrente (Preapproval): o PIX poderia duplicar a cobrança externa.
+        $governada = assinaturaServicoPreapprovalBloqueioPix($db, $empresa, $cobranca);
+        if ($governada !== null) pagamentoOnlineFalhar($governada['codigo'], $governada['mensagem'], 409);
         $pago = pagamentoOnlineConsulta($db,
             "SELECT COALESCE(SUM(valor_pago),0) AS total FROM pagamento WHERE id_cobranca=? AND id_empresa=? AND status='confirmado'",
             'ii', $cobranca, $empresa)->fetch_assoc();
@@ -490,7 +493,7 @@ function pagamentoCartaoVinculoAtual(mysqli $db, int $empresa, string $ambiente,
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     return pagamentoOnlineConsulta($db,
-        "SELECT id_assinatura_pagamento,id_empresa,id_assinatura,ambiente,cliente_externo_id,perfil_externo_id,meio_pagamento_externo_id,cartao_externo_id,bandeira,final_cartao,status,status_externo,chave_idempotencia_criacao,cobrar_a_partir_de,slot_ativo FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? ORDER BY (slot_ativo=1) DESC,id_assinatura_pagamento DESC LIMIT 1{$sufixo}",
+        "SELECT id_assinatura_pagamento,id_empresa,id_assinatura,ambiente,motor_recorrencia,assinatura_externa_id,referencia_externa_assinatura,cliente_externo_id,perfil_externo_id,meio_pagamento_externo_id,cartao_externo_id,bandeira,final_cartao,status,status_externo,chave_idempotencia_criacao,cobrar_a_partir_de,slot_ativo,TIMESTAMPDIFF(SECOND,ultima_sincronizacao_em,NOW(6)) AS idade_sincronia FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? ORDER BY (slot_ativo=1) DESC,id_assinatura_pagamento DESC LIMIT 1{$sufixo}",
         'is', $empresa, $ambiente)->fetch_assoc() ?: null;
 }
 
@@ -514,16 +517,119 @@ function pagamentoCartaoDadosPublicos(?array $vinculo, ?array $assinatura, ?stri
 
 function pagamentoCartaoConfiguracao(mysqli $db, MercadoPagoGateway $gateway, int $empresa): array
 {
+    $vinculo = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
+    $assinatura = pagamentoCartaoAssinaturaAtiva($db, $empresa);
+    if (pagamentoCartaoMotor($vinculo, $assinatura, $gateway::subscriptionsHabilitado()) === 'preapproval') {
+        return pagamentoCartaoDadosPreapproval($vinculo, $assinatura, $gateway::subscriptionsHabilitado());
+    }
     try {
         $chave = MercadoPagoGateway::chavePublicaAtiva();
     } catch (RuntimeException $e) {
         pagamentoOnlineFalhar('CARTAO_CONFIGURACAO', 'O cadastro de cartão não está configurado.', 503);
     }
     return pagamentoCartaoDadosPublicos(
-        pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()),
-        pagamentoCartaoAssinaturaAtiva($db, $empresa),
+        $vinculo,
+        $assinatura,
         $chave
-    );
+    ) + ['motor_recorrencia' => 'orders'];
+}
+
+/**
+ * A decisão do fluxo é do servidor, nunca do navegador. Vínculo do próprio contrato mantém seu motor (sem migração
+ * automática de cartões), assim como vínculo legado ainda vigente de outro contrato; sem vínculo vigente, a chave
+ * mestra decide (desligada, nada de Preapproval é criado).
+ */
+function pagamentoCartaoMotor(?array $vinculo, ?array $assinatura, bool $habilitado): string
+{
+    if ($vinculo !== null) {
+        $doContrato = $assinatura !== null && (int)$vinculo['id_assinatura'] === (int)$assinatura['id_assinatura'];
+        $encerrado = in_array((string)($vinculo['status'] ?? ''), ['cancelada', 'encerrada'], true);
+        if ($doContrato || !$encerrado) {
+            return (string)($vinculo['motor_recorrencia'] ?? 'orders');
+        }
+    }
+
+    return $habilitado ? 'preapproval' : 'orders';
+}
+
+function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bool $habilitado): array
+{
+    $atual = $vinculo !== null && $assinatura !== null && (int)$vinculo['id_assinatura'] === (int)$assinatura['id_assinatura'];
+    $v = $atual ? $vinculo : null;
+    $status = $v['status'] ?? 'nao_configurado';
+    $novo = $vinculo === null || (!$atual && in_array((string)$vinculo['status'], ['cancelada', 'encerrada'], true));
+    $pendente = $atual && $status === 'pendente' && ($v['status_externo'] ?? '') === 'pending'
+        && $v['assinatura_externa_id'] !== null;
+    return [
+        'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
+        'configurado' => $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1,
+        'pode_configurar' => $habilitado && $assinatura !== null && $assinatura['status'] === 'ativa'
+            && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $pendente || ($atual && $status === 'erro' && $v['assinatura_externa_id'] === null)),
+        'pode_verificar' => $habilitado && $v !== null && $v['assinatura_externa_id'] !== null,
+        'status' => $status, 'status_externo' => $v['status_externo'] ?? null,
+        'valor_referencia' => $assinatura['valor_contratado'] ?? null,
+        'cobrar_a_partir_de' => $v['cobrar_a_partir_de'] ?? null,
+    ];
+}
+
+function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $empresa, string $email): array
+{
+    $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+    if (($r['ok'] ?? false) !== true) {
+        pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
+    }
+    $statusExterno = (string)($r['status_externo'] ?? '');
+    if ($statusExterno !== '' && $statusExterno !== 'pending') {
+        // O provedor já saiu do estado pendente (autorizada, pausada ou cancelada): persiste o estado real e não oferece link.
+        $dados = pagamentoCartaoPreapprovalConsultar($db, $gateway, $empresa, $email, true);
+        $dados['init_point'] = null;
+
+        return $dados;
+    }
+    $dados = pagamentoCartaoDadosPreapproval(pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()), pagamentoCartaoAssinaturaAtiva($db, $empresa), $gateway::subscriptionsHabilitado());
+    // Só o link retornado pelo serviço e validado novamente pode sair ao navegador.
+    $dados['init_point'] = ($r['status_externo'] ?? '') === 'pending'
+        ? assinaturaServicoPreapprovalInitPoint(['init_point' => $r['init_point'] ?? null]) : null;
+    if (($r['status_externo'] ?? '') === 'pending' && $dados['init_point'] === null) {
+        pagamentoOnlineFalhar('AUTORIZACAO_LINK_INDISPONIVEL', 'O link de autorização está indisponível. Atualize a situação antes de continuar.', 503);
+    }
+    return $dados;
+}
+
+/** O retorno só sincroniza a autorização. Faturas/pagamentos permanecem no webhook e na conciliação financeira. */
+function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $empresa, string $email, bool $forcar = false): array
+{
+    if (!$gateway::subscriptionsHabilitado()) {
+        pagamentoOnlineFalhar('SUBSCRIPTIONS_DESABILITADO', 'A verificação do pagamento recorrente está indisponível.', 503);
+    }
+    $v = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
+    $contratoAtual = pagamentoCartaoAssinaturaAtiva($db, $empresa);
+    if ($v === null || pagamentoCartaoMotor($v, $contratoAtual, true) !== 'preapproval'
+        || $contratoAtual === null || (int)$v['id_assinatura'] !== (int)$contratoAtual['id_assinatura']) {
+        pagamentoOnlineFalhar('VINCULO_INDISPONIVEL', 'Não há autorização recorrente para verificar.', 409);
+    }
+    // Retorno duplicado ou atualização repetida: sem nova consulta ao provedor logo após uma sincronização.
+    if (!$forcar && $v['assinatura_externa_id'] !== null && $v['idade_sincronia'] !== null && (int)$v['idade_sincronia'] >= 0 && (int)$v['idade_sincronia'] < 10) {
+        return pagamentoCartaoDadosPreapproval($v, $contratoAtual, true);
+    }
+    if ($v['assinatura_externa_id'] === null) {
+        $r = assinaturaServicoPreapprovalConciliar($db, $gateway, $empresa, $email);
+        if (($r['ok'] ?? false) !== true) {
+            pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
+        }
+        $v = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
+    }
+    if ($v === null || (int)$v['id_empresa'] !== $empresa || $v['assinatura_externa_id'] === null) {
+        pagamentoOnlineFalhar('VINCULO_INDISPONIVEL', 'A autorização ainda precisa de verificação.', 409);
+    }
+    if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+    if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Conciliação indisponível.');
+    require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+    $r = mpSubSincronizarPreapproval($db, $gateway, $gateway->ambiente(), (string)$v['assinatura_externa_id'], null, $empresa);
+    if ($r['resultado'] !== 'processado') {
+        pagamentoOnlineFalhar('AUTORIZACAO_VERIFICACAO_PENDENTE', 'Não foi possível confirmar a autorização. Atualize a situação novamente mais tarde.', 503);
+    }
+    return pagamentoCartaoDadosPreapproval(pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()), pagamentoCartaoAssinaturaAtiva($db, $empresa), true);
 }
 
 function pagamentoCartaoReservar(mysqli $db, int $empresa, string $ambiente): array
@@ -535,6 +641,11 @@ function pagamentoCartaoReservar(mysqli $db, int $empresa, string $ambiente): ar
         if ((int)($assinatura['gera_cobranca'] ?? 0) !== 1) {
             pagamentoOnlineFalhar('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
         }
+        $preapproval = pagamentoOnlineConsulta($db,
+            "SELECT id_assinatura_pagamento FROM assinatura_pagamento_recorrente
+              WHERE id_empresa=? AND id_assinatura=? AND motor_recorrencia='preapproval' LIMIT 1 FOR UPDATE",
+            'ii', $empresa, (int)$assinatura['id_assinatura'])->fetch_assoc();
+        if ($preapproval) pagamentoOnlineFalhar('MOTOR_PREAPPROVAL_EXISTENTE', 'Este contrato já utiliza autorização recorrente pelo Mercado Pago.', 409);
         $bloqueios = pagamentoOnlineConsulta($db,
             "SELECT id_assinatura_pagamento,status FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? AND status IN ('pendente','ativa','suspensa','atualizacao_necessaria','cancelamento_pendente') ORDER BY id_assinatura_pagamento DESC FOR UPDATE",
             'is', $empresa, $ambiente)->fetch_all(MYSQLI_ASSOC);
@@ -868,6 +979,20 @@ try {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             pagamentoOnlineFalhar('EMAIL_INDISPONIVEL', 'Seu e-mail de acesso precisa ser válido para configurar o cartão.', 422);
         }
+        $gatewayCartao = pagamentoCartaoGatewayAtivo();
+        $assinaturaCartao = pagamentoCartaoAssinaturaAtiva($conexao, $empresa);
+        $vinculoCartao = pagamentoCartaoVinculoAtual($conexao, $empresa, $gatewayCartao->ambiente());
+        if (pagamentoCartaoMotor($vinculoCartao, $assinaturaCartao, $gatewayCartao::subscriptionsHabilitado()) === 'preapproval') {
+            // Fluxo por redirecionamento: nenhum dado de cartão trafega por aqui; valor, plano e contrato vêm do servidor.
+            unset($_POST['token'], $_POST['payment_method_id']);
+            $dados = pagamentoCartaoPreapprovalIniciar($conexao, $gatewayCartao, $empresa, $email);
+            out(['ok'=>true,
+                'code'=>$dados['init_point'] !== null ? 'AUTORIZACAO_REDIRECIONAMENTO' : 'AUTORIZACAO_EXISTENTE',
+                'user_msg'=>$dados['init_point'] !== null
+                    ? 'Você será levado ao Mercado Pago para autorizar o cartão. Nenhuma cobrança será feita agora.'
+                    : 'A autorização recorrente já existe. Atualize a situação para conferir.',
+                'data'=>$dados]);
+        }
         $tokenTemporario = trim((string)($_POST['token'] ?? ''));
         unset($_POST['token']);
         try {
@@ -880,11 +1005,32 @@ try {
             'user_msg'=>$dados['configurado'] ? 'Cartão configurado para pagamentos automáticos.' : 'Cartão recebido e em validação pelo Mercado Pago.',
             'data'=>$dados]);
     }
-    if ($rota === 'painel/faturamento/pagamento/cartao/status' && $metodo === 'GET') {
+    if ($rota === 'painel/faturamento/pagamento/cartao/status' && ($metodo === 'GET' || $metodo === 'POST')) {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);
         $email = trim((string)($_SESSION['auth']['email'] ?? ''));
+        $gatewayCartao = pagamentoCartaoGatewayAtivo();
+        $assinaturaCartao = pagamentoCartaoAssinaturaAtiva($conexao, $empresa);
+        $vinculoCartao = pagamentoCartaoVinculoAtual($conexao, $empresa, $gatewayCartao->ambiente());
+        $motorCartao = pagamentoCartaoMotor($vinculoCartao, $assinaturaCartao, $gatewayCartao::subscriptionsHabilitado());
+        if ($metodo === 'POST') {
+            // Única operação que grava a partir do retorno do Mercado Pago: sincroniza a autorização consultando o
+            // provedor. O retorno em si nunca é prova de autorização, e nenhum pagamento é registrado aqui.
+            csrfValidarSessao();
+            if ($motorCartao !== 'preapproval') {
+                pagamentoOnlineFalhar('METODO_INVALIDO', 'Operação inválida para este contrato.', 405);
+            }
+            $dados = pagamentoCartaoPreapprovalConsultar($conexao, $gatewayCartao, $empresa, $email);
+            $mensagem = $dados['configurado'] ? 'Autorização confirmada pelo Mercado Pago.'
+                : (($dados['status_externo'] ?? '') === 'pending' ? 'A autorização ainda não foi concluída no Mercado Pago.'
+                : 'Situação da autorização atualizada.');
+            out(['ok'=>true,'code'=>$dados['configurado'] ? 'AUTORIZACAO_CONFIRMADA' : 'AUTORIZACAO_VERIFICADA','user_msg'=>$mensagem,'data'=>$dados]);
+        }
+        if ($motorCartao === 'preapproval') {
+            out(['ok'=>true,'code'=>'CARTAO_STATUS','user_msg'=>'Situação do pagamento automático.',
+                'data'=>pagamentoCartaoDadosPreapproval($vinculoCartao, $assinaturaCartao, $gatewayCartao::subscriptionsHabilitado())]);
+        }
         out(['ok'=>true,'code'=>'CARTAO_STATUS','user_msg'=>'Situação do cartão atualizada.',
-            'data'=>pagamentoCartaoConsultarStatus($conexao, pagamentoCartaoGatewayAtivo(), $empresa, $email)]);
+            'data'=>pagamentoCartaoConsultarStatus($conexao, $gatewayCartao, $empresa, $email)]);
     }
     pagamentoOnlineFalhar('ROTA_INVALIDA', 'Operação de pagamento inválida.', 404);
 } catch (PagamentoOnlineErro $e) {

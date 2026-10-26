@@ -1,6 +1,21 @@
 <?php
 declare(strict_types=1);
 
+/*
+ * QUARENTENA: este teste legado usa a conexão do AmAgenda e IDs reais fixos.
+ * O rollback não torna sua execução segura. Não liberar por argumento, variável
+ * de ambiente ou constante: substituir por fixtures isoladas antes de reativar.
+ * A interrupção deve permanecer ANTES de qualquer require/include.
+ */
+if (PHP_SAPI === 'cli') {
+    fwrite(STDERR, "BLOQUEADO: teste legado depende do banco AmAgenda; nenhuma conexão foi carregada.\n");
+} else {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "BLOQUEADO: teste legado depende do banco AmAgenda.\n";
+}
+exit(2);
+
 require_once __DIR__ . '/../../backend/_config/conexao.php';
 require_once __DIR__ . '/../../backend/_servicos/assinatura.php';
 

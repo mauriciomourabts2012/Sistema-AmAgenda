@@ -175,6 +175,19 @@ function auditoriaCatalogo(): array
             'id_empresa', 'id_cobranca', 'id_transacao', 'status', 'status_externo', 'detalhe_status_externo', 'motivo', 'depois',
         ]),
 
+        'assinatura.recorrencia_operacao_solicitada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Registrou a intenção de uma operação externa na assinatura recorrente.', [
+            'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'id_operacao', 'tipo_operacao', 'status_desejado', 'situacao', 'status_vinculo', 'depois',
+        ]),
+        'assinatura.recorrencia_operacao_confirmada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Confirmou, pelo provedor, uma operação externa na assinatura recorrente.', [
+            'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'id_operacao', 'tipo_operacao', 'status_desejado', 'status_externo', 'status_vinculo', 'depois',
+        ]),
+        'assinatura.recorrencia_operacao_reaberta' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Reabriu, de forma controlada, uma operação externa da assinatura recorrente que estava em erro.', [
+            'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'id_operacao', 'tipo_operacao', 'status_desejado', 'situacao', 'motivo', 'status_vinculo', 'depois',
+        ]),
+        'assinatura.recorrencia_operacao_falhou' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Registrou falha ou incerteza em uma operação externa da assinatura recorrente.', [
+            'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'id_operacao', 'tipo_operacao', 'status_desejado', 'situacao', 'codigo', 'depois',
+        ]),
+
         'plano.criado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Criou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'agenda_online', 'gera_cobranca', 'disponivel_cadastro_publico', 'destaque', 'status', 'descricao', 'observacao', 'depois']),
         'plano.editado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Alterou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'agenda_online', 'gera_cobranca', 'disponivel_cadastro_publico', 'destaque', 'status', 'descricao', 'observacao']),
         'plano.status_alterado' => auditoriaDefinicaoEvento('planos', 'plano', 'critica', 'Alterou o status de um plano.', ['status']),

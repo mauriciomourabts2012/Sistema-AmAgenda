@@ -185,3 +185,132 @@ Checklist obrigatório de homologação, em ambiente autorizado:
 - requisição acima de `post_max_size`, esperando HTTP 413 e mensagem de limite;
 - confirmação de que uma falha não altera o banco, não remove o arquivo anterior e não é exibida como sucesso;
 - conferência de `storage/api_errors.log`, `error.log` do Apache e journal do PHP-FPM, sem expor esses detalhes na resposta ao usuário.
+
+## 13. Testes financeiros e homologação controlada de Subscriptions
+
+Preparação auditada em 26/10/2026. Publicação e testes financeiros são executados
+exclusivamente pelo responsável, após autorização expressa. A homologação será em
+produção com contrato exclusivo de R$ 1,99; não exige outro servidor público.
+Esta seção não autoriza agentes a acessar banco, APIs financeiras ou o Google Drive.
+
+### 13.1 Execução segura de testes
+
+- Não executar suites PHP por glob, descoberta automática ou loop sem revisar os
+  pontos de entrada e todos os includes alcançáveis.
+- `tools/tests/cancelamento-programado.test.php` está em quarentena: encerra com
+  código 2 antes dos includes, em CLI e HTTP. Não possui bypass de configuração.
+  Seu corpo legado depende da empresa 26 e assinatura 28 e contém INSERTs reais;
+  rollback não é isolamento. Substituir por fixtures isoladas antes de reativar.
+- Os demais testes encontrados em `tools/tests` cobrem PWA, upload e versionamento.
+  Sua classificação é estática; não é autorização para executar automaticamente
+  versões futuras. Alguns criam fixtures temporárias e processos PHP filhos.
+- `php -l arquivo.php` somente analisa sintaxe. Usar lista explícita de arquivos.
+- A conciliação CLI, inclusive seu diagnóstico, carrega o banco configurado.
+  Não é um teste isolado. No modo Subscriptions, `--executar` também envia PUTs
+  do outbox. Com `--modo=subscriptions --empresa=ID`, o diagnóstico, a rotina, o
+  outbox, a sincronização e a reabertura ficam restritos à empresa informada
+  (implementado e testado offline; sem `--empresa` o processamento é global).
+
+### 13.2 Impedimentos antes da primeira operação financeira
+
+1. Entrada autenticada: IMPLEMENTADA e testada offline. A rota
+   `painel/faturamento/pagamento/cartao/autorizar` (POST, permissão
+   `faturamento.pagar`, CSRF, empresa e e-mail da sessão) chama
+   `assinaturaServicoPreapprovalIniciar` quando o backend escolhe o fluxo
+   Preapproval; preço, plano, empresa e data de cobrança vêm sempre do contrato
+   interno, nunca do navegador. Contratos com vínculo Orders seguem no Card Payment
+   Brick; com `subscriptions.habilitado=false` e sem vínculo, o fluxo legado é
+   mantido e nenhuma Preapproval é criada. Falta: restringir o teste ao contrato de
+   homologação pela preparação dos dados (ver 13.3) e validar no Mercado Pago real.
+2. Retomada e retorno: IMPLEMENTADOS e testados offline. `JA_VINCULADA` consulta o
+   provedor e recupera o `init_point` de uma autorização pendente, sem novo POST;
+   o link só sai ao navegador se for HTTPS do checkout de assinaturas do Mercado Pago
+   (validado no backend e de novo no JS). O `back_url` foi corrigido e aponta para
+   `/public/views/painel-administrativo/painel-administrativo.html?mp_assinatura_retorno=1`
+   (base `url_publica`). O retorno nunca prova autorização: o JS faz POST com CSRF em
+   `cartao/status`, e o servidor consulta o provedor. Falta homologar com o Mercado
+   Pago real: o host do `init_point` no sandbox e o comportamento do redirecionamento.
+3. Confirmar com o Mercado Pago o contrato de notificações de Preapproval. A página
+   de Webhooks lista os tópicos, mas exclui Assinaturas da configuração pelo painel;
+   a referência de POST /preapproval não confirma `notification_url`.
+   Não presumir suporte nem trocar para IPN sem HMAC.
+4. CHECK `chk_aspr_slot_ativo`: RESOLVIDO no banco pelo responsável. A definição
+   vigente (aplicada manualmente; o dump estrutural de 26/10/2026 é anterior e está
+   desatualizado) inclui `suspensa` entre os estados do motor preapproval com
+   `slot_ativo=1`, usando `<=>` para tratar NULL. O código mantém `slot_ativo=1` e
+   `cobrar_a_partir_de` em `suspensa` e `cancelamento_pendente` até a confirmação
+   externa do encerramento (testado offline com essa definição). Antes de ativar, o
+   responsável deve conferir a definição no banco publicado (`SHOW CREATE TABLE
+   assinatura_pagamento_recorrente`); qualquer SQL é preparado pelo ChatGPT e
+   executado pelo responsável.
+5. Recuperação restrita: IMPLEMENTADA e testada offline. Use sempre
+   `--modo=subscriptions --empresa=ID` na homologação. O escopo vale para
+   diagnóstico, rotina, outbox, sincronização, faturas e reabertura; sem `--empresa`
+   a rotina é global e `--limite=1` não equivale a seleção individual.
+6. Definir janela da primeira cobrança: o código exige período pago vigente e
+   agenda `start_date` para o dia seguinte ao fim desse período. Não há cobrança
+   imediata garantida. O corpo atual não envia `end_date` para limitar renovação.
+   R$ 1,99 é o valor recorrente pretendido; aceitação do valor pelo provedor ainda
+   não foi validada. A documentação de pagamento autorizado prevê uma verificação
+   de cartão com valor mínimo e devolução; não prometer débito total limitado a
+   R$ 1,99 nem ausência de lançamentos temporários durante a autorização.
+
+### 13.3 Procedimento do responsável, após resolver os impedimentos
+
+1. Fazer backup e registrar versão publicada, responsável, janela, empresa,
+   contrato e limite de gasto. Preservar credenciais, PIX e Orders de produção.
+2. Conferir manualmente o esquema publicado contra o dump aprovado. Não importar
+   o dump completo em produção: ele contém DROP TABLE. Não executar teste legado.
+3. Preparar empresa/contrato exclusivo, sem vínculo Orders/Preapproval concorrente,
+   sem troca de plano ou dívida, com `assinatura.valor_contratado=1.99`, modalidade
+   paga e período pago vigente. Não alterar preços comerciais em `plano`.
+   O estado financeiro deve ser legítimo e documentado; não simular quitação.
+4. Confirmar tópicos `subscription_preapproval`, `subscription_authorized_payment`
+   e `payment`, URL pública HTTPS, HMAC e recursos consultados na mesma aplicação.
+   Registrar evidência de entrega/validação antes da autorização do cartão.
+5. Manter Subscriptions desligado na publicação; somente o responsável poderá
+   habilitar na janela aprovada e restringir o acesso à empresa de homologação.
+6. Criar UMA Preapproval pending. Registrar ID local/externo, referência, valor BRL
+   1,99, frequência, start_date e próxima cobrança. Verificar no provedor antes de
+   abrir init_point. Em timeout, conciliar pela mesma referência; não repetir POST.
+7. O proprietário autoriza no Mercado Pago. No retorno, consultar estado externo;
+   parâmetros do navegador não provam autorização. Confirmar authorized e vínculo.
+8. Acompanhar a primeira fatura e seu Payment ID. Confirmar R$ 1,99, BRL, vínculo,
+   período e pagamento approved/accredited com fatura processed. Conferir UMA baixa
+   local, sem duplicidade por reenvio. Retry/processamento não equivale a quitação.
+9. Encerrar o ensaio: solicitar cancelamento e processar somente a operação desse
+   vínculo. O cancelamento local apenas registra intenção; o cancelamento externo
+   usa PUT /preapproval/{id} com status canceled e exige leitura de confirmação.
+10. Confirmar canceled no provedor e cancelada localmente, slot NULL e operação
+    concluída. Inspecionar também faturas/pagamentos já emitidos, pendências,
+    processing/recycling e tentativas agendadas. Cancelar assinatura não comprova
+    cancelamento de um pagamento já emitido nem efetua reembolso.
+11. Se houver pendência, resolver pelo provedor e conciliar o vínculo. Verificar
+    novamente após a janela de processamento informada pelo provedor e após a
+    antiga data da próxima renovação. Somente encerrar com evidências de ausência
+    de débitos pendentes e novas cobranças; uma próxima data histórica não prova
+    sozinha que a recorrência continua ativa ou que foi encerrada.
+12. Depois da confirmação externa e local, devolver a chave para false. Desligar
+    Subscriptions, publicar rollback ou remover CRON NÃO cancela a assinatura no
+    Mercado Pago. Arquivar evidências sem segredos e atualizar o RAG pelo responsável.
+
+### 13.4 Recuperação
+
+- Criação incerta: guardar referência/IDs; pesquisar e conferir contrato/valor antes
+  de retomar. Não criar outra assinatura para contornar erro local.
+- Falha de webhook: consultar recursos autoritativos e conciliar só o vínculo alvo;
+  não forjar evento nem baixar pagamento manualmente como se fosse confirmado.
+- Falha de cancelamento: manter o caso aberto e cancelar a mesma Preapproval no
+  Mercado Pago pelo canal oficial disponível ao responsável; consultar até confirmar
+  canceled, depois sincronizar o estado local e tratar pagamentos em trânsito.
+- Se o AmAgenda estiver indisponível: cancelar no provedor primeiro; restaurar o
+  serviço para conciliar depois. Não apagar vínculos, transações ou operação incerta.
+- Cobrança indevida: cancelar recorrência e tratar cancelamento/reembolso do
+  pagamento separadamente, com autorização do responsável e conciliação posterior.
+
+Fontes oficiais consultadas (contratos não confirmados permanecem pendentes):
+[pagamento pendente](https://www.mercadopago.com.br/developers/pt/docs/subscriptions/integration-configuration/subscription-no-associated-plan/pending-payments),
+[criar Preapproval](https://www.mercadopago.com.br/developers/pt/reference/online-payments/subscriptions/create-preapproval/post),
+[pagamento autorizado](https://www.mercadopago.com.br/developers/en/docs/subscriptions/integration-configuration/subscription-no-associated-plan/authorized-payments),
+[Webhooks](https://www.mercadopago.com.br/developers/pt/docs/subscriptions/additional-content/your-integrations/notifications/webhooks),
+[gerenciamento](https://www.mercadopago.com.br/developers/pt/docs/subscriptions/subscription-management).

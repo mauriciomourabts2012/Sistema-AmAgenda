@@ -379,13 +379,20 @@ function assinaturaAlterarStatus(mysqli $conexao): void
             $stmtRecorrencia = $conexao->prepare(
                 "UPDATE assinatura_pagamento_recorrente
                     SET status = 'cancelamento_pendente', slot_ativo = NULL, cobrar_a_partir_de = NULL
-                  WHERE id_empresa = ? AND id_assinatura = ?
+                  WHERE id_empresa = ? AND id_assinatura = ? AND motor_recorrencia = 'orders'
                     AND status IN ('pendente','ativa','suspensa','atualizacao_necessaria')"
             );
             if (!$stmtRecorrencia) throw new RuntimeException('Falha ao preparar bloqueio da recorrência.');
             $stmtRecorrencia->bind_param('ii', $idEmpresaInformada, $idAssinatura);
             if (!$stmtRecorrencia->execute()) throw new RuntimeException('Falha ao bloquear recorrência.');
             $stmtRecorrencia->close();
+            // Preapproval: intenção de cancelar no provedor, com o slot ativo mantido até a confirmação externa.
+            assinaturaServicoPreapprovalSolicitarCancelamento($conexao, $idEmpresaInformada, $idAssinatura);
+        } elseif ($acao === 'suspender') {
+            // Somente suspensão administrativa pausa a Preapproval; inadimplência nunca passa por aqui.
+            assinaturaServicoPreapprovalSolicitarPausa($conexao, $idEmpresaInformada, $idAssinatura);
+        } elseif ($acao === 'reativar') {
+            assinaturaServicoPreapprovalSolicitarReativacao($conexao, $idEmpresaInformada, $idAssinatura);
         }
 
         $evento = match ($acao) {
