@@ -384,8 +384,22 @@
     if (botao) botao.disabled = true;
     try {
       const corpo = new FormData(form);
-      await enviarPagamento(REGISTRAR_PAGAMENTO, corpo, "Não foi possível registrar o pagamento.");
-      avisar("sucesso", "Pagamento registrado com sucesso.");
+      let json;
+      try {
+        json = await enviarPagamento(REGISTRAR_PAGAMENTO, corpo, "Não foi possível registrar o pagamento.");
+      } catch (erro) {
+        if (erro.code !== "PIX_PENDENTE_CONFIRMAR_RECEBIMENTO") throw erro;
+        // PIX ainda aguardando transferência: a baixa presencial exige confirmação expressa do recebimento real.
+        const confirmou = await confirmarUniversal(`${erro.message} Confirma que o valor foi recebido presencialmente?`, {
+          titulo: "Risco de recebimento duplicado",
+          textoCancelar: "Voltar",
+          textoConfirmar: "Confirmo o recebimento",
+        });
+        if (!confirmou) return;
+        corpo.set("confirmar_recebimento_pix", "1");
+        json = await enviarPagamento(REGISTRAR_PAGAMENTO, corpo, "Não foi possível registrar o pagamento.");
+      }
+      avisar("sucesso", json.user_msg || "Pagamento registrado com sucesso.");
       await carregarCobrancas();
       await carregarPagamentos(cobrancaModalAtual, true);
     } catch (erro) {

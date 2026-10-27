@@ -17,6 +17,9 @@
   const moeda = valor => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const texto = valor => String(valor || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "—";
   const avisar = (tipo, msg) => (window.MensagemSistema?.[tipo] || window.MensagemSistema?.info)?.(msg);
+  const MENSAGEM_PIX_RESIDUAL = "Sua mensalidade já está paga. Não utilize o PIX gerado anteriormente para evitar pagamento duplicado.";
+  // A conclusão recarrega a página para liberar o acesso; o aviso precisa sobreviver à recarga.
+  const CHAVE_AVISO_CONTRATACAO = "amagenda:faturamento:contratacao-concluida";
   const normalizar = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const statusClasse = status => `faturamento-status faturamento-status--${esc(normalizar(status || "pendente").replace(/\s+/g, "-"))}`;
   const estadoVisual = (titulo, detalhe, erro = false, icone = "fa-file-circle-exclamation") => `<div class="faturamento-estado${erro ? " faturamento-estado--erro" : ""}"><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid ${icone}"></i></span><div><strong>${esc(titulo)}</strong><p>${esc(detalhe)}</p></div></div>`;
@@ -168,7 +171,8 @@
     const aviso = aguardando
       ? `<header class="faturamento-contratacao-aviso"><h3>Nova contratação aguardando pagamento</h3><p>Realize o pagamento da primeira mensalidade por PIX ou cartão de crédito na seção abaixo. O acesso será liberado após a confirmação do pagamento.</p></header>`
       : `<p><strong>${esc(contratacao.mensagem || "")}</strong></p>`;
-    el.innerHTML = `${aviso}${detalhes}${cartao}${concluir}${contratar}`;
+    const pixResidual = contratacao.pix_residual === true ? `<p><small>${esc(MENSAGEM_PIX_RESIDUAL)}</small></p>` : "";
+    el.innerHTML = `${aviso}${pixResidual}${detalhes}${cartao}${concluir}${contratar}`;
   }
   function textoLimiteContratacao(valor, singular, plural) {
     // Mesma redação do cartão de plano do site público (site-amagenda.js).
@@ -323,7 +327,11 @@
     if (botao) botao.disabled = true;
     try {
       const json = await postarContratacao({ acao: "concluir" });
-      avisar("sucesso", json.user_msg || "Nova contratação ativada.");
+      try {
+        sessionStorage.setItem(CHAVE_AVISO_CONTRATACAO, JSON.stringify({ mensagem: json.user_msg || "", pix_residual: json.data?.pix_residual === true }));
+      } catch {
+        avisar("sucesso", json.user_msg || "Contratação concluída com sucesso!");
+      }
       window.location.reload();
     } catch (erro) {
       avisar("aviso", erro.message || "O pagamento ainda não foi confirmado.");
@@ -538,5 +546,19 @@
   });
   // Pagamento online consultado (ex.: PIX fechado após pagar): o resumo e as cobranças vêm de novo do servidor.
   document.addEventListener("amagenda:faturamento-atualizar", () => { estado.carregado = false; iniciar(); });
+  function mostrarAvisoContratacao() {
+    let aviso = null;
+    try {
+      aviso = JSON.parse(sessionStorage.getItem(CHAVE_AVISO_CONTRATACAO) || "null");
+      sessionStorage.removeItem(CHAVE_AVISO_CONTRATACAO);
+    } catch {
+      aviso = null;
+    }
+    if (!aviso || typeof aviso.mensagem !== "string" || aviso.mensagem === "") return;
+    avisar("sucesso", aviso.mensagem);
+    if (aviso.pix_residual === true) avisar("aviso", MENSAGEM_PIX_RESIDUAL);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mostrarAvisoContratacao, { once: true });
+  else mostrarAvisoContratacao();
   document.addEventListener("DOMContentLoaded", () => { document.addEventListener("amagenda:painel-aba-alterada", e => { if (e.detail?.aba === "faturamento" && !estado.carregado) iniciar(); }); document.addEventListener("amagenda:sessao-carregada", () => { if (document.getElementById("faturamento")?.classList.contains("ativa")) carregarCobrancas(); }); document.getElementById("pesquisar-faturamento")?.addEventListener("input", () => { estado.pagina = 1; carregarCobrancas(); }); const form = document.getElementById("formFiltrosFaturamento"); form?.addEventListener("submit", e => { e.preventDefault(); form.hidden = true; document.getElementById("btnFiltrosFaturamento")?.setAttribute("aria-expanded", "false"); estado.pagina = 1; carregarCobrancas(); }); document.getElementById("limparFiltrosFaturamento")?.addEventListener("click", () => { form?.reset(); estado.pagina = 1; carregarCobrancas(); }); document.getElementById("btnFiltrosFaturamento")?.addEventListener("click", () => { const aberto = !form?.hidden; if (form) form.hidden = aberto; document.getElementById("btnFiltrosFaturamento")?.setAttribute("aria-expanded", String(!aberto)); }); if (document.getElementById("faturamento")?.classList.contains("ativa")) iniciar(); });
 })();

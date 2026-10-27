@@ -150,7 +150,7 @@ function auditoriaCatalogo(): array
         ]),
         'pagamento.registrado' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'alta', 'Registrou um pagamento manual.', [
             'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',
-            'total_pago_confirmado', 'saldo_restante', 'depois',
+            'total_pago_confirmado', 'saldo_restante', 'depois', 'recebimento_confirmado', 'pix_pendente_transacoes',
         ]),
         'pagamento.cancelado' => auditoriaDefinicaoEvento('financeiro', 'pagamento', 'alta', 'Cancelou um pagamento.', [
             'id_empresa', 'id_cobranca', 'id_pagamento', 'valor_pago', 'data_pagamento', 'forma_pagamento', 'origem', 'status',

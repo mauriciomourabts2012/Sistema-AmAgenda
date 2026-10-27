@@ -349,33 +349,66 @@ function pagamentoConciliarOnlineAntesDaBaixa(mysqli $conexao, int $idCobranca):
     }
 }
 
+/** Segundos em que a consulta ao Mercado Pago feita antes da baixa vale como comprovação de que o PIX não foi pago. */
+const PAGAMENTO_MANUAL_CONSULTA_PIX_SEGUNDOS = 120;
+
+/**
+ * PIX que, pela consulta ao Mercado Pago feita nesta baixa, ainda aguarda a transferência (nada foi pago): Order conhecida,
+ * sem conciliação manual nem pagamento vinculado. Só esse caso admite baixa presencial com confirmação expressa.
+ *
+ * @param array<string, mixed> $t
+ */
+function pagamentoPixAguardandoTransferencia(array $t): bool
+{
+    return (string)$t['metodo'] === 'pix'
+        && (string)$t['tipo_operacao'] !== 'assinatura_preapproval'
+        && (string)$t['status'] === 'aguardando'
+        && (int)$t['requer_conciliacao'] === 0
+        && (int)$t['com_ordem'] === 1
+        && (int)$t['sem_pagamento'] === 1
+        && (int)$t['consulta_recente'] === 1
+        && (string)$t['status_externo'] === 'action_required'
+        && (string)$t['detalhe_status_externo'] === 'waiting_transfer';
+}
+
 /**
  * Pagamento online ainda capaz de quitar a cobrança: transação em andamento ou em conciliação, ou Preapproval que pode
  * cobrar esta competência (mesma regra que impede o PIX paralelo). Na transação, com a cobrança bloqueada.
+ * O PIX que comprovadamente aguarda transferência só é aceito com $confirmaRecebimento; seus ids voltam em $pixPendentes
+ * (o PIX não é alterado: se for pago depois, a conciliação o registra como sobrepagamento).
  *
+ * @param list<int> $pixPendentes
  * @return array{code: string, user_msg: string}|null
  */
-function pagamentoBloqueioOnline(mysqli $conexao, int $idEmpresa, int $idCobranca): ?array
+function pagamentoBloqueioOnline(mysqli $conexao, int $idEmpresa, int $idCobranca, bool $confirmaRecebimento = false, array &$pixPendentes = []): ?array
 {
+    $pixPendentes = [];
     $stmt = $conexao->prepare(
-        "SELECT metodo FROM transacao_pagamento
+        "SELECT id_transacao, metodo, tipo_operacao, status, requer_conciliacao, status_externo, detalhe_status_externo,
+                (ordem_externa_id IS NOT NULL) AS com_ordem, (id_pagamento IS NULL) AS sem_pagamento,
+                (ultima_consulta_em IS NOT NULL AND ultima_consulta_em >= DATE_SUB(NOW(), INTERVAL " . PAGAMENTO_MANUAL_CONSULTA_PIX_SEGUNDOS . " SECOND)) AS consulta_recente
+           FROM transacao_pagamento
           WHERE id_empresa = ? AND id_cobranca = ?
             AND (status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')
                  OR (requer_conciliacao = 1 AND status <> 'confirmada'))
-          LIMIT 1 FOR UPDATE"
+          ORDER BY id_transacao FOR UPDATE"
     );
     if (!$stmt) {
         throw new RuntimeException('Falha ao preparar a verificação de pagamentos online.');
     }
     $stmt->bind_param('ii', $idEmpresa, $idCobranca);
     $stmt->execute();
-    $online = $stmt->get_result()->fetch_assoc();
+    $transacoes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-    if ($online) {
+    foreach ($transacoes as $online) {
+        if (pagamentoPixAguardandoTransferencia($online)) {
+            $pixPendentes[] = (int)$online['id_transacao'];
+            continue;
+        }
         return [
             'code' => 'PAGAMENTO_ONLINE_EM_ANDAMENTO',
             'user_msg' => ((string)$online['metodo'] === 'pix' ? 'Há um PIX gerado para esta cobrança' : 'Há um pagamento no cartão para esta cobrança')
-                . ' ainda sem desfecho no Mercado Pago. Aguarde a expiração ou a confirmação (ou concilie) antes da baixa manual, para não receber em duplicidade.',
+                . ' cuja situação no Mercado Pago não pôde ser confirmada agora. Aguarde a expiração ou a confirmação (ou concilie) antes da baixa manual, para não receber em duplicidade.',
         ];
     }
     $cartao = assinaturaServicoPreapprovalBloqueioPix($conexao, $idEmpresa, $idCobranca);
@@ -383,6 +416,12 @@ function pagamentoBloqueioOnline(mysqli $conexao, int $idEmpresa, int $idCobranc
         return [
             'code' => 'COBRANCA_DO_CARTAO_RECORRENTE',
             'user_msg' => 'Esta cobrança pode ser paga pelo cartão recorrente no Mercado Pago (' . $cartao['codigo'] . '). Cancele ou concilie o cartão antes da baixa manual.',
+        ];
+    }
+    if ($pixPendentes !== [] && !$confirmaRecebimento) {
+        return [
+            'code' => 'PIX_PENDENTE_CONFIRMAR_RECEBIMENTO',
+            'user_msg' => 'Há um PIX gerado para esta cobrança que ainda aguarda transferência no Mercado Pago. Confirme que o valor foi realmente recebido: se o cliente pagar também o PIX, haverá recebimento em duplicidade, a ser devolvido pela conciliação.',
         ];
     }
 
@@ -421,6 +460,8 @@ function registrarPagamento(mysqli $conexao): void
     $forma = is_scalar($_POST['forma_pagamento'] ?? null) ? trim((string)$_POST['forma_pagamento']) : '';
     $dataRaw = is_scalar($_POST['data_pagamento'] ?? null) ? trim((string)$_POST['data_pagamento']) : date('Y-m-d');
     $observacao = is_scalar($_POST['observacao'] ?? null) ? trim((string)$_POST['observacao']) : '';
+    // Confirmação expressa de recebimento real quando há PIX aguardando transferência (só aceita o valor exato '1').
+    $confirmaRecebimentoPix = ($_POST['confirmar_recebimento_pix'] ?? null) === '1';
     if ($idCobranca === null || !is_scalar($valorRaw) || !in_array($forma, pagamentoFormasPermitidas(), true) || strlen($observacao) > 1000) {
         out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Revise os dados do pagamento.'], 422);
     }
@@ -443,7 +484,8 @@ function registrarPagamento(mysqli $conexao): void
             cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'COBRANCA_CANCELADA', 'user_msg' => 'Não é possível pagar uma cobrança cancelada.'], 409);
         }
         // Pagamento online ainda capaz de quitar a mesma cobrança: a baixa manual geraria recebimento em duplicidade.
-        $bloqueioOnline = pagamentoBloqueioOnline($conexao, (int)$cobranca['id_empresa'], $idCobranca);
+        $pixPendentes = [];
+        $bloqueioOnline = pagamentoBloqueioOnline($conexao, (int)$cobranca['id_empresa'], $idCobranca, $confirmaRecebimentoPix, $pixPendentes);
         if ($bloqueioOnline !== null) {
             cobrancaErroTransacional($conexao, ['ok' => false] + $bloqueioOnline, 409);
         }
@@ -510,8 +552,9 @@ function registrarPagamento(mysqli $conexao): void
                 'forma_pagamento' => $forma, 'origem' => $origem, 'status' => $statusPagamento,
                 'total_pago_confirmado' => (float)pagamentoCentavosDecimal($totalDepois),
                 'saldo_restante' => (float)pagamentoCentavosDecimal($saldoDepois),
-            ]),
-            'contexto' => ['origem' => 'painel_super_admin', 'id_empresa' => $idEmpresa, 'id_cobranca' => $idCobranca],
+            ] + ($pixPendentes === [] ? [] : ['recebimento_confirmado' => true, 'pix_pendente_transacoes' => $pixPendentes])),
+            'contexto' => ['origem' => 'painel_super_admin', 'id_empresa' => $idEmpresa, 'id_cobranca' => $idCobranca]
+                + ($pixPendentes === [] ? [] : ['motivo' => 'baixa_presencial_com_pix_pendente']),
         ]);
         // O contrato é reavaliado após o recálculo da cobrança: converte o trial quando a cobrança de
         // conversão fica integralmente paga e reativa a assinatura paga suspensa por inadimplência dessa
@@ -537,6 +580,9 @@ function registrarPagamento(mysqli $conexao): void
                 $dadosResposta['conversao_trial_pendente'] = (string)$conversaoTrial['motivo'];
             }
         }
+        if ($pixPendentes !== []) {
+            $dadosResposta['pix_pendente'] = true;
+        }
         out([
             'ok' => true,
             'code' => 'PAGAMENTO_REGISTRADO',
@@ -544,7 +590,7 @@ function registrarPagamento(mysqli $conexao): void
                 null => 'Pagamento registrado com sucesso.',
                 'ativada' => 'Pagamento registrado. A contratação foi ativada e o acesso liberado.',
                 default => 'Pagamento registrado, mas a contratação ainda não pôde ser ativada (' . $dadosResposta['contratacao'] . '). Verifique as pendências financeiras da empresa.',
-            },
+            } . ($pixPendentes === [] ? '' : ' O PIX anterior continua em acompanhamento: oriente o cliente a não pagá-lo.'),
             'data' => $dadosResposta,
         ], 201);
     } catch (Throwable $e) {

@@ -280,7 +280,7 @@ function faturamentoNovaContratacao(mysqli $db, array $contexto): void {
             out(['ok'=>false,'code'=>(string)$resultado['codigo'],'user_msg'=>(string)$resultado['mensagem']],409);
         }
         if (!$db->commit()) throw new RuntimeException('Falha ao confirmar a contratação.');
-        $dados = array_intersect_key($resultado, array_flip(['resultado','id_assinatura','id_cobranca','valor','data_vencimento']));
+        $dados = array_intersect_key($resultado, array_flip(['resultado','id_assinatura','id_cobranca','valor','data_vencimento','pix_residual']));
         out(['ok'=>true,'code'=>($resultado['resultado'] ?? '') === 'ativada' ? 'CONTRATACAO_ATIVADA' : 'CONTRATACAO_AGUARDANDO_PAGAMENTO',
             'user_msg'=>(string)$resultado['mensagem'],'data'=>$dados]);
     } catch (Throwable $erro) {

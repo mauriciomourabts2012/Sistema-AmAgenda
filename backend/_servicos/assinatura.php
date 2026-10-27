@@ -1294,20 +1294,25 @@ function assinaturaServicoPendenciaFinanceira(mysqli $conexao, int $idEmpresa, b
     }
 
     // Estados em andamento do gateway; transação criada ou enviada nunca é pagamento confirmado.
-    $incertas = assinaturaServicoConsultaFinanceira(
-        $conexao,
-        "SELECT t.id_transacao, t.metodo
-           FROM transacao_pagamento t
-          INNER JOIN cobranca c ON c.id_cobranca = t.id_cobranca AND c.id_empresa = t.id_empresa
-          WHERE t.id_empresa = ?
-            AND c.status <> 'cancelada'
-            AND (t.status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')
-                 OR t.requer_conciliacao = 1
-                 OR (t.status = 'confirmada' AND t.id_pagamento IS NULL))
-          LIMIT 1",
-        'i',
-        $idEmpresa
-    );
+    $incertas = array_values(array_filter(
+        assinaturaServicoConsultaFinanceira(
+            $conexao,
+            "SELECT t.id_transacao, t.id_cobranca, t.metodo, t.tipo_operacao, t.status, t.requer_conciliacao,
+                    (t.ordem_externa_id IS NOT NULL) AS com_ordem, (t.id_pagamento IS NULL) AS sem_pagamento,
+                    c.status AS cobranca_status, c.valor AS cobranca_valor
+               FROM transacao_pagamento t
+              INNER JOIN cobranca c ON c.id_cobranca = t.id_cobranca AND c.id_empresa = t.id_empresa
+              WHERE t.id_empresa = ?
+                AND c.status <> 'cancelada'
+                AND (t.status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')
+                     OR t.requer_conciliacao = 1
+                     OR (t.status = 'confirmada' AND t.id_pagamento IS NULL))
+              ORDER BY t.id_transacao",
+            'i',
+            $idEmpresa
+        ),
+        static fn (array $t): bool => !assinaturaServicoPixResidual($conexao, $idEmpresa, $t)
+    ));
     if ($incertas !== [] || $divergente) {
         return [
             'tipo' => 'incerto',
@@ -1320,6 +1325,51 @@ function assinaturaServicoPendenciaFinanceira(mysqli $conexao, int $idEmpresa, b
     }
 
     return null;
+}
+
+/**
+ * PIX residual: PIX que ainda aguarda transferência, com Order conhecida e sem conciliação manual, de uma cobrança já
+ * quitada por pagamentos confirmados. Não é pagamento incerto: se for pago depois, vira sobrepagamento em conciliação na
+ * mesma cobrança (nunca quita outra) e continua sendo acompanhado pela conciliação de Orders. Cartão, Preapproval,
+ * transação sem Order ou em conciliação nunca entram aqui.
+ *
+ * @param array<string, mixed> $t linha de transacao_pagamento com cobranca_status e cobranca_valor
+ */
+function assinaturaServicoPixResidual(mysqli $conexao, int $idEmpresa, array $t): bool
+{
+    if ((string)$t['metodo'] !== 'pix' || (string)$t['tipo_operacao'] === 'assinatura_preapproval'
+        || (string)$t['status'] !== 'aguardando' || (int)$t['requer_conciliacao'] !== 0
+        || (int)$t['com_ordem'] !== 1 || (int)$t['sem_pagamento'] !== 1 || (string)$t['cobranca_status'] !== 'paga') {
+        return false;
+    }
+    $valor = pagamentoGatewayValorCentavos((string)$t['cobranca_valor']);
+
+    return $valor > 0 && assinaturaServicoTotalPagoCentavos($conexao, $idEmpresa, (int)$t['id_cobranca']) >= $valor;
+}
+
+/**
+ * Há PIX residual de cobrança quitada na empresa (só para orientar o cliente a não pagá-lo). Leitura sem bloqueio.
+ */
+function assinaturaServicoTemPixResidual(mysqli $conexao, int $idEmpresa): bool
+{
+    $linhas = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT t.id_cobranca, t.metodo, t.tipo_operacao, t.status, t.requer_conciliacao,
+                (t.ordem_externa_id IS NOT NULL) AS com_ordem, (t.id_pagamento IS NULL) AS sem_pagamento,
+                c.status AS cobranca_status, c.valor AS cobranca_valor
+           FROM transacao_pagamento t
+          INNER JOIN cobranca c ON c.id_cobranca = t.id_cobranca AND c.id_empresa = t.id_empresa
+          WHERE t.id_empresa = ? AND t.metodo = 'pix' AND t.status = 'aguardando' AND c.status = 'paga'",
+        'i',
+        $idEmpresa
+    );
+    foreach ($linhas as $linha) {
+        if (assinaturaServicoPixResidual($conexao, $idEmpresa, $linha)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -2375,7 +2425,7 @@ function assinaturaServicoConcluirNovaContratacao(mysqli $conexao, int $idEmpres
     $idAssinatura = (int)$pendente['id_assinatura'];
     $ofertas = assinaturaServicoOfertasDoContrato($conexao, $idEmpresa, $idAssinatura);
     if (count($ofertas) !== 1 || !$ofertas[0]['quitada']) {
-        return assinaturaServicoNovaContratacaoResultado(false, 'PAGAMENTO_PENDENTE', 'O pagamento da cobrança de contratação ainda não foi confirmado.');
+        return assinaturaServicoNovaContratacaoResultado(false, 'PAGAMENTO_PENDENTE', 'Sua primeira mensalidade ainda não foi confirmada. Conclua o pagamento ou entre em contato com o atendimento.');
     }
     $oferta = $ofertas[0];
     $bloqueio = assinaturaServicoNovaContratacaoBloqueioFinanceiro($conexao, $idEmpresa);
@@ -2463,10 +2513,11 @@ function assinaturaServicoConcluirNovaContratacao(mysqli $conexao, int $idEmpres
         ]),
     ], $ator);
 
-    return assinaturaServicoNovaContratacaoResultado(true, null, 'Nova contratação ativada. O acesso foi liberado.', [
+    return assinaturaServicoNovaContratacaoResultado(true, null, 'Contratação concluída com sucesso! Sua primeira mensalidade está paga e seu acesso ao AmAgenda foi liberado.', [
         'resultado' => 'ativada',
         'id_assinatura' => $idAssinatura,
         'id_cobranca' => (int)$oferta['id_cobranca'],
+        'pix_residual' => assinaturaServicoTemPixResidual($conexao, $idEmpresa),
     ]);
 }
 
@@ -2558,6 +2609,7 @@ function assinaturaServicoSituacaoNovaContratacao(mysqli $conexao, int $idEmpres
                 $situacao['mensagem'] = $paga
                     ? 'Pagamento confirmado. Conclua a contratação para liberar o acesso.'
                     : 'Nova contratação aguardando o pagamento da cobrança do primeiro período.';
+                $situacao['pix_residual'] = $paga && assinaturaServicoTemPixResidual($conexao, $idEmpresa);
             }
             if ($bloqueio !== null) {
                 $situacao['codigo'] = $bloqueio['codigo'];
