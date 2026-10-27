@@ -1296,7 +1296,7 @@ function assinaturaServicoPendenciaFinanceira(mysqli $conexao, int $idEmpresa, b
     // Estados em andamento do gateway; transação criada ou enviada nunca é pagamento confirmado.
     $incertas = assinaturaServicoConsultaFinanceira(
         $conexao,
-        "SELECT t.id_transacao
+        "SELECT t.id_transacao, t.metodo
            FROM transacao_pagamento t
           INNER JOIN cobranca c ON c.id_cobranca = t.id_cobranca AND c.id_empresa = t.id_empresa
           WHERE t.id_empresa = ?
@@ -1314,6 +1314,8 @@ function assinaturaServicoPendenciaFinanceira(mysqli $conexao, int $idEmpresa, b
             'codigo' => 'PAGAMENTO_AGUARDANDO_CONFIRMACAO',
             'mensagem' => 'Reativação bloqueada: há pagamento aguardando confirmação ou conciliação. Tente novamente após a confirmação.',
             'id_cobranca' => null,
+            // Só para orientar o cliente (PIX gerado x cartão); não altera a decisão.
+            'metodo' => $incertas === [] ? null : (string)$incertas[0]['metodo'],
         ];
     }
 
@@ -1945,7 +1947,11 @@ function assinaturaServicoNovaContratacaoBloqueioFinanceiro(mysqli $conexao, int
         return assinaturaServicoNovaContratacaoResultado(false, 'COBRANCA_VENCIDA_PENDENTE', 'Há cobrança vencida em aberto. Quite os débitos listados no faturamento para contratar novamente.');
     }
 
-    return assinaturaServicoNovaContratacaoResultado(false, 'PAGAMENTO_AGUARDANDO_CONFIRMACAO', 'Há pagamento aguardando confirmação ou conciliação. Tente novamente após a confirmação.');
+    return assinaturaServicoNovaContratacaoResultado(false, 'PAGAMENTO_AGUARDANDO_CONFIRMACAO', match ($pendencia['metodo'] ?? null) {
+        'pix' => 'Há um PIX gerado que ainda pode ser pago no Mercado Pago. Conclua o pagamento ou aguarde a expiração do PIX e tente novamente.',
+        'cartao_recorrente' => 'Há um pagamento no cartão em processamento ou conciliação no Mercado Pago. Atualize a situação do cartão e tente novamente.',
+        default => 'Há pagamento aguardando confirmação ou conciliação. Tente novamente após a confirmação.',
+    });
 }
 
 /**

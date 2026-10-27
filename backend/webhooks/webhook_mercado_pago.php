@@ -1240,6 +1240,54 @@ function mpWebhookAplicarOrder(
     }
 }
 
+/**
+ * Concilia agora as transações Orders (PIX) ainda abertas de UMA cobrança, pela mesma sequência da conciliação
+ * periódica (conciliar_pagamentos_mercado_pago.php): GET da Order, normalização, localização inequívoca e
+ * mpWebhookAplicarOrder() (transação própria). Um PIX expirado ou cancelado no provedor deixa de bloquear; um PIX pago
+ * é registrado (e, se a cobrança já estava quitada, fica em conciliação como sobrepagamento). Sem resposta válida do
+ * provedor, nada muda. Deve ser chamada fora de transação.
+ *
+ * @return array{consultadas: int, falhas: int}
+ */
+function mpWebhookConciliarOrdersCobranca(mysqli $conexao, object $gateway, int $idEmpresa, int $idCobranca): array
+{
+    $resumo = ['consultadas' => 0, 'falhas' => 0];
+    $ambiente = $gateway->ambiente();
+    $transacoes = mpWebhookConsulta(
+        $conexao,
+        "SELECT id_transacao, ordem_externa_id FROM transacao_pagamento
+          WHERE id_empresa = ? AND id_cobranca = ? AND provedor = ? AND ambiente = ?
+            AND tipo_operacao <> 'assinatura_preapproval' AND ordem_externa_id IS NOT NULL AND requer_conciliacao = 0
+            AND status IN ('aguardando', 'processando')
+          ORDER BY id_transacao",
+        'iiss',
+        $idEmpresa,
+        $idCobranca,
+        MP_WEBHOOK_PROVEDOR,
+        $ambiente
+    )->fetch_all(MYSQLI_ASSOC);
+    foreach ($transacoes as $transacao) {
+        $ordemId = (string)$transacao['ordem_externa_id'];
+        $resposta = $gateway->requisitar('consultar_order', ['order_id' => $ordemId]);
+        $resumo['consultadas']++;
+        $order = ($resposta['sucesso'] ?? false) && is_array($resposta['dados'] ?? null)
+            ? mpWebhookNormalizarOrder($resposta['dados'], $ordemId) : null;
+        if ($order === null || mpWebhookLocalizarTransacao($conexao, $order, $ambiente) !== (int)$transacao['id_transacao']) {
+            $resumo['falhas']++;
+            continue;
+        }
+        try {
+            mpWebhookAplicarOrder($conexao, null, (int)$transacao['id_transacao'], $order, $ambiente);
+        } catch (Throwable $e) {
+            mpWebhookRollback($conexao);
+            mpWebhookRegistrarFalha('conciliacao_orders_cobranca', ['transacao' => (int)$transacao['id_transacao'], 'classe' => get_class($e)]);
+            $resumo['falhas']++;
+        }
+    }
+
+    return $resumo;
+}
+
 /*
  * ---------------------------------------------------------------------
  * Subscriptions (Mercado Pago Preapproval): notificações e conciliação.

@@ -1358,8 +1358,11 @@ try {
             pagamentoOnlineFalhar('EMAIL_INDISPONIVEL', 'Seu e-mail de acesso precisa ser válido para gerar o PIX.', 422);
         }
         $dados = pagamentoOnlineIniciar($conexao, pagamentoOnlineGatewayAtivo(), $empresa, $id, $email, (string)($contexto['perfil'] ?? ''));
-        out(['ok'=>true,'code'=>$dados['reutilizado'] ? 'PIX_REUTILIZADO' : 'PIX_CRIADO',
-            'user_msg'=>$dados['reutilizado'] ? 'PIX existente reutilizado com segurança.' : 'PIX criado com sucesso.',
+        // O PIX reutilizado foi consultado no provedor agora: expirado/cancelado não é "reutilizado", é encerrado.
+        $encerrado = $dados['reutilizado'] && in_array((string)($dados['status'] ?? ''), ['expirada', 'cancelada', 'recusada'], true);
+        out(['ok'=>true,'code'=>$encerrado ? 'PIX_ANTERIOR_ENCERRADO' : ($dados['reutilizado'] ? 'PIX_REUTILIZADO' : 'PIX_CRIADO'),
+            'user_msg'=>$encerrado ? 'O PIX anterior não pode mais ser pago. Gere um novo PIX.'
+                : ($dados['reutilizado'] ? 'PIX existente reutilizado com segurança.' : 'PIX criado com sucesso.'),
             'data'=>$dados]);
     }
     if ($rota === 'painel/faturamento/regularizacao/cobranca' && $metodo === 'POST') {

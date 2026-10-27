@@ -307,6 +307,111 @@ function listarPagamentos(mysqli $conexao): void
     }
 }
 
+/** Carrega o gateway e a biblioteca de conciliação (sem executar o receptor público). Null quando indisponíveis. */
+function pagamentoGatewayConciliacao(): ?object
+{
+    try {
+        require_once __DIR__ . '/../../_gateways/mercado_pago.php';
+        if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+        if (MP_WEBHOOK_BIBLIOTECA !== true) return null;
+        require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+        return MercadoPagoGateway::daConfiguracao();
+    } catch (Throwable $e) {
+        error_log('PAGAMENTO_MANUAL_GATEWAY: ' . get_class($e));
+        return null;
+    }
+}
+
+/**
+ * Antes da baixa manual, atualiza pelo provedor os PIX ainda abertos da cobrança (um PIX expirado deixa de bloquear).
+ * Fora de transação; falha nunca libera nada: a verificação sob lock decide.
+ */
+function pagamentoConciliarOnlineAntesDaBaixa(mysqli $conexao, int $idCobranca): void
+{
+    $stmt = $conexao->prepare(
+        "SELECT t.id_empresa FROM transacao_pagamento t
+          WHERE t.id_cobranca = ? AND t.tipo_operacao <> 'assinatura_preapproval' AND t.ordem_externa_id IS NOT NULL
+            AND t.requer_conciliacao = 0 AND t.status IN ('aguardando', 'processando') LIMIT 1"
+    );
+    if (!$stmt) return;
+    $stmt->bind_param('i', $idCobranca);
+    $stmt->execute();
+    $linha = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$linha) return;
+    $gateway = pagamentoGatewayConciliacao();
+    if ($gateway === null) return;
+    try {
+        mpWebhookConciliarOrdersCobranca($conexao, $gateway, (int)$linha['id_empresa'], $idCobranca);
+    } catch (Throwable $e) {
+        try { $conexao->rollback(); } catch (Throwable) {}
+        error_log('PAGAMENTO_MANUAL_CONCILIACAO: ' . get_class($e));
+    }
+}
+
+/**
+ * Pagamento online ainda capaz de quitar a cobrança: transação em andamento ou em conciliação, ou Preapproval que pode
+ * cobrar esta competência (mesma regra que impede o PIX paralelo). Na transação, com a cobrança bloqueada.
+ *
+ * @return array{code: string, user_msg: string}|null
+ */
+function pagamentoBloqueioOnline(mysqli $conexao, int $idEmpresa, int $idCobranca): ?array
+{
+    $stmt = $conexao->prepare(
+        "SELECT metodo FROM transacao_pagamento
+          WHERE id_empresa = ? AND id_cobranca = ?
+            AND (status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')
+                 OR (requer_conciliacao = 1 AND status <> 'confirmada'))
+          LIMIT 1 FOR UPDATE"
+    );
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar a verificação de pagamentos online.');
+    }
+    $stmt->bind_param('ii', $idEmpresa, $idCobranca);
+    $stmt->execute();
+    $online = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if ($online) {
+        return [
+            'code' => 'PAGAMENTO_ONLINE_EM_ANDAMENTO',
+            'user_msg' => ((string)$online['metodo'] === 'pix' ? 'Há um PIX gerado para esta cobrança' : 'Há um pagamento no cartão para esta cobrança')
+                . ' ainda sem desfecho no Mercado Pago. Aguarde a expiração ou a confirmação (ou concilie) antes da baixa manual, para não receber em duplicidade.',
+        ];
+    }
+    $cartao = assinaturaServicoPreapprovalBloqueioPix($conexao, $idEmpresa, $idCobranca);
+    if ($cartao !== null) {
+        return [
+            'code' => 'COBRANCA_DO_CARTAO_RECORRENTE',
+            'user_msg' => 'Esta cobrança pode ser paga pelo cartão recorrente no Mercado Pago (' . $cartao['codigo'] . '). Cancele ou concilie o cartão antes da baixa manual.',
+        ];
+    }
+
+    return null;
+}
+
+/**
+ * Primeira mensalidade quitada pela baixa manual: ativa a contratação pela função oficial, em transação própria depois do
+ * commit do pagamento (falha não desfaz o pagamento; o painel e o CRON de contratações pagas refazem a tentativa).
+ */
+function pagamentoConcluirContratacaoAposBaixa(mysqli $conexao, int $idEmpresa): string
+{
+    try {
+        $conexao->begin_transaction();
+        $r = assinaturaServicoConcluirNovaContratacao($conexao, $idEmpresa, auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+            ['origem' => 'painel_super_admin', 'meio' => 'pagamento_manual']);
+        if (($r['ok'] ?? false) !== true) {
+            $conexao->rollback();
+            return (string)($r['codigo'] ?? 'CONTRATACAO_NAO_CONCLUIDA');
+        }
+        $conexao->commit();
+        return 'ativada';
+    } catch (Throwable $e) {
+        try { $conexao->rollback(); } catch (Throwable) {}
+        error_log('PAGAMENTO_MANUAL_CONTRATACAO: ' . get_class($e));
+        return 'falha';
+    }
+}
+
 function registrarPagamento(mysqli $conexao): void
 {
     require_once __DIR__ . '/../../_auth/csrf.php';
@@ -327,6 +432,7 @@ function registrarPagamento(mysqli $conexao): void
         $dataPagamento = cobrancaData($dataRaw, 'data_pagamento');
         $dataPagamentoSql = $dataPagamento->format('Y-m-d') . ' 00:00:00';
         $valorSql = pagamentoCentavosDecimal($valorCentavos);
+        pagamentoConciliarOnlineAntesDaBaixa($conexao, $idCobranca);
         $conexao->begin_transaction();
         assinaturaServicoTravarContratoDaCobranca($conexao, $idCobranca);
         $cobranca = pagamentoCarregarCobranca($conexao, $idCobranca, true);
@@ -336,6 +442,24 @@ function registrarPagamento(mysqli $conexao): void
         if ((string)$cobranca['status'] === 'cancelada') {
             cobrancaErroTransacional($conexao, ['ok' => false, 'code' => 'COBRANCA_CANCELADA', 'user_msg' => 'Não é possível pagar uma cobrança cancelada.'], 409);
         }
+        // Pagamento online ainda capaz de quitar a mesma cobrança: a baixa manual geraria recebimento em duplicidade.
+        $bloqueioOnline = pagamentoBloqueioOnline($conexao, (int)$cobranca['id_empresa'], $idCobranca);
+        if ($bloqueioOnline !== null) {
+            cobrancaErroTransacional($conexao, ['ok' => false] + $bloqueioOnline, 409);
+        }
+        $stmtContrato = $conexao->prepare(
+            "SELECT 1 FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? AND status = 'suspensa'
+                AND modalidade = 'paga' AND motivo_suspensao = 'contratacao_pendente' AND data_fim IS NULL LIMIT 1"
+        );
+        if (!$stmtContrato) {
+            throw new RuntimeException('Falha ao preparar a verificação da contratação.');
+        }
+        $idAssinaturaCobranca = (int)$cobranca['id_assinatura'];
+        $idEmpresaCobranca = (int)$cobranca['id_empresa'];
+        $stmtContrato->bind_param('ii', $idAssinaturaCobranca, $idEmpresaCobranca);
+        $stmtContrato->execute();
+        $contratacaoPendente = $stmtContrato->get_result()->fetch_row() !== null;
+        $stmtContrato->close();
         $totalAntes = pagamentoTotalConfirmadoCentavos($conexao, $idCobranca, true);
         $valorCobranca = pagamentoValorCentavos((string)$cobranca['valor']);
         $saldoAntes = max(0, $valorCobranca - $totalAntes);
@@ -403,6 +527,10 @@ function registrarPagamento(mysqli $conexao): void
         }
         $conexao->commit();
         $dadosResposta = ['id_pagamento' => $idPagamento, 'id_cobranca' => $idCobranca, 'valor_pago' => (float)$valorSql, 'total_pago_confirmado' => (float)pagamentoCentavosDecimal($totalDepois), 'saldo_restante' => (float)pagamentoCentavosDecimal($saldoDepois), 'status_cobranca' => $statusCobranca];
+        if ($saldoDepois === 0 && $contratacaoPendente) {
+            // Primeira mensalidade da contratação: mesma ativação do PIX, do cartão e do CRON (com todas as suas checagens).
+            $dadosResposta['contratacao'] = pagamentoConcluirContratacaoAposBaixa($conexao, $idEmpresa);
+        }
         if ($conversaoTrial !== null && ($conversaoTrial['convertida'] || $conversaoTrial['requer_atencao'])) {
             $dadosResposta['trial_convertido'] = (bool)$conversaoTrial['convertida'];
             if ($conversaoTrial['requer_atencao']) {
@@ -412,7 +540,11 @@ function registrarPagamento(mysqli $conexao): void
         out([
             'ok' => true,
             'code' => 'PAGAMENTO_REGISTRADO',
-            'user_msg' => 'Pagamento registrado com sucesso.',
+            'user_msg' => match ($dadosResposta['contratacao'] ?? null) {
+                null => 'Pagamento registrado com sucesso.',
+                'ativada' => 'Pagamento registrado. A contratação foi ativada e o acesso liberado.',
+                default => 'Pagamento registrado, mas a contratação ainda não pôde ser ativada (' . $dadosResposta['contratacao'] . '). Verifique as pendências financeiras da empresa.',
+            },
             'data' => $dadosResposta,
         ], 201);
     } catch (Throwable $e) {

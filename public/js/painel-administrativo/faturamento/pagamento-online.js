@@ -90,7 +90,20 @@
     const valor = document.getElementById("pixPagamentoValor");
     if (valor) valor.textContent = moeda(estado.valor);
     abrirModalId("modalPagamentoPixFaturamento");
+    // PIX já gerado para a cobrança: reabre o mesmo (o servidor reutiliza a transação e consulta o Mercado Pago).
+    if (botao.dataset.pixExistente === "1") iniciar();
   }
+
+  // Estados sem PIX pagável: o QR e o código antigos somem e a mesma janela oferece gerar um novo.
+  const PIX_ENCERRADO = ["expirada", "cancelada", "recusada", "erro"];
+  const MENSAGENS_PIX = {
+    aguardando: ["info", "PIX válido. Pague com o QR Code ou o código Copia e Cola; você pode fechar esta janela e reabri-la pela cobrança."],
+    processando: ["info", "O Mercado Pago está processando este PIX. Aguarde e atualize a situação."],
+    confirmada: ["sucesso", "Pagamento identificado pelo Mercado Pago. A cobrança é atualizada assim que a confirmação for registrada."],
+    conciliacao: ["aviso", "Este pagamento está em verificação. Nenhum novo PIX é gerado até a conferência."],
+    expirada: ["aviso", "Este PIX expirou e não pode mais ser pago. Gere um novo PIX."],
+    cancelada: ["aviso", "Este PIX foi cancelado e não pode mais ser pago. Gere um novo PIX."]
+  };
 
   function renderizar(dados) {
     estado.idTransacao = Number(dados.id_transacao || 0);
@@ -121,7 +134,17 @@
       if (/^https:\/\/([a-z0-9-]+\.)*mercadopago\.com\.br\//i.test(url)) { link.href = url; link.hidden = false; }
       else { link.removeAttribute("href"); link.hidden = true; }
     }
-    if (dados.status === "expirada") avisar("aviso", "Este PIX expirou. Feche a janela e gere um novo PIX pela cobrança.");
+    if (PIX_ENCERRADO.includes(String(dados.status || ""))) {
+      estado.codigo = "";
+      if (codigo) { codigo.value = ""; codigo.closest(".pix-copia")?.setAttribute("hidden", ""); }
+      if (imagem) { imagem.removeAttribute("src"); imagem.hidden = true; }
+      if (link) { link.removeAttribute("href"); link.hidden = true; }
+      preparacao?.removeAttribute("hidden");
+      const gerar = document.getElementById("btnGerarPixFaturamento");
+      if (gerar) { gerar.disabled = false; gerar.innerHTML = '<i class="fa-brands fa-pix" aria-hidden="true"></i>Gerar novo PIX'; }
+    }
+    const [tipo, mensagem] = MENSAGENS_PIX[String(dados.status || "")] || [];
+    if (mensagem) avisar(tipo, mensagem);
   }
 
   async function iniciar() {
@@ -136,7 +159,7 @@
       const resposta = await fetch(INICIAR, { method: "POST", body: corpo, credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
       const retorno = await json(resposta);
       renderizar(retorno.data || {});
-      avisar("sucesso", retorno.user_msg || "PIX disponível para pagamento.");
+      if (!MENSAGENS_PIX[String(retorno.data?.status || "")]) avisar("sucesso", retorno.user_msg || "PIX disponível para pagamento.");
     } catch (erro) {
       avisar("erro", erro.message);
       document.getElementById("pixPagamentoCarregando")?.setAttribute("hidden", "");
@@ -153,7 +176,7 @@
       const resposta = await fetch(`${CONSULTAR}&id_transacao=${encodeURIComponent(estado.idTransacao)}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
       const retorno = await json(resposta);
       renderizar(retorno.data || {});
-      avisar("info", retorno.user_msg || "Situação do PIX atualizada.");
+      if (!MENSAGENS_PIX[String(retorno.data?.status || "")]) avisar("info", retorno.user_msg || "Situação do PIX atualizada.");
     } catch (erro) { avisar("erro", erro.message); }
     finally { if (botao) { botao.disabled = false; botao.innerHTML = '<i class="fa-solid fa-rotate" aria-hidden="true"></i>Atualizar situação'; } }
   }
@@ -221,8 +244,9 @@
     const rotulo = Number(p.valor) > 0 ? `Primeira mensalidade · ${moeda(p.valor)}` : "Primeira mensalidade";
     // Autorização encerrada (cancelamento confirmado) não é retomada: o botão cria uma nova.
     const criada = atual.autorizacao_criada === true && !["cancelada", "encerrada"].includes(String(atual.status || ""));
+    // PIX já gerado: o botão reabre o mesmo PIX (o servidor o consulta no Mercado Pago antes de exibir).
     const pix = p.pode_pagar_pix && Number(p.id_cobranca) > 0
-      ? `<button class="botao-geral${atual.pode_configurar ? "" : " destaque"}" type="button" data-pagar-cobranca="${esc(p.id_cobranca)}" data-pagar-valor="${esc(p.valor)}"><i class="fa-brands fa-pix" aria-hidden="true"></i>Pagar com PIX</button>` : "";
+      ? `<button class="botao-geral${atual.pode_configurar ? "" : " destaque"}" type="button" data-pagar-cobranca="${esc(p.id_cobranca)}" data-pagar-valor="${esc(p.valor)}"${p.pix_em_andamento ? ' data-pix-existente="1"' : ""}><i class="fa-brands fa-pix" aria-hidden="true"></i>${p.pix_em_andamento ? "Ver PIX gerado" : "Pagar com PIX"}</button>` : "";
     // Depois de recusa ou de autorização encerrada, o botão deixa claro que é possível usar outro cartão.
     const outroCartao = ["cartao_cancelado", "pagamento_recusado"].includes(p.situacao);
     const cartaoBotao = (atual.pode_configurar
@@ -599,6 +623,21 @@
     if (evento.target.closest("#modalCartaoRecorrenteFaturamento [data-fechar-modal]")) desmontarBrick();
   });
   document.addEventListener("keydown", evento => { if (evento.key === "Escape") desmontarBrick(); });
+  // Fechar o modal PIX é só visual (nada é cancelado no provedor nem no banco). Se um PIX foi exibido, a tela do
+  // Faturamento e a seção do cartão são recarregadas do servidor para refletir um eventual pagamento.
+  function aoFecharModalPix() {
+    if (!(estado.idTransacao > 0)) return;
+    estado.idTransacao = 0;
+    document.dispatchEvent(new CustomEvent("amagenda:faturamento-atualizar"));
+    carregarConfiguracaoCartao();
+  }
+  document.addEventListener("click", evento => {
+    if (evento.target.closest("#modalPagamentoPixFaturamento [data-fechar-modal]")) aoFecharModalPix();
+  });
+  document.addEventListener("keydown", evento => {
+    if (evento.key !== "Escape") return;
+    setTimeout(() => { if (!document.getElementById("modalPagamentoPixFaturamento")?.classList.contains("ativo")) aoFecharModalPix(); }, 0);
+  });
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnGerarPixFaturamento")?.addEventListener("click", iniciar);
     document.getElementById("btnAtualizarPixFaturamento")?.addEventListener("click", consultar);

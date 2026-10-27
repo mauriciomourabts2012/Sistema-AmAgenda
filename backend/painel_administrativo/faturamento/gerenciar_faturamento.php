@@ -200,18 +200,50 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
     }
 }
 
+/** Carrega o gateway e a biblioteca do webhook (sem executar o receptor público). */
+function faturamentoCarregarGateway(): MercadoPagoGateway {
+    require_once __DIR__ . '/../../_gateways/mercado_pago.php';
+    if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+    if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
+    require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+    return MercadoPagoGateway::daConfiguracao();
+}
+
 /** Envia agora a operação de cancelamento da Preapproval; falha só fica registrada (o outbox a retoma). */
 function faturamentoProcessarCancelamentoCartao(mysqli $db, int $idOperacao, int $empresa): void {
     try {
-        require_once __DIR__ . '/../../_gateways/mercado_pago.php';
-        if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
-        if (MP_WEBHOOK_BIBLIOTECA !== true) return;
-        require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+        $gateway = faturamentoCarregarGateway();
         if (!MercadoPagoGateway::subscriptionsHabilitado()) return;
-        mpSubOperacaoProcessar($db, MercadoPagoGateway::daConfiguracao(), $idOperacao, $empresa);
+        mpSubOperacaoProcessar($db, $gateway, $idOperacao, $empresa);
     } catch (Throwable $erro) {
         if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
         error_log('FATURAMENTO_CANCELAMENTO_CARTAO: ' . get_class($erro));
+    }
+}
+
+/**
+ * Antes de concluir a contratação: atualiza pelo provedor os PIX ainda abertos da empresa (mesma rotina da conciliação
+ * periódica). Um PIX expirado no Mercado Pago deixa de bloquear a ativação; um PIX pago é registrado. Fora de transação;
+ * falha nunca libera nada (a conclusão refaz todas as verificações sob lock).
+ */
+function faturamentoConciliarPixAbertos(mysqli $db, int $empresa): void {
+    $stmt = $db->prepare("SELECT DISTINCT id_cobranca FROM transacao_pagamento
+        WHERE id_empresa = ? AND tipo_operacao <> 'assinatura_preapproval' AND ordem_externa_id IS NOT NULL
+          AND requer_conciliacao = 0 AND status IN ('aguardando','processando')");
+    if (!$stmt) return;
+    $stmt->bind_param('i', $empresa);
+    $stmt->execute();
+    $cobrancas = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    if ($cobrancas === []) return;
+    try {
+        $gateway = faturamentoCarregarGateway();
+        foreach ($cobrancas as $cobranca) {
+            mpWebhookConciliarOrdersCobranca($db, $gateway, $empresa, (int)$cobranca['id_cobranca']);
+        }
+    } catch (Throwable $erro) {
+        if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
+        error_log('FATURAMENTO_CONCILIACAO_PIX: ' . get_class($erro));
     }
 }
 
@@ -234,6 +266,10 @@ function faturamentoNovaContratacao(mysqli $db, array $contexto): void {
         out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Escolha um plano válido para contratar.'],422);
     }
     $empresa = (int)$contexto['id_empresa'];
+    if ($acao === 'concluir') {
+        // Um PIX gerado e abandonado (ou já pago) só deixa de ser "pagamento aguardando confirmação" pelo provedor.
+        faturamentoConciliarPixAbertos($db, $empresa);
+    }
     try {
         if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar a contratação.');
         $resultado = $acao === 'concluir'
