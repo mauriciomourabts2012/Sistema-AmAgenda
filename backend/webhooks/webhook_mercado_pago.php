@@ -2876,6 +2876,40 @@ function mpSubOpAtualizar(mysqli $conexao, int $idOperacao, string $status, ?str
     ) === 1;
 }
 
+/**
+ * Motivo de uma rejeição do provedor para `erro_motivo`: status HTTP e `error`/`message` já reduzidos pelo gateway,
+ * com e-mails, números longos e identificadores/tokens mascarados. Nunca usa cabeçalhos nem o corpo bruto.
+ */
+function mpSubMotivoRejeicao(array $resposta): string
+{
+    $dados = is_array($resposta['dados'] ?? null) ? $resposta['dados'] : [];
+    $limpar = static function (mixed $texto, int $maximo): ?string {
+        if (!is_string($texto) || $texto === '') {
+            return null;
+        }
+        $texto = (string)preg_replace('/[^\s@]+@[^\s@]+/u', '[email]', $texto);
+        $texto = (string)preg_replace('/[A-Za-z0-9_-]{20,}/', '[id]', $texto);
+        $texto = (string)preg_replace('/\d{6,}/', '[num]', $texto);
+        $texto = (string)preg_replace('/[^\p{L}\p{N} _.,:()\[\]\/-]/u', ' ', $texto);
+        $texto = trim((string)preg_replace('/\s+/u', ' ', $texto));
+
+        return $texto === '' ? null : mb_substr($texto, 0, $maximo, 'UTF-8');
+    };
+    $partes = [];
+    $http = $resposta['http_status'] ?? null;
+    if (is_int($http) && $http >= 100 && $http <= 599) {
+        $partes[] = 'http=' . $http;
+    }
+    if (($erro = $limpar($dados['error'] ?? null, 60)) !== null) {
+        $partes[] = 'error=' . $erro;
+    }
+    if (($mensagem = $limpar($dados['message'] ?? null, 180)) !== null) {
+        $partes[] = 'message=' . $mensagem;
+    }
+
+    return 'O provedor rejeitou a operação.' . ($partes === [] ? '' : ' ' . implode('; ', $partes));
+}
+
 function mpSubOpAuditar(mysqli $conexao, string $evento, int $idOperacao, string $tipo, array $extra): void
 {
     try {
@@ -3090,7 +3124,7 @@ function mpSubOperacaoProcessar(mysqli $conexao, object $gateway, int $idOperaca
 
         if (!$aceita) {
             if ($codigo === 'provedor_rejeitou') {
-                mpSubOpAtualizar($conexao, $idOperacao, 'erro', 'PROVEDOR_REJEITOU', 'O provedor rejeitou a operação.');
+                mpSubOpAtualizar($conexao, $idOperacao, 'erro', 'PROVEDOR_REJEITOU', mpSubMotivoRejeicao($resposta));
                 mpSubSinalizarVinculo($conexao, ['id_assinatura_pagamento' => $ref['id_assinatura_pagamento'], 'id_empresa' => $idEmpresa], $ehValor ? 'SINCRONIZACAO_VALOR_FALHOU' : 'OPERACAO_REJEITADA', $ehValor ? 'O provedor rejeitou a atualização do valor recorrente.' : 'O provedor rejeitou a operação externa.');
                 mpSubOpAuditar($conexao, 'assinatura.recorrencia_operacao_falhou', $idOperacao, $tipo, ['situacao' => 'erro', 'codigo' => 'PROVEDOR_REJEITOU']);
 
