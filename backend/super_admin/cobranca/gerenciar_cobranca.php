@@ -1121,7 +1121,8 @@ try {
             'user_msg' => 'O próximo período ultrapassa o encerramento da assinatura.'], 409);
     }
     $dataVencimentoSql = $dataVencimento->format('Y-m-d');
-    $stmtDuplicidade = $conexao->prepare('SELECT id_cobranca FROM cobranca WHERE id_assinatura = ? AND periodo_inicio = ? AND periodo_fim = ? LIMIT 1');
+    // A cobrança proporcional de upgrade pode compartilhar o período da mensalidade; só mensalidades contam como duplicidade.
+    $stmtDuplicidade = $conexao->prepare("SELECT id_cobranca FROM cobranca WHERE id_assinatura = ? AND periodo_inicio = ? AND periodo_fim = ? AND finalidade <> 'upgrade' LIMIT 1");
     if (!$stmtDuplicidade) {
         throw new RuntimeException('Falha ao preparar validação de duplicidade.');
     }

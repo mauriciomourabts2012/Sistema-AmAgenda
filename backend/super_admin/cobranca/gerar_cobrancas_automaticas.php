@@ -116,6 +116,7 @@ function cobrancasAutomaticasPossuiCobrancaDoPeriodo(
          WHERE id_assinatura = ?
            AND periodo_inicio = ?
            AND periodo_fim = ?
+           AND finalidade <> \'upgrade\'
          LIMIT 1
          FOR UPDATE'
     );

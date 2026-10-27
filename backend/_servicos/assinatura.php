@@ -2981,6 +2981,22 @@ function assinaturaServicoPreviaUpgrade(mysqli $conexao, array $contexto, array 
     if ($ciclo === null) {
         return assinaturaServicoNovaContratacaoResultado(false, 'CICLO_NAO_PAGO', 'O upgrade exige o ciclo atual pago. Quite a cobrança vigente antes de trocar de plano.');
     }
+    // Upgrade já ativado neste mesmo ciclo: a diferença dele já foi paga, então a base passa a ser o plano que ele liberou.
+    $anterior = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT valor_novo FROM assinatura_troca_plano
+          WHERE id_empresa = ? AND id_assinatura = ? AND tipo = 'upgrade' AND status = 'ativada'
+            AND DATE(ciclo_inicio) = ? AND DATE(ciclo_fim) = ?
+          ORDER BY id_troca DESC LIMIT 1",
+        'iiss',
+        (int)$contexto['empresa']['id_empresa'],
+        (int)$assinatura['id_assinatura'],
+        (string)$ciclo['periodo_inicio'],
+        (string)$ciclo['periodo_fim']
+    )[0] ?? null;
+    if ($anterior !== null) {
+        $ciclo['valor_centavos'] = max((int)$ciclo['valor_centavos'], pagamentoGatewayValorCentavos((string)$anterior['valor_novo']));
+    }
     $calculo = assinaturaServicoCalcularProporcional((int)$ciclo['valor_centavos'], (int)$plano['valor_centavos'], (string)$ciclo['periodo_inicio'], (string)$ciclo['periodo_fim'], $hoje);
     $proximaRenovacao = assinaturaServicoData((string)$ciclo['periodo_fim'])->modify('+1 day')->format('Y-m-d');
     $proporcional = $calculo['proporcional_centavos'];
@@ -3492,6 +3508,26 @@ function assinaturaServicoEncerrarTroca(mysqli $conexao, int $idEmpresa, array $
 }
 
 /**
+ * Cobrança proporcional recusada por chave única (MySQL 1062). Nada foi gravado. A causa é identificada pelo índice:
+ * - uq_cobranca_upgrade_pendente: já existe cobrança de upgrade pendente para o contrato (solicitação concorrente);
+ * - uq_cobranca_periodo_ativo: banco ainda sem a migration que separa a mensalidade da cobrança proporcional, e o
+ *   upgrade cai exatamente no período da mensalidade (contratação e upgrade no mesmo dia).
+ */
+function assinaturaServicoUpgradeCobrancaConflitante(string $erroBanco): array
+{
+    if (str_contains($erroBanco, 'uq_cobranca_upgrade_pendente')) {
+        return assinaturaServicoNovaContratacaoResultado(false, 'TROCA_PENDENTE', 'Já existe uma alteração de plano aguardando pagamento. Conclua ou resolva essa solicitação antes de iniciar outra.');
+    }
+    if (str_contains($erroBanco, 'uq_cobranca_periodo_ativo')) {
+        error_log('ASSINATURA_UPGRADE_INDICE_PERIODO_ATIVO: migration da cobrança proporcional pendente.');
+
+        return assinaturaServicoNovaContratacaoResultado(false, 'COBRANCA_CONFLITANTE', 'Não foi possível registrar a cobrança proporcional porque o período coincide com o da sua mensalidade atual, e o sistema ainda não permite essa situação. Nenhum valor foi cobrado. Entre em contato com o suporte para concluir a alteração de plano.');
+    }
+
+    return assinaturaServicoNovaContratacaoResultado(false, 'COBRANCA_CONFLITANTE', 'Não foi possível registrar a cobrança proporcional por um conflito com outra cobrança do contrato. Nenhum valor foi cobrado. Entre em contato com o suporte.');
+}
+
+/**
  * Solicita a troca de plano pelo Proprietário. Participa da transação do chamador.
  * $valorConfirmadoCentavos é o valor exibido ao cliente: se o cálculo atual divergir, nada é gravado e a
  * nova prévia é devolvida para nova confirmação (o valor cobrado é sempre o valor apresentado).
@@ -3518,7 +3554,9 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
             ]);
         }
 
-        return assinaturaServicoNovaContratacaoResultado(false, 'TROCA_PENDENTE', 'Já existe uma troca de plano em andamento. Cancele-a antes de solicitar outra.');
+        return assinaturaServicoNovaContratacaoResultado(false, 'TROCA_PENDENTE', (string)$pendente['tipo'] === 'upgrade'
+            ? 'Já existe uma alteração de plano aguardando pagamento. Conclua ou resolva essa solicitação antes de iniciar outra.'
+            : 'Já existe uma alteração de plano programada. Cancele-a antes de solicitar outra.');
     }
     $bloqueio = assinaturaServicoTrocaBloqueioFinanceiro($conexao, $idEmpresa);
     if ($bloqueio !== null) {
@@ -3583,15 +3621,6 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
         $expira = (string)$previa['ciclo_fim'];
     }
     $expiraEm = $expira . ' 23:59:59';
-    $stmt = $conexao->prepare(
-        "INSERT INTO assinatura_troca_plano
-            (id_empresa, id_assinatura, tipo, status, id_plano_anterior, id_plano_novo, valor_anterior, valor_novo, periodicidade,
-             valor_ciclo, ciclo_inicio, ciclo_fim, dias_ciclo, dias_restantes, valor_proporcional, expira_em)
-         VALUES (?, ?, 'upgrade', 'aguardando_pagamento', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    );
-    if (!$stmt) {
-        throw new RuntimeException('Falha ao preparar a solicitação de upgrade.');
-    }
     $idPlanoAnterior = (int)$assinatura['id_plano'];
     $valorNovo = (string)$plano['valor'];
     $periodicidade = (string)$assinatura['periodicidade'];
@@ -3601,17 +3630,12 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
     $diasCiclo = (int)$previa['dias_ciclo'];
     $diasRestantes = (int)$previa['dias_restantes'];
     $valorProporcional = (string)$previa['valor_proporcional'];
-    $stmt->bind_param('iiiissssssiiss', $idEmpresa, $idAssinatura, $idPlanoAnterior, $idPlano, $valorAnterior, $valorNovo, $periodicidade,
-        $valorCiclo, $cicloInicio, $cicloFim, $diasCiclo, $diasRestantes, $valorProporcional, $expiraEm);
-    if (!$stmt->execute()) {
-        $stmt->close();
-        throw new RuntimeException('Falha ao registrar a solicitação de upgrade.');
-    }
-    $idTroca = (int)$stmt->insert_id;
-    $stmt->close();
 
+    // A cobrança vem antes da troca: se o banco recusar a cobrança, nenhuma troca é gravada (nem depende do rollback do
+    // chamador) e jamais existe troca com valor a pagar sem cobrança vinculada.
+    $idCobranca = null;
+    $finalidade = ASSINATURA_TROCA_FINALIDADE_UPGRADE;
     if ((int)$previa['valor_proporcional_centavos'] > 0) {
-        $finalidade = ASSINATURA_TROCA_FINALIDADE_UPGRADE;
         $stmt = $conexao->prepare(
             "INSERT INTO cobranca (id_empresa, id_assinatura, periodo_inicio, periodo_fim, data_vencimento, valor, status, finalidade)
              VALUES (?, ?, ?, ?, ?, ?, 'pendente', ?)"
@@ -3623,29 +3647,42 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
         try {
             $ok = $stmt->execute();
             $errno = (int)$stmt->errno;
+            $erroBanco = (string)$stmt->error;
         } catch (mysqli_sql_exception $erro) {
             $ok = false;
             $errno = (int)$erro->getCode();
+            $erroBanco = $erro->getMessage();
         }
         if (!$ok) {
             $stmt->close();
             if ($errno === 1062) {
-                return assinaturaServicoNovaContratacaoResultado(false, 'COBRANCA_CONFLITANTE', 'Não foi possível gerar a cobrança proporcional hoje. Tente novamente amanhã ou entre em contato com o suporte.');
+                return assinaturaServicoUpgradeCobrancaConflitante($erroBanco);
             }
             throw new RuntimeException('Falha ao criar a cobrança proporcional.', $errno);
         }
         $idCobranca = (int)$stmt->insert_id;
         $stmt->close();
-        $stmt = $conexao->prepare('UPDATE assinatura_troca_plano SET id_cobranca = ? WHERE id_troca = ? AND id_cobranca IS NULL');
-        if (!$stmt) {
-            throw new RuntimeException('Falha ao vincular a cobrança proporcional.');
-        }
-        $stmt->bind_param('ii', $idCobranca, $idTroca);
-        if (!$stmt->execute() || $stmt->affected_rows !== 1) {
-            $stmt->close();
-            throw new RuntimeException('Falha ao vincular a cobrança proporcional.');
-        }
+    }
+
+    $stmt = $conexao->prepare(
+        "INSERT INTO assinatura_troca_plano
+            (id_empresa, id_assinatura, tipo, status, id_plano_anterior, id_plano_novo, valor_anterior, valor_novo, periodicidade,
+             valor_ciclo, ciclo_inicio, ciclo_fim, dias_ciclo, dias_restantes, valor_proporcional, id_cobranca, expira_em)
+         VALUES (?, ?, 'upgrade', 'aguardando_pagamento', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar a solicitação de upgrade.');
+    }
+    $stmt->bind_param('iiiissssssiisis', $idEmpresa, $idAssinatura, $idPlanoAnterior, $idPlano, $valorAnterior, $valorNovo, $periodicidade,
+        $valorCiclo, $cicloInicio, $cicloFim, $diasCiclo, $diasRestantes, $valorProporcional, $idCobranca, $expiraEm);
+    if (!$stmt->execute()) {
         $stmt->close();
+        throw new RuntimeException('Falha ao registrar a solicitação de upgrade.');
+    }
+    $idTroca = (int)$stmt->insert_id;
+    $stmt->close();
+
+    if ($idCobranca !== null) {
         assinaturaServicoAuditar($conexao, 'cobranca.gerada', [
             'entidade_id' => $idCobranca,
             'entidade_rotulo' => "Cobrança proporcional do upgrade #{$idTroca}",
@@ -3671,7 +3708,7 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
     }
     assinaturaServicoNotificarUpgradePendente($conexao, $idEmpresa, $resumo);
 
-    return assinaturaServicoNovaContratacaoResultado(true, null, (string)$previa['mensagem'], [
+    return assinaturaServicoNovaContratacaoResultado(true, null, 'Sua solicitação de alteração de plano foi registrada. Conclua o pagamento da diferença proporcional para finalizar o upgrade.', [
         'resultado' => 'aguardando_pagamento', 'id_troca' => $idTroca, 'id_cobranca' => $resumo['id_cobranca'], 'valor' => $resumo['valor_proporcional'],
     ]);
 }
@@ -3692,6 +3729,11 @@ function assinaturaServicoConcluirUpgrade(mysqli $conexao, int $idEmpresa, ?arra
         return assinaturaServicoNovaContratacaoResultado(false, 'SEM_UPGRADE_PENDENTE', 'Não há upgrade aguardando pagamento.');
     }
     if ($troca['id_cobranca'] === null) {
+        // Sem cobrança só é legítimo quando não há valor a pagar; troca com valor e sem cobrança é registro incompleto.
+        if (pagamentoGatewayValorCentavos((string)($troca['valor_proporcional'] ?? '0')) > 0) {
+            return assinaturaServicoNovaContratacaoResultado(false, 'TROCA_INCONSISTENTE', 'A alteração de plano está sem a cobrança da diferença proporcional. Entre em contato com o suporte.', ['requer_atencao' => true]);
+        }
+
         return assinaturaServicoAtivarUpgrade($conexao, $contexto, $troca, $ator, $contextoAuditoria, false);
     }
     $situacao = assinaturaServicoSituacaoCobrancaUpgrade($conexao, $idEmpresa, (int)$troca['id_cobranca']);
