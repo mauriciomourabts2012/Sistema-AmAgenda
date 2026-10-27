@@ -1549,6 +1549,20 @@ function mpSubSinalizarVinculo(mysqli $conexao, array $vinculo, string $codigo, 
     );
 }
 
+/**
+ * Primeira ativação: a próxima cobrança autorizada não pode cair no período já pago. Deve rodar na transação da
+ * sincronização, com a assinatura já bloqueada. Sem período pago vigente a regra não se aplica (nada a proteger).
+ */
+function mpSubCobrancaAntecipadaNaAtivacao(mysqli $conexao, array $vinculo, array $dados): ?string
+{
+    $fimPago = assinaturaServicoFimPeriodoPago($conexao, (int)$vinculo['id_empresa'], (int)$vinculo['id_assinatura']);
+    if ($fimPago === null) {
+        return null;
+    }
+
+    return assinaturaServicoPreapprovalConferirInicioExterno($dados, assinaturaServicoPreapprovalInicioCobranca($fimPago));
+}
+
 /** Mapeia o status externo da Preapproval ao vínculo local; nunca reativa vínculo cancelado/encerrado. */
 function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $ambiente, string $preapprovalId, ?int $idEvento, ?int $idEmpresa = null): array
 {
@@ -1680,6 +1694,11 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
                 $sinal = 'OPERACAO_EXTERNA_PENDENTE';
             } elseif (!$assinaturaApta) {
                 $sinal = 'ASSINATURA_LOCAL_INCOMPATIVEL';
+            } elseif ($statusLocal === 'pendente'
+                && ($antecipada = mpSubCobrancaAntecipadaNaAtivacao($conexao, $vinculo, $dados)) !== null) {
+                // Autorizada, mas a próxima cobrança cairia no período já pago: não ativa, sinaliza e mantém o PIX
+                // bloqueado para a competência (a Preapproval autorizada pode cobrar). Requer análise manual.
+                $sinal = $antecipada;
             } else {
                 $novoStatus = $statusLocal === 'atualizacao_necessaria' ? $statusLocal : 'ativa';
             }

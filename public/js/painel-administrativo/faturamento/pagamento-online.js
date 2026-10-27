@@ -189,7 +189,17 @@
       return;
     }
     if (status === "pendente") {
-      alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Autorização pendente", "Aguardando sua autorização", "A autorização só vale depois da confirmação do Mercado Pago. Nenhuma cobrança é feita nesta etapa.")}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar("Continuar no Mercado Pago") : ""}${botaoVerificar}</div>`;
+      // Pendente com Preapproval já criada: o servidor devolve o mesmo link (sem nova criação). Pendente sem Preapproval
+      // criada (tentativa anterior falhou ou ficou incerta): o servidor concilia e só então cria, uma única vez.
+      const criada = atual.autorizacao_criada !== false;
+      const titulo = criada ? "Aguardando sua autorização" : "Autorização ainda não criada";
+      const texto = criada
+        ? "A autorização só vale depois da confirmação do Mercado Pago. Nenhuma cobrança é feita nesta etapa."
+        : "A autorização ainda não foi criada no Mercado Pago. Clique para tentar novamente; nenhuma cobrança é feita agora e nada é duplicado.";
+      const semAcao = !atual.pode_configurar && !atual.pode_verificar
+        ? (atual.subscriptions_habilitado === false ? "O pagamento automático por este meio ainda não está disponível." : "Atualize a página ou fale com o suporte caso a situação persista.")
+        : (!atual.pode_configurar && criada ? "O Mercado Pago já registrou outra situação para esta autorização. Atualize para conferir." : "");
+      alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Autorização pendente", titulo, semAcao || texto)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar(criada ? "Continuar no Mercado Pago" : "Autorizar cartão no Mercado Pago") : ""}${botaoVerificar}</div>`;
       return;
     }
     const mensagens = {

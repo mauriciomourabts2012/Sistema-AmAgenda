@@ -3955,15 +3955,49 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
         return 'PAGADOR_EXTERNO_DIVERGENTE';
     }
 
-    $proxima = assinaturaServicoPreapprovalDataExterna($dados['next_payment_date'] ?? null);
-    if ($proxima !== null && isset($esperado['inicio']) && $esperado['inicio'] instanceof DateTimeImmutable) {
-        $fuso = new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO);
-        if ($proxima->setTimezone($fuso)->format('Y-m-d') < $esperado['inicio']->setTimezone($fuso)->format('Y-m-d')) {
-            return 'COBRANCA_EXTERNA_ANTECIPADA';
+    if (isset($esperado['inicio']) && $esperado['inicio'] instanceof DateTimeImmutable) {
+        $codigoData = assinaturaServicoPreapprovalConferirInicioExterno($dados, $esperado['inicio']);
+        if ($codigoData !== null) {
+            return $codigoData;
         }
     }
 
     return null;
+}
+
+/**
+ * Proteção contra cobrança antecipada, conforme o estado da Preapproval:
+ * - pending: `next_payment_date` é provisório (o provedor pode devolver a data de criação antes da autorização do
+ *   pagador); vale o início contratual `auto_recurring.start_date`, que precisa ser o dia seguinte ao fim do período
+ *   pago ou depois. Sem início verificável, nada é vinculado (INICIO_EXTERNO_INDETERMINADO).
+ * - authorized (e demais estados): vale a próxima cobrança efetivamente programada (`next_payment_date`; na falta
+ *   dela, `start_date`). Sem nenhuma das duas, INICIO_EXTERNO_INDETERMINADO.
+ * Retorna null quando a data respeita o período pago.
+ */
+function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio): ?string
+{
+    $recorrencia = is_array($dados['auto_recurring'] ?? null) ? $dados['auto_recurring'] : [];
+    $inicioExterno = assinaturaServicoPreapprovalDataExterna($recorrencia['start_date'] ?? null);
+    $data = ($dados['status'] ?? null) === 'pending'
+        ? $inicioExterno
+        : (assinaturaServicoPreapprovalDataExterna($dados['next_payment_date'] ?? null) ?? $inicioExterno);
+    if ($data === null) {
+        return 'INICIO_EXTERNO_INDETERMINADO';
+    }
+
+    return assinaturaServicoPreapprovalDataNaoAntecipada($data, $inicio) ? null : 'COBRANCA_EXTERNA_ANTECIPADA';
+}
+
+/**
+ * A data externa não antecede o primeiro dia não pago. O provedor pode representar o mesmo dia em outro fuso
+ * (ex.: meia-noite UTC ou -04:00); vale o dia civil do próprio valor ou do fuso do negócio, nunca um dia anterior.
+ */
+function assinaturaServicoPreapprovalDataNaoAntecipada(DateTimeImmutable $externa, DateTimeImmutable $inicio): bool
+{
+    $fuso = new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO);
+    $limite = $inicio->setTimezone($fuso)->format('Y-m-d');
+
+    return $externa->format('Y-m-d') >= $limite || $externa->setTimezone($fuso)->format('Y-m-d') >= $limite;
 }
 
 function assinaturaServicoPreapprovalDataExterna(mixed $valor): ?DateTimeImmutable
@@ -4822,8 +4856,10 @@ function assinaturaServicoPreapprovalBloqueioPix(mysqli $conexao, int $idEmpresa
                 TIMESTAMPDIFF(SECOND, ultima_sincronizacao_em, NOW(6)) AS idade_sincronia
            FROM assinatura_pagamento_recorrente
           WHERE id_empresa = ? AND id_assinatura = ? AND motor_recorrencia = 'preapproval'
-            AND assinatura_externa_id IS NOT NULL AND slot_ativo = 1
-            AND status IN ('ativa', 'atualizacao_necessaria', 'cancelamento_pendente')
+            AND assinatura_externa_id IS NOT NULL
+            AND ((slot_ativo = 1 AND status IN ('ativa', 'atualizacao_necessaria', 'cancelamento_pendente'))
+                 -- Autorizada no provedor mas sem ativação local (ex.: data de cobrança em análise): o provedor pode cobrar.
+                 OR (status = 'pendente' AND status_externo = 'authorized'))
           LIMIT 1",
         'ii',
         $idEmpresa,

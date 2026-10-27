@@ -558,14 +558,20 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     $v = $atual ? $vinculo : null;
     $status = $v['status'] ?? 'nao_configurado';
     $novo = $vinculo === null || (!$atual && in_array((string)$vinculo['status'], ['cancelada', 'encerrada'], true));
-    $pendente = $atual && $status === 'pendente' && ($v['status_externo'] ?? '') === 'pending'
-        && $v['assinatura_externa_id'] !== null;
+    $criada = $v !== null && $v['assinatura_externa_id'] !== null;
+    // Autorização retomável: (a) já criada e ainda pendente no provedor (o serviço devolve o mesmo link, sem novo POST);
+    // (b) vínculo pendente ou em erro SEM Preapproval criada (tentativa anterior falhou ou ficou incerta): o serviço
+    // concilia pela mesma referência e só recria quando está provado que nada foi criado. Estados externos
+    // authorized/paused/canceled nunca oferecem autorização.
+    $retomavel = $atual && (($status === 'pendente' && (!$criada || ($v['status_externo'] ?? '') === 'pending'))
+        || ($status === 'erro' && !$criada));
     return [
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
+        'autorizacao_criada' => $criada,
         'configurado' => $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1,
         'pode_configurar' => $habilitado && $assinatura !== null && $assinatura['status'] === 'ativa'
-            && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $pendente || ($atual && $status === 'erro' && $v['assinatura_externa_id'] === null)),
-        'pode_verificar' => $habilitado && $v !== null && $v['assinatura_externa_id'] !== null,
+            && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $retomavel),
+        'pode_verificar' => $habilitado && $criada,
         'status' => $status, 'status_externo' => $v['status_externo'] ?? null,
         'valor_referencia' => $assinatura['valor_contratado'] ?? null,
         'cobrar_a_partir_de' => $v['cobrar_a_partir_de'] ?? null,
