@@ -248,6 +248,44 @@ function faturamentoConciliarPixAbertos(mysqli $db, int $empresa): void {
 }
 
 /**
+ * Antes de recontratar: processa agora, pelo mesmo outbox da rotina periódica, o cancelamento ainda pendente da
+ * Preapproval de contratos anteriores (backoff, limite de tentativas, lock e conclusão só por GET autoritativo).
+ * Fora de transação; provedor indisponível ou falha nunca libera nada: a contratação refaz o bloqueio sob lock.
+ */
+function faturamentoConciliarCancelamentosAnteriores(mysqli $db, int $empresa): void {
+    try {
+        $stmt = $db->prepare("SELECT v.id_assinatura_pagamento,
+                (SELECT MIN(o.id_operacao) FROM operacao_assinatura_gateway o
+                  WHERE o.id_assinatura_pagamento = v.id_assinatura_pagamento AND o.id_empresa = v.id_empresa
+                    AND o.tipo_operacao IN ('pausar','reativar','cancelar','atualizar_valor')
+                    AND o.status_processamento IN ('pendente','processando','conciliacao')) AS id_operacao
+            FROM assinatura_pagamento_recorrente v
+            JOIN assinatura a ON a.id_assinatura = v.id_assinatura AND a.id_empresa = v.id_empresa
+            WHERE v.id_empresa = ? AND v.motor_recorrencia = 'preapproval' AND v.assinatura_externa_id IS NOT NULL
+              AND v.status IN ('pendente','ativa','atualizacao_necessaria','suspensa','cancelamento_pendente')
+              AND a.status IN ('cancelada','encerrada')
+            ORDER BY v.id_assinatura_pagamento LIMIT 3");
+        if (!$stmt) return;
+        $stmt->bind_param('i', $empresa);
+        $stmt->execute();
+        $vinculos = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        if ($vinculos === []) return;
+        $gateway = faturamentoCarregarGateway();
+        if (!MercadoPagoGateway::subscriptionsHabilitado()) return;
+        foreach ($vinculos as $vinculo) {
+            // Sem operação aberta, registra a intenção derivada do estado (nada é registrado após falha definitiva recente).
+            $idOperacao = $vinculo['id_operacao'] ?? (assinaturaServicoPreapprovalGarantirOperacao(
+                $db, (int)$vinculo['id_assinatura_pagamento'], null, $empresa)['id_operacao'] ?? null);
+            if ($idOperacao !== null) mpSubOperacaoProcessar($db, $gateway, (int)$idOperacao, $empresa);
+        }
+    } catch (Throwable $erro) {
+        if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
+        error_log('FATURAMENTO_CANCELAMENTO_ANTERIOR: ' . get_class($erro));
+    }
+}
+
+/**
  * Nova contratação pelo Proprietário após cancelamento. A decisão contratual e financeira é do serviço de
  * assinatura, sob lock na mesma transação; o super admin em modo suporte não contrata pela empresa.
  */
@@ -269,6 +307,9 @@ function faturamentoNovaContratacao(mysqli $db, array $contexto): void {
     if ($acao === 'concluir') {
         // Um PIX gerado e abandonado (ou já pago) só deixa de ser "pagamento aguardando confirmação" pelo provedor.
         faturamentoConciliarPixAbertos($db, $empresa);
+    } else {
+        // O cancelamento da Preapproval anterior não depende só do webhook nem da rotina periódica.
+        faturamentoConciliarCancelamentosAnteriores($db, $empresa);
     }
     try {
         if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar a contratação.');

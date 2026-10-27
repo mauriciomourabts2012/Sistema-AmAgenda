@@ -6306,7 +6306,7 @@ function assinaturaServicoPreapprovalRecorrenciaAnteriorPendente(mysqli $conexao
     return assinaturaServicoNovaContratacaoResultado(
         false,
         'RECORRENCIA_ANTERIOR_PENDENTE',
-        'O cancelamento do pagamento automático do contrato anterior ainda está sendo confirmado. Tente novamente em instantes.'
+        'O cancelamento do pagamento automático no cartão do contrato anterior ainda não foi confirmado pelo Mercado Pago. Para evitar duas cobranças, uma nova contratação só pode ser aberta depois dessa confirmação. Tente novamente em alguns minutos.'
     );
 }
 
