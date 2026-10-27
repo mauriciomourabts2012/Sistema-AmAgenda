@@ -12,7 +12,8 @@ declare(strict_types=1);
  * - Email é OBRIGATÓRIO
  * - Plano é OBRIGATÓRIO
  * - Status é OBRIGATÓRIO
- * - conceder_teste_gratis é OBRIGATÓRIO ('1' concede 30 dias de teste; '0' cria a assinatura paga)
+ * - conceder_teste_gratis é OBRIGATÓRIO ('1' concede 30 dias de teste; '0' cria a assinatura paga, que em plano
+ *   cobrado nasce como contratação pendente com a cobrança do primeiro período, sem acesso até a quitação)
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -318,7 +319,7 @@ try {
     $st->close();
 
     // valida plano obrigatório e ativo
-    $sqlPlano = "SELECT id_plano, preco_mensal, cobranca, status FROM plano WHERE id_plano = ? LIMIT 1";
+    $sqlPlano = "SELECT id_plano, preco_mensal, cobranca, status, gera_cobranca FROM plano WHERE id_plano = ? LIMIT 1";
     $st = $conexao->prepare($sqlPlano);
 
     if (!$st) {
@@ -376,6 +377,25 @@ try {
     $modalidadeAssinatura = 'paga';
     $testeIniciadoEm = null;
     $testeExpiraEm = null;
+    $cobrancaInicial = null;
+    // Sem teste grátis e com plano cobrado: mesma regra da nova contratação (contrato pendente + cobrança do
+    // primeiro período). O acesso pago só é liberado quando essa cobrança é quitada.
+    $contratacaoPendente = !$concederTeste
+        && (int)($plano['gera_cobranca'] ?? 0) === 1
+        && $valorContratado > 0;
+
+    if ($contratacaoPendente) {
+        if (!assinaturaServicoColunaAceita($conexao, 'assinatura', 'motivo_suspensao', 'contratacao_pendente')) {
+            $conexao->rollback();
+            out([
+                'ok' => false,
+                'code' => 'ESTRUTURA_PENDENTE',
+                'user_msg' => 'O cadastro sem teste grátis ainda não está disponível. Conceda o teste ou entre em contato com o suporte.',
+            ], 409);
+        }
+        $dataInicioAssinatura = assinaturaServicoHojeBanco($conexao);
+        $statusAssinatura = 'suspensa';
+    }
 
     if ($concederTeste) {
         // Mesmo critério do cadastro público: as três datas derivam do mesmo CURRENT_TIMESTAMP do banco,
@@ -414,7 +434,13 @@ try {
         $dadosAssinatura['teste_expira_em'] = $testeExpiraEm;
     }
 
-    $assinaturaCriada = assinaturaServicoCriar($conexao, $dadosAssinatura);
+    if ($contratacaoPendente) {
+        $assinaturaCriada = assinaturaServicoCriarContratacaoPendente(
+            $conexao, $idEmpresa, $planoId, $valorContratado, $periodicidadeAssinatura, $diaVencimentoAssinatura, $dataInicioAssinatura
+        );
+    } else {
+        $assinaturaCriada = assinaturaServicoCriar($conexao, $dadosAssinatura);
+    }
     $idAssinatura = (int)$assinaturaCriada['id_assinatura'];
 
     auditoriaRegistrar($conexao, 'assinatura.criada', [
@@ -433,9 +459,21 @@ try {
             'modalidade' => $modalidadeAssinatura,
             'teste_iniciado_em' => $testeIniciadoEm,
             'teste_expira_em' => $testeExpiraEm,
+            'motivo_suspensao' => $contratacaoPendente ? 'contratacao_pendente' : null,
         ]]],
         'contexto' => ['origem' => 'painel_super_admin'],
     ]);
+
+    if ($contratacaoPendente) {
+        // Mesma oferta da nova contratação: período a partir de hoje e vencimento pelo dia contratado.
+        $cobrancaInicial = assinaturaServicoGerarOfertaContratacao(
+            $conexao,
+            $idEmpresa,
+            $assinaturaCriada,
+            $dataInicioAssinatura,
+            auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa)
+        );
+    }
 
     empresaServicoCriarConfiguracoesIniciais($conexao, $idEmpresa, [
         'observacao_padrao' => $observacaoPadraoConfig,
@@ -461,7 +499,9 @@ try {
     out([
         'ok' => true,
         'code' => 'CREATED',
-        'user_msg' => 'Empresa cadastrada com sucesso.',
+        'user_msg' => $contratacaoPendente
+            ? 'Empresa cadastrada. O acesso será liberado após o pagamento da primeira mensalidade no Faturamento.'
+            : 'Empresa cadastrada com sucesso.',
         'data' => [
             'id_empresa' => $idEmpresa,
             'nome' => $nome,
@@ -474,9 +514,12 @@ try {
             'observacao' => $observacao,
             'assinatura' => [
                 'id_assinatura' => $idAssinatura,
+                'status' => $statusAssinatura,
                 'modalidade' => $modalidadeAssinatura,
                 'teste_iniciado_em' => $testeIniciadoEm,
                 'teste_expira_em' => $testeExpiraEm,
+                'motivo_suspensao' => $contratacaoPendente ? 'contratacao_pendente' : null,
+                'cobranca_inicial' => $cobrancaInicial,
             ],
             'configuracao_geral_empresa' => [
                 'inicio_semana' => 'segunda',
