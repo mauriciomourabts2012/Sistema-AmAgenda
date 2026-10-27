@@ -166,7 +166,7 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
         $stmt->close();
         // Preapproval: registra a intenção de cancelar no provedor e mantém o slot ativo até a confirmação externa
         // (chk_aspr_slot_ativo). A cobrança externa só termina quando o provedor confirmar.
-        assinaturaServicoPreapprovalSolicitarCancelamento($db, $empresa, $idAssinatura);
+        $cancelamentoCartao = assinaturaServicoPreapprovalSolicitarCancelamento($db, $empresa, $idAssinatura);
         auditoriaRegistrar($db, $modalidade === 'fim_periodo_pago' ? 'assinatura.cancelamento_programado' : 'assinatura.cancelada', [
             'entidade_id' => $idAssinatura,
             'entidade_rotulo' => 'Assinatura da empresa ' . (string)$empresas[0]['nome'],
@@ -181,6 +181,11 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
                 'modalidade_cancelamento'=>$modalidade,'motivo'=>$motivo],
         ]);
         if (!$db->commit()) throw new RuntimeException('Falha ao confirmar cancelamento.');
+        if ((string)$assinatura['modalidade'] === 'teste' && ($cancelamentoCartao['id_operacao'] ?? null) !== null) {
+            // Teste grátis com cartão autorizado: o cancelamento da Preapproval é enviado já, para que ela não cobre a primeira
+            // mensalidade no fim do teste. Sem confirmação agora, a operação segue no outbox; o vínculo só muda pelo provedor.
+            faturamentoProcessarCancelamentoCartao($db, (int)$cancelamentoCartao['id_operacao'], $empresa);
+        }
         out(['ok'=>true,'code'=>'CANCELAMENTO_REGISTRADO',
             'user_msg'=>$modalidade === 'fim_periodo_pago' ? 'Cancelamento programado.' : 'Assinatura cancelada.',
             'data'=>['id_assinatura'=>$idAssinatura,'status'=>$statusNovo,'data_fim'=>$dataFim,
@@ -192,6 +197,21 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
         out(['ok'=>false,'code'=>$concorrencia ? 'FINANCEIRO_EM_ATUALIZACAO' : 'CANCELAMENTO_ERROR',
             'user_msg'=>$concorrencia ? 'O financeiro está em atualização. Tente novamente.' : 'Não foi possível cancelar a assinatura.'],
             $concorrencia ? 409 : 500);
+    }
+}
+
+/** Envia agora a operação de cancelamento da Preapproval; falha só fica registrada (o outbox a retoma). */
+function faturamentoProcessarCancelamentoCartao(mysqli $db, int $idOperacao, int $empresa): void {
+    try {
+        require_once __DIR__ . '/../../_gateways/mercado_pago.php';
+        if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+        if (MP_WEBHOOK_BIBLIOTECA !== true) return;
+        require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+        if (!MercadoPagoGateway::subscriptionsHabilitado()) return;
+        mpSubOperacaoProcessar($db, MercadoPagoGateway::daConfiguracao(), $idOperacao, $empresa);
+    } catch (Throwable $erro) {
+        if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
+        error_log('FATURAMENTO_CANCELAMENTO_CARTAO: ' . get_class($erro));
     }
 }
 

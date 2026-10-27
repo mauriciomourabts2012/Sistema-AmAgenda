@@ -36,6 +36,8 @@
     } catch (erro) { return false; }
   };
   const moeda = valor => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  // "AAAA-MM-DD HH:MM:SS" do servidor -> "DD/MM/AAAA" (sem conversão de fuso no navegador).
+  const dataBr = valor => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(valor || "")); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; };
   const avisar = (tipo, mensagem) => (window.MensagemSistema?.[tipo] || window.MensagemSistema?.info)?.(mensagem);
   const esc = valor => String(valor ?? "").replace(/[&<>'"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
   const statusTexto = valor => ({
@@ -229,11 +231,46 @@
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto + indisponivel)}<div class="faturamento-acoes">${cartaoBotao}${pix}${trocar}${botaoVerificar}</div>`;
   }
 
+  // Teste grátis: o cartão autorizado cobra a primeira mensalidade no fim do teste; nada é cobrado durante ele.
+  const SITUACOES_TESTE = {
+    escolha: ["fa-regular fa-credit-card", "Pagamento automático opcional", "Você pode autorizar um cartão agora. Seus dias grátis continuam valendo: a autorização não é pagamento e a primeira mensalidade só é cobrada no fim do teste. Você pode cancelar antes disso."],
+    aguardando_autorizacao: ["fa-solid fa-hourglass-half", "Aguardando sua autorização", "Conclua a autorização do cartão no Mercado Pago. Nada é cobrado durante o teste grátis."],
+    autorizacao_em_analise: ["fa-solid fa-hourglass-half", "Autorização em análise", "A autorização foi recebida no Mercado Pago e está sendo conferida. Nada é cobrado durante o teste grátis."],
+    cartao_autorizado: ["fa-regular fa-credit-card", "Cartão autorizado para cobranças futuras", "Seu cartão está autorizado. A primeira mensalidade está prevista para após o encerramento do teste grátis."],
+    processando: ["fa-solid fa-hourglass-half", "Primeira mensalidade em processamento", "O Mercado Pago está processando a primeira mensalidade no cartão. O plano pago é liberado após a confirmação."],
+    pagamento_recusado: ["fa-solid fa-triangle-exclamation", "Pagamento recusado", "O cartão recusou a primeira mensalidade. O Mercado Pago pode tentar novamente; se preferir, pague com PIX em vez do cartão."],
+    em_verificacao: ["fa-solid fa-triangle-exclamation", "Pagamento em verificação", "O pagamento precisa de conferência. Atualize a situação mais tarde ou fale com o suporte."],
+    cancelando_cartao: ["fa-solid fa-hourglass-half", "Cancelando o cartão", "Aguardando a confirmação do Mercado Pago. Nenhuma mensalidade será cobrada no cartão depois dela."],
+    cartao_cancelado: ["fa-regular fa-credit-card", "Cartão cancelado", "Nenhuma mensalidade será cobrada neste cartão."]
+  };
+
+  function renderizarTeste(alvo, atual, botaoVerificar) {
+    const t = atual.teste_gratis || {};
+    let [icone, titulo, texto] = SITUACOES_TESTE[t.situacao] || SITUACOES_TESTE.em_verificacao;
+    const prevista = dataBr(t.primeira_cobranca_prevista);
+    const fim = dataBr(t.expira_em);
+    const rotulo = t.em_teste ? `Teste grátis${fim ? ` até ${fim}` : ""}` : "Teste grátis encerrado";
+    if (prevista && ["escolha", "aguardando_autorizacao", "autorizacao_em_analise", "cartao_autorizado"].includes(t.situacao)) {
+      texto += ` Primeira mensalidade prevista para ${prevista}.`;
+    }
+    if (!t.em_teste && ["escolha", "cartao_cancelado"].includes(t.situacao)) {
+      texto = "Sem cartão para cobrar a primeira mensalidade. Use \"Gerar cobrança de regularização\" para pagar com PIX.";
+    }
+    const criada = atual.autorizacao_criada === true && !["cancelada", "encerrada"].includes(String(atual.status || ""));
+    const autorizar = atual.pode_configurar ? botaoAutorizarCartao(criada ? "Continuar no Mercado Pago" : "Autorizar cartão no Mercado Pago") : "";
+    const remover = t.pode_remover_cartao
+      ? `<button class="botao-geral" type="button" data-usar-pix><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${t.em_teste ? "Cancelar cartão autorizado" : "Pagar com PIX em vez do cartão"}</button>` : "";
+    alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto)}<div class="faturamento-acoes">${autorizar}${remover}${botaoVerificar}</div>`;
+  }
+
   async function usarPix() {
-    if (cartao.redirecionando || !cartao.configuracao?.primeira_cobranca?.pode_trocar_para_pix) return;
-    const mensagem = "O pagamento no cartão desta contratação será cancelado no Mercado Pago e não poderá ser retomado para este contrato. Depois da confirmação, a primeira mensalidade poderá ser paga com PIX. Deseja continuar?";
+    const teste = cartao.configuracao?.teste_gratis;
+    if (cartao.redirecionando || !(cartao.configuracao?.primeira_cobranca?.pode_trocar_para_pix || teste?.pode_remover_cartao)) return;
+    const [tituloConfirmacao, mensagem] = teste && teste.em_teste
+      ? ["Cancelar cartão autorizado", "A autorização do cartão será cancelada no Mercado Pago e nenhuma mensalidade será cobrada nele. Seu teste grátis continua até o fim. Deseja continuar?"]
+      : ["Pagar com PIX em vez do cartão", "O pagamento no cartão desta contratação será cancelado no Mercado Pago e não poderá ser retomado para este contrato. Depois da confirmação, a primeira mensalidade poderá ser paga com PIX. Deseja continuar?"];
     const confirmado = window.MensagemSistema?.confirmar
-      ? await window.MensagemSistema.confirmar(mensagem, { titulo: "Pagar com PIX em vez do cartão", textoConfirmar: "Cancelar o cartão" })
+      ? await window.MensagemSistema.confirmar(mensagem, { titulo: tituloConfirmacao, textoConfirmar: "Cancelar o cartão" })
       : window.confirm(mensagem);
     if (!confirmado) return;
     const csrf = String(window.__AUTH__?.csrf_token || "");
@@ -260,6 +297,7 @@
     const botaoVerificar = atual.pode_verificar
       ? '<button class="botao-geral" type="button" data-atualizar-cartao><i class="fa-solid fa-rotate" aria-hidden="true"></i>Atualizar situação</button>' : "";
     if (atual.primeira_cobranca) { renderizarPrimeiraCobranca(alvo, atual, botaoVerificar); return; }
+    if (atual.teste_gratis) { renderizarTeste(alvo, atual, botaoVerificar); return; }
     const status = String(atual.status || "nao_configurado");
     if (atual.configurado) {
       // Bandeira e final só chegam do servidor depois de confirmados pela consulta da Preapproval.

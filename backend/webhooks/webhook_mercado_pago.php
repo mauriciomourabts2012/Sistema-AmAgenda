@@ -1553,8 +1553,12 @@ function mpSubSinalizarVinculo(mysqli $conexao, array $vinculo, string $codigo, 
  * Primeira ativação: a próxima cobrança autorizada não pode cair no período já pago. Deve rodar na transação da
  * sincronização, com a assinatura já bloqueada. Sem período pago vigente a regra não se aplica (nada a proteger).
  */
-function mpSubCobrancaAntecipadaNaAtivacao(mysqli $conexao, array $vinculo, array $dados): ?string
+function mpSubCobrancaAntecipadaNaAtivacao(mysqli $conexao, array $vinculo, array $dados, array $assinatura): ?string
 {
+    if ((string)$assinatura['modalidade'] === 'teste') {
+        // Teste grátis: nenhuma parcela antes do fim do teste.
+        return assinaturaServicoPreapprovalConferirInicioExterno($dados, assinaturaServicoPreapprovalInicioTeste((string)$assinatura['teste_expira_em']));
+    }
     $fimPago = assinaturaServicoFimPeriodoPago($conexao, (int)$vinculo['id_empresa'], (int)$vinculo['id_assinatura']);
     if ($fimPago === null) {
         return null;
@@ -1638,9 +1642,10 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
     try {
         $assinatura = assinaturaServicoConsultaFinanceira(
             $conexao,
-            'SELECT a.status, a.modalidade, a.motivo_suspensao, a.data_fim, p.gera_cobranca
+            "SELECT a.status, a.modalidade, a.motivo_suspensao, a.data_fim, p.gera_cobranca,
+                    DATE_FORMAT(a.teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em
                FROM assinatura a INNER JOIN plano p ON p.id_plano = a.id_plano
-              WHERE a.id_assinatura = ? AND a.id_empresa = ? FOR UPDATE',
+              WHERE a.id_assinatura = ? AND a.id_empresa = ? FOR UPDATE",
             'ii',
             (int)$vinculo['id_assinatura'],
             (int)$vinculo['id_empresa']
@@ -1673,9 +1678,12 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
         $statusLocal = (string)$atual['status'];
         // Contratação nova ainda não paga também é apta: a Preapproval autorizada vai cobrar a primeira mensalidade.
         // O vínculo ativo é só a recorrência autorizada; o contrato só é ativado depois do pagamento confirmado.
-        $assinaturaApta = ((string)$assinatura['status'] === 'ativa' || assinaturaServicoPreapprovalContratacaoPendente($assinatura))
-            && (string)$assinatura['modalidade'] === 'paga'
-            && (int)$assinatura['gera_cobranca'] === 1 && $assinatura['data_fim'] === null;
+        // Teste grátis com cartão autorizado também é apto: a Preapproval cobra a primeira mensalidade no fim do teste. O
+        // contrato segue em teste (sem cobrança nem conversão) até a fatura paga ser conciliada.
+        $assinaturaApta = (int)$assinatura['gera_cobranca'] === 1 && $assinatura['data_fim'] === null
+            && ((((string)$assinatura['status'] === 'ativa' || assinaturaServicoPreapprovalContratacaoPendente($assinatura))
+                    && (string)$assinatura['modalidade'] === 'paga')
+                || assinaturaServicoPreapprovalTesteApto($assinatura));
         $novoStatus = $statusLocal;
         $sinal = null;
         $encerrado = in_array($statusLocal, ['cancelada', 'encerrada'], true);
@@ -1698,7 +1706,7 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
             } elseif (!$assinaturaApta) {
                 $sinal = 'ASSINATURA_LOCAL_INCOMPATIVEL';
             } elseif ($statusLocal === 'pendente'
-                && ($antecipada = mpSubCobrancaAntecipadaNaAtivacao($conexao, $vinculo, $dados)) !== null) {
+                && ($antecipada = mpSubCobrancaAntecipadaNaAtivacao($conexao, $vinculo, $dados, $assinatura)) !== null) {
                 // Autorizada, mas a próxima cobrança cairia no período já pago: não ativa, sinaliza e mantém o PIX
                 // bloqueado para a competência (a Preapproval autorizada pode cobrar). Requer análise manual.
                 $sinal = $antecipada;
@@ -1819,6 +1827,9 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
         (int)$assinatura['id_assinatura'],
         (int)$assinatura['id_empresa']
     );
+    if ((string)$assinatura['modalidade'] === 'teste') {
+        return mpSubResolverCobrancaConversaoTeste($conexao, $assinatura, $dia, $todas);
+    }
     $aceitas = [];
     $ultimoFim = null;
     foreach ($todas as $cobranca) {
@@ -1888,6 +1899,108 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
 }
 
 /**
+ * Competência da primeira mensalidade de um teste grátis com cartão autorizado: a cobrança 'conversao_trial' que começa
+ * no dia em que o teste termina (assinaturaServicoPreapprovalInicioTeste). Débito antes desse dia, ou mais de
+ * MP_SUB_TOLERANCIA_COMPETENCIA_DIAS depois, não é competência válida (vai para conciliação); nunca se cria cobrança
+ * regular para o período do teste. Na transação de mpSubAplicarFatura, com a assinatura bloqueada.
+ *
+ * @param array<string, mixed> $assinatura
+ * @param list<array<string, mixed>> $todas cobranças do contrato, bloqueadas
+ * @return array{cobranca: array<string, mixed>, criada: bool}|string
+ */
+function mpSubResolverCobrancaConversaoTeste(mysqli $conexao, array $assinatura, DateTimeImmutable $dia, array $todas): array|string
+{
+    if (in_array((string)$assinatura['status'], ['cancelada', 'encerrada'], true) || $assinatura['data_fim'] !== null) {
+        return 'COMPETENCIA_APOS_ENCERRAMENTO';
+    }
+    if (!assinaturaServicoPreapprovalTesteApto($assinatura)) {
+        return 'ASSINATURA_TRIAL_INCONSISTENTE';
+    }
+    $inicio = assinaturaServicoPreapprovalInicioTeste((string)$assinatura['teste_expira_em'])->setTime(0, 0);
+    $atraso = (int)$inicio->diff($dia)->format('%r%a');
+    if ($atraso < 0) {
+        return 'COBRANCA_EXTERNA_ANTECIPADA'; // Débito dentro do teste grátis: nada é quitado nem convertido.
+    }
+    if ($atraso > MP_SUB_TOLERANCIA_COMPETENCIA_DIAS) {
+        return 'COMPETENCIA_NAO_ALINHADA';
+    }
+
+    $periodoInicio = $inicio->format('Y-m-d');
+    $conversoes = [];
+    foreach ($todas as $cobranca) {
+        if ((string)$cobranca['status'] === 'cancelada') {
+            continue;
+        }
+        if ((string)$cobranca['finalidade'] !== 'conversao_trial') {
+            return 'ASSINATURA_TRIAL_INCONSISTENTE'; // Contrato em teste não tem cobrança regular.
+        }
+        $conversoes[] = $cobranca;
+    }
+    if (count($conversoes) > 1) {
+        return 'COMPETENCIA_AMBIGUA';
+    }
+    if (count($conversoes) === 1) {
+        // A cobrança de conversão de outro período (ex.: regularização por PIX) não pode receber a parcela do cartão.
+        return (string)$conversoes[0]['periodo_inicio'] === $periodoInicio
+            ? ['cobranca' => $conversoes[0], 'criada' => false]
+            : 'COMPETENCIA_CONVERSAO_DIVERGENTE';
+    }
+
+    $fim = $inicio->modify('+' . assinaturaServicoMesesPeriodicidade((string)$assinatura['periodicidade']) . ' months')->modify('-1 day');
+    $vencimento = assinaturaServicoCalcularVencimento($inicio, (int)$assinatura['dia_vencimento']);
+    try {
+        assinaturaServicoPreapprovalExec(
+            $conexao,
+            "INSERT INTO cobranca (id_empresa, id_assinatura, periodo_inicio, periodo_fim, data_vencimento, valor, status, finalidade)
+             VALUES (?, ?, ?, ?, ?, ?, 'pendente', 'conversao_trial')",
+            'iissss',
+            (int)$assinatura['id_empresa'],
+            (int)$assinatura['id_assinatura'],
+            $periodoInicio,
+            $fim->format('Y-m-d'),
+            $vencimento->format('Y-m-d'),
+            (string)$assinatura['valor_contratado']
+        );
+    } catch (RuntimeException $e) {
+        if (assinaturaServicoPreapprovalChaveDuplicada($e)) {
+            return 'COMPETENCIA_DUPLICADA';
+        }
+        throw $e;
+    }
+    $idCobranca = (int)$conexao->insert_id;
+    $criada = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        'SELECT id_cobranca, id_empresa, id_assinatura, periodo_inicio, periodo_fim, data_vencimento, valor, status, finalidade, motor_cobranca
+           FROM cobranca WHERE id_cobranca = ? AND id_empresa = ? FOR UPDATE',
+        'ii',
+        $idCobranca,
+        (int)$assinatura['id_empresa']
+    )[0] ?? null;
+    if ($criada === null) {
+        return 'COMPETENCIA_NAO_ALINHADA';
+    }
+    auditoriaRegistrar($conexao, 'cobranca.gerada', [
+        'ator' => mpWebhookAtorSistema((int)$assinatura['id_empresa']),
+        'entidade_id' => $idCobranca,
+        'entidade_rotulo' => 'Cobrança de conversão da assinatura #' . (int)$assinatura['id_assinatura'],
+        'descricao' => 'Gerou a cobrança da primeira mensalidade após o teste grátis, cobrada no cartão autorizado.',
+        'alteracoes' => mpWebhookAlteracoes([
+            'id_empresa' => (int)$assinatura['id_empresa'],
+            'id_assinatura' => (int)$assinatura['id_assinatura'],
+            'periodo_inicio' => $periodoInicio,
+            'periodo_fim' => $fim->format('Y-m-d'),
+            'data_vencimento' => $vencimento->format('Y-m-d'),
+            'valor' => (string)$assinatura['valor_contratado'],
+            'status' => 'pendente',
+            'finalidade' => 'conversao_trial',
+        ]),
+        'contexto' => ['origem' => mpWebhookOrigemAuditoria(), 'origem_geracao' => 'preapproval_teste', 'motor' => 'preapproval'],
+    ]);
+
+    return ['cobranca' => $criada, 'criada' => true];
+}
+
+/**
  * Aplica a fatura autoritativa (e o pagamento autoritativo, quando houver) numa única transação.
  * Locks: assinatura, cobrança, vínculo, pagamentos e transação, nessa ordem; ambos os caminhos
  * (webhook e conciliação) serializam por assinatura, então a mesma fatura nunca é aplicada em paralelo.
@@ -1909,9 +2022,9 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
     try {
         $assinatura = assinaturaServicoConsultaFinanceira(
             $conexao,
-            'SELECT id_assinatura, id_empresa, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim,
-                    status, modalidade, motivo_suspensao
-               FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? FOR UPDATE',
+            "SELECT id_assinatura, id_empresa, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim,
+                    status, modalidade, motivo_suspensao, DATE_FORMAT(teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em
+               FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? FOR UPDATE",
             'ii',
             (int)$vinculo['id_assinatura'],
             $idEmpresa
@@ -2197,6 +2310,17 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
                 $motivos[] = 'Transação já vinculada a outro pagamento local.';
             }
             $requer = $motivos === [] ? 0 : 1;
+            if ($requer === 0 && !$recalculo['cancelada'] && $recalculo['saldo'] === 0
+                && (string)$cobranca['finalidade'] === 'conversao_trial') {
+                // Primeira mensalidade após o teste grátis: a mesma conversão do PIX de regularização (idempotente; exige a
+                // cobrança de conversão integralmente quitada por pagamento confirmado).
+                $conversaoTrial = assinaturaServicoReavaliarConversaoTrial($conexao, (int)$cobranca['id_cobranca'], $ator,
+                    ['origem' => mpWebhookOrigemAuditoria(), 'motor' => 'preapproval']);
+                if ($conversaoTrial['requer_atencao']) {
+                    $motivos[] = 'Cobrança de conversão quitada, mas a assinatura não pôde ser convertida automaticamente.';
+                    $requer = 1;
+                }
+            }
             // Primeira mensalidade quitada pela Preapproval: a contratação é ativada depois do commit (pagamento já persistido).
             $concluirContratacao = $requer === 0 && $recalculo['saldo'] === 0 && assinaturaServicoPreapprovalContratacaoPendente($assinatura);
             assinaturaServicoPreapprovalExec(
@@ -2268,6 +2392,11 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
             }
             $total = mpWebhookTotalConfirmado($conexao, $idEmpresa, (int)$cobranca['id_cobranca']);
             $recalculo = mpWebhookRecalcularCobranca($conexao, $cobranca, $total);
+            if (!$recalculo['cancelada'] && (string)$cobranca['finalidade'] === 'conversao_trial') {
+                // Estorno da primeira mensalidade após o teste: mesma reavaliação do PIX (suspende o contrato convertido).
+                assinaturaServicoReavaliarConversaoTrial($conexao, (int)$cobranca['id_cobranca'], $ator,
+                    ['origem' => mpWebhookOrigemAuditoria(), 'motor' => 'preapproval']);
+            }
             assinaturaServicoPreapprovalExec(
                 $conexao,
                 'UPDATE transacao_pagamento

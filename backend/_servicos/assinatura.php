@@ -476,6 +476,70 @@ function assinaturaServicoBuscarCobrancaConversaoAtiva(mysqli $conexao, int $idA
 }
 
 /**
+ * Cobrança de conversão aberta pelo cartão do teste grátis (tem transação 'assinatura_preapproval') que ficou sem
+ * pagamento: pendente, nada confirmado e nenhuma transação em andamento ou em conciliação. Na transação do chamador.
+ *
+ * @param array<string, mixed> $cobranca retorno de assinaturaServicoBuscarCobrancaConversaoAtiva()
+ */
+function assinaturaServicoConversaoDoCartaoEncerrada(mysqli $conexao, int $idEmpresa, array $cobranca): bool
+{
+    $idCobranca = (int)$cobranca['id_cobranca'];
+    if ((string)$cobranca['status'] !== 'pendente' || assinaturaServicoTotalPagoCentavos($conexao, $idEmpresa, $idCobranca) > 0) {
+        return false;
+    }
+    $transacoes = assinaturaServicoLinhas(
+        $conexao,
+        "SELECT tipo_operacao, status, requer_conciliacao FROM transacao_pagamento
+          WHERE id_empresa = ? AND id_cobranca = ? FOR UPDATE",
+        'ii',
+        $idEmpresa,
+        $idCobranca
+    );
+    $doCartao = false;
+    foreach ($transacoes as $transacao) {
+        if (in_array((string)$transacao['status'], ['criada', 'enviando', 'aguardando', 'processando', 'conciliacao', 'confirmada'], true)
+            || (int)$transacao['requer_conciliacao'] === 1) {
+            return false;
+        }
+        $doCartao = $doCartao || (string)$transacao['tipo_operacao'] === 'assinatura_preapproval';
+    }
+
+    return $doCartao;
+}
+
+/** Cancela (auditado) a cobrança de conversão do cartão encerrado. Na transação do chamador. */
+function assinaturaServicoCancelarConversaoDoCartao(mysqli $conexao, int $idEmpresa, array $cobranca): void
+{
+    $idCobranca = (int)$cobranca['id_cobranca'];
+    $stmt = $conexao->prepare("UPDATE cobranca SET status = 'cancelada' WHERE id_cobranca = ? AND id_empresa = ? AND status = 'pendente' AND finalidade = 'conversao_trial'");
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar o cancelamento da cobrança de conversão do cartão.');
+    }
+    $stmt->bind_param('ii', $idCobranca, $idEmpresa);
+    if (!$stmt->execute() || $stmt->affected_rows !== 1) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao cancelar a cobrança de conversão do cartão.');
+    }
+    $stmt->close();
+    assinaturaServicoAuditar($conexao, 'cobranca.cancelada', [
+        'entidade_id' => $idCobranca,
+        'entidade_rotulo' => "Cobrança #{$idCobranca}",
+        'descricao' => "Cancelou a cobrança de conversão #{$idCobranca}, não paga pelo cartão já encerrado, antes da regularização por PIX.",
+        'alteracoes' => assinaturaServicoAlteracoesNovas([
+            'id_empresa' => $idEmpresa,
+            'id_assinatura' => (int)$cobranca['id_assinatura'],
+            'id_cobranca' => $idCobranca,
+            'valor' => (string)$cobranca['valor'],
+            'periodo_inicio' => (string)$cobranca['periodo_inicio'],
+            'periodo_fim' => (string)$cobranca['periodo_fim'],
+            'motivo' => 'conversao_do_cartao_nao_paga',
+        ]) + ['status' => ['antes' => 'pendente', 'depois' => 'cancelada']],
+        'contexto' => ['origem' => 'regularizacao_trial', 'id_empresa' => $idEmpresa, 'id_assinatura' => (int)$cobranca['id_assinatura'],
+            'motivo' => 'conversao_do_cartao_nao_paga'],
+    ], null);
+}
+
+/**
  * Cria ou reutiliza a única cobrança de conversão do trial expirado da empresa.
  * Participa da transação do chamador (sem commit). Não registra auditoria: o chamador audita
  * somente quando 'criada' for verdadeiro.
@@ -555,7 +619,23 @@ function assinaturaServicoObterOuCriarCobrancaConversao(mysqli $conexao, int $id
         );
     }
 
+    // Cartão autorizado durante o teste: enquanto a Preapproval puder cobrar a primeira mensalidade (ou sua criação estiver
+    // em conciliação), o PIX não cria cobrança paralela para o mesmo período.
+    if (assinaturaServicoPreapprovalPrimeiraCobrancaViva($conexao, $idEmpresa, $idAssinatura)) {
+        throw new AssinaturaServicoConversaoErro(
+            'PAGAMENTO_CARTAO_EM_ANDAMENTO',
+            'A primeira mensalidade está sendo cobrada no cartão autorizado. Para pagar com PIX, use antes "Pagar com PIX em vez do cartão" e aguarde a confirmação do Mercado Pago.',
+            409
+        );
+    }
+
     $existente = assinaturaServicoBuscarCobrancaConversaoAtiva($conexao, $idAssinatura);
+    if ($existente !== null && assinaturaServicoConversaoDoCartaoEncerrada($conexao, $idEmpresa, $existente)) {
+        // Competência aberta pelo cartão (fim do teste) que ele não quitou e cujo cartão já foi encerrado: sem pagamento nem
+        // transação em andamento, ela é cancelada e o PIX segue a regra da regularização (período a partir de hoje).
+        assinaturaServicoCancelarConversaoDoCartao($conexao, $idEmpresa, $existente);
+        $existente = null;
+    }
     if ($existente !== null) {
         return assinaturaServicoCobrancaConversaoResumo($conexao, $existente, false);
     }
@@ -2178,43 +2258,10 @@ function assinaturaServicoSolicitarNovaContratacao(mysqli $conexao, int $idEmpre
         if ($diaVencimento < 1 || $diaVencimento > 28) {
             $diaVencimento = 10;
         }
-        $criada = assinaturaServicoCriar($conexao, [
-            'id_empresa' => $idEmpresa,
-            'id_plano' => $idPlano,
-            'valor_contratado' => (float)$plano['valor'],
-            'periodicidade' => $plano['periodicidade'],
-            'dia_vencimento' => $diaVencimento,
-            'data_inicio' => $hoje,
-            'status' => 'suspensa',
-            'modalidade' => 'paga',
-        ]);
-        $idNova = (int)$criada['id_assinatura'];
-        $stmt = $conexao->prepare(
-            "UPDATE assinatura SET motivo_suspensao = 'contratacao_pendente', suspensa_em = CURRENT_TIMESTAMP
-              WHERE id_assinatura = ? AND id_empresa = ? AND status = 'suspensa'"
+        $assinatura = assinaturaServicoCriarContratacaoPendente(
+            $conexao, $idEmpresa, $idPlano, (float)$plano['valor'], (string)$plano['periodicidade'], $diaVencimento, $hoje
         );
-        if (!$stmt) {
-            throw new RuntimeException('Falha ao preparar a marcação da contratação pendente.');
-        }
-        $stmt->bind_param('ii', $idNova, $idEmpresa);
-        if (!$stmt->execute() || $stmt->affected_rows !== 1) {
-            $stmt->close();
-            throw new RuntimeException('Falha ao marcar a contratação pendente.');
-        }
-        $stmt->close();
-        // Falha fechada: se a coluna não aceitar o novo motivo (ex.: ENUM sem a opção), nada é gravado.
-        $conferencia = assinaturaServicoConsultaFinanceira(
-            $conexao,
-            "SELECT motivo_suspensao, valor_contratado, status, modalidade FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? LIMIT 1",
-            'ii',
-            $idNova,
-            $idEmpresa
-        );
-        if ((string)($conferencia[0]['motivo_suspensao'] ?? '') !== 'contratacao_pendente'
-            || (string)($conferencia[0]['status'] ?? '') !== 'suspensa'
-            || (string)($conferencia[0]['modalidade'] ?? '') !== 'paga') {
-            throw new RuntimeException('O banco não registrou a contratação pendente (verifique a coluna assinatura.motivo_suspensao).');
-        }
+        $idNova = (int)$assinatura['id_assinatura'];
         assinaturaServicoAuditar($conexao, 'assinatura.criada', [
             'entidade_id' => $idNova,
             'entidade_rotulo' => 'Nova contratação da empresa ' . (string)$estado['empresa']['nome'],
@@ -2222,7 +2269,7 @@ function assinaturaServicoSolicitarNovaContratacao(mysqli $conexao, int $idEmpre
             'alteracoes' => assinaturaServicoAlteracoesNovas([
                 'id_empresa' => $idEmpresa,
                 'id_plano' => $idPlano,
-                'valor_contratado' => (string)$conferencia[0]['valor_contratado'],
+                'valor_contratado' => (string)$assinatura['valor_contratado'],
                 'periodicidade' => $plano['periodicidade'],
                 'dia_vencimento' => $diaVencimento,
                 'data_inicio' => $hoje,
@@ -2231,12 +2278,6 @@ function assinaturaServicoSolicitarNovaContratacao(mysqli $conexao, int $idEmpre
             'contexto' => ['origem' => 'nova_contratacao', 'id_empresa' => $idEmpresa, 'id_assinatura' => $idNova,
                 'id_plano' => $idPlano, 'status_novo' => 'suspensa', 'motivo' => 'contratacao_pendente'],
         ], $ator);
-        $assinatura = [
-            'id_assinatura' => $idNova,
-            'valor_contratado' => (string)$conferencia[0]['valor_contratado'],
-            'periodicidade' => $plano['periodicidade'],
-            'dia_vencimento' => $diaVencimento,
-        ];
     }
 
     $oferta = assinaturaServicoGerarOfertaContratacao($conexao, $idEmpresa, $assinatura, $hoje, $ator);
@@ -2248,6 +2289,60 @@ function assinaturaServicoSolicitarNovaContratacao(mysqli $conexao, int $idEmpre
         'valor' => (string)$oferta['valor'],
         'data_vencimento' => (string)$oferta['data_vencimento'],
     ]);
+}
+
+/**
+ * Cria o contrato 'suspensa'/'paga' com motivo 'contratacao_pendente' (sem acesso pago até a quitação da oferta).
+ * Participa da transação do chamador; auditoria, oferta e validações de negócio ficam com o chamador.
+ * Falha fechada: se a coluna não aceitar o motivo (ex.: ENUM sem a opção), lança exceção.
+ *
+ * @return array{id_assinatura: int, valor_contratado: string, periodicidade: string, dia_vencimento: int}
+ */
+function assinaturaServicoCriarContratacaoPendente(mysqli $conexao, int $idEmpresa, int $idPlano, float $valor, string $periodicidade, int $diaVencimento, string $hoje): array
+{
+    $criada = assinaturaServicoCriar($conexao, [
+        'id_empresa' => $idEmpresa,
+        'id_plano' => $idPlano,
+        'valor_contratado' => $valor,
+        'periodicidade' => $periodicidade,
+        'dia_vencimento' => $diaVencimento,
+        'data_inicio' => $hoje,
+        'status' => 'suspensa',
+        'modalidade' => 'paga',
+    ]);
+    $idNova = (int)$criada['id_assinatura'];
+    $stmt = $conexao->prepare(
+        "UPDATE assinatura SET motivo_suspensao = 'contratacao_pendente', suspensa_em = CURRENT_TIMESTAMP
+          WHERE id_assinatura = ? AND id_empresa = ? AND status = 'suspensa'"
+    );
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar a marcação da contratação pendente.');
+    }
+    $stmt->bind_param('ii', $idNova, $idEmpresa);
+    if (!$stmt->execute() || $stmt->affected_rows !== 1) {
+        $stmt->close();
+        throw new RuntimeException('Falha ao marcar a contratação pendente.');
+    }
+    $stmt->close();
+    $conferencia = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT motivo_suspensao, valor_contratado, status, modalidade FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? LIMIT 1",
+        'ii',
+        $idNova,
+        $idEmpresa
+    );
+    if ((string)($conferencia[0]['motivo_suspensao'] ?? '') !== 'contratacao_pendente'
+        || (string)($conferencia[0]['status'] ?? '') !== 'suspensa'
+        || (string)($conferencia[0]['modalidade'] ?? '') !== 'paga') {
+        throw new RuntimeException('O banco não registrou a contratação pendente (verifique a coluna assinatura.motivo_suspensao).');
+    }
+
+    return [
+        'id_assinatura' => $idNova,
+        'valor_contratado' => (string)$conferencia[0]['valor_contratado'],
+        'periodicidade' => $periodicidade,
+        'dia_vencimento' => $diaVencimento,
+    ];
 }
 
 /**
@@ -3891,6 +3986,41 @@ function assinaturaServicoPreapprovalInicioCobranca(string $fimPeriodoPago): Dat
 }
 
 /**
+ * Contrato em teste grátis cuja primeira mensalidade pode ser cobrada pela Preapproval no fim do teste: teste
+ * configurado, sem encerramento programado, ainda em teste ('ativa') ou suspenso pela expiração. Não decide se o
+ * teste ainda permite nova autorização (isso é do banco, em assinaturaServicoPreapprovalContrato()).
+ *
+ * @param array<string, mixed> $assinatura status, modalidade, motivo_suspensao, data_fim, teste_expira_em ('Y-m-d H:i:s')
+ */
+function assinaturaServicoPreapprovalTesteApto(array $assinatura): bool
+{
+    $status = (string)($assinatura['status'] ?? '');
+
+    return (string)($assinatura['modalidade'] ?? '') === 'teste'
+        && ($assinatura['data_fim'] ?? null) === null
+        && is_string($assinatura['teste_expira_em'] ?? null)
+        && assinaturaServicoDataValida((string)$assinatura['teste_expira_em'], 'Y-m-d H:i:s')
+        && ($status === 'ativa' || ($status === 'suspensa' && (string)($assinatura['motivo_suspensao'] ?? '') === 'teste_expirado'));
+}
+
+/**
+ * Início do primeiro período pago de um teste grátis: o instante de `teste_expira_em` (gravado no fuso da aplicação),
+ * no fuso do negócio e arredondado para o minuto seguinte, para que a primeira parcela nunca anteceda o fim do teste.
+ * O dia civil desse instante é o início da competência da cobrança de conversão.
+ */
+function assinaturaServicoPreapprovalInicioTeste(string $testeExpiraEm): DateTimeImmutable
+{
+    if (!assinaturaServicoDataValida($testeExpiraEm, 'Y-m-d H:i:s')) {
+        throw new InvalidArgumentException('Fim do período de teste inválido.');
+    }
+    $fim = (new DateTimeImmutable($testeExpiraEm, new DateTimeZone(date_default_timezone_get())))
+        ->setTimezone(new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO));
+    $minuto = $fim->setTime((int)$fim->format('H'), (int)$fim->format('i'));
+
+    return $minuto < $fim ? $minuto->modify('+1 minute') : $minuto;
+}
+
+/**
  * Corpo do POST /preapproval, sem plano e sem card_token_id: nasce 'pending' e só é
  * autorizada pelo pagador no provedor. Nunca contém dado de cartão.
  *
@@ -4225,6 +4355,9 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
     $linhas = assinaturaServicoConsultaFinanceira(
         $conexao,
         "SELECT a.id_assinatura, a.id_plano, a.valor_contratado, a.periodicidade, a.status, a.modalidade, a.motivo_suspensao, a.data_fim,
+                DATE_FORMAT(a.teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em,
+                (a.teste_iniciado_em IS NOT NULL AND a.teste_expira_em > a.teste_iniciado_em
+                    AND a.teste_expira_em > DATE_ADD(CURRENT_TIMESTAMP, INTERVAL " . ASSINATURA_SERVICO_PREAPPROVAL_PRIMEIRA_MARGEM_MINUTOS . " MINUTE)) AS teste_autorizavel,
                 p.nome AS plano_nome, p.gera_cobranca
            FROM assinatura a
           INNER JOIN plano p ON p.id_plano = a.id_plano
@@ -4243,11 +4376,19 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
     if ($contrato === null || ((string)$contrato['status'] !== 'ativa' && !$primeiraCobranca)) {
         throw new AssinaturaServicoConversaoErro('ASSINATURA_INATIVA', 'Não há assinatura ativa para configurar o pagamento recorrente.', 409);
     }
+    $teste = null;
     if ((string)$contrato['modalidade'] === 'teste') {
-        // O teste grátis é controlado pelo AmAgenda e não exige cartão; a recorrência só vale depois da conversão paga.
-        throw new AssinaturaServicoConversaoErro('TESTE_SEM_RECORRENCIA', 'O pagamento automático fica disponível depois da conversão do período de teste.', 409);
-    }
-    if ((string)$contrato['modalidade'] !== 'paga' || (int)$contrato['gera_cobranca'] !== 1) {
+        // Teste grátis: o cartão pode ser autorizado enquanto o teste dura (com margem para o checkout); a primeira
+        // mensalidade só é cobrada no fim do teste e o contrato continua em teste até o pagamento confirmado.
+        if ((string)$contrato['status'] !== 'ativa' || !assinaturaServicoPreapprovalTesteApto($contrato)
+            || (int)$contrato['teste_autorizavel'] !== 1) {
+            throw new AssinaturaServicoConversaoErro('TESTE_SEM_RECORRENCIA', 'O teste grátis terminou ou está terminando. Pague a primeira mensalidade pela regularização no Faturamento.', 409);
+        }
+        if ((int)$contrato['gera_cobranca'] !== 1) {
+            throw new AssinaturaServicoConversaoErro('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
+        }
+        $teste = ['expira_em' => (string)$contrato['teste_expira_em']];
+    } elseif ((string)$contrato['modalidade'] !== 'paga' || (int)$contrato['gera_cobranca'] !== 1) {
         throw new AssinaturaServicoConversaoErro('PLANO_SEM_COBRANCA', 'O plano atual não permite configurar pagamento recorrente.', 409);
     }
     if ($contrato['data_fim'] !== null) {
@@ -4277,6 +4418,7 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
         'primeira_cobranca' => $primeiraCobranca
             ? assinaturaServicoPreapprovalOfertaPrimeiraCobranca($conexao, $idEmpresa, (int)$contrato['id_assinatura'], $centavos)
             : null,
+        'teste' => $teste,
     ];
 }
 
@@ -4466,6 +4608,9 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         $datas = assinaturaServicoPreapprovalInicioPrimeiraCobranca($contrato['primeira_cobranca']['periodo_inicio']);
         $inicio = $datas['limite'];
         $envio = $datas['envio'];
+    } elseif ($contrato['teste'] !== null) {
+        // Teste grátis: start_date é o fim do teste; nenhuma parcela antes dele (COBRANCA_EXTERNA_ANTECIPADA).
+        $inicio = assinaturaServicoPreapprovalInicioTeste((string)$contrato['teste']['expira_em']);
     } else {
         $fimPago = assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura);
         if ($fimPago === null) {
@@ -5115,7 +5260,7 @@ function assinaturaServicoPreapprovalBloqueioPix(mysqli $conexao, int $idEmpresa
         $idCobranca,
         $idEmpresa
     )[0] ?? null;
-    if ($cobranca === null || (string)$cobranca['finalidade'] !== 'regular') {
+    if ($cobranca === null || !in_array((string)$cobranca['finalidade'], ['regular', 'conversao_trial'], true)) {
         return null;
     }
 
@@ -5139,6 +5284,28 @@ function assinaturaServicoPreapprovalBloqueioPix(mysqli $conexao, int $idEmpresa
 
     if ((string)$cobranca['status'] !== 'pendente') {
         return null;
+    }
+    if ((string)$cobranca['finalidade'] === 'conversao_trial') {
+        // Primeira mensalidade após o teste grátis com cartão autorizado: o PIX só volta depois do cancelamento confirmado.
+        if (assinaturaServicoPreapprovalPrimeiraCobrancaViva($conexao, $idEmpresa, (int)$cobranca['id_assinatura'])) {
+            return [
+                'codigo' => 'COBRANCA_PRIMEIRA_PREAPPROVAL',
+                'mensagem' => 'A primeira mensalidade está sendo cobrada no cartão autorizado. Para pagar com PIX, use antes a opção "Pagar com PIX em vez do cartão".',
+            ];
+        }
+        // Competência aberta pelo cartão e não paga: o PIX usa a cobrança de regularização (período a partir do pagamento).
+        $doCartao = assinaturaServicoConsultaFinanceira(
+            $conexao,
+            "SELECT 1 FROM transacao_pagamento WHERE id_empresa = ? AND id_cobranca = ? AND tipo_operacao = 'assinatura_preapproval' LIMIT 1",
+            'ii',
+            $idEmpresa,
+            $idCobranca
+        ) !== [];
+
+        return $doCartao ? [
+            'codigo' => 'COBRANCA_CARTAO_ENCERRADA',
+            'mensagem' => 'Esta cobrança era do cartão já cancelado. Use "Gerar cobrança de regularização" no Faturamento para pagar com PIX.',
+        ] : null;
     }
     // Primeira cobrança da contratação: existindo Preapproval que pode cobrar (mesmo ainda não autorizada, pois o
     // pagador pode concluir o checkout a qualquer momento), o PIX só volta depois do cancelamento confirmado.
@@ -5384,12 +5551,17 @@ function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(mysqli $conexao, i
 {
     $contratos = assinaturaServicoConsultaFinanceira(
         $conexao,
-        "SELECT id_assinatura, status, modalidade, motivo_suspensao, data_fim FROM assinatura
+        "SELECT id_assinatura, status, modalidade, motivo_suspensao, data_fim,
+                DATE_FORMAT(teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em
+           FROM assinatura
           WHERE id_empresa = ? AND status IN ('ativa', 'suspensa') FOR UPDATE",
         'i',
         $idEmpresa
     );
-    if (count($contratos) !== 1 || !assinaturaServicoPreapprovalContratacaoPendente($contratos[0])) {
+    // Também vale para o teste grátis com cartão autorizado (antes ou depois da expiração): o cartão deixa de cobrar a
+    // primeira mensalidade e, expirado o teste, a regularização segue por PIX.
+    $teste = count($contratos) === 1 && assinaturaServicoPreapprovalTesteApto($contratos[0]);
+    if (count($contratos) !== 1 || (!$teste && !assinaturaServicoPreapprovalContratacaoPendente($contratos[0]))) {
         return assinaturaServicoNovaContratacaoResultado(false, 'SEM_CONTRATACAO_PENDENTE', 'Não há contratação aguardando o pagamento da primeira cobrança.', ['http_status' => 409]);
     }
     $idAssinatura = (int)$contratos[0]['id_assinatura'];
@@ -5412,14 +5584,18 @@ function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(mysqli $conexao, i
         }
         $r = assinaturaServicoPreapprovalSolicitarCancelamento($conexao, $idEmpresa, $idAssinatura, $ator);
 
-        return assinaturaServicoNovaContratacaoResultado(true, 'CARTAO_DESCARTADO', 'O pagamento no cartão foi descartado. Você já pode pagar com PIX.', ['situacao' => (string)$r['situacao']]);
+        return assinaturaServicoNovaContratacaoResultado(true, 'CARTAO_DESCARTADO', $teste
+            ? 'A autorização do cartão foi descartada. Nenhuma mensalidade será cobrada nele.'
+            : 'O pagamento no cartão foi descartado. Você já pode pagar com PIX.', ['situacao' => (string)$r['situacao']]);
     }
     $r = assinaturaServicoPreapprovalCancelarPrimeiraExterna($conexao, $vinculo, $ator);
     if ($r === null) {
         return assinaturaServicoNovaContratacaoResultado(false, 'VINCULO_INCONSISTENTE', 'O pagamento no cartão precisa de verificação. Fale com o suporte.', ['http_status' => 409]);
     }
 
-    return assinaturaServicoNovaContratacaoResultado(true, 'CANCELAMENTO_CARTAO_SOLICITADO', 'O cancelamento do pagamento no cartão foi solicitado. O PIX será liberado assim que o Mercado Pago confirmar.', [
+    return assinaturaServicoNovaContratacaoResultado(true, 'CANCELAMENTO_CARTAO_SOLICITADO', $teste
+        ? 'O cancelamento do cartão foi solicitado ao Mercado Pago. Nenhuma mensalidade será cobrada nele depois da confirmação.'
+        : 'O cancelamento do pagamento no cartão foi solicitado. O PIX será liberado assim que o Mercado Pago confirmar.', [
         'situacao' => (string)$r['situacao'],
         'id_operacao' => $r['id_operacao'] ?? null,
     ]);

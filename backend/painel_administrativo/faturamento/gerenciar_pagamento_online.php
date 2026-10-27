@@ -467,7 +467,10 @@ function pagamentoCartaoAssinaturaAtiva(mysqli $db, int $empresa, bool $bloquear
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     $linhas = pagamentoOnlineConsulta($db,
-        "SELECT a.id_assinatura,a.valor_contratado,a.status,a.modalidade,a.motivo_suspensao,a.data_fim,p.gera_cobranca
+        "SELECT a.id_assinatura,a.valor_contratado,a.status,a.modalidade,a.motivo_suspensao,a.data_fim,p.gera_cobranca,
+                DATE_FORMAT(a.teste_expira_em,'%Y-%m-%d %H:%i:%s') AS teste_expira_em,
+                (a.teste_iniciado_em IS NOT NULL AND a.teste_expira_em > a.teste_iniciado_em
+                    AND a.teste_expira_em > DATE_ADD(CURRENT_TIMESTAMP, INTERVAL " . ASSINATURA_SERVICO_PREAPPROVAL_PRIMEIRA_MARGEM_MINUTOS . " MINUTE)) AS teste_autorizavel
            FROM assinatura a
            INNER JOIN plano p
                    ON p.id_plano = a.id_plano
@@ -493,7 +496,7 @@ function pagamentoCartaoVinculoAtual(mysqli $db, int $empresa, string $ambiente,
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     return pagamentoOnlineConsulta($db,
-        "SELECT id_assinatura_pagamento,id_empresa,id_assinatura,ambiente,motor_recorrencia,assinatura_externa_id,referencia_externa_assinatura,cliente_externo_id,perfil_externo_id,meio_pagamento_externo_id,cartao_externo_id,bandeira,final_cartao,status,status_externo,chave_idempotencia_criacao,cobrar_a_partir_de,slot_ativo,TIMESTAMPDIFF(SECOND,ultima_sincronizacao_em,NOW(6)) AS idade_sincronia FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? ORDER BY (slot_ativo=1) DESC,id_assinatura_pagamento DESC LIMIT 1{$sufixo}",
+        "SELECT id_assinatura_pagamento,id_empresa,id_assinatura,ambiente,motor_recorrencia,assinatura_externa_id,referencia_externa_assinatura,cliente_externo_id,perfil_externo_id,meio_pagamento_externo_id,cartao_externo_id,bandeira,final_cartao,status,status_externo,chave_idempotencia_criacao,cobrar_a_partir_de,proxima_cobranca_em,slot_ativo,TIMESTAMPDIFF(SECOND,ultima_sincronizacao_em,NOW(6)) AS idade_sincronia FROM assinatura_pagamento_recorrente WHERE id_empresa=? AND provedor='mercado_pago' AND ambiente=? ORDER BY (slot_ativo=1) DESC,id_assinatura_pagamento DESC LIMIT 1{$sufixo}",
         'is', $empresa, $ambiente)->fetch_assoc() ?: null;
 }
 
@@ -611,9 +614,63 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
     ];
 }
 
+/**
+ * Teste grátis (em curso ou expirado aguardando a primeira mensalidade): estado público do cartão autorizado para a
+ * primeira mensalidade, cobrada no fim do teste. Somente leitura; as decisões são refeitas pelo serviço sob lock.
+ */
+function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura, ?array $vinculo): ?array
+{
+    if ($assinatura === null || !assinaturaServicoPreapprovalTesteApto($assinatura)) return null;
+    $idAssinatura = (int)$assinatura['id_assinatura'];
+    $v = $vinculo !== null && (int)$vinculo['id_assinatura'] === $idAssinatura && ($vinculo['motor_recorrencia'] ?? '') === 'preapproval' ? $vinculo : null;
+    $status = (string)($v['status'] ?? '');
+    $externa = $v !== null && $v['assinatura_externa_id'] !== null;
+    $emTeste = (string)$assinatura['status'] === 'ativa';
+    $viva = assinaturaServicoPreapprovalPrimeiraCobrancaViva($db, $empresa, $idAssinatura);
+    $tentativa = pagamentoOnlineConsulta($db,
+        "SELECT t.status,t.detalhe_status_externo,t.requer_conciliacao FROM transacao_pagamento t
+           JOIN cobranca c ON c.id_cobranca=t.id_cobranca AND c.id_empresa=t.id_empresa
+          WHERE t.id_empresa=? AND c.id_assinatura=? AND c.finalidade='conversao_trial' AND c.status<>'cancelada'
+            AND t.tipo_operacao='assinatura_preapproval' ORDER BY t.id_transacao DESC LIMIT 1",
+        'ii', $empresa, $idAssinatura)->fetch_assoc() ?: null;
+    $situacao = match (true) {
+        $v === null, $status === 'erro' && !$externa => 'escolha',
+        in_array($status, ['cancelada', 'encerrada'], true) => 'cartao_cancelado',
+        $status === 'cancelamento_pendente' => 'cancelando_cartao',
+        $tentativa !== null && ((int)$tentativa['requer_conciliacao'] === 1 || in_array($tentativa['status'], ['conciliacao', 'confirmada'], true)) => 'em_verificacao',
+        $tentativa !== null && ($tentativa['status'] === 'recusada'
+            || ($tentativa['status'] === 'processando' && $tentativa['detalhe_status_externo'] === 'retry')) => 'pagamento_recusado',
+        $tentativa !== null && $tentativa['status'] === 'processando' => 'processando',
+        $status === 'pendente' && ($v['status_externo'] ?? null) === 'authorized' => 'autorizacao_em_analise',
+        $status === 'pendente' => 'aguardando_autorizacao',
+        $status === 'ativa' => 'cartao_autorizado',
+        default => 'em_verificacao',
+    };
+    // Data prevista: a programada pelo provedor para a autorização ativa (sincronizada) ou, antes dela, o fim do teste
+    // (na Preapproval pendente a próxima data do provedor é provisória).
+    $prevista = $status === 'ativa' && ($v['proxima_cobranca_em'] ?? null) !== null
+        ? (string)$v['proxima_cobranca_em']
+        : assinaturaServicoPreapprovalInicioTeste((string)$assinatura['teste_expira_em'])
+            ->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s');
+
+    return [
+        'expira_em' => (string)$assinatura['teste_expira_em'],
+        'em_teste' => $emTeste,
+        'primeira_cobranca_prevista' => $prevista,
+        'situacao' => $situacao,
+        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && $situacao !== 'processando',
+        // Depois do teste, sem cartão capaz de cobrar, a primeira mensalidade segue pela regularização por PIX.
+        'pode_pagar_pix' => !$emTeste && !$viva,
+    ];
+}
+
 function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bool $habilitado, ?mysqli $db = null, int $empresa = 0): array
 {
     $primeira = $db === null ? null : pagamentoCartaoPrimeiraCobranca($db, $empresa, $assinatura, $vinculo);
+    $testeGratis = $db === null ? null : pagamentoCartaoTesteGratis($db, $empresa, $assinatura, $vinculo);
+    // Teste grátis: só autoriza enquanto o teste dura (com margem para o checkout); o servidor recusaria depois.
+    $testeAutorizavel = $assinatura === null || (string)$assinatura['modalidade'] !== 'teste'
+        || ((string)$assinatura['status'] === 'ativa' && (int)($assinatura['teste_autorizavel'] ?? 0) === 1);
     $atual = $vinculo !== null && $assinatura !== null && (int)$vinculo['id_assinatura'] === (int)$assinatura['id_assinatura'];
     $v = $atual ? $vinculo : null;
     $status = $v['status'] ?? 'nao_configurado';
@@ -648,12 +705,13 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         'final_cartao' => $configurado ? ($v['final_cartao'] ?? null) : null,
         'pode_configurar' => $habilitado && $assinatura !== null
             && ($assinatura['status'] === 'ativa' || ($primeira !== null && $primeira['situacao'] !== 'pagamento_confirmado' && !$primeira['pix_em_andamento']))
-            && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $retomavel),
+            && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $retomavel) && $testeAutorizavel,
         'pode_verificar' => $habilitado && $criada,
         'status' => $status, 'status_externo' => $v['status_externo'] ?? null,
         'valor_referencia' => $assinatura['valor_contratado'] ?? null,
         'cobrar_a_partir_de' => $v['cobrar_a_partir_de'] ?? null,
         'primeira_cobranca' => $primeira,
+        'teste_gratis' => $testeGratis,
     ];
 }
 
@@ -739,8 +797,8 @@ function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $e
     if ($r['resultado'] !== 'processado') {
         pagamentoOnlineFalhar('AUTORIZACAO_VERIFICACAO_PENDENTE', 'Não foi possível confirmar a autorização. Atualize a situação novamente mais tarde.', 503);
     }
-    if (assinaturaServicoPreapprovalContratacaoPendente($contratoAtual)) {
-        // Primeira mensalidade: além da autorização, busca a fatura da Preapproval no provedor (webhook atrasado ou
+    if (assinaturaServicoPreapprovalContratacaoPendente($contratoAtual) || assinaturaServicoPreapprovalTesteApto($contratoAtual)) {
+        // Primeira mensalidade (contratação nova ou fim do teste grátis): além da autorização, busca a fatura da Preapproval no provedor (webhook atrasado ou
         // perdido). O pagamento só é registrado pela fatura e pelo pagamento autoritativos, nunca pelo retorno.
         try {
             mpSubConciliarVinculo($db, $gateway, (int)$v['id_assinatura_pagamento'], $empresa);
@@ -1247,7 +1305,9 @@ try {
                 'user_msg'=>$dados['init_point'] !== null
                     ? (($dados['primeira_cobranca'] ?? null) !== null
                         ? 'Você será levado ao Mercado Pago para autorizar o cartão. A primeira mensalidade é cobrada após a autorização.'
-                        : 'Você será levado ao Mercado Pago para autorizar o cartão. Nenhuma cobrança será feita agora.')
+                        : (($dados['teste_gratis'] ?? null) !== null
+                            ? 'Você será levado ao Mercado Pago para autorizar o cartão. Nada é cobrado agora: a primeira mensalidade fica programada para o fim do teste grátis.'
+                            : 'Você será levado ao Mercado Pago para autorizar o cartão. Nenhuma cobrança será feita agora.'))
                     : 'A autorização recorrente já existe. Atualize a situação para conferir.',
                 'data'=>$dados]);
         }
@@ -1295,7 +1355,8 @@ try {
             }
         }
         $dados = pagamentoCartaoConfiguracao($conexao, $gatewayCartao, $empresa);
-        $liberado = ($dados['primeira_cobranca']['pode_pagar_pix'] ?? false) === true;
+        $liberado = ($dados['primeira_cobranca']['pode_pagar_pix'] ?? false) === true
+            || ($dados['teste_gratis']['pode_pagar_pix'] ?? false) === true;
         out(['ok'=>true,'code'=>$liberado ? 'PIX_LIBERADO' : 'CANCELAMENTO_CARTAO_SOLICITADO',
             'user_msg'=>$liberado ? 'Pagamento no cartão cancelado. Você já pode pagar com PIX.' : (string)$r['mensagem'],
             'data'=>$dados]);
