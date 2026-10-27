@@ -4036,33 +4036,21 @@ function assinaturaServicoPreapprovalCamposVinculo(array $dados, DateTimeImmutab
     ];
 }
 
-/** Link de autorização para o pagador; só HTTPS em domínio Mercado Pago. */
-function assinaturaServicoPreapprovalInitPoint(array $dados): ?string
+/**
+ * Link de autorização para o pagador; só HTTPS no checkout de assinaturas do Mercado Pago e para a MESMA Preapproval.
+ * `activation` (parâmetro opaco que o provedor acrescenta ao link) só é aceito quando o link veio da consulta
+ * autoritativa (GET por id) da Preapproval vinculada; o valor é preservado como veio, nunca interpretado.
+ */
+function assinaturaServicoPreapprovalInitPoint(array $dados, bool $permitirActivation = false): ?string
 {
-    $url = $dados['init_point'] ?? null;
-    if (!is_string($url) || strlen($url) > 1000 || preg_match('/[\x00-\x20\x7F\\\\]/', $url)
-        || filter_var($url, FILTER_VALIDATE_URL) === false) {
-        return null;
-    }
-    $partes = parse_url($url);
-    $host = is_array($partes) ? strtolower((string)($partes['host'] ?? '')) : '';
-
-    return is_array($partes) && ($partes['scheme'] ?? '') === 'https'
-        && !isset($partes['user']) && !isset($partes['pass']) && !isset($partes['fragment'])
-        && (!isset($partes['port']) || $partes['port'] === 443)
-        && in_array($host, ['www.mercadopago.com.br', 'mercadopago.com.br'], true)
-        && ($partes['path'] ?? '') === '/subscriptions/checkout'
-        && preg_match('/^preapproval_id=([A-Za-z0-9_-]{1,150})$/D', $partes['query'] ?? '', $id) === 1
-        && (!isset($dados['id']) || (string)$dados['id'] === $id[1])
-        ? $url
-        : null;
+    return assinaturaServicoPreapprovalInitPointMotivo($dados, $permitirActivation) === 'valido' ? (string)$dados['init_point'] : null;
 }
 
 /**
- * Motivo (sem valores) pelo qual o init_point foi recusado: só estrutura — host, caminho e NOMES dos parâmetros.
- * Nunca registra a URL, o id da Preapproval, e-mail ou credenciais.
+ * Conferência do init_point: 'valido' ou o motivo da recusa (sem valores) — só estrutura: host, caminho e NOMES dos
+ * parâmetros. Nunca devolve a URL, o id da Preapproval, o valor de `activation`, e-mail ou credenciais.
  */
-function assinaturaServicoPreapprovalInitPointMotivo(array $dados): string
+function assinaturaServicoPreapprovalInitPointMotivo(array $dados, bool $permitirActivation = false): string
 {
     $url = $dados['init_point'] ?? null;
     if (!array_key_exists('init_point', $dados) || $url === null || $url === '') {
@@ -4089,12 +4077,36 @@ function assinaturaServicoPreapprovalInitPointMotivo(array $dados): string
     if (($partes['path'] ?? '') !== '/subscriptions/checkout') {
         return 'caminho=' . $limpo($partes['path'] ?? '');
     }
-    parse_str($partes['query'] ?? '', $consulta);
-    if (preg_match('/^preapproval_id=([A-Za-z0-9_-]{1,150})$/D', $partes['query'] ?? '', $id) !== 1) {
-        return 'parametros=' . $limpo(implode(',', array_keys($consulta)));
+
+    // Query lida literalmente (sem decodificar): pares nome=valor, cada nome no máximo uma vez.
+    $parametros = [];
+    foreach (explode('&', (string)($partes['query'] ?? '')) as $par) {
+        if (preg_match('/^([a-z_]{1,40})=([^=&]*)$/D', $par, $m) !== 1) {
+            return 'parametros_malformados';
+        }
+        if (array_key_exists($m[1], $parametros)) {
+            return 'parametro_duplicado=' . $m[1];
+        }
+        $parametros[$m[1]] = $m[2];
     }
-    if (isset($dados['id']) && (string)$dados['id'] !== $id[1]) {
+    $nomes = array_keys($parametros);
+    $permitidos = $permitirActivation ? ['preapproval_id', 'activation'] : ['preapproval_id'];
+    if (!isset($parametros['preapproval_id']) || array_diff($nomes, $permitidos) !== []) {
+        return (!$permitirActivation && isset($parametros['activation']) ? 'activation_fora_da_consulta;' : '')
+            . 'parametros=' . $limpo(implode(',', $nomes));
+    }
+    if (preg_match('/^[A-Za-z0-9_-]{1,150}$/D', $parametros['preapproval_id']) !== 1) {
+        return 'preapproval_id_invalido';
+    }
+    // O link precisa ser da Preapproval conferida: o id é obrigatório e idêntico.
+    if (!isset($dados['id']) || (string)$dados['id'] !== $parametros['preapproval_id']) {
         return 'id_divergente';
+    }
+    // activation: opaco; só caracteres de URL não reservados e escapes %XX bem formados (rejeita adulteração óbvia).
+    if (isset($parametros['activation'])
+        && (preg_match('/^[A-Za-z0-9._~%-]{1,512}$/D', $parametros['activation']) !== 1
+            || preg_match('/%(?![0-9A-Fa-f]{2})/', $parametros['activation']) === 1)) {
+        return 'activation_invalido';
     }
 
     return 'valido';
@@ -4104,13 +4116,13 @@ function assinaturaServicoPreapprovalInitPointMotivo(array $dados): string
  * Link de autorização de uma Preapproval pendente já conferida. Recusa registra só o motivo estrutural, para
  * diagnóstico; a recusa nunca cria outra Preapproval nem altera o vínculo.
  */
-function assinaturaServicoPreapprovalLinkAutorizacao(array $dados, int $idAssinaturaPagamento): ?string
+function assinaturaServicoPreapprovalLinkAutorizacao(array $dados, int $idAssinaturaPagamento, bool $consultaAutoritativa = false): ?string
 {
-    $url = assinaturaServicoPreapprovalInitPoint($dados);
+    $url = assinaturaServicoPreapprovalInitPoint($dados, $consultaAutoritativa);
     if ($url === null) {
         error_log('[assinatura_preapproval] init_point_recusado vinculo=' . $idAssinaturaPagamento
             . ' status=' . substr((string)preg_replace('/[^a-z_]/', '', (string)($dados['status'] ?? '')), 0, 20)
-            . ' motivo=' . assinaturaServicoPreapprovalInitPointMotivo($dados));
+            . ' motivo=' . assinaturaServicoPreapprovalInitPointMotivo($dados, $consultaAutoritativa));
     }
 
     return $url;
@@ -4152,7 +4164,7 @@ function assinaturaServicoPreapprovalAutorizacaoExistente(object $gateway, array
     }
     return assinaturaServicoNovaContratacaoResultado(true, 'JA_VINCULADA', 'Assinatura recorrente existente consultada.', $base + [
         'status_externo' => $d['status'],
-        'init_point' => $d['status'] === 'pending' ? assinaturaServicoPreapprovalLinkAutorizacao($d, (int)$v['id_assinatura_pagamento']) : null,
+        'init_point' => $d['status'] === 'pending' ? assinaturaServicoPreapprovalLinkAutorizacao($d, (int)$v['id_assinatura_pagamento'], true) : null,
     ]);
 }
 
@@ -4694,7 +4706,8 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
         'estado' => 'vinculada',
         'status_externo' => (string)$dados['status'],
         'init_point' => (string)$dados['status'] === 'pending'
-            ? assinaturaServicoPreapprovalLinkAutorizacao($dados, (int)$vinculo['id_assinatura_pagamento']) : null,
+            // Só a consulta por id (conciliação) é autoritativa; a resposta da criação não aceita parâmetros extras.
+            ? assinaturaServicoPreapprovalLinkAutorizacao($dados, (int)$vinculo['id_assinatura_pagamento'], $idEsperado !== null) : null,
     ]);
 }
 

@@ -581,6 +581,12 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
 function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $empresa, string $email): array
 {
     $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+    if (($r['ok'] ?? false) === true && ($r['codigo'] ?? '') === 'PREAPPROVAL_VINCULADA'
+        && ($r['status_externo'] ?? '') === 'pending' && ($r['init_point'] ?? null) === null) {
+        // Recém-criada, mas o link da resposta da criação não passou: a retomada idempotente (JA_VINCULADA) só
+        // consulta a mesma Preapproval por id — nunca há novo POST.
+        $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+    }
     if (($r['ok'] ?? false) !== true) {
         pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
     }
@@ -592,10 +598,12 @@ function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $emp
 
         return $dados;
     }
-    $dados = pagamentoCartaoDadosPreapproval(pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()), pagamentoCartaoAssinaturaAtiva($db, $empresa), $gateway::subscriptionsHabilitado());
-    // Só o link retornado pelo serviço e validado novamente pode sair ao navegador.
-    $dados['init_point'] = ($r['status_externo'] ?? '') === 'pending'
-        ? assinaturaServicoPreapprovalInitPoint(['init_point' => $r['init_point'] ?? null]) : null;
+    $vinculoAtual = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
+    $dados = pagamentoCartaoDadosPreapproval($vinculoAtual, pagamentoCartaoAssinaturaAtiva($db, $empresa), $gateway::subscriptionsHabilitado());
+    // Só o link retornado pelo serviço (que já aplicou a regra de origem do `activation`) e validado novamente,
+    // contra a Preapproval vinculada a esta empresa, pode sair ao navegador.
+    $dados['init_point'] = ($r['status_externo'] ?? '') === 'pending' && $vinculoAtual !== null && $vinculoAtual['assinatura_externa_id'] !== null
+        ? assinaturaServicoPreapprovalInitPoint(['init_point' => $r['init_point'] ?? null, 'id' => (string)$vinculoAtual['assinatura_externa_id']], true) : null;
     if (($r['status_externo'] ?? '') === 'pending' && $dados['init_point'] === null) {
         pagamentoOnlineFalhar('AUTORIZACAO_LINK_INDISPONIVEL', 'O link de autorização está indisponível. Atualize a situação antes de continuar.', 503);
     }

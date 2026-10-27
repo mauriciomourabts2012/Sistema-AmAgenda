@@ -10,12 +10,23 @@
   const estado = { idCobranca: 0, idTransacao: 0, valor: 0, codigo: "" };
   const cartao = { configuracao: null, carregando: false, controller: null, redirecionando: false, retornoProcessado: false, retornoEmCurso: false };
   // Destino do redirecionamento de autorização: somente o checkout de assinaturas do Mercado Pago (o servidor valida antes).
+  // Query lida literalmente: preapproval_id obrigatório e activation opcional (opaco), cada um uma única vez.
   const initPointValido = url => {
     try {
-      const u = new URL(String(url || ""));
-      return u.protocol === "https:" && ["www.mercadopago.com.br", "mercadopago.com.br"].includes(u.hostname)
-        && u.pathname === "/subscriptions/checkout" && /^\?preapproval_id=[A-Za-z0-9_-]{1,150}$/.test(u.search)
-        && !u.username && !u.password && !u.hash && (u.port === "" || u.port === "443");
+      const texto = String(url || "");
+      const u = new URL(texto);
+      if (u.protocol !== "https:" || !["www.mercadopago.com.br", "mercadopago.com.br"].includes(u.hostname)
+        // href idêntico ao recebido: recusa qualquer link que o navegador reescreveria (codificação, maiúsculas, "#" vazio).
+        || u.href !== texto || u.pathname !== "/subscriptions/checkout" || u.username || u.password || u.hash || texto.includes("#")
+        || !(u.port === "" || u.port === "443") || !u.search) return false;
+      const vistos = {};
+      for (const par of u.search.slice(1).split("&")) {
+        const m = /^(preapproval_id|activation)=([^=&]*)$/.exec(par);
+        if (!m || vistos[m[1]] !== undefined) return false;
+        vistos[m[1]] = m[2];
+      }
+      return /^[A-Za-z0-9_-]{1,150}$/.test(vistos.preapproval_id || "")
+        && (vistos.activation === undefined || (/^[A-Za-z0-9._~%-]{1,512}$/.test(vistos.activation) && !/%(?![0-9A-Fa-f]{2})/.test(vistos.activation)));
     } catch (erro) { return false; }
   };
   const moeda = valor => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
