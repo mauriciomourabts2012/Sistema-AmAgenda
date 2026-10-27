@@ -6461,3 +6461,301 @@ function assinaturaServicoPreapprovalTrocarCartao(object $gateway, string $preap
         ? $resultado('recusada', 'CARTAO_RECUSADO', $extra)
         : $resultado('sem_alteracao', ($envio['sucesso'] ?? false) === true ? 'CARTAO_NAO_ALTERADO' : 'TROCA_NAO_APLICADA', $extra);
 }
+
+/*
+ * ---------------------------------------------------------------------
+ * Diagnóstico somente leitura da Preapproval de uma empresa (CLI de conciliação, --modo=preapproval).
+ *
+ * Lê o vínculo, o contrato, os proprietários e as transações locais e consulta no provedor apenas
+ * GET /preapproval/{id} e GET /authorized_payments/search. Nada é gravado, nenhuma rotina de
+ * processamento é chamada e nenhum POST/PUT/DELETE é feito. A saída contém somente identificadores
+ * técnicos, estados, datas e valores: nunca e-mail, payer_id, init_point, token ou dado de cartão.
+ * O e-mail do pagador só é comparado, e o resultado é um código.
+ * ---------------------------------------------------------------------
+ */
+
+/**
+ * Correspondência do pagador com o responsável pela contratação, sem expor endereços.
+ * Responsável inequívoco: o único usuário auditado em `assinatura.criada` do contrato que ainda é proprietário
+ * ativo ou, sem auditoria de contratação, o único proprietário ativo. Nos demais casos não há afirmação.
+ *
+ * @param array<int, string> $proprietarios id_usuario => e-mail dos proprietários ativos
+ * @param list<int> $contratantes id_usuario auditados na criação do contrato
+ * @return array{confere: string, base: string, pagador_entre_proprietarios: string}
+ *         confere: sim | nao | indeterminado | indisponivel
+ */
+function assinaturaServicoPreapprovalDiagnosticoPagador(mixed $emailPagador, array $proprietarios, array $contratantes): array
+{
+    $normalizar = static fn(mixed $email): ?string => is_string($email) && trim($email) !== ''
+        ? mb_strtolower(trim($email), 'UTF-8') : null;
+    $pagador = $normalizar($emailPagador);
+    $contratantes = array_values(array_unique(array_map('intval', $contratantes)));
+    $responsavel = null;
+    if (count($contratantes) === 1 && array_key_exists($contratantes[0], $proprietarios)) {
+        $responsavel = $contratantes[0];
+        $base = 'contratante_auditado';
+    } elseif ($contratantes === [] && count($proprietarios) === 1) {
+        $responsavel = (int)array_key_first($proprietarios);
+        $base = 'proprietario_unico';
+    } elseif ($proprietarios === []) {
+        $base = 'sem_proprietario_ativo';
+    } elseif (count($contratantes) === 1) {
+        $base = 'contratante_nao_e_proprietario_ativo';
+    } else {
+        $base = count($contratantes) > 1 ? 'multiplos_contratantes' : 'multiplos_proprietarios';
+    }
+    if ($pagador === null) {
+        return ['confere' => 'indisponivel', 'base' => $base, 'pagador_entre_proprietarios' => 'indisponivel'];
+    }
+
+    $entre = 'nao';
+    foreach ($proprietarios as $email) {
+        if ($normalizar($email) === $pagador) {
+            $entre = 'sim';
+            break;
+        }
+    }
+    $confere = $responsavel === null ? 'indeterminado' : ($normalizar($proprietarios[$responsavel]) === $pagador ? 'sim' : 'nao');
+
+    return ['confere' => $confere, 'base' => $base, 'pagador_entre_proprietarios' => $entre];
+}
+
+/** Identificador externo seguro para exibição (ou null). */
+function assinaturaServicoPreapprovalDiagnosticoId(mixed $valor): ?string
+{
+    if (!is_string($valor) && !is_int($valor)) {
+        return null;
+    }
+    $texto = (string)$valor;
+
+    return preg_match('/^[A-Za-z0-9_.-]{1,150}$/D', $texto) === 1 ? $texto : null;
+}
+
+/** Código técnico curto do provedor (status, status_detail), sem texto livre. */
+function assinaturaServicoPreapprovalDiagnosticoCodigo(mixed $valor): ?string
+{
+    return is_string($valor) && preg_match('/^[A-Za-z0-9 _.-]{1,60}$/D', $valor) === 1 ? str_replace(' ', '_', $valor) : null;
+}
+
+/** Data do provedor no fuso do negócio (ou null). */
+function assinaturaServicoPreapprovalDiagnosticoData(mixed $valor): ?string
+{
+    $data = assinaturaServicoPreapprovalDataExterna($valor);
+
+    return $data?->setTimezone(new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO))->format('Y-m-d\TH:i:sP');
+}
+
+function assinaturaServicoPreapprovalDiagnosticoCentavos(mixed $valor): ?int
+{
+    return is_int($valor) || is_float($valor) || (is_string($valor) && is_numeric($valor)) ? (int)round(((float)$valor) * 100) : null;
+}
+
+/**
+ * Campos técnicos da Preapproval. Lista fechada: e-mail, payer_id, init_point, card_id e meio de pagamento
+ * nunca entram.
+ *
+ * @param array<string, mixed> $dados resposta de GET /preapproval/{id}
+ * @return array<string, mixed>
+ */
+function assinaturaServicoPreapprovalDiagnosticoResumo(array $dados): array
+{
+    $recorrencia = is_array($dados['auto_recurring'] ?? null) ? $dados['auto_recurring'] : [];
+
+    return [
+        'preapproval_id' => assinaturaServicoPreapprovalDiagnosticoId($dados['id'] ?? null),
+        'status' => assinaturaServicoPreapprovalDiagnosticoCodigo($dados['status'] ?? null),
+        'live_mode' => is_bool($dados['live_mode'] ?? null) ? ($dados['live_mode'] ? 'sim' : 'nao') : null,
+        'criada_em' => assinaturaServicoPreapprovalDiagnosticoData($dados['date_created'] ?? null),
+        'alterada_em' => assinaturaServicoPreapprovalDiagnosticoData($dados['last_modified'] ?? null),
+        'proxima_cobranca' => assinaturaServicoPreapprovalDiagnosticoData($dados['next_payment_date'] ?? null),
+        'start_date_presente' => ($recorrencia['start_date'] ?? null) !== null ? 'sim' : 'nao',
+        'start_date' => assinaturaServicoPreapprovalDiagnosticoData($recorrencia['start_date'] ?? null),
+        'end_date' => assinaturaServicoPreapprovalDiagnosticoData($recorrencia['end_date'] ?? null),
+        'valor_centavos' => assinaturaServicoPreapprovalDiagnosticoCentavos($recorrencia['transaction_amount'] ?? null),
+        'moeda' => assinaturaServicoPreapprovalDiagnosticoCodigo($recorrencia['currency_id'] ?? null),
+        'frequencia' => is_int($recorrencia['frequency'] ?? null) ? $recorrencia['frequency'] : null,
+        'tipo_frequencia' => assinaturaServicoPreapprovalDiagnosticoCodigo($recorrencia['frequency_type'] ?? null),
+    ];
+}
+
+/**
+ * Campos técnicos de uma fatura autorizada (authorized_payment) e do pagamento resultante.
+ *
+ * @param array<string, mixed> $item resultado de GET /authorized_payments/search
+ * @return array<string, mixed>
+ */
+function assinaturaServicoPreapprovalDiagnosticoFatura(array $item): array
+{
+    $pagamento = is_array($item['payment'] ?? null) ? $item['payment'] : [];
+
+    return [
+        'fatura_id' => assinaturaServicoPreapprovalDiagnosticoId($item['id'] ?? null),
+        'status' => assinaturaServicoPreapprovalDiagnosticoCodigo($item['status'] ?? null),
+        'criada_em' => assinaturaServicoPreapprovalDiagnosticoData($item['date_created'] ?? null),
+        'debito_em' => assinaturaServicoPreapprovalDiagnosticoData($item['debit_date'] ?? null),
+        'tentativa' => is_int($item['retry_attempt'] ?? null) ? $item['retry_attempt'] : null,
+        'valor_centavos' => assinaturaServicoPreapprovalDiagnosticoCentavos($item['transaction_amount'] ?? null),
+        'motivo_rejeicao' => assinaturaServicoPreapprovalDiagnosticoCodigo($item['rejection_code'] ?? null),
+        'pagamento_id' => assinaturaServicoPreapprovalDiagnosticoId($pagamento['id'] ?? null),
+        'pagamento_status' => assinaturaServicoPreapprovalDiagnosticoCodigo($pagamento['status'] ?? null),
+        'pagamento_detalhe' => assinaturaServicoPreapprovalDiagnosticoCodigo($pagamento['status_detail'] ?? null),
+    ];
+}
+
+/**
+ * Proprietários ativos da empresa (id_usuario => e-mail), pelo mesmo vínculo exigido em permissoesContexto().
+ *
+ * @return array<int, string>
+ */
+function assinaturaServicoPreapprovalDiagnosticoProprietarios(mysqli $conexao, int $idEmpresa): array
+{
+    $proprietarios = [];
+    foreach (assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT eu.id_usuario, u.email, pf.nome AS perfil
+           FROM empresa_usuario eu
+          INNER JOIN usuario u ON u.id_usuario = eu.id_usuario AND u.status = 'ativo'
+          INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil AND pf.status = 'ativo'
+          WHERE eu.id_empresa = ? AND eu.status = 'ativo' AND eu.bloqueado_plano = 0",
+        'i',
+        $idEmpresa
+    ) as $linha) {
+        if (in_array(mb_strtolower(trim((string)$linha['perfil']), 'UTF-8'), ['proprietario', 'proprietário'], true)) {
+            $proprietarios[(int)$linha['id_usuario']] = (string)$linha['email'];
+        }
+    }
+
+    return $proprietarios;
+}
+
+/**
+ * Diagnóstico da Preapproval vinculada à empresa no ambiente do gateway. Somente leitura (banco e provedor);
+ * o vínculo é escolhido como no painel (slot ativo primeiro, depois o mais recente).
+ *
+ * @param object $gateway MercadoPagoGateway (ou equivalente com a mesma interface, em testes)
+ * @return array<string, mixed> resultado: ok | sem_vinculo | sem_preapproval | consulta_indisponivel
+ */
+function assinaturaServicoPreapprovalDiagnostico(mysqli $conexao, object $gateway, int $idEmpresa): array
+{
+    $ambiente = $gateway->ambiente();
+    $resultado = ['ambiente' => $ambiente, 'id_empresa' => $idEmpresa];
+    $vinculo = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_assinatura_pagamento, id_assinatura, status, status_externo, assinatura_externa_id, referencia_externa_assinatura,
+                proxima_cobranca_em, ultima_sincronizacao_em, ultimo_erro_codigo, slot_ativo
+           FROM assinatura_pagamento_recorrente
+          WHERE id_empresa = ? AND provedor = ? AND ambiente = ? AND motor_recorrencia = 'preapproval'
+          ORDER BY (slot_ativo = 1) DESC, id_assinatura_pagamento DESC
+          LIMIT 1",
+        'iss',
+        $idEmpresa,
+        ASSINATURA_SERVICO_PREAPPROVAL_PROVEDOR,
+        $ambiente
+    )[0] ?? null;
+    if ($vinculo === null) {
+        return $resultado + ['resultado' => 'sem_vinculo'];
+    }
+    $idAssinatura = (int)$vinculo['id_assinatura'];
+    $idVinculo = (int)$vinculo['id_assinatura_pagamento'];
+    $contrato = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        'SELECT status, modalidade, motivo_suspensao, valor_contratado, periodicidade FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? LIMIT 1',
+        'ii',
+        $idAssinatura,
+        $idEmpresa
+    )[0] ?? null;
+    $resultado['vinculo'] = [
+        'id_assinatura_pagamento' => $idVinculo,
+        'id_assinatura' => $idAssinatura,
+        'status' => $vinculo['status'],
+        'status_externo' => $vinculo['status_externo'],
+        'preapproval_id' => $vinculo['assinatura_externa_id'],
+        'proxima_cobranca' => $vinculo['proxima_cobranca_em'],
+        'ultima_sincronizacao' => $vinculo['ultima_sincronizacao_em'],
+        'ultimo_erro' => $vinculo['ultimo_erro_codigo'],
+        'slot_ativo' => (int)($vinculo['slot_ativo'] ?? 0) === 1 ? 'sim' : 'nao',
+    ];
+    $resultado['contrato'] = $contrato === null ? null : [
+        'status' => $contrato['status'],
+        'modalidade' => $contrato['modalidade'],
+        'motivo_suspensao' => $contrato['motivo_suspensao'],
+        'valor_centavos' => pagamentoGatewayValorCentavos((string)$contrato['valor_contratado']),
+        'periodicidade' => $contrato['periodicidade'],
+    ];
+    $resultado['transacoes'] = array_map(static fn(array $t): array => [
+        'id_transacao' => (int)$t['id_transacao'],
+        'status' => $t['status'],
+        'fatura_id' => $t['fatura_externa_id'],
+        'pagamento_id' => $t['pagamento_externo_id'],
+        'status_externo' => $t['status_externo'],
+        'detalhe' => $t['detalhe_status_externo'],
+        'requer_conciliacao' => (int)$t['requer_conciliacao'] === 1 ? 'sim' : 'nao',
+    ], assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_transacao, status, fatura_externa_id, pagamento_externo_id, status_externo, detalhe_status_externo, requer_conciliacao
+           FROM transacao_pagamento
+          WHERE id_empresa = ? AND id_assinatura_pagamento = ? AND tipo_operacao = 'assinatura_preapproval'
+          ORDER BY id_transacao DESC
+          LIMIT 20",
+        'ii',
+        $idEmpresa,
+        $idVinculo
+    ));
+
+    if ($vinculo['assinatura_externa_id'] === null) {
+        return $resultado + ['resultado' => 'sem_preapproval'];
+    }
+    $preapprovalId = (string)$vinculo['assinatura_externa_id'];
+    $consulta = $gateway->consultarPreapproval($preapprovalId);
+    $dados = $consulta['dados'] ?? null;
+    if (($consulta['sucesso'] ?? false) !== true || !is_array($dados)) {
+        return $resultado + ['resultado' => 'consulta_indisponivel',
+            'codigo' => assinaturaServicoPreapprovalDiagnosticoCodigo($consulta['codigo'] ?? null)];
+    }
+    if (($dados['status'] ?? null) === 'cancelled') {
+        $dados['status'] = 'canceled';
+    }
+    $frequencia = $contrato === null ? null : assinaturaServicoPreapprovalFrequenciaMeses((string)$contrato['periodicidade']);
+    $resultado['preapproval'] = assinaturaServicoPreapprovalDiagnosticoResumo($dados) + [
+        'referencia_confere' => ($dados['external_reference'] ?? null) === $vinculo['referencia_externa_assinatura'] ? 'sim' : 'nao',
+        'conferencia_contrato' => $contrato === null || $frequencia === null ? 'CONTRATO_LOCAL_INDISPONIVEL'
+            : (assinaturaServicoPreapprovalValidarExterna($dados, [
+                'id' => $preapprovalId,
+                'referencia' => (string)$vinculo['referencia_externa_assinatura'],
+                'ambiente' => $ambiente,
+                'valor_centavos' => pagamentoGatewayValorCentavos((string)$contrato['valor_contratado']),
+                'frequencia_meses' => $frequencia,
+                'status_permitidos' => ['pending', 'authorized', 'paused', 'canceled'],
+            ]) ?? 'OK'),
+    ];
+
+    $contratantes = array_map(static fn(array $l): int => (int)$l['id_ator'], assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT DISTINCT id_ator FROM auditoria
+          WHERE id_empresa = ? AND evento_codigo = 'assinatura.criada' AND entidade_id = ?
+            AND ator_tipo = 'usuario' AND origem = 'empresa' AND id_ator IS NOT NULL",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    ));
+    $resultado['pagador'] = assinaturaServicoPreapprovalDiagnosticoPagador(
+        $dados['payer_email'] ?? null,
+        assinaturaServicoPreapprovalDiagnosticoProprietarios($conexao, $idEmpresa),
+        $contratantes
+    );
+
+    $resultado['faturas'] = [];
+    $busca = $gateway->buscarFaturasAutorizadas(['preapproval_id' => $preapprovalId, 'limit' => ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE, 'offset' => 0]);
+    if (($busca['sucesso'] ?? false) === true && is_array($busca['dados']['results'] ?? null)) {
+        foreach ($busca['dados']['results'] as $item) {
+            if (is_array($item) && (string)($item['preapproval_id'] ?? '') === $preapprovalId) {
+                $resultado['faturas'][] = assinaturaServicoPreapprovalDiagnosticoFatura($item);
+            }
+        }
+        $resultado['faturas_consulta'] = 'ok';
+    } else {
+        $resultado['faturas_consulta'] = assinaturaServicoPreapprovalDiagnosticoCodigo($busca['codigo'] ?? null) ?? 'indisponivel';
+    }
+
+    return $resultado + ['resultado' => 'ok'];
+}

@@ -49,6 +49,14 @@ declare(strict_types=1);
 |     --modo=subscriptions --executar --reabrir-operacao=ID --confirmar-reabertura=ID
 |     --motivo=texto_sem_espacos [--causa-corrigida]
 |   (--causa-corrigida é obrigatório para PROVEDOR_REJEITOU e DESTINO_INCOMPATIVEL)
+|
+| MODO PREAPPROVAL (--modo=preapproval --empresa=ID): diagnóstico sempre somente
+|   leitura do vínculo recorrente da empresa. Banco: apenas SELECT. Provedor: apenas
+|   GET /preapproval/{id} e GET /authorized_payments/search. Mostra IDs técnicos,
+|   estados, datas, valores, presença de start_date, conferência com o contrato e
+|   se o e-mail do pagador confere com o responsável pela contratação (sim/nao/
+|   indeterminado), sem imprimir e-mails, payer_id, init_point, token ou cartão.
+|   Não usa lock, outbox nem sincronização; --executar é recusado.
 */
 
 if (PHP_SAPI !== 'cli') {
@@ -123,8 +131,19 @@ function conciliacaoMpOpcoes(array $argumentos): array
         $opcoes[$chave] = $valor;
     }
 
-    if (!in_array($opcoes['modo'], ['orders', 'subscriptions'], true)) {
+    if (!in_array($opcoes['modo'], ['orders', 'subscriptions', 'preapproval'], true)) {
         throw new InvalidArgumentException('Valor inválido para --modo.');
+    }
+    if ($opcoes['modo'] === 'preapproval') {
+        // Diagnóstico somente leitura: exige a empresa e recusa qualquer opção de execução ou seleção de Orders.
+        if ($opcoes['empresa'] === null || $opcoes['executar'] || $opcoes['causa-corrigida']
+            || $opcoes['transacao'] !== null || $opcoes['order'] !== null || $opcoes['confirmar'] !== null
+            || $opcoes['reabrir-operacao'] !== null || $opcoes['confirmar-reabertura'] !== null || $opcoes['motivo'] !== null) {
+            throw new InvalidArgumentException('O diagnóstico da Preapproval aceita somente --empresa=ID e é sempre somente leitura.');
+        }
+        $opcoes['individual'] = false;
+
+        return $opcoes;
     }
     if ($opcoes['modo'] === 'subscriptions') {
         if ($opcoes['transacao'] !== null || $opcoes['order'] !== null || $opcoes['confirmar'] !== null) {
@@ -352,6 +371,35 @@ try {
 
     $gateway = MercadoPagoGateway::daConfiguracao();
     $ambiente = $gateway->ambiente();
+
+    if ($opcoes['modo'] === 'preapproval') {
+        // Somente leitura: sem lock, sem outbox, sem sincronização; apenas SELECT e GET no provedor.
+        echo "Diagnóstico Preapproval Mercado Pago — somente leitura — ambiente {$ambiente} — empresa {$opcoes['empresa']}\n";
+        if (!MercadoPagoGateway::subscriptionsHabilitado()) {
+            echo "Subscriptions desabilitado na configuração. Nenhuma consulta ao provedor foi feita.\n";
+            exit(1);
+        }
+        $diagnostico = assinaturaServicoPreapprovalDiagnostico($conexao, $gateway, (int) $opcoes['empresa']);
+        conciliacaoMpLinha(['resultado' => $diagnostico['resultado'], 'ambiente' => $diagnostico['ambiente'], 'empresa' => $diagnostico['id_empresa']]
+            + (isset($diagnostico['codigo']) ? ['codigo' => $diagnostico['codigo'] ?? '-'] : []));
+        foreach (['vinculo', 'contrato', 'preapproval', 'pagador'] as $secao) {
+            if (is_array($diagnostico[$secao] ?? null)) {
+                echo ucfirst($secao), ":\n";
+                conciliacaoMpLinha(array_map(static fn ($v) => $v ?? '-', $diagnostico[$secao]));
+            }
+        }
+        foreach (['transacoes' => 'Transações locais', 'faturas' => 'Faturas no provedor'] as $secao => $titulo) {
+            if (!array_key_exists($secao, $diagnostico)) {
+                continue;
+            }
+            echo $titulo, ': ', count($diagnostico[$secao]),
+                $secao === 'faturas' ? ' (consulta ' . $diagnostico['faturas_consulta'] . ')' : '', "\n";
+            foreach ($diagnostico[$secao] as $linhaSecao) {
+                conciliacaoMpLinha(array_map(static fn ($v) => $v ?? '-', $linhaSecao));
+            }
+        }
+        exit($diagnostico['resultado'] === 'ok' && ($diagnostico['faturas_consulta'] ?? 'ok') === 'ok' ? 0 : 1);
+    }
 
     $nomeLock = $opcoes['modo'] === 'subscriptions' ? CONCILIACAO_MP_LOCK_SUBSCRIPTIONS : CONCILIACAO_MP_LOCK;
     $lock = mpWebhookConsulta($conexao, 'SELECT GET_LOCK(?, 0) AS obtido', 's', $nomeLock)->fetch_assoc();
