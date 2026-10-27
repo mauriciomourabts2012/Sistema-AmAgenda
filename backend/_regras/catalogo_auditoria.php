@@ -187,6 +187,12 @@ function auditoriaCatalogo(): array
         'assinatura.recorrencia_operacao_falhou' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Registrou falha ou incerteza em uma operação externa da assinatura recorrente.', [
             'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'id_operacao', 'tipo_operacao', 'status_desejado', 'situacao', 'codigo', 'depois',
         ]),
+        'assinatura.recorrencia_cartao_alterado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Alterou o cartão da assinatura recorrente, com confirmação do provedor.', [
+            'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'bandeira', 'final_cartao', 'status_externo', 'codigo', 'antes', 'depois',
+        ]),
+        'assinatura.recorrencia_cartao_troca_falhou' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Registrou recusa, incerteza ou divergência na troca do cartão da assinatura recorrente.', [
+            'id_empresa', 'id_assinatura', 'id_assinatura_pagamento', 'situacao', 'codigo', 'status_externo', 'antes', 'depois',
+        ]),
 
         'plano.criado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Criou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'agenda_online', 'gera_cobranca', 'disponivel_cadastro_publico', 'destaque', 'status', 'descricao', 'observacao', 'depois']),
         'plano.editado' => auditoriaDefinicaoEvento('planos', 'plano', 'alta', 'Alterou um plano.', ['nome', 'ref', 'preco_mensal', 'cobranca', 'limite_usuarios', 'limite_profissionais', 'limite_servicos', 'limite_agendamentos', 'agenda_online', 'gera_cobranca', 'disponivel_cadastro_publico', 'destaque', 'status', 'descricao', 'observacao']),

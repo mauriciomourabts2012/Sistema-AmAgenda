@@ -3,14 +3,11 @@
    ✅ Modal: #modalEditarUsuario
    ✅ Form:  #formEditarUsuario
    ✅ API:   POST /public/api/api_central.php?path=superadmin/usuario/editar
-   ✅ Compatível com o PHP atual:
-      - envia: id_usuario, id_empresa, nome, email, telefone, status
+   ✅ Compatível com edição multiempresa:
+      - envia dados globais e vínculos existentes em uma única transação
+      - permite adicionar um vínculo opcional ao salvar
       - envia senha/senha2 SOMENTE se preenchidas
-      - NÃO envia perfil
       - NÃO envia tipo_usuario
-   ✅ Compatível com o modal atual:
-      - #edit_u_perfil_super_admin = visual
-      - #edit_u_empresa_super_admin = usado para enviar id_empresa
    ✅ Toast: .ui-toast-stack + .ui-alert
    ✅ Campo erro: .modal-campo.erro + .msg-erro.ativo
    ✅ Envia via FormData / $_POST
@@ -53,10 +50,12 @@
   const elEmail = document.getElementById("edit_u_email");
   const elSenha = document.getElementById("edit_u_senha");
   const elSenha2 = document.getElementById("edit_u_senha2");
-  const elPerfilVisual = document.getElementById("edit_u_perfil_super_admin");
-  const elEmpresa = document.getElementById("edit_u_empresa_super_admin");
   const elTelefone = document.getElementById("edit_u_tel");
-  const elStatus = document.getElementById("edit_u_status");
+  const elVinculosLista = document.getElementById("edit_u_vinculos_lista");
+  const elVinculosTotal = document.getElementById("edit_u_vinculos_total");
+  const elNovaEmpresa = document.getElementById("edit_u_nova_empresa");
+
+  let vinculosAtuais = [];
 
   // ==========================================================
   // Indicador de segurança da senha (apenas apoio visual; o backend valida).
@@ -293,15 +292,11 @@
       nome: "edit_u_nome",
       email: "edit_u_email",
       telefone: "edit_u_tel",
-      status: "edit_u_status",
       senha: "edit_u_senha",
       senha2: "edit_u_senha2",
-      perfil: "edit_u_perfil_super_admin",
-      perfil_visual: "edit_u_perfil_super_admin",
-      empresa: "edit_u_empresa_super_admin",
-      empresa_id: "edit_u_empresa_super_admin",
-      id_empresa: "edit_u_empresa_super_admin",
-      vinculo: "edit_u_empresa_super_admin",
+      vinculos: "edit_u_vinculos_lista",
+      novo_vinculo: "edit_u_novo_vinculo",
+      id_empresa: "edit_u_novo_vinculo",
     };
 
     const realFieldId = alias[fieldId] || fieldId;
@@ -347,10 +342,8 @@
     elEmail,
     elSenha,
     elSenha2,
-    elPerfilVisual,
-    elEmpresa,
     elTelefone,
-    elStatus,
+    elNovaEmpresa,
   ].forEach(bindClearOnInput);
 
   // ==========================================================
@@ -421,23 +414,184 @@
     return found ? String(found.value) : "";
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // A marcação de desvinculação fica só no estado local; nada é gravado até Salvar.
+  function renderVinculos() {
+    if (!elVinculosLista) return;
+
+    elVinculosLista.innerHTML = vinculosAtuais.map((vinculo, indice) => {
+      const inativo = normalizar(vinculo.status) === "inativo";
+      const rotulo = vinculo.marcado ? "Desfazer" : (inativo ? "Reativar" : "Desvincular");
+      return `
+      <div class="usuario-edit-vinculo"
+        data-indice="${indice}"
+        data-marcado="${vinculo.marcado ? "1" : "0"}"
+        data-id-empresa-usuario="${escapeHtml(vinculo.id_empresa_usuario)}"
+        data-id-empresa="${escapeHtml(vinculo.empresa_id)}">
+        <div class="usuario-edit-vinculo-icone"><i class="fa-solid fa-building" aria-hidden="true"></i></div>
+        <div class="usuario-edit-vinculo-empresa">${escapeHtml(vinculo.empresa || "Empresa")}</div>
+        <span class="usuario-edit-vinculo-situacao">${inativo ? "Inativo" : ""}</span>
+        <button type="button" class="usuario-edit-vinculo-acao" data-acao-vinculo>${rotulo}</button>
+      </div>
+    `;
+    }).join("");
+
+    if (elVinculosTotal) {
+      const total = vinculosAtuais.length;
+      elVinculosTotal.textContent = `${total} ${total === 1 ? "empresa" : "empresas"}`;
+    }
+  }
+
+  if (elVinculosLista) {
+    elVinculosLista.addEventListener("click", (e) => {
+      const botao = e.target.closest("[data-acao-vinculo]");
+      const linha = botao?.closest(".usuario-edit-vinculo");
+      const vinculo = vinculosAtuais[Number(linha?.dataset.indice)];
+      if (!vinculo) return;
+
+      vinculo.marcado = !vinculo.marcado;
+      setFieldError("vinculos", "");
+      renderVinculos();
+    });
+  }
+
+  // Seletor pesquisável de empresa (mesmo padrão de popover usado em Cobranças e Assinaturas).
+  // A busca é feita no servidor, então empresas além das 100 primeiras continuam alcançáveis.
+  // As já vinculadas ao usuário (inclusive inativas) ficam fora: o vínculo existente é reativado pelo seu próprio botão.
+  const elSeletorEmpresa = document.getElementById("seletorNovaEmpresa");
+  const elEmpresaBotao = document.getElementById("btnEditUsuarioEmpresa");
+  const elEmpresaNome = document.getElementById("novaEmpresaNome");
+  const elEmpresaPopover = document.getElementById("popoverNovaEmpresa");
+  const elEmpresaPesquisa = document.getElementById("novaEmpresaPesquisa");
+  const elEmpresaOpcoes = document.getElementById("opcoesNovaEmpresa");
+  const ROTULO_EMPRESA = "Selecione uma empresa";
+  let empresasEncontradas = [];
+  let requisicaoEmpresas = 0;
+  let timerBuscaEmpresa = 0;
+
+  function renderizarOpcoesEmpresa(mensagem = "") {
+    if (!elEmpresaOpcoes) return;
+
+    const vinculadas = new Set(vinculosAtuais.map((vinculo) => String(vinculo.empresa_id || "")));
+    const selecionada = String(elNovaEmpresa?.value || "");
+    const itens = empresasEncontradas.filter((empresa) => !vinculadas.has(String(empresa.id_empresa)));
+
+    elEmpresaOpcoes.innerHTML = itens.length
+      ? itens.map((empresa) => `
+        <button type="button" class="agenda-menu-item" role="option"
+          aria-selected="${String(empresa.id_empresa) === selecionada}"
+          data-id="${escapeHtml(empresa.id_empresa)}" data-nome="${escapeHtml(empresa.nome)}">
+          <i class="fa-regular fa-building" aria-hidden="true"></i><span>${escapeHtml(empresa.nome)}</span>
+        </button>`).join("")
+      : `<div class="agenda-pesquisa-estado">${escapeHtml(mensagem || "Nenhuma empresa encontrada.")}</div>`;
+  }
+
+  async function buscarEmpresas(termo = "") {
+    const requisicao = ++requisicaoEmpresas;
+    renderizarOpcoesEmpresa("Carregando empresas...");
+
+    try {
+      const busca = termo ? `&busca=${encodeURIComponent(termo)}` : "";
+      const resposta = await fetch(`${API_BASE}?path=superadmin%2Fempresa%2Flistar&status=ativo&ordem=nome_asc&limit=100${busca}`, {
+        credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" },
+      });
+      const json = await resposta.json();
+      // Uma resposta antiga não pode sobrepor a busca mais recente.
+      if (requisicao !== requisicaoEmpresas) return;
+      if (!resposta.ok || json?.ok !== true) throw new Error("EMPRESAS_INVALIDAS");
+
+      empresasEncontradas = Array.isArray(json.data?.items) ? json.data.items : [];
+      renderizarOpcoesEmpresa();
+    } catch (erro) {
+      if (requisicao !== requisicaoEmpresas) return;
+      console.error("[EditarUsuario] Empresas:", erro);
+      empresasEncontradas = [];
+      renderizarOpcoesEmpresa("Não foi possível carregar as empresas.");
+    }
+  }
+
+  function fecharSeletorEmpresa() {
+    if (elEmpresaPopover) elEmpresaPopover.hidden = true;
+    elEmpresaBotao?.setAttribute("aria-expanded", "false");
+  }
+
+  function abrirSeletorEmpresa() {
+    if (!elEmpresaPopover || !elEmpresaBotao) return;
+    if (!elEmpresaPopover.hidden) {
+      fecharSeletorEmpresa();
+      return;
+    }
+
+    elEmpresaPopover.hidden = false;
+    elEmpresaBotao.setAttribute("aria-expanded", "true");
+    if (elEmpresaPesquisa) elEmpresaPesquisa.value = "";
+    buscarEmpresas("");
+    elEmpresaPesquisa?.focus();
+  }
+
+  function definirEmpresaSelecionada(id, nome) {
+    if (elNovaEmpresa) elNovaEmpresa.value = id;
+    if (elEmpresaNome) elEmpresaNome.textContent = id ? nome : ROTULO_EMPRESA;
+  }
+
+  function reiniciarSeletorEmpresa() {
+    definirEmpresaSelecionada("", "");
+    fecharSeletorEmpresa();
+    if (elEmpresaPesquisa) elEmpresaPesquisa.value = "";
+    empresasEncontradas = [];
+  }
+
+  elEmpresaBotao?.addEventListener("click", abrirSeletorEmpresa);
+  elEmpresaPesquisa?.addEventListener("input", () => {
+    clearTimeout(timerBuscaEmpresa);
+    timerBuscaEmpresa = setTimeout(() => buscarEmpresas(elEmpresaPesquisa.value.trim()), 250);
+  });
+  elEmpresaOpcoes?.addEventListener("click", (e) => {
+    const opcao = e.target.closest("button[data-id]");
+    if (!opcao) return;
+
+    // Seleção única; clicar de novo na empresa escolhida desfaz a seleção.
+    const jaSelecionada = String(elNovaEmpresa?.value || "") === opcao.dataset.id;
+    definirEmpresaSelecionada(jaSelecionada ? "" : opcao.dataset.id, opcao.dataset.nome || "");
+    setFieldError("novo_vinculo", "");
+    fecharSeletorEmpresa();
+  });
+  document.addEventListener("click", (e) => {
+    if (elSeletorEmpresa && !elSeletorEmpresa.contains(e.target)) fecharSeletorEmpresa();
+  });
+
   function coletarDados() {
+    // O servidor decide o status final (inativo/ativo) e preserva o perfil de cada vínculo.
+    const vinculos = vinculosAtuais.map((vinculo) => ({
+      id_empresa_usuario: normalizarTexto(vinculo.id_empresa_usuario),
+      id_empresa: normalizarTexto(vinculo.empresa_id),
+      acao: !vinculo.marcado
+        ? ""
+        : (normalizar(vinculo.status) === "inativo" ? "reativar" : "desvincular"),
+    }));
+
     return {
       id_usuario: normalizarTexto(elId?.value),
-      id_empresa: normalizarTexto(elEmpresa?.value),
       nome: normalizarTexto(elNome?.value),
       email: normalizarTexto(elEmail?.value).toLowerCase(),
       telefone: normalizarTexto(elTelefone?.value),
-      status: normalizarTexto(elStatus?.value).toLowerCase(),
       // Senhas exatamente como digitadas (sem trim), como o backend espera.
       senha: String(elSenha?.value ?? ""),
       senha2: String(elSenha2?.value ?? ""),
-      perfil_visual: normalizarTexto(elPerfilVisual?.value),
+      vinculos,
+      novo_vinculo: {
+        id_empresa: normalizarTexto(elNovaEmpresa?.value),
+      },
     };
   }
-
-  // ==========================================================
-  // Validação compatível com o PHP
   // ==========================================================
   function validate() {
     clearErrors();
@@ -480,12 +634,22 @@
       }
     }
 
-    const statusPermitidos = ["ativo", "inativo", "bloqueado"];
-    if (!dados.status) {
-      setFieldError("status", "Selecione o status.");
+    if (!dados.vinculos.length) {
+      setFieldError("vinculos", "O usuário deve possuir ao menos um vínculo empresarial.");
       ok = false;
-    } else if (!statusPermitidos.includes(dados.status)) {
-      setFieldError("status", "Status inválido.");
+    } else {
+      const vinculoInvalido = dados.vinculos.some((vinculo) =>
+        !/^\d+$/.test(vinculo.id_empresa_usuario)
+        || !/^\d+$/.test(vinculo.id_empresa)
+      );
+      if (vinculoInvalido) {
+        setFieldError("vinculos", "Revise os vínculos empresariais.");
+        ok = false;
+      }
+    }
+
+    if (dados.novo_vinculo.id_empresa && !/^\d+$/.test(dados.novo_vinculo.id_empresa)) {
+      setFieldError("novo_vinculo", "Os dados do novo vínculo são inválidos.");
       ok = false;
     }
 
@@ -514,13 +678,6 @@
         setFieldError("senha2", "As senhas informadas não coincidem.");
         ok = false;
       }
-    }
-
-    // id_empresa é opcional no PHP.
-    // Porém, se o campo estiver visível e preenchido, só aceitamos número.
-    if (dados.id_empresa && !/^\d+$/.test(dados.id_empresa)) {
-      setFieldError("id_empresa", "Empresa inválida.");
-      ok = false;
     }
 
     if (!ok) {
@@ -569,10 +726,11 @@
     if (elSenha) elSenha.value = "";
     if (elSenha2) elSenha2.value = "";
     reiniciarIndicadorSenha();
-    if (elPerfilVisual) elPerfilVisual.value = "";
-    if (elEmpresa) elEmpresa.value = "";
     if (elTelefone) elTelefone.value = "";
-    if (elStatus) elStatus.value = "";
+    vinculosAtuais = [];
+    if (elVinculosLista) elVinculosLista.innerHTML = "";
+    if (elVinculosTotal) elVinculosTotal.textContent = "0 empresas";
+    reiniciarSeletorEmpresa();
   }
 
   // ==========================================================
@@ -593,64 +751,27 @@
     const email = data.email ?? "";
     const telefone = data.telefone ?? "";
 
-    const status =
-      normalizarTexto(data.status ?? data.status_usuario ?? data.status_vinculo ?? "")
-        .toLowerCase();
-
-    const perfilValor =
-      data.perfil ??
-      data.tipo_usuario ??
-      data.tipo ??
-      "";
-
-    const empresaId =
-      data.id_empresa ??
-      data.empresa_id ??
-      data.idempresa ??
-      "";
-
-    const empresaNome =
-      data.nome_empresa ??
-      data.empresa ??
-      data.empresa_nome ??
-      "";
-
     if (elId) elId.value = id ? String(id) : "";
     if (elNome) elNome.value = nome ? String(nome) : "";
     if (elEmail) elEmail.value = email ? String(email) : "";
     if (elTelefone) elTelefone.value = telefone ? formatarTelefone(String(telefone)) : "";
-    if (elStatus) setSelectValue(elStatus, status || "ativo");
 
-    // Perfil é visual, não enviado
-    if (elPerfilVisual) {
-      let perfilSelectValue = "";
-
-      if (perfilValor !== "") {
-        perfilSelectValue =
-          findOptionValueByText(elPerfilVisual, perfilValor) || String(perfilValor);
-      }
-
-      setSelectValue(elPerfilVisual, perfilSelectValue);
-    }
-
-    // Empresa será enviada como id_empresa
-    if (elEmpresa) {
-      let empresaSelectValue = "";
-
-      if (empresaId !== "") {
-        empresaSelectValue = String(empresaId);
-      } else if (empresaNome !== "") {
-        empresaSelectValue = findOptionValueByText(elEmpresa, empresaNome);
-      }
-
-      setSelectValue(elEmpresa, empresaSelectValue);
-    }
+    vinculosAtuais = (Array.isArray(data.vinculos) ? data.vinculos : []).map((vinculo) => ({
+      id_empresa_usuario: String(vinculo.id_empresa_usuario || ""),
+      empresa_id: String(vinculo.empresa_id ?? vinculo.id_empresa ?? ""),
+      empresa: String(vinculo.empresa ?? vinculo.empresa_nome ?? "Empresa"),
+      perfil: String(vinculo.perfil ?? vinculo.perfil_nome ?? ""),
+      status: String(vinculo.status ?? vinculo.status_vinculo ?? "ativo"),
+    }));
+    renderVinculos();
+    reiniciarSeletorEmpresa();
 
     if (elSenha) elSenha.value = "";
     if (elSenha2) elSenha2.value = "";
     reiniciarIndicadorSenha();
 
     clearErrors();
+
   }
 
   function abrirModalComDados(data = {}) {
@@ -712,11 +833,10 @@
     fd.append("nome", dados.nome);
     fd.append("email", dados.email);
     fd.append("telefone", dados.telefone || "");
-    fd.append("status", dados.status);
+    fd.append("vinculos", JSON.stringify(dados.vinculos));
 
-    // IMPORTANTÍSSIMO: PHP espera id_empresa, não empresa_id
-    if (dados.id_empresa) {
-      fd.append("id_empresa", dados.id_empresa);
+    if (dados.novo_vinculo.id_empresa) {
+      fd.append("novo_vinculo", JSON.stringify(dados.novo_vinculo));
     }
 
     if (dados.senha || dados.senha2) {

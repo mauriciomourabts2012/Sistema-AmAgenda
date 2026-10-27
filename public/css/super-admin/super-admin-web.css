@@ -752,6 +752,254 @@
   height: 18px;
 }
 
+#usuarios .usuario-vinculos {
+  grid-column: 1 / -1;
+  display: grid;
+  padding-top: 12px;
+  border-top: 1px solid #e1eaf4;
+}
+
+#usuarios .usuario-vinculos-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #dce5ef;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #173b63;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+#usuarios .usuario-vinculos-toggle:hover {
+  border-color: #c8d8ea;
+  background: #f2f7ff;
+}
+
+#usuarios .usuario-vinculos-toggle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+#usuarios .usuario-vinculos-seta {
+  transition: transform .18s ease;
+}
+
+#usuarios .usuario-vinculos-toggle[aria-expanded="true"] .usuario-vinculos-seta {
+  transform: rotate(180deg);
+}
+
+#usuarios .usuario-vinculos-lista {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #dce5ef;
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  background: #fbfdff;
+}
+
+#usuarios .usuario-vinculos-lista[hidden] {
+  display: none;
+}
+
+#usuarios .usuario-vinculos-toggle[aria-expanded="true"] {
+  border-radius: 10px 10px 0 0;
+}
+
+#usuarios .usuario-vinculo {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e1eaf4;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+#usuarios .usuario-vinculo-icone {
+  color: #315279;
+  font-size: 15px;
+  text-align: center;
+}
+
+#usuarios .usuario-vinculo-dados {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+#usuarios .usuario-vinculo-dados strong {
+  overflow-wrap: anywhere;
+  color: #173b63;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+#usuarios .usuario-vinculo-dados span {
+  color: #526a84;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#modalEditarUsuario .modal-editar-usuario-multiempresa {
+  width: min(920px, calc(100vw - 32px));
+  max-width: 920px;
+}
+
+#modalEditarUsuario .usuario-edit-vinculos {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #dce5ef;
+}
+
+#modalEditarUsuario .usuario-edit-vinculos-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#modalEditarUsuario .usuario-edit-vinculos-topo h3,
+#modalEditarUsuario .usuario-edit-novo-vinculo h4 {
+  margin: 0;
+  color: #172554;
+  font-weight: 800;
+}
+
+#modalEditarUsuario .usuario-edit-vinculos-topo h3 { font-size: 18px; }
+#modalEditarUsuario .usuario-edit-novo-vinculo h4 { font-size: 15px; color: #075fb9; }
+
+#modalEditarUsuario .usuario-edit-vinculos-total {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #315279;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#modalEditarUsuario .usuario-edit-vinculos-lista {
+  display: grid;
+  gap: 10px;
+}
+
+#modalEditarUsuario .usuario-edit-vinculo {
+  display: grid;
+  grid-template-columns: 42px minmax(140px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dce5ef;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+#modalEditarUsuario .usuario-edit-vinculo-icone {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #f2f7ff;
+  color: #0866c6;
+}
+
+#modalEditarUsuario .usuario-edit-vinculo-empresa {
+  align-self: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #172554;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+#modalEditarUsuario .usuario-edit-novo-vinculo .usuario-edit-campo {
+  display: grid;
+  gap: 5px;
+  color: #315279;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#modalEditarUsuario #seletorNovaEmpresa { width: 100%; }
+#modalEditarUsuario #btnEditUsuarioEmpresa { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#modalEditarUsuario #novaEmpresaNome { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+/* O modal corta (overflow:hidden) conteúdo absoluto; o popover fica no fluxo para a lista nunca ser encoberta. */
+#modalEditarUsuario #popoverNovaEmpresa { position: static; width: 100%; min-width: 0; margin-top: 8px; box-shadow: none; }
+#modalEditarUsuario #popoverNovaEmpresa .agenda-pesquisa-resultados-lista { max-height: 240px; }
+#modalEditarUsuario #popoverNovaEmpresa .agenda-menu-item { width: 100%; text-align: left; }
+#modalEditarUsuario .usuario-edit-novo-vinculo select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid #d6e1ee;
+  border-radius: 9px;
+  background: #fff;
+  color: #173b63;
+  font: inherit;
+  font-size: 13px;
+}
+
+#modalEditarUsuario .usuario-edit-vinculo-acao {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #d6e1ee;
+  border-radius: 9px;
+  background: #fff;
+  color: #b42318;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#modalEditarUsuario .usuario-edit-vinculo-acao:hover { background: #fff5f4; }
+
+#modalEditarUsuario .usuario-edit-vinculo[data-marcado="1"] {
+  border-style: dashed;
+  background: #fff8f7;
+}
+
+#modalEditarUsuario .usuario-edit-vinculo[data-marcado="1"] .usuario-edit-vinculo-empresa { text-decoration: line-through; }
+
+#modalEditarUsuario .usuario-edit-vinculo-situacao {
+  color: #526a84;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#modalEditarUsuario .usuario-edit-novo-vinculo {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f2f7ff;
+}
+
+#modalEditarUsuario .usuario-edit-novo-vinculo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+#modalEditarUsuario .usuario-edit-novo-vinculo .msg-ajuda {
+  color: #526a84;
+  font-size: 11px;
+}
+
 @media (max-width: 820px) {
   #empresas .agenda-topo,
   #planos .agenda-topo,
@@ -842,6 +1090,25 @@
   #usuarios .super-lista-status-grupo,
   #usuarios-super .super-lista-status-grupo {
     justify-content: flex-start;
+  }
+
+  #usuarios .usuario-vinculo {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 9px;
+  }
+
+  #modalEditarUsuario .usuario-edit-vinculo {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  #modalEditarUsuario .usuario-edit-vinculo-acao {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  #modalEditarUsuario .usuario-edit-novo-vinculo-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

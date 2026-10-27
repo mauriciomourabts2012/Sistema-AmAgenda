@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.4.10"/>
   <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.4.10"/>
   <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.4.10"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.4.10"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.4.10b"/>
   <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.4.10"/>
   <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.4.10"/>
   <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.4.10">
@@ -1430,7 +1430,7 @@
       <div class="modal-conteudo modal-md faturamento-cartao-modal" role="dialog" aria-modal="true" aria-labelledby="tituloModalCartaoRecorrente">
         <div class="modal-topo"><div><h2 id="tituloModalCartaoRecorrente">Configurar cartão</h2><p>Cadastro seguro realizado pelo Mercado Pago.</p></div><button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button></div>
         <div class="modal-corpo">
-          <div class="cartao-consentimento"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><p>Ao autorizar, este cartão poderá ser usado nos pagamentos futuros automáticos das cobranças da sua assinatura AmAgenda. Nenhuma cobrança será feita agora.</p></div>
+          <div class="cartao-consentimento"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><p id="cartaoConsentimentoTexto">Ao autorizar, este cartão poderá ser usado nos pagamentos futuros automáticos das cobranças da sua assinatura AmAgenda. Nenhuma cobrança será feita agora.</p></div>
           <div id="cartaoBrickCarregando" class="a-loading">Carregando ambiente seguro...</div>
           <div id="cardPaymentBrick_container" class="cartao-brick" aria-live="polite"></div>
           <div id="cartaoBrickErro" class="faturamento-estado faturamento-estado--erro" hidden><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span><div><strong>Não foi possível carregar o formulário seguro.</strong><p>Tente novamente mais tarde.</p></div></div>
@@ -1582,9 +1582,9 @@
 
   <!--ABA RESUMO DO DIA -->
   <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=1.4.10"></script> <!--DADOS RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=1.4.10"></script>
+  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=1.4.10b"></script>
   <script src="https://sdk.mercadopago.com/js/v2"></script>
-  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=1.4.10"></script>
+  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=1.4.10c"></script>
 
   <!--ABA CLIENTES -->
   <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=1.4.10" ></script> <!-- LISTA DE CLIENTES -->

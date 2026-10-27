@@ -488,6 +488,9 @@ $routes = [
     'painel/faturamento/pagamento/cartao/usar-pix' => [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
     ],
+    'painel/faturamento/pagamento/cartao/trocar' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+    ],
     'painel/faturamento/pagamento/cartao/status' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
         'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
@@ -963,6 +966,7 @@ $permissoesPorRota = [
     'painel/faturamento/pagamento/cartao/autorizar' => 'faturamento.pagar',
     'painel/faturamento/pagamento/cartao/status' => 'faturamento.pagar',
     'painel/faturamento/pagamento/cartao/usar-pix' => 'faturamento.pagar',
+    'painel/faturamento/pagamento/cartao/trocar' => 'faturamento.pagar',
     // As três rotas de configuração de serviços validam permissão e propriedade no handler,
     // pois a decisão depende do id_profissional alvo. O cadastro pelo agendamento não depende disso.
     'agenda/servico-profissional/cadastrar-agendamento' => 'servicos.cadastrar',

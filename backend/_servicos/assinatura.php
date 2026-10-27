@@ -5993,3 +5993,155 @@ function assinaturaServicoPreapprovalRecorrenciaAnteriorPendente(mysqli $conexao
         'O cancelamento do pagamento automático do contrato anterior ainda está sendo confirmado. Tente novamente em instantes.'
     );
 }
+
+/*
+ * Troca do cartão de uma Preapproval já autorizada (PUT /preapproval/{id} com card_token_id).
+ * - A mesma Preapproval é mantida: nada é cancelado nem criado.
+ * - O token vem do MercadoPago.js (Card Payment Brick) e é de uso único; número, CVV e validade nunca chegam ao servidor.
+ * - Só o GET autoritativo conclui a troca: card_id novo, status authorized e as mesmas condições (valor, periodicidade,
+ *   moeda, referência e próxima cobrança) de antes do PUT.
+ * - Nenhuma chamada de rede ocorre dentro de transação; o chamador serializa a troca por empresa.
+ */
+const ASSINATURA_SERVICO_TROCA_CARTAO_TOKEN = '/^[A-Za-z0-9_-]{32,33}$/D';
+
+/** Pré-condições locais da troca, sem rede. Retorna o código de bloqueio ou null. */
+function assinaturaServicoPreapprovalTrocaCartaoElegivel(?array $vinculo, ?array $contrato, int $idEmpresa, bool $operacaoAberta): ?string
+{
+    if ($vinculo === null || $contrato === null) {
+        return 'TROCA_CARTAO_SEM_AUTORIZACAO';
+    }
+    if ((int)$vinculo['id_empresa'] !== $idEmpresa) {
+        return 'TROCA_CARTAO_EMPRESA_DIVERGENTE';
+    }
+    if (($vinculo['motor_recorrencia'] ?? '') !== 'preapproval'
+        || (int)$vinculo['id_assinatura'] !== (int)$contrato['id_assinatura']
+        || !is_string($vinculo['assinatura_externa_id'] ?? null)
+        || !preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,149}$/D', $vinculo['assinatura_externa_id'])) {
+        return 'TROCA_CARTAO_SEM_AUTORIZACAO';
+    }
+    if ((string)$contrato['status'] !== 'ativa' || (int)($contrato['gera_cobranca'] ?? 0) !== 1) {
+        return 'TROCA_CARTAO_CONTRATO_INATIVO';
+    }
+    if ((string)$vinculo['status'] !== 'ativa' || ($vinculo['status_externo'] ?? '') !== 'authorized'
+        || (int)($vinculo['slot_ativo'] ?? 0) !== 1) {
+        return 'TROCA_CARTAO_AUTORIZACAO_INATIVA';
+    }
+    // Troca de valor, pausa ou cancelamento em curso: um segundo PUT concorrente não é enviado.
+    if ($operacaoAberta) {
+        return 'TROCA_CARTAO_OPERACAO_PENDENTE';
+    }
+
+    return null;
+}
+
+/** Identificação do cartão informada pelo provedor; cada campo só é aceito no formato esperado. */
+function assinaturaServicoPreapprovalTrocaCartaoDados(array $dados): array
+{
+    $cartao = $dados['card_id'] ?? null;
+    $cartao = (is_string($cartao) || is_int($cartao)) && preg_match('/^[A-Za-z0-9_-]{1,64}$/D', (string)$cartao) ? (string)$cartao : null;
+    $bandeira = is_string($dados['payment_method_id'] ?? null) ? strtolower($dados['payment_method_id']) : '';
+    $final = $dados['last_four_digits'] ?? (is_array($dados['card'] ?? null) ? ($dados['card']['last_four_digits'] ?? null) : null);
+    if (is_int($final)) {
+        $final = str_pad((string)$final, 4, '0', STR_PAD_LEFT);
+    }
+
+    return [
+        'card_id' => $cartao,
+        'bandeira' => preg_match('/^[a-z0-9_]{2,30}$/D', $bandeira) ? $bandeira : null,
+        'final_cartao' => is_string($final) && preg_match('/^[0-9]{4}$/D', $final) ? $final : null,
+    ];
+}
+
+/** Condições financeiras que a troca de cartão não pode alterar. */
+function assinaturaServicoPreapprovalTrocaCartaoCondicoes(array $dados): array
+{
+    $recorrencia = is_array($dados['auto_recurring'] ?? null) ? $dados['auto_recurring'] : [];
+    $valor = $recorrencia['transaction_amount'] ?? null;
+    $proxima = assinaturaServicoPreapprovalDataExterna($dados['next_payment_date'] ?? null);
+
+    return [
+        'external_reference' => is_string($dados['external_reference'] ?? null) ? $dados['external_reference'] : null,
+        'valor_centavos' => is_int($valor) || is_float($valor) || (is_string($valor) && is_numeric($valor))
+            ? (int)round(((float)$valor) * 100) : null,
+        'moeda' => $recorrencia['currency_id'] ?? null,
+        'frequencia' => $recorrencia['frequency'] ?? null,
+        'tipo_frequencia' => $recorrencia['frequency_type'] ?? null,
+        'proxima_cobranca' => $proxima?->setTimezone(new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO))->format('Y-m-d'),
+    ];
+}
+
+/**
+ * Executa a troca no provedor e classifica o desfecho pelo GET autoritativo:
+ * confirmada | recusada | sem_alteracao | incerta | divergente | bloqueada.
+ * O token nunca integra o resultado.
+ *
+ * @param array{referencia:string,ambiente:string,valor_centavos:int,frequencia_meses:int} $esperado
+ */
+function assinaturaServicoPreapprovalTrocarCartao(object $gateway, string $preapprovalId, string $tokenCartao, array $esperado): array
+{
+    $resultado = static fn(string $situacao, string $codigo, array $extra = []): array
+        => ['resultado' => $situacao, 'codigo' => $codigo] + $extra;
+    if (!preg_match(ASSINATURA_SERVICO_TROCA_CARTAO_TOKEN, $tokenCartao)) {
+        return $resultado('bloqueada', 'TOKEN_CARTAO_INVALIDO');
+    }
+    $validar = static fn(array $dados): ?string
+        => assinaturaServicoPreapprovalValidarExterna($dados, $esperado + ['id' => $preapprovalId, 'status_permitidos' => ['authorized']]);
+    $normalizar = static function (array $dados): array {
+        $dados['status'] = ($dados['status'] ?? null) === 'cancelled' ? 'canceled' : ($dados['status'] ?? null);
+        return $dados;
+    };
+
+    $antes = $gateway->consultarPreapproval($preapprovalId);
+    if (($antes['sucesso'] ?? false) !== true || !is_array($antes['dados'] ?? null)) {
+        return $resultado('bloqueada', 'CONSULTA_PREVIA_INDISPONIVEL');
+    }
+    $dadosAntes = $normalizar($antes['dados']);
+    if (($dadosAntes['status'] ?? null) !== 'authorized') {
+        return $resultado('bloqueada', 'ASSINATURA_EXTERNA_NAO_AUTORIZADA', [
+            'status_externo' => is_string($dadosAntes['status'] ?? null) ? $dadosAntes['status'] : null,
+        ]);
+    }
+    // Divergência anterior à troca não é "corrigida" por um PUT: nada é enviado e o caso vai para verificação.
+    $divergenciaPrevia = $validar($dadosAntes);
+    if ($divergenciaPrevia !== null) {
+        return $resultado('bloqueada', $divergenciaPrevia, ['divergencia_previa' => true]);
+    }
+    $cartaoAntes = assinaturaServicoPreapprovalTrocaCartaoDados($dadosAntes);
+    $condicoesAntes = assinaturaServicoPreapprovalTrocaCartaoCondicoes($dadosAntes);
+
+    $envio = $gateway->atualizarPreapproval($preapprovalId, ['card_token_id' => $tokenCartao]);
+    $rejeitado = ($envio['sucesso'] ?? false) !== true && ($envio['codigo'] ?? '') === 'provedor_rejeitou';
+
+    $depois = $gateway->consultarPreapproval($preapprovalId);
+    if (($depois['sucesso'] ?? false) !== true || !is_array($depois['dados'] ?? null)) {
+        // Rejeição explícita não altera o cartão; sem ela, o desfecho real fica desconhecido até nova consulta.
+        return $rejeitado
+            ? $resultado('recusada', 'CARTAO_RECUSADO', ['cartao_anterior' => $cartaoAntes])
+            : $resultado('incerta', 'CONFIRMACAO_INDISPONIVEL', ['cartao_anterior' => $cartaoAntes]);
+    }
+    $dadosDepois = $normalizar($depois['dados']);
+    $cartaoDepois = assinaturaServicoPreapprovalTrocaCartaoDados($dadosDepois);
+    $condicoesDepois = assinaturaServicoPreapprovalTrocaCartaoCondicoes($dadosDepois);
+    $extra = [
+        'cartao_anterior' => $cartaoAntes,
+        'cartao' => $cartaoDepois,
+        'condicoes_antes' => $condicoesAntes,
+        'condicoes_depois' => $condicoesDepois,
+        'status_externo' => is_string($dadosDepois['status'] ?? null) ? $dadosDepois['status'] : null,
+    ];
+
+    $divergencia = $validar($dadosDepois) ?? ($condicoesAntes !== $condicoesDepois ? 'CONDICOES_ALTERADAS_NA_TROCA' : null);
+    if ($divergencia !== null) {
+        return $resultado('divergente', $divergencia, $extra);
+    }
+    if ($cartaoDepois['card_id'] === null) {
+        return $resultado('incerta', 'CARTAO_EXTERNO_NAO_INFORMADO', $extra);
+    }
+    if ($cartaoDepois['card_id'] !== $cartaoAntes['card_id']) {
+        return $resultado('confirmada', 'CARTAO_ALTERADO', $extra);
+    }
+
+    return $rejeitado
+        ? $resultado('recusada', 'CARTAO_RECUSADO', $extra)
+        : $resultado('sem_alteracao', ($envio['sucesso'] ?? false) === true ? 'CARTAO_NAO_ALTERADO' : 'TROCA_NAO_APLICADA', $extra);
+}

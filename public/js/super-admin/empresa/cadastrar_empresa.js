@@ -38,6 +38,7 @@
   const elTesteGratis = document.getElementById("emp_teste_gratis");
 
   let reloadTimer = null;
+  let confirmacaoTesteEmAndamento = false;
 
   // ==========================================================
   // Toast Universal
@@ -160,7 +161,12 @@
           "ℹ️";
       }
 
+      let finalizado = false;
+
       function close(result) {
+        if (finalizado) return;
+        finalizado = true;
+        document.removeEventListener("keydown", onKey);
         wrap.classList.add("is-leaving");
         setTimeout(() => wrap.remove(), TOAST_LEAVE_TIME);
         resolve(result);
@@ -535,6 +541,29 @@
     }
 
     const dados = coletarDados();
+
+    if (dados.conceder_teste_gratis) {
+      if (confirmacaoTesteEmAndamento) return;
+
+      confirmacaoTesteEmAndamento = true;
+      btnSalvar.disabled = true;
+
+      let confirmouTeste = false;
+      try {
+        confirmouTeste = await toastConfirm({
+          title: "Confirmar período de teste grátis",
+          message: "Deseja realmente cadastrar esta empresa concedendo 30 dias de teste grátis?",
+          confirmText: "Confirmar cadastro",
+          cancelText: "Cancelar",
+        });
+      } finally {
+        confirmacaoTesteEmAndamento = false;
+        if (form.dataset.loading !== "1") btnSalvar.disabled = false;
+      }
+
+      if (!confirmouTeste) return;
+    }
+
     const cnpjNaoInformado = !dados.cnpj;
 
     const fd = new FormData();
@@ -647,6 +676,7 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (confirmacaoTesteEmAndamento) return;
     if (modal.getAttribute("aria-hidden") === "true") return;
 
     window.setTimeout(() => {

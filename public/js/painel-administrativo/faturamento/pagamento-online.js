@@ -8,8 +8,13 @@
   const CARTAO_AUTORIZAR = `${API}?path=painel/faturamento/pagamento/cartao/autorizar`;
   const CARTAO_STATUS = `${API}?path=painel/faturamento/pagamento/cartao/status`;
   const CARTAO_USAR_PIX = `${API}?path=painel/faturamento/pagamento/cartao/usar-pix`;
+  const CARTAO_TROCAR = `${API}?path=painel/faturamento/pagamento/cartao/trocar`;
   const estado = { idCobranca: 0, idTransacao: 0, valor: 0, codigo: "" };
-  const cartao = { configuracao: null, carregando: false, controller: null, redirecionando: false, retornoProcessado: false, retornoEmCurso: false };
+  const cartao = { configuracao: null, carregando: false, controller: null, redirecionando: false, retornoProcessado: false, retornoEmCurso: false, trocando: false };
+  const TEXTOS_MODAL_CARTAO = {
+    configurar: { titulo: "Configurar cartão", consentimento: "Ao autorizar, este cartão poderá ser usado nos pagamentos futuros automáticos das cobranças da sua assinatura AmAgenda. Nenhuma cobrança será feita agora.", enviar: "Autorizar cartão" },
+    trocar: { titulo: "Alterar cartão de crédito", consentimento: "O novo cartão substituirá o atual nas próximas cobranças automáticas da sua assinatura AmAgenda. Plano, valor e data da próxima cobrança não mudam, e nada é cobrado agora.", enviar: "Salvar novo cartão" }
+  };
   // Destino do redirecionamento de autorização: somente o checkout de assinaturas do Mercado Pago (o servidor valida antes).
   // Query lida literalmente: preapproval_id obrigatório e activation opcional (opaco), cada um uma única vez.
   const initPointValido = url => {
@@ -257,7 +262,13 @@
     if (atual.primeira_cobranca) { renderizarPrimeiraCobranca(alvo, atual, botaoVerificar); return; }
     const status = String(atual.status || "nao_configurado");
     if (atual.configurado) {
-      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", "Autorizado no Mercado Pago", "Os pagamentos futuros serão cobrados automaticamente no cartão autorizado.")}<span class="faturamento-status faturamento-status--ativa">Ativo</span>`;
+      // Bandeira e final só chegam do servidor depois de confirmados pela consulta da Preapproval.
+      const bandeira = /^[a-z0-9_]{2,30}$/i.test(String(atual.bandeira || "")) ? String(atual.bandeira).toUpperCase() : "";
+      const final = /^[0-9]{4}$/.test(String(atual.final_cartao || "")) ? String(atual.final_cartao) : "";
+      const titulo = bandeira && final ? `${bandeira} •••• ${final}` : (bandeira || "Autorizado no Mercado Pago");
+      const trocar = atual.pode_trocar_cartao
+        ? '<button class="botao-geral" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão de crédito</button>' : "";
+      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", titulo, "Os pagamentos futuros serão cobrados automaticamente no cartão autorizado.")}<div class="faturamento-acoes">${trocar}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
       return;
     }
     if (status === "pendente") {
@@ -408,7 +419,52 @@
     }
   }
 
-  async function renderizarBrick() {
+  // Recusa, "sem alteração" e token inválido mantêm o modal aberto para nova tentativa; o cartão anterior segue ativo.
+  // Incerteza, divergência ou bloqueio fecham o modal: o estado real precisa ser conferido antes de outra troca.
+  async function trocarCartao(formData) {
+    let token = String(formData?.token || "");
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    if (!/^[a-f0-9]{64}$/.test(csrf)) throw new Error("Atualize a página para renovar sua sessão.");
+    if (!/^[A-Za-z0-9_-]{32,33}$/.test(token)) throw new Error("Não foi possível tokenizar o cartão. Confira os dados informados.");
+    if (cartao.trocando) throw new Error("A troca do cartão já está em andamento.");
+    cartao.trocando = true;
+    const corpo = new FormData();
+    corpo.set("token", token);
+    try {
+      const resposta = await fetch(CARTAO_TROCAR, { method: "POST", body: corpo, credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
+      const retorno = await resposta.json().catch(() => ({}));
+      if (retorno?.data) renderizarCartao(retorno.data);
+      if (resposta.ok && retorno.ok === true) {
+        avisar("sucesso", retorno.user_msg || "Cartão alterado.");
+        fecharModalId("modalCartaoRecorrenteFaturamento");
+        await desmontarBrick();
+        return;
+      }
+      const mensagem = retorno.user_msg || "Não foi possível trocar o cartão.";
+      if (["CARTAO_TROCA_INCERTA", "CARTAO_TROCA_DIVERGENTE", "CARTAO_TROCA_BLOQUEADA"].includes(retorno.code)) {
+        avisar("aviso", mensagem);
+        fecharModalId("modalCartaoRecorrenteFaturamento");
+        await desmontarBrick();
+        return;
+      }
+      throw new Error(mensagem);
+    } finally {
+      corpo.delete("token");
+      token = "";
+      cartao.trocando = false;
+    }
+  }
+
+  function aplicarTextosModalCartao(modo) {
+    const textos = TEXTOS_MODAL_CARTAO[modo] || TEXTOS_MODAL_CARTAO.configurar;
+    const titulo = document.getElementById("tituloModalCartaoRecorrente");
+    const consentimento = document.getElementById("cartaoConsentimentoTexto");
+    if (titulo) titulo.textContent = textos.titulo;
+    if (consentimento) consentimento.textContent = textos.consentimento;
+    return textos;
+  }
+
+  async function renderizarBrick(modo = "configurar") {
     const carregando = document.getElementById("cartaoBrickCarregando");
     const erro = document.getElementById("cartaoBrickErro");
     carregando?.removeAttribute("hidden");
@@ -425,12 +481,12 @@
         initialization: { amount: Number(cfg.valor_referencia || 0) },
         customization: {
           paymentMethods: { minInstallments: 1, maxInstallments: 1, types: { excluded: ["debit_card", "prepaid-card"] } },
-          visual: { style: { theme: "default" }, texts: { formTitle: "Cartão de crédito", installmentsSectionTitle: "", formSubmit: "Autorizar cartão" } }
+          visual: { style: { theme: "default" }, texts: { formTitle: "Cartão de crédito", installmentsSectionTitle: "", formSubmit: aplicarTextosModalCartao(modo).enviar } }
         },
         callbacks: {
           onReady: () => carregando?.setAttribute("hidden", ""),
           onSubmit: formData => new Promise((resolve, reject) => {
-            autorizarCartao(formData).then(resolve).catch(erroEnvio => { avisar("erro", erroEnvio.message); reject(); });
+            (modo === "trocar" ? trocarCartao(formData) : autorizarCartao(formData)).then(resolve).catch(erroEnvio => { avisar("erro", erroEnvio.message); reject(); });
           }),
           onError: () => { carregando?.setAttribute("hidden", ""); avisar("erro", "Revise os dados do cartão e tente novamente."); }
         }
@@ -444,7 +500,14 @@
   async function abrirCartao() {
     if (!cartao.configuracao?.pode_configurar || cartao.configuracao?.motor_recorrencia === "preapproval") return;
     abrirModalId("modalCartaoRecorrenteFaturamento");
-    await renderizarBrick();
+    await renderizarBrick("configurar");
+  }
+
+  async function abrirTrocaCartao() {
+    if (cartao.trocando || !cartao.configuracao?.pode_trocar_cartao || cartao.configuracao?.motor_recorrencia !== "preapproval") return;
+    aplicarTextosModalCartao("trocar");
+    abrirModalId("modalCartaoRecorrenteFaturamento");
+    await renderizarBrick("trocar");
   }
 
   async function atualizarCartao() {
@@ -466,6 +529,7 @@
     const pagar = evento.target.closest("[data-pagar-cobranca]");
     if (pagar) abrir(pagar);
     if (evento.target.closest("[data-configurar-cartao]")) abrirCartao();
+    if (evento.target.closest("[data-trocar-cartao]")) abrirTrocaCartao();
     if (evento.target.closest("[data-atualizar-cartao]")) atualizarCartao();
     if (evento.target.closest("[data-autorizar-assinatura]")) iniciarAutorizacaoAssinatura();
     if (evento.target.closest("[data-usar-pix]")) usarPix();

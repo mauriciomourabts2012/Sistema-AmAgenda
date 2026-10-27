@@ -222,9 +222,6 @@
     telefone: document.getElementById("edit_u_tel"),
     senha: document.getElementById("edit_u_senha"),
     senha2: document.getElementById("edit_u_senha2"),
-    perfil: document.getElementById("edit_u_perfil_super_admin"),
-    empresa: document.getElementById("edit_u_empresa_super_admin"),
-    status: document.getElementById("edit_u_status"),
   };
 
   // =========================
@@ -421,29 +418,44 @@
     `;
   }
 
-  function buildMenuAcoes(u) {
-    const st = normalizeStatus(u.status);
-    const ativo = st === "ativo";
-    const id = u.id ?? "";
-
+  function buildMenuAcoes() {
     return `
       <div class="agenda-menu" role="menu">
-
         <button class="agenda-menu-item" type="button" data-acao="${CFG.ACAO_EDITAR_USUARIO}">
           <i class="fa-regular fa-pen-to-square"></i> Editar
         </button>
+      </div>
+    `;
+  }
 
-        <button
-          class="agenda-menu-item danger"
-          type="button"
-          data-acao="toggle-status"
-          data-scope="tabela_usuario"
-          data-id="${C.escapeHtml(id)}"
-          data-status="${C.escapeHtml(st)}"
-        >
-          <i class="fa-regular ${ativo ? "fa-circle-xmark" : "fa-circle-check"}"></i>
-          ${ativo ? "Inativar" : "Ativar"}
-        </button>
+  function perfilLabel(perfil) {
+    const valor = normalizePerfil(perfil);
+    if (valor === "proprietario") return "Proprietário";
+    if (valor === "super_admin") return "Super Admin";
+    return valor || "—";
+  }
+
+  function vinculoTemplate(usuarioId, vinculo) {
+    const empresa = vinculo.empresa ?? "—";
+    const empresaId = vinculo.empresa_id ?? "";
+    const idVinculo = vinculo.id_empresa_usuario ?? "";
+    const perfil = normalizePerfil(vinculo.perfil ?? "");
+    const status = normalizeStatus(vinculo.status);
+
+    return `
+      <div class="usuario-vinculo"
+        data-id-usuario="${C.escapeHtml(usuarioId)}"
+        data-id-empresa="${C.escapeHtml(empresaId)}"
+        data-id-empresa-usuario="${C.escapeHtml(idVinculo)}"
+        data-perfil="${C.escapeHtml(perfil)}"
+        data-empresa="${C.escapeHtml(empresa)}"
+        data-status="${C.escapeHtml(status)}">
+        <i class="fa-regular fa-building usuario-vinculo-icone" aria-hidden="true"></i>
+        <div class="usuario-vinculo-dados">
+          <strong>${C.escapeHtml(empresa)}</strong>
+          <span>Perfil: ${C.escapeHtml(perfilLabel(perfil))}</span>
+        </div>
+        ${badgeStatus(status)}
       </div>
     `;
   }
@@ -478,23 +490,29 @@
     const nome = u.nome ?? "Usuário";
     const email = u.email ?? "";
     const telefone = u.telefone ?? "";
-    const perfil = normalizePerfil(u.perfil ?? "—");
-    const status = normalizeStatus(u.status);
-    const empresa = u.empresa ?? "—";
-    const empresaId = u.empresa_id ?? "";
     const memento = u.memento ?? "Não informado";
     const fotoPerfil = u.foto_perfil ?? "";
+    const vinculos = Array.isArray(u.vinculos) && u.vinculos.length
+      ? u.vinculos
+      : [{
+          id_empresa_usuario: u.id_empresa_usuario ?? "",
+          empresa: u.empresa ?? "—",
+          empresa_id: u.empresa_id ?? "",
+          perfil: u.perfil ?? "",
+          status: u.status ?? "ativo",
+        }];
+    const idsEmpresas = vinculos
+      .map((vinculo) => String(vinculo.empresa_id || ""))
+      .filter(Boolean);
+    const quantidadeEmpresas = idsEmpresas.length ? new Set(idsEmpresas).size : vinculos.length;
+    const vinculosId = `usuario-vinculos-${String(id).replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
     return `
       <article class="agenda-card"
         data-id="${C.escapeHtml(id)}"
-        data-status="${C.escapeHtml(status)}"
         data-nome="${C.escapeHtml(nome)}"
         data-email="${C.escapeHtml(email)}"
         data-telefone="${C.escapeHtml(telefone)}"
-        data-perfil="${C.escapeHtml(perfil)}"
-        data-empresa="${C.escapeHtml(empresa)}"
-        data-empresa_id="${C.escapeHtml(empresaId)}"
         data-memento="${C.escapeHtml(memento)}"
         data-foto_perfil="${C.escapeHtml(fotoPerfil)}"
         data-created_at="${C.escapeHtml(u.created_at || "")}">
@@ -506,9 +524,7 @@
             <div class="agenda-nome">${C.escapeHtml(nome)}</div>
 
             <div class="super-lista-metadados">
-              <span class="super-lista-meta"><span class="super-lista-meta-label">Perfil</span><strong>${C.escapeHtml(perfil)}</strong></span>
               ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
-              <span class="super-lista-meta"><span class="super-lista-meta-label">Empresa</span><strong>${C.escapeHtml(empresa || "—")}</strong></span>
               ${telefone ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone)}</strong></span>` : ""}
               ${u.created_at ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Cadastro</span><strong>${C.escapeHtml(String(u.created_at).split("-").reverse().join("/"))}</strong></span>` : ""}
             </div>
@@ -517,16 +533,25 @@
 
         <div class="super-lista-status-acoes">
           <div class="super-lista-status-grupo">
-            ${badgeStatus(status)}
             ${badgeMemento(memento)}
           </div>
           <div class="agenda-acoes" aria-haspopup="menu">
             <button class="agenda-btn-acoes" type="button"
-              data-acao="toggle-menu" aria-expanded="false" title="Ações">
+              data-acao="toggle-menu" aria-expanded="false" title="Ações do usuário">
               ${iconAcoes()}
             </button>
+            ${buildMenuAcoes()}
+          </div>
+        </div>
 
-            ${buildMenuAcoes({ ...u, status })}
+        <div class="usuario-vinculos" aria-label="${C.escapeHtml(`${quantidadeEmpresas} ${quantidadeEmpresas === 1 ? "empresa vinculada" : "empresas vinculadas"}`)}">
+          <button class="usuario-vinculos-toggle" type="button" data-acao="toggle-vinculos"
+            aria-expanded="false" aria-controls="${C.escapeHtml(vinculosId)}">
+            <span><i class="fa-regular fa-building" aria-hidden="true"></i> Empresas vinculadas (${C.escapeHtml(quantidadeEmpresas)})</span>
+            <i class="fa-solid fa-chevron-down usuario-vinculos-seta" aria-hidden="true"></i>
+          </button>
+          <div id="${C.escapeHtml(vinculosId)}" class="usuario-vinculos-lista" hidden>
+            ${vinculos.map((vinculo) => vinculoTemplate(id, vinculo)).join("")}
           </div>
         </div>
       </article>
@@ -578,29 +603,6 @@
     }
   }
 
-  function setSelectValueSafe(selectEl, value, textFallback = "") {
-    if (!selectEl) return;
-
-    const val = String(value ?? "");
-    const existe = Array.from(selectEl.options).some((opt) => String(opt.value) === val);
-
-    if (existe) {
-      selectEl.value = val;
-      return;
-    }
-
-    if (val !== "") {
-      const opt = document.createElement("option");
-      opt.value = val;
-      opt.textContent = textFallback || val;
-      opt.dataset.dynamic = "1";
-      selectEl.appendChild(opt);
-      selectEl.value = val;
-    } else {
-      selectEl.value = "";
-    }
-  }
-
   function preencherModalEditarUsuario(card) {
     if (!card || !modalEditarUsuario) return;
 
@@ -615,28 +617,29 @@
     if (camposEdit.email) camposEdit.email.value = ds.email || "";
     if (camposEdit.telefone) camposEdit.telefone.value = ds.telefone || "";
 
-    if (camposEdit.perfil) {
-      const perfilNorm = normalizePerfil(ds.perfil || "");
-      const perfilLabel =
-        perfilNorm === "super_admin" ? "Super Admin" :
-        perfilNorm === "proprietario" ? "Proprietário" :
-        perfilNorm || "Perfil";
+    const usuario = (BASE_LISTA || []).find((item) => String(item.id) === String(ds.id || ""));
+    const vinculos = Array.isArray(usuario?.vinculos) && usuario.vinculos.length
+      ? usuario.vinculos
+      : (usuario ? [{
+          id_empresa_usuario: usuario.id_empresa_usuario,
+          empresa_id: usuario.empresa_id,
+          empresa: usuario.empresa,
+          perfil: usuario.perfil,
+          status: usuario.status,
+        }] : []);
 
-      setSelectValueSafe(camposEdit.perfil, perfilNorm, perfilLabel);
+    if (!vinculos.length) {
+      ui.warning("Não foi possível identificar os vínculos deste usuário.", "Usuários");
+      return false;
     }
 
-    if (camposEdit.empresa) {
-      setSelectValueSafe(camposEdit.empresa, ds.empresa_id || "", ds.empresa || "Empresa");
-    }
-
-    if (camposEdit.status) {
-      const stNorm = normalizeStatus(ds.status || "");
-      const stLabel = normalizeStatusLabel(stNorm);
-      setSelectValueSafe(camposEdit.status, stNorm, stLabel);
-    }
-
-    if (camposEdit.senha) camposEdit.senha.value = "";
-    if (camposEdit.senha2) camposEdit.senha2.value = "";
+    window.UsuarioEditarModal?.fill({
+      id_usuario: ds.id || usuario?.id || "",
+      nome: ds.nome || "",
+      email: ds.email || "",
+      telefone: ds.telefone || "",
+      vinculos,
+    });
 
     const conteudo = modalEditarUsuario.querySelector(".modal-conteudo");
     if (conteudo) conteudo.scrollTop = 0;
@@ -644,6 +647,8 @@
     window.setTimeout(() => {
       try { camposEdit.nome?.focus(); } catch (_) {}
     }, 60);
+
+    return true;
   }
 
   // =========================
@@ -1045,11 +1050,13 @@
       // ==========================================
       // CONTROLE NORMAL DA LISTA
       // ==========================================
+      const btnVinculos = ev.target.closest('button[data-acao="toggle-vinculos"]');
       const btnToggle = ev.target.closest('button[data-acao="toggle-menu"]');
       const menuItem = ev.target.closest(".agenda-menu-item");
 
+      if (btnVinculos && !aba.contains(btnVinculos)) return;
       if (btnToggle && !aba.contains(btnToggle)) return;
-      if (menuItem && !aba.contains(menuItem)) return;
+      if (menuItem && !aba.contains(menuItem) && !aba.contains(menuCtrl.getOwnerCard())) return;
 
       const cliqueDentroPopover = ev.target.closest(".popover, .popover-simple, .popover-vaga-livre");
       const cliqueNoBtnFiltro = ev.target.closest(`#${FIDS.btn}`);
@@ -1063,6 +1070,18 @@
         PAGINA_ATUAL.usuarios = 1;
         renderTudo();
         ui.info("Pesquisa limpa.", "Usuários");
+        return;
+      }
+
+      if (btnVinculos) {
+        menuCtrl.fechar();
+        const listaId = btnVinculos.getAttribute("aria-controls") || "";
+        const listaVinculos = listaId ? document.getElementById(listaId) : null;
+        if (!listaVinculos) return;
+
+        const expandido = btnVinculos.getAttribute("aria-expanded") === "true";
+        btnVinculos.setAttribute("aria-expanded", expandido ? "false" : "true");
+        listaVinculos.hidden = expandido;
         return;
       }
 
@@ -1085,7 +1104,7 @@
             return;
           }
 
-          preencherModalEditarUsuario(card);
+          if (!preencherModalEditarUsuario(card)) return;
           abrirModalEditarUsuario();
           return;
         }
@@ -1155,6 +1174,32 @@
   // =========================
   // Load (API)
   // =========================
+  function agruparUsuariosPorId(items) {
+    const usuarios = new Map();
+
+    (items || []).forEach((item) => {
+      const chave = String(item.id || "");
+      if (!chave) return;
+
+      if (!usuarios.has(chave)) {
+        usuarios.set(chave, { ...item, vinculos: [] });
+      }
+
+      usuarios.get(chave).vinculos.push({
+        id_empresa_usuario: item.id_empresa_usuario,
+        empresa: item.empresa,
+        empresa_id: item.empresa_id,
+        id_perfil: item.id_perfil,
+        perfil: item.perfil,
+        status: item.status,
+        created_at: item.created_at,
+        atualizado_em: item.atualizado_em,
+      });
+    });
+
+    return Array.from(usuarios.values());
+  }
+
   async function obterDados() {
     if (CFG.MOCK) return MOCK_DATA.slice();
 
@@ -1175,23 +1220,27 @@
     }
 
     const raw = Array.isArray(json?.data) ? json.data : [];
-    return {
-      meta: json?.meta || { page, limit, total: raw.length, pages: 1 },
-      items: raw.map((u) => ({
+    const items = raw.map((u) => ({
       id: u.id_usuario ?? u.id ?? "",
+      id_empresa_usuario: u.id_empresa_usuario ?? "",
       nome: u.nome ?? "",
       email: u.email ?? "",
       telefone: u.telefone ?? "",
       foto_perfil: u.foto_perfil ?? "",
+      id_perfil: u.id_perfil ?? "",
       perfil: u.perfil ?? u.perfil_nome ?? "",
-      status: u.status ?? "ativo",
+      status: u.status_vinculo ?? u.status ?? "ativo",
       created_at: onlyDate(u.criado_em ?? u.created_at ?? ""),
       atualizado_em: onlyDate(u.atualizado_em ?? ""),
       ultimo_login_em: u.ultimo_login_em ?? "",
       empresa: u.empresa_nome ?? u.nome_empresa ?? u.empresa ?? "—",
       empresa_id: u.empresa_id ?? u.id_empresa ?? "",
       memento: u.memento_conectado ?? u.conectado_memento ?? u.memento_status ?? u.memento ?? "Não informado",
-      }))
+    }));
+
+    return {
+      meta: json?.meta || { page, limit, total: raw.length, pages: 1 },
+      items: agruparUsuariosPorId(items),
     };
   }
 

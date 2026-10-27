@@ -627,10 +627,25 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     // authorized/paused/canceled nunca oferecem autorização.
     $retomavel = $atual && (($status === 'pendente' && (!$criada || ($v['status_externo'] ?? '') === 'pending'))
         || ($status === 'erro' && !$criada));
+    $configurado = $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1;
+    // Oferta visual apenas; a rota de troca refaz todas as verificações (inclusive operação externa em curso) sob trava.
+    $chavePublica = null;
+    if ($habilitado && $configurado && assinaturaServicoPreapprovalTrocaCartaoElegivel($v, $assinatura, (int)$v['id_empresa'], false) === null) {
+        try {
+            $chavePublica = MercadoPagoGateway::chavePublicaAtiva();
+        } catch (RuntimeException $e) {
+            $chavePublica = null;
+        }
+    }
     return [
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
         'autorizacao_criada' => $criada,
-        'configurado' => $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1,
+        'configurado' => $configurado,
+        'pode_trocar_cartao' => $chavePublica !== null,
+        'public_key' => $chavePublica,
+        // Bandeira e final só existem no vínculo depois de uma troca confirmada pelo GET da Preapproval.
+        'bandeira' => $configurado ? ($v['bandeira'] ?? null) : null,
+        'final_cartao' => $configurado ? ($v['final_cartao'] ?? null) : null,
         'pode_configurar' => $habilitado && $assinatura !== null
             && ($assinatura['status'] === 'ativa' || ($primeira !== null && $primeira['situacao'] !== 'pagamento_confirmado' && !$primeira['pix_em_andamento']))
             && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $retomavel),
@@ -735,6 +750,142 @@ function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $e
         }
     }
     return pagamentoCartaoDadosPreapproval(pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()), pagamentoCartaoAssinaturaAtiva($db, $empresa), true, $db, $empresa);
+}
+
+const PAGAMENTO_CARTAO_TROCA_MENSAGENS = [
+    'TROCA_CARTAO_SEM_AUTORIZACAO' => 'Não há cartão autorizado para alterar neste contrato.',
+    'TROCA_CARTAO_EMPRESA_DIVERGENTE' => 'Não há cartão autorizado para alterar neste contrato.',
+    'TROCA_CARTAO_CONTRATO_INATIVO' => 'A troca de cartão exige uma assinatura ativa.',
+    'TROCA_CARTAO_AUTORIZACAO_INATIVA' => 'O pagamento automático precisa estar ativo para trocar o cartão.',
+    'TROCA_CARTAO_OPERACAO_PENDENTE' => 'Há uma alteração da assinatura em andamento no Mercado Pago. Tente trocar o cartão em instantes.',
+];
+
+/**
+ * Troca o cartão da Preapproval autorizada da empresa. A empresa vem da sessão e a Preapproval do vínculo local;
+ * o navegador só envia o token. A trava nomeada por empresa barra cliques duplicados e trocas concorrentes, e
+ * nenhuma transação fica aberta durante as chamadas ao provedor.
+ */
+function pagamentoCartaoPreapprovalTrocarCartao(mysqli $db, object $gateway, int $empresa, string $tokenCartao): array
+{
+    if (!$gateway::subscriptionsHabilitado()) {
+        pagamentoOnlineFalhar('SUBSCRIPTIONS_DESABILITADO', 'A troca de cartão está indisponível no momento.', 503);
+    }
+    $trava = 'amagenda_troca_cartao_' . $empresa;
+    $obtida = (int)(pagamentoOnlineConsulta($db, 'SELECT GET_LOCK(?, 0) AS obtida', 's', $trava)->fetch_assoc()['obtida'] ?? 0);
+    if ($obtida !== 1) {
+        pagamentoOnlineFalhar('TROCA_CARTAO_EM_ANDAMENTO', 'Já existe uma troca de cartão em andamento. Aguarde a conclusão.', 409);
+    }
+    try {
+        $vinculo = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
+        $contrato = pagamentoCartaoAssinaturaAtiva($db, $empresa);
+        $operacaoAberta = $vinculo !== null && pagamentoOnlineConsulta($db,
+            "SELECT 1 FROM operacao_assinatura_gateway
+              WHERE id_assinatura_pagamento=? AND status_processamento IN ('pendente','processando','conciliacao') LIMIT 1",
+            'i', (int)$vinculo['id_assinatura_pagamento'])->fetch_assoc() !== null;
+        $bloqueio = assinaturaServicoPreapprovalTrocaCartaoElegivel($vinculo, $contrato, $empresa, $operacaoAberta);
+        if ($bloqueio !== null) {
+            pagamentoOnlineFalhar($bloqueio, PAGAMENTO_CARTAO_TROCA_MENSAGENS[$bloqueio] ?? 'Não foi possível trocar o cartão.', 409);
+        }
+        $condicoes = pagamentoOnlineConsulta($db,
+            'SELECT valor_contratado,periodicidade FROM assinatura WHERE id_assinatura=? AND id_empresa=?',
+            'ii', (int)$contrato['id_assinatura'], $empresa)->fetch_assoc();
+        $frequencia = $condicoes ? assinaturaServicoPreapprovalFrequenciaMeses((string)$condicoes['periodicidade']) : null;
+        if ($frequencia === null) {
+            pagamentoOnlineFalhar('TROCA_CARTAO_CONTRATO_INDISPONIVEL', 'Não foi possível conferir o contrato para trocar o cartão.', 409);
+        }
+        $r = assinaturaServicoPreapprovalTrocarCartao($gateway, (string)$vinculo['assinatura_externa_id'], $tokenCartao, [
+            'referencia' => (string)$vinculo['referencia_externa_assinatura'],
+            'ambiente' => $gateway->ambiente(),
+            'valor_centavos' => pagamentoGatewayValorCentavos((string)$condicoes['valor_contratado']),
+            'frequencia_meses' => $frequencia,
+        ]);
+        if ($r['codigo'] !== 'TOKEN_CARTAO_INVALIDO') {
+            $r = pagamentoCartaoRegistrarTroca($db, $vinculo, $r);
+        }
+    } finally {
+        try {
+            pagamentoOnlineConsulta($db, 'SELECT RELEASE_LOCK(?) AS liberada', 's', $trava);
+        } catch (Throwable $e) {
+            error_log('PAGAMENTO_CARTAO_TROCA_TRAVA: ' . get_class($e));
+        }
+    }
+
+    return $r;
+}
+
+/** Grava o desfecho já classificado pelo GET autoritativo. Recusa e "sem alteração" preservam o cartão anterior. */
+function pagamentoCartaoRegistrarTroca(mysqli $db, array $vinculo, array $r): array
+{
+    $id = (int)$vinculo['id_assinatura_pagamento'];
+    $empresa = (int)$vinculo['id_empresa'];
+    $externa = (string)$vinculo['assinatura_externa_id'];
+    $cartao = $r['cartao'] ?? null;
+    $resumo = static fn(?array $c): ?array => $c === null ? null : ['bandeira' => $c['bandeira'], 'final_cartao' => $c['final_cartao']];
+    $alteracoes = [
+        'id_empresa' => ['antes' => null, 'depois' => $empresa],
+        'id_assinatura' => ['antes' => null, 'depois' => (int)$vinculo['id_assinatura']],
+        'id_assinatura_pagamento' => ['antes' => null, 'depois' => $id],
+        'codigo' => ['antes' => null, 'depois' => (string)$r['codigo']],
+        'status_externo' => ['antes' => null, 'depois' => $r['status_externo'] ?? null],
+    ];
+    if (!$db->begin_transaction()) throw new RuntimeException('Falha ao registrar a troca de cartão.');
+    try {
+        $atual = pagamentoOnlineConsulta($db,
+            'SELECT id_assinatura_pagamento FROM assinatura_pagamento_recorrente
+              WHERE id_assinatura_pagamento=? AND id_empresa=? AND assinatura_externa_id=? FOR UPDATE',
+            'iis', $id, $empresa, $externa)->fetch_assoc();
+        if ($atual === null) {
+            // O vínculo mudou durante a troca: o desfecho fica apenas na auditoria.
+            $r['resultado'] = $r['resultado'] === 'confirmada' ? 'incerta' : $r['resultado'];
+            $alteracoes['codigo']['depois'] = 'VINCULO_ALTERADO_DURANTE_TROCA';
+        } elseif ($r['resultado'] === 'confirmada') {
+            pagamentoOnlineExec($db,
+                "UPDATE assinatura_pagamento_recorrente
+                    SET cartao_externo_id=?, bandeira=?, final_cartao=?, ultima_sincronizacao_em=NOW(6),
+                        ultimo_erro_motivo=CASE WHEN ultimo_erro_codigo LIKE 'TROCA\\_CARTAO\\_%' THEN NULL ELSE ultimo_erro_motivo END,
+                        ultimo_erro_codigo=CASE WHEN ultimo_erro_codigo LIKE 'TROCA\\_CARTAO\\_%' THEN NULL ELSE ultimo_erro_codigo END
+                  WHERE id_assinatura_pagamento=? AND id_empresa=? AND assinatura_externa_id=?",
+                'sssiis', $cartao['card_id'], $cartao['bandeira'], $cartao['final_cartao'], $id, $empresa, $externa);
+        } elseif (in_array($r['resultado'], ['incerta', 'divergente'], true)) {
+            // O cartão em uso no provedor deixa de ser conhecido: a identificação antiga não é mais exibida.
+            pagamentoOnlineExec($db,
+                'UPDATE assinatura_pagamento_recorrente
+                    SET bandeira=NULL, final_cartao=NULL, ultimo_erro_codigo=?, ultimo_erro_motivo=?
+                  WHERE id_assinatura_pagamento=? AND id_empresa=? AND assinatura_externa_id=?',
+                'ssiis',
+                $r['resultado'] === 'incerta' ? 'TROCA_CARTAO_INCERTA' : 'TROCA_CARTAO_DIVERGENTE',
+                mb_substr('Troca de cartão: ' . (string)$r['codigo'], 0, 300, 'UTF-8'),
+                $id, $empresa, $externa);
+        }
+        if ($r['resultado'] === 'confirmada' && $atual !== null) {
+            assinaturaServicoAuditar($db, 'assinatura.recorrencia_cartao_alterado', [
+                'entidade_id' => $id,
+                'entidade_rotulo' => 'Assinatura recorrente #' . $id,
+                'alteracoes' => $alteracoes + [
+                    'bandeira' => ['antes' => $r['cartao_anterior']['bandeira'] ?? null, 'depois' => $cartao['bandeira']],
+                    'final_cartao' => ['antes' => $r['cartao_anterior']['final_cartao'] ?? null, 'depois' => $cartao['final_cartao']],
+                ],
+                'contexto' => ['origem' => 'painel_faturamento', 'id_empresa' => $empresa],
+            ], null);
+        } else {
+            assinaturaServicoAuditar($db, 'assinatura.recorrencia_cartao_troca_falhou', [
+                'entidade_id' => $id,
+                'entidade_rotulo' => 'Assinatura recorrente #' . $id,
+                'alteracoes' => $alteracoes + [
+                    'situacao' => ['antes' => null, 'depois' => (string)$r['resultado']],
+                    'antes' => ['antes' => null, 'depois' => ['cartao' => $resumo($r['cartao_anterior'] ?? null), 'condicoes' => $r['condicoes_antes'] ?? null]],
+                    'depois' => ['antes' => null, 'depois' => ['cartao' => $resumo($cartao), 'condicoes' => $r['condicoes_depois'] ?? null]],
+                ],
+                'contexto' => ['origem' => 'painel_faturamento', 'id_empresa' => $empresa],
+            ], null);
+        }
+        if (!$db->commit()) throw new RuntimeException('Falha ao confirmar o registro da troca de cartão.');
+    } catch (Throwable $e) {
+        try { $db->rollback(); } catch (Throwable) {}
+        throw $e;
+    }
+
+    return $r;
 }
 
 function pagamentoCartaoReservar(mysqli $db, int $empresa, string $ambiente): array
@@ -1148,6 +1299,33 @@ try {
         out(['ok'=>true,'code'=>$liberado ? 'PIX_LIBERADO' : 'CANCELAMENTO_CARTAO_SOLICITADO',
             'user_msg'=>$liberado ? 'Pagamento no cartão cancelado. Você já pode pagar com PIX.' : (string)$r['mensagem'],
             'data'=>$dados]);
+    }
+    if ($rota === 'painel/faturamento/pagamento/cartao/trocar' && $metodo === 'POST') {
+        exigirPermissao($conexao, 'faturamento.pagar', $contexto);
+        csrfValidarSessao();
+        $tokenTemporario = trim((string)($_POST['token'] ?? ''));
+        unset($_POST['token'], $_POST['payment_method_id']);
+        $gatewayCartao = pagamentoCartaoGatewayAtivo();
+        try {
+            $r = pagamentoCartaoPreapprovalTrocarCartao($conexao, $gatewayCartao, $empresa, $tokenTemporario);
+        } finally {
+            if (function_exists('sodium_memzero')) sodium_memzero($tokenTemporario); else $tokenTemporario = '';
+        }
+        $dados = pagamentoCartaoConfiguracao($conexao, $gatewayCartao, $empresa);
+        $desfechos = [
+            'confirmada' => [200, 'Cartão alterado. As próximas cobranças usarão o novo cartão.'],
+            'recusada' => [422, 'O Mercado Pago recusou o novo cartão. O cartão anterior continua ativo; tente outro cartão.'],
+            'sem_alteracao' => [409, 'A troca não foi aplicada pelo Mercado Pago. O cartão anterior continua ativo; tente novamente.'],
+            'incerta' => [503, 'Não foi possível confirmar a troca com o Mercado Pago. Atualize a situação em alguns minutos antes de tentar novamente.'],
+            'divergente' => [409, 'O Mercado Pago retornou dados diferentes do seu contrato. A troca será conferida pelo suporte antes de ser concluída.'],
+            'bloqueada' => [409, 'Não foi possível trocar o cartão agora. Atualize a situação do pagamento automático.'],
+        ];
+        [$http, $mensagem] = $desfechos[$r['resultado']] ?? [500, 'Pagamento temporariamente indisponível.'];
+        if ($r['codigo'] === 'TOKEN_CARTAO_INVALIDO') {
+            [$http, $mensagem] = [422, 'Não foi possível tokenizar o cartão. Confira os dados informados.'];
+        }
+        out(['ok'=>$r['resultado'] === 'confirmada', 'code'=>$r['resultado'] === 'confirmada' ? 'CARTAO_ALTERADO' : 'CARTAO_TROCA_' . strtoupper((string)$r['resultado']),
+            'user_msg'=>$mensagem, 'data'=>$dados], $http);
     }
     if ($rota === 'painel/faturamento/pagamento/cartao/status' && ($metodo === 'GET' || $metodo === 'POST')) {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);

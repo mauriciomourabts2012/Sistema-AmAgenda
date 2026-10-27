@@ -214,10 +214,10 @@ $whereSql = !empty($where)
     : '';
 
 $ordenacoesPermitidas = [
-    'recentes' => 'eu.criado_em DESC, u.nome ASC',
-    'antigos' => 'eu.criado_em ASC, u.nome ASC',
-    'nome_asc' => 'u.nome ASC, eu.id_empresa_usuario ASC',
-    'nome_desc' => 'u.nome DESC, eu.id_empresa_usuario DESC',
+    'recentes' => 'MAX(eu.criado_em) DESC, u.nome ASC, eu.id_usuario ASC',
+    'antigos' => 'MIN(eu.criado_em) ASC, u.nome ASC, eu.id_usuario ASC',
+    'nome_asc' => 'u.nome ASC, eu.id_usuario ASC',
+    'nome_desc' => 'u.nome DESC, eu.id_usuario DESC',
 ];
 $ordem = array_key_exists($ordemRaw, $ordenacoesPermitidas) ? $ordemRaw : 'recentes';
 $orderBySql = $ordenacoesPermitidas[$ordem];
@@ -226,7 +226,7 @@ $orderBySql = $ordenacoesPermitidas[$ordem];
    TOTAL
 ========================================================== */
 $sqlTotal = "
-    SELECT COUNT(*) AS total
+    SELECT COUNT(DISTINCT eu.id_usuario) AS total
     FROM empresa_usuario eu
     INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
     INNER JOIN perfil p  ON p.id_perfil = eu.id_perfil
@@ -276,60 +276,40 @@ if (method_exists($stmtT, 'get_result')) {
 $stmtT->close();
 
 /* ==========================================================
-   LISTA
+   IDENTIDADES DA PÁGINA
+   - pagina por usuario.id_usuario, não por empresa_usuario
 ========================================================== */
-$sql = "
-    SELECT
-        eu.id_empresa_usuario,
-        eu.id_empresa,
-        e.nome AS empresa_nome,
-
-        eu.id_usuario,
-        u.nome,
-        u.email,
-        u.telefone,
-        u.foto_perfil,
-        u.status AS status_usuario,
-        u.ultimo_login_em,
-
-        eu.id_perfil,
-        p.nome AS perfil,
-        p.descricao AS perfil_descricao,
-
-        eu.status AS status_vinculo,
-        eu.criado_em,
-        eu.atualizado_em
-
+$sqlIds = "
+    SELECT eu.id_usuario
     FROM empresa_usuario eu
     INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
     INNER JOIN perfil p  ON p.id_perfil = eu.id_perfil
     INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
     {$whereSql}
+    GROUP BY eu.id_usuario, u.nome
     ORDER BY {$orderBySql}
     LIMIT ? OFFSET ?
 ";
 
-$stmt = $db->prepare($sql);
+$stmtIds = $db->prepare($sqlIds);
 
-if (!$stmt) {
+if (!$stmtIds) {
     out([
         'ok' => false,
         'code' => 'PREPARE_LIST_FAIL',
         'user_msg' => 'Falha ao preparar consulta da lista.',
-        'debug_sql' => $sql
+        'debug_sql' => $sqlIds
     ], 500);
 }
 
-$paramsList = $params;
-$paramsList[] = $limit;
-$paramsList[] = $offset;
-$typesList = $types . 'ii';
+$paramsIds = $params;
+$paramsIds[] = $limit;
+$paramsIds[] = $offset;
+bindParamsDynamic($stmtIds, $types . 'ii', $paramsIds);
 
-bindParamsDynamic($stmt, $typesList, $paramsList);
-
-if (!$stmt->execute()) {
-    $erro = $stmt->error;
-    $stmt->close();
+if (!$stmtIds->execute()) {
+    $erro = $stmtIds->error;
+    $stmtIds->close();
 
     out([
         'ok' => false,
@@ -339,84 +319,158 @@ if (!$stmt->execute()) {
     ], 500);
 }
 
+$idsUsuarios = [];
+
+if (method_exists($stmtIds, 'get_result')) {
+    $resIds = $stmtIds->get_result();
+    while ($r = $resIds->fetch_assoc()) {
+        $idsUsuarios[] = (int)$r['id_usuario'];
+    }
+} else {
+    $stmtIds->bind_result($idUsuarioPagina);
+    while ($stmtIds->fetch()) {
+        $idsUsuarios[] = (int)$idUsuarioPagina;
+    }
+}
+
+$stmtIds->close();
+
+/* ==========================================================
+   VÍNCULOS DAS IDENTIDADES DA PÁGINA
+   - carrega todos os vínculos para preservar perfil/status por empresa
+========================================================== */
 $data = [];
 
-if (method_exists($stmt, 'get_result')) {
-    $res = $stmt->get_result();
+if ($idsUsuarios) {
+    $placeholders = implode(',', array_fill(0, count($idsUsuarios), '?'));
+    $sqlVinculos = "
+        SELECT
+            eu.id_empresa_usuario,
+            eu.id_empresa,
+            e.nome AS empresa_nome,
+            eu.id_usuario,
+            u.nome,
+            u.email,
+            u.telefone,
+            u.foto_perfil,
+            u.status AS status_usuario,
+            u.ultimo_login_em,
+            eu.id_perfil,
+            p.nome AS perfil,
+            p.descricao AS perfil_descricao,
+            eu.status AS status_vinculo,
+            eu.criado_em,
+            eu.atualizado_em
+        FROM empresa_usuario eu
+        INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+        INNER JOIN perfil p  ON p.id_perfil = eu.id_perfil
+        INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
+        WHERE eu.id_usuario IN ({$placeholders})
+        ORDER BY e.nome ASC, eu.id_empresa_usuario ASC
+    ";
 
-    while ($r = $res->fetch_assoc()) {
-        $data[] = [
+    $stmtVinculos = $db->prepare($sqlVinculos);
+    if (!$stmtVinculos) {
+        out([
+            'ok' => false,
+            'code' => 'PREPARE_LINKS_FAIL',
+            'user_msg' => 'Falha ao preparar os vínculos dos usuários.',
+            'debug_sql' => $sqlVinculos
+        ], 500);
+    }
+
+    bindParamsDynamic($stmtVinculos, str_repeat('i', count($idsUsuarios)), $idsUsuarios);
+
+    if (!$stmtVinculos->execute()) {
+        $erro = $stmtVinculos->error;
+        $stmtVinculos->close();
+        out([
+            'ok' => false,
+            'code' => 'EXEC_LINKS_FAIL',
+            'user_msg' => 'Falha ao carregar os vínculos dos usuários.',
+            'debug_error' => $erro
+        ], 500);
+    }
+
+    $porUsuario = [];
+    $adicionarVinculo = static function (array $r) use (&$porUsuario): void {
+        $idUsuario = (int)$r['id_usuario'];
+        $porUsuario[$idUsuario][] = [
             'id_empresa_usuario' => (int)$r['id_empresa_usuario'],
             'id_empresa'         => (int)$r['id_empresa'],
             'empresa_nome'       => (string)$r['empresa_nome'],
-
-            'id_usuario'         => (int)$r['id_usuario'],
+            'id_usuario'         => $idUsuario,
             'nome'               => (string)$r['nome'],
             'email'              => (string)$r['email'],
             'telefone'           => $r['telefone'] !== null ? (string)$r['telefone'] : null,
             'foto_perfil'        => $r['foto_perfil'] !== null ? (string)$r['foto_perfil'] : null,
-
             'id_perfil'          => (int)$r['id_perfil'],
             'perfil'             => (string)$r['perfil'],
             'perfil_descricao'   => $r['perfil_descricao'] !== null ? (string)$r['perfil_descricao'] : null,
-
             'status'             => (string)$r['status_vinculo'],
             'status_vinculo'     => (string)$r['status_vinculo'],
             'status_usuario'     => (string)$r['status_usuario'],
-
             'ultimo_login_em'    => $r['ultimo_login_em'] !== null ? (string)$r['ultimo_login_em'] : null,
             'criado_em'          => (string)$r['criado_em'],
             'atualizado_em'      => (string)$r['atualizado_em'],
         ];
+    };
+
+    if (method_exists($stmtVinculos, 'get_result')) {
+        $resVinculos = $stmtVinculos->get_result();
+        while ($r = $resVinculos->fetch_assoc()) {
+            $adicionarVinculo($r);
+        }
+    } else {
+        $stmtVinculos->bind_result(
+            $id_empresa_usuario,
+            $id_empresa_r,
+            $empresa_nome,
+            $id_usuario,
+            $nome,
+            $email,
+            $telefone,
+            $foto_perfil,
+            $status_usuario,
+            $ultimo_login_em,
+            $id_perfil_r,
+            $perfil_r,
+            $perfil_descricao,
+            $status_vinculo,
+            $criado_em,
+            $atualizado_em
+        );
+
+        while ($stmtVinculos->fetch()) {
+            $adicionarVinculo([
+                'id_empresa_usuario' => $id_empresa_usuario,
+                'id_empresa' => $id_empresa_r,
+                'empresa_nome' => $empresa_nome,
+                'id_usuario' => $id_usuario,
+                'nome' => $nome,
+                'email' => $email,
+                'telefone' => $telefone,
+                'foto_perfil' => $foto_perfil,
+                'status_usuario' => $status_usuario,
+                'ultimo_login_em' => $ultimo_login_em,
+                'id_perfil' => $id_perfil_r,
+                'perfil' => $perfil_r,
+                'perfil_descricao' => $perfil_descricao,
+                'status_vinculo' => $status_vinculo,
+                'criado_em' => $criado_em,
+                'atualizado_em' => $atualizado_em,
+            ]);
+        }
     }
-} else {
-    $stmt->bind_result(
-        $id_empresa_usuario,
-        $id_empresa_r,
-        $empresa_nome,
-        $id_usuario,
-        $nome,
-        $email,
-        $telefone,
-        $foto_perfil,
-        $status_usuario,
-        $ultimo_login_em,
-        $id_perfil_r,
-        $perfil_r,
-        $perfil_descricao,
-        $status_vinculo,
-        $criado_em,
-        $atualizado_em
-    );
 
-    while ($stmt->fetch()) {
-        $data[] = [
-            'id_empresa_usuario' => (int)$id_empresa_usuario,
-            'id_empresa'         => (int)$id_empresa_r,
-            'empresa_nome'       => (string)$empresa_nome,
+    $stmtVinculos->close();
 
-            'id_usuario'         => (int)$id_usuario,
-            'nome'               => (string)$nome,
-            'email'              => (string)$email,
-            'telefone'           => $telefone !== null ? (string)$telefone : null,
-            'foto_perfil'        => $foto_perfil !== null ? (string)$foto_perfil : null,
-
-            'id_perfil'          => (int)$id_perfil_r,
-            'perfil'             => (string)$perfil_r,
-            'perfil_descricao'   => $perfil_descricao !== null ? (string)$perfil_descricao : null,
-
-            'status'             => (string)$status_vinculo,
-            'status_vinculo'     => (string)$status_vinculo,
-            'status_usuario'     => (string)$status_usuario,
-
-            'ultimo_login_em'    => $ultimo_login_em !== null ? (string)$ultimo_login_em : null,
-            'criado_em'          => (string)$criado_em,
-            'atualizado_em'      => (string)$atualizado_em,
-        ];
+    foreach ($idsUsuarios as $idUsuario) {
+        foreach ($porUsuario[$idUsuario] ?? [] as $vinculo) {
+            $data[] = $vinculo;
+        }
     }
 }
-
-$stmt->close();
 
 /* ==========================================================
    RESPOSTA

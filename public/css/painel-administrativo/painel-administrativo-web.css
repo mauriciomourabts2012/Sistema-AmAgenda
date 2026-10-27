@@ -51,6 +51,9 @@
 #faturamento .faturamento-plano-icone { display:grid; place-items:center; flex:0 0 52px; width:52px; height:52px; border-radius:16px; background:#dfeeff; color:#1163dd; font-size:20px; }
 #faturamento .faturamento-assinatura-card > div:not(.faturamento-estado) span:not(.faturamento-plano-icone), #faturamento .faturamento-indicador > span:not(.faturamento-indicador-icone), #faturamento .faturamento-cobranca-detalhes span { color:#71829a; font-size:11px; font-weight:700; letter-spacing:.025em; }
 #faturamento .faturamento-assinatura-card strong { color:#173b63; font-size:15px; }
+#faturamento .faturamento-contratacao-aviso { display:grid; gap:8px; }
+#faturamento .faturamento-contratacao-aviso h3 { margin:0; color:#0b2a52; font-size:14px; font-weight:600; line-height:1.4; }
+#faturamento .faturamento-contratacao-aviso p { margin:0; color:#5b6b82; font-size:14px; font-weight:400; line-height:1.5; }
 #faturamento .faturamento-assinatura-plano { display:flex; flex-direction:column; align-items:flex-start; min-width:190px; }
 #faturamento .faturamento-assinatura-rotulo { display:block; margin-bottom:3px; line-height:1.2; }
 #faturamento .faturamento-assinatura-nome { display:block; font-size:18px; line-height:1.25; }
