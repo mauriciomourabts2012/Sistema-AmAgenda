@@ -4121,12 +4121,40 @@ function assinaturaServicoPreapprovalInicioTeste(string $testeExpiraEm): DateTim
 }
 
 /**
+ * Primeira mensalidade devida já no checkout: contratação nova cujo período da oferta (`$inicio`, 00:00 no fuso do
+ * negócio) já começou. Oferta com início ainda futuro (ex.: dia do banco à frente do fuso) não é imediata.
+ *
+ * @param array<string, mixed> $contrato retorno de assinaturaServicoPreapprovalContrato()
+ */
+function assinaturaServicoPreapprovalPrimeiraImediata(array $contrato, ?DateTimeImmutable $inicio, ?DateTimeImmutable $agora = null): bool
+{
+    return ($contrato['primeira_cobranca'] ?? null) !== null
+        && $inicio !== null
+        && $inicio <= ($agora ?? new DateTimeImmutable('now', new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO)));
+}
+
+/**
+ * Data enviada em auto_recurring.start_date. A primeira mensalidade imediata omite o campo (o provedor cobra na
+ * autorização); trials, recorrências posteriores e ofertas com início futuro preservam a data calculada.
+ *
+ * @param array<string, mixed> $contrato retorno de assinaturaServicoPreapprovalContrato()
+ */
+function assinaturaServicoPreapprovalInicioPayload(array $contrato, DateTimeImmutable $inicio, ?DateTimeImmutable $inicioEnvio, ?DateTimeImmutable $agora = null): ?DateTimeImmutable
+{
+    return assinaturaServicoPreapprovalPrimeiraImediata($contrato, $inicio, $agora)
+        ? null
+        : ($inicioEnvio ?? $inicio);
+}
+
+/**
  * Corpo do POST /preapproval, sem plano e sem card_token_id: nasce 'pending' e só é
- * autorizada pelo pagador no provedor. Nunca contém dado de cartão.
+ * autorizada pelo pagador no provedor. Nunca contém dado de cartão. A primeira
+ * mensalidade imediata omite start_date; contratos com início futuro (como o trial)
+ * continuam enviando a data explicitamente.
  *
  * @param array<string, mixed> $contrato plano_nome, valor_centavos, frequencia_meses
  */
-function assinaturaServicoPreapprovalMontarCorpo(array $contrato, string $referencia, string $emailPagador, DateTimeImmutable $inicio, ?string $backUrl): array
+function assinaturaServicoPreapprovalMontarCorpo(array $contrato, string $referencia, string $emailPagador, ?DateTimeImmutable $inicio, ?string $backUrl): array
 {
     $reason = mb_substr('AmAgenda - ' . trim((string)$contrato['plano_nome']), 0, 120, 'UTF-8');
     $corpo = [
@@ -4139,9 +4167,11 @@ function assinaturaServicoPreapprovalMontarCorpo(array $contrato, string $refere
             'frequency_type' => 'months',
             'transaction_amount' => (float)pagamentoGatewayValorDecimal((int)$contrato['valor_centavos']),
             'currency_id' => 'BRL',
-            'start_date' => $inicio->format('Y-m-d\TH:i:s.vP'),
         ],
     ];
+    if ($inicio !== null) {
+        $corpo['auto_recurring']['start_date'] = $inicio->format('Y-m-d\TH:i:s.vP');
+    }
     if ($backUrl !== null) {
         $corpo['back_url'] = $backUrl;
     }
@@ -4154,7 +4184,7 @@ function assinaturaServicoPreapprovalMontarCorpo(array $contrato, string $refere
  * Retorna null quando tudo confere; senão, o código da divergência. Nada é gravado.
  *
  * @param array<string, mixed> $dados resposta do provedor
- * @param array<string, mixed> $esperado referencia, ambiente, valor_centavos, frequencia_meses, id?, email?, inicio?
+ * @param array<string, mixed> $esperado referencia, ambiente, valor_centavos, frequencia_meses, id?, email?, inicio?, inicio_pendente_opcional?
  */
 function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperado): ?string
 {
@@ -4201,7 +4231,11 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
     }
 
     if (isset($esperado['inicio']) && $esperado['inicio'] instanceof DateTimeImmutable) {
-        $codigoData = assinaturaServicoPreapprovalConferirInicioExterno($dados, $esperado['inicio']);
+        $codigoData = assinaturaServicoPreapprovalConferirInicioExterno(
+            $dados,
+            $esperado['inicio'],
+            ($esperado['inicio_pendente_opcional'] ?? false) === true
+        );
         if ($codigoData !== null) {
             return $codigoData;
         }
@@ -4214,15 +4248,19 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
  * Proteção contra cobrança antecipada, conforme o estado da Preapproval:
  * - pending: `next_payment_date` é provisório (o provedor pode devolver a data de criação antes da autorização do
  *   pagador); vale o início contratual `auto_recurring.start_date`, que precisa ser o dia seguinte ao fim do período
- *   pago ou depois. Sem início verificável, nada é vinculado (INICIO_EXTERNO_INDETERMINADO).
+ *   pago ou depois. Sem início verificável, nada é vinculado (INICIO_EXTERNO_INDETERMINADO), exceto com
+ *   `$permitirAusentePendente` (primeira mensalidade imediata, enviada sem start_date).
  * - authorized (e demais estados): vale a próxima cobrança efetivamente programada (`next_payment_date`; na falta
  *   dela, `start_date`). Sem nenhuma das duas, INICIO_EXTERNO_INDETERMINADO.
  * Retorna null quando a data respeita o período pago.
  */
-function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio): ?string
+function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio, bool $permitirAusentePendente = false): ?string
 {
     $recorrencia = is_array($dados['auto_recurring'] ?? null) ? $dados['auto_recurring'] : [];
     $inicioExterno = assinaturaServicoPreapprovalDataExterna($recorrencia['start_date'] ?? null);
+    if (($dados['status'] ?? null) === 'pending' && $inicioExterno === null && $permitirAusentePendente) {
+        return null;
+    }
     $data = ($dados['status'] ?? null) === 'pending'
         ? $inicioExterno
         : (assinaturaServicoPreapprovalDataExterna($dados['next_payment_date'] ?? null) ?? $inicioExterno);
@@ -4402,6 +4440,7 @@ function assinaturaServicoPreapprovalAutorizacaoExistente(object $gateway, array
         'id' => (string)$v['assinatura_externa_id'], 'referencia' => (string)$v['referencia_externa_assinatura'],
         'ambiente' => (string)$v['ambiente'], 'valor_centavos' => $c['valor_centavos'],
         'frequencia_meses' => $c['frequencia_meses'], 'inicio' => $reserva['inicio'],
+        'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($c, $reserva['inicio']),
         'status_permitidos' => ['pending', 'authorized', 'paused', 'canceled'],
     ]);
     if ($erro !== null) {
@@ -5137,6 +5176,7 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
         'id' => $idEsperado,
         'email' => $emailPagador,
         'inicio' => $inicio,
+        'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($contrato, $inicio),
     ]);
     if ($divergencia !== null) {
         assinaturaServicoPreapprovalMarcarConciliacao($conexao, $vinculo, $idOperacao, $divergencia, 'Assinatura externa divergente do contrato interno.');
@@ -5224,7 +5264,7 @@ function assinaturaServicoPreapprovalEnviar(mysqli $conexao, object $gateway, ar
         $reserva['contrato'],
         (string)$vinculo['referencia_externa_assinatura'],
         $emailPagador,
-        $reserva['inicio_envio'] ?? $reserva['inicio'],
+        assinaturaServicoPreapprovalInicioPayload($reserva['contrato'], $reserva['inicio'], $reserva['inicio_envio']),
         assinaturaServicoPreapprovalBackUrl($gateway::urlPublicaConfigurada())
     );
 
