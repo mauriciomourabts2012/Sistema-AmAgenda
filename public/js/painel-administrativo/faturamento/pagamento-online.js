@@ -201,14 +201,14 @@
   const SITUACOES_PRIMEIRA = {
     escolha: ["fa-regular fa-credit-card", "Escolha como pagar", "No PIX, você paga agora e pode configurar o cartão depois. No cartão de crédito, a primeira mensalidade é cobrada após a autorização no Mercado Pago e as próximas passam a ser automáticas."],
     pix_em_andamento: ["fa-brands fa-pix", "PIX em andamento", "Já existe um PIX gerado para esta cobrança. Conclua o pagamento ou aguarde a expiração para escolher o cartão."],
-    aguardando_autorizacao: ["fa-solid fa-hourglass-half", "Aguardando sua autorização", "Conclua a autorização do cartão no Mercado Pago. A primeira mensalidade só é cobrada depois dela."],
+    aguardando_autorizacao: ["fa-solid fa-hourglass-half", "Aguardando sua autorização", "O pagamento no cartão ainda não foi concluído no Mercado Pago. Se você fechou o checkout, continue de onde parou ou tente outro cartão; a primeira mensalidade só é cobrada depois da autorização."],
     autorizacao_em_analise: ["fa-solid fa-hourglass-half", "Autorizado no Mercado Pago — ativação em análise", "A autorização foi recebida e precisa de conferência antes da cobrança. O acesso só é liberado após o pagamento confirmado."],
     aguardando_primeira_cobranca: ["fa-solid fa-hourglass-half", "Aguardando a primeira cobrança", "O cartão foi autorizado. O acesso é liberado quando o Mercado Pago confirmar o pagamento da primeira mensalidade."],
     processando: ["fa-solid fa-hourglass-half", "Pagamento em processamento", "O Mercado Pago está processando a primeira mensalidade no cartão."],
     pagamento_recusado: ["fa-solid fa-triangle-exclamation", "Pagamento recusado", "O cartão recusou a primeira mensalidade. O Mercado Pago pode tentar novamente; se preferir, pague com PIX."],
     em_verificacao: ["fa-solid fa-triangle-exclamation", "Pagamento em verificação", "O pagamento precisa de conferência. Atualize a situação mais tarde ou fale com o suporte."],
     cancelando_cartao: ["fa-solid fa-hourglass-half", "Cancelando o pagamento no cartão", "Aguardando a confirmação do Mercado Pago. O PIX será liberado em seguida."],
-    cartao_cancelado: ["fa-brands fa-pix", "Pagamento no cartão cancelado", "Pague a primeira mensalidade com PIX."],
+    cartao_cancelado: ["fa-regular fa-credit-card", "Pagamento no cartão cancelado", "A autorização anterior no cartão foi encerrada no Mercado Pago."],
     pagamento_confirmado: ["fa-solid fa-circle-check", "Pagamento confirmado", "A primeira mensalidade foi paga. A contratação é ativada automaticamente; se ainda não foi, use \"Concluir contratação\"."],
     indisponivel: ["fa-solid fa-triangle-exclamation", "Cobrança de contratação indisponível", "Atualize a página ou fale com o suporte."]
   };
@@ -223,11 +223,23 @@
     const criada = atual.autorizacao_criada === true && !["cancelada", "encerrada"].includes(String(atual.status || ""));
     const pix = p.pode_pagar_pix && Number(p.id_cobranca) > 0
       ? `<button class="botao-geral${atual.pode_configurar ? "" : " destaque"}" type="button" data-pagar-cobranca="${esc(p.id_cobranca)}" data-pagar-valor="${esc(p.valor)}"><i class="fa-brands fa-pix" aria-hidden="true"></i>Pagar com PIX</button>` : "";
-    const cartaoBotao = atual.pode_configurar ? botaoAutorizarCartao(criada ? "Continuar no Mercado Pago" : "Pagar com cartão de crédito") : "";
+    // Depois de recusa ou de autorização encerrada, o botão deixa claro que é possível usar outro cartão.
+    const outroCartao = ["cartao_cancelado", "pagamento_recusado"].includes(p.situacao);
+    const cartaoBotao = (atual.pode_configurar
+      ? botaoAutorizarCartao(outroCartao && !criada ? "Tentar outro cartão de crédito" : (criada ? "Continuar pagamento com cartão" : "Pagar com cartão de crédito")) : "")
+      // Checkout pendente abandonado: o servidor encerra essa autorização antes de abrir outra para a mesma cobrança.
+      + (atual.pode_tentar_outro_cartao
+        ? '<button class="botao-geral" type="button" data-outro-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Tentar outro cartão de crédito</button>' : "");
     const trocar = p.pode_trocar_para_pix ? '<button class="botao-geral" type="button" data-usar-pix><i class="fa-brands fa-pix" aria-hidden="true"></i>Pagar com PIX em vez do cartão</button>' : "";
-    const indisponivel = p.situacao === "escolha" && !atual.pode_configurar && atual.subscriptions_habilitado === false
-      ? " O pagamento no cartão ainda não está disponível; use o PIX."
-      : p.situacao === "cartao_cancelado" && atual.pode_configurar ? " Se preferir, autorize o cartão novamente." : "";
+    const MOTIVOS_CARTAO = {
+      cartao_desabilitado: " O pagamento no cartão ainda não está disponível; use o PIX.",
+      pix_em_andamento: " Há um PIX em andamento para esta cobrança: conclua o pagamento ou aguarde a expiração para usar o cartão.",
+      cartao_em_processamento: " A tentativa anterior no cartão ainda está sendo processada pelo Mercado Pago. Atualize a situação antes de tentar outro cartão.",
+      nova_autorizacao_indisponivel: " Uma nova autorização no cartão ainda não está disponível para este contrato; use o PIX ou fale com o suporte."
+    };
+    const indisponivel = MOTIVOS_CARTAO[atual.motivo_cartao_indisponivel]
+      || (outroCartao && atual.pode_configurar ? ` Você pode tentar outro cartão de crédito${p.pode_pagar_pix ? " ou pagar com PIX" : ""}.` : "")
+      || (p.situacao === "cartao_cancelado" && p.pode_pagar_pix ? " Pague a primeira mensalidade com PIX." : "");
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto + indisponivel)}<div class="faturamento-acoes">${cartaoBotao}${pix}${trocar}${botaoVerificar}</div>`;
   }
 
@@ -342,16 +354,26 @@
     alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", "Nenhum cartão autorizado", indisponivel)}${atual.pode_configurar ? botaoAutorizar("Autorizar cartão no Mercado Pago") : ""}`;
   }
 
-  async function iniciarAutorizacaoAssinatura() {
-    if (cartao.redirecionando || !cartao.configuracao?.pode_configurar) return;
+  // outroCartao: checkout anterior abandonado; o servidor encerra a autorização pendente e só então cria outra.
+  async function iniciarAutorizacaoAssinatura(outroCartao = false) {
+    if (cartao.redirecionando || !(outroCartao ? cartao.configuracao?.pode_tentar_outro_cartao : cartao.configuracao?.pode_configurar)) return;
     const csrf = String(window.__AUTH__?.csrf_token || "");
     if (!/^[a-f0-9]{64}$/.test(csrf)) { avisar("erro", "Atualize a página para renovar sua sessão."); return; }
+    if (outroCartao) {
+      const mensagem = "A autorização anterior, ainda não concluída, será cancelada no Mercado Pago e você será levado a um novo checkout para usar outro cartão. A primeira mensalidade continua sendo a mesma cobrança. Deseja continuar?";
+      const confirmado = window.MensagemSistema?.confirmar
+        ? await window.MensagemSistema.confirmar(mensagem, { titulo: "Tentar outro cartão de crédito", textoConfirmar: "Tentar outro cartão" })
+        : window.confirm(mensagem);
+      if (!confirmado) return;
+    }
     cartao.redirecionando = true;
-    const botoes = document.querySelectorAll("[data-autorizar-assinatura]");
+    const botoes = document.querySelectorAll("[data-autorizar-assinatura],[data-outro-cartao]");
     botoes.forEach(b => { b.disabled = true; });
     try {
       // Sem corpo contratual: empresa, valor e contrato são sempre os do servidor.
-      const resposta = await fetch(CARTAO_AUTORIZAR, { method: "POST", body: new FormData(), credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
+      const corpo = new FormData();
+      if (outroCartao) corpo.append("outro_cartao", "1");
+      const resposta = await fetch(CARTAO_AUTORIZAR, { method: "POST", body: corpo, credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
       const retorno = await json(resposta);
       const dados = retorno.data || {};
       if (initPointValido(dados.init_point)) {
@@ -551,6 +573,8 @@
   async function atualizarCartao() {
     if (cartao.configuracao?.motor_recorrencia === "preapproval") {
       if (cartao.carregando) return;
+      // Se a página ainda está aqui, nenhum redirecionamento ao Mercado Pago está em curso (ex.: checkout fechado).
+      cartao.redirecionando = false;
       cartao.carregando = true;
       try { await verificarRetornoAssinatura(); } finally { cartao.carregando = false; }
       return;
@@ -570,6 +594,7 @@
     if (evento.target.closest("[data-trocar-cartao]")) abrirTrocaCartao();
     if (evento.target.closest("[data-atualizar-cartao]")) atualizarCartao();
     if (evento.target.closest("[data-autorizar-assinatura]")) iniciarAutorizacaoAssinatura();
+    if (evento.target.closest("[data-outro-cartao]")) iniciarAutorizacaoAssinatura(true);
     if (evento.target.closest("[data-usar-pix]")) usarPix();
     if (evento.target.closest("#modalCartaoRecorrenteFaturamento [data-fechar-modal]")) desmontarBrick();
   });
@@ -582,5 +607,14 @@
     document.addEventListener("amagenda:sessao-carregada", () => { tentarRetornoAssinatura(); carregarConfiguracaoCartao(); });
     tentarRetornoAssinatura();
     if (!cartao.retornoProcessado && document.getElementById("faturamento")?.classList.contains("ativa")) carregarConfiguracaoCartao();
+  });
+  // Voltar do checkout pelo navegador restaura a página do cache com o estado "redirecionando" e os botões desativados:
+  // libera a tela e consulta o servidor de novo (a URL não prova nada; o estado vem do backend).
+  window.addEventListener("pageshow", evento => {
+    if (!evento.persisted) return;
+    cartao.redirecionando = false;
+    cartao.carregando = false;
+    document.querySelectorAll("[data-autorizar-assinatura],[data-outro-cartao],[data-usar-pix]").forEach(b => { b.disabled = false; });
+    if (document.getElementById("faturamento")?.classList.contains("ativa")) carregarConfiguracaoCartao();
   });
 })();
