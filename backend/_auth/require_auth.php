@@ -207,6 +207,7 @@ if ($tipoUsuario !== 'super_admin') {
             'painel/faturamento/pagamento/cartao/configuracao',
             'painel/faturamento/pagamento/cartao/autorizar',
             'painel/faturamento/pagamento/cartao/status',
+            'painel/faturamento/pagamento/cartao/usar-pix',
             'documentos-legais/pendencias',
             'documentos-legais/conteudo',
             'documentos-legais/manifestar',

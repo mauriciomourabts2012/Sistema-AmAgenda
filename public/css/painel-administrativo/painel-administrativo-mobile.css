@@ -162,6 +162,8 @@
   #faturamento .faturamento-pagar-agora { width:100%; }
   #faturamento .faturamento-cartao-card { flex-direction:column; align-items:stretch; padding:17px; }
   #faturamento .faturamento-cartao-card > .botao-geral { width:100%; }
+  #faturamento .faturamento-cartao-card .faturamento-acoes { flex-direction:column; align-items:stretch; }
+  #faturamento .faturamento-cartao-card .faturamento-acoes .botao-geral { width:100%; }
   #faturamento .faturamento-cartao-identidade { align-items:flex-start; }
   .faturamento-cartao-modal .modal-corpo { max-height:calc(100dvh - 105px); padding:14px; }
   .cartao-consentimento { padding:12px; }

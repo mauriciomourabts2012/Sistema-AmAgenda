@@ -2125,6 +2125,14 @@ function assinaturaServicoSolicitarNovaContratacao(mysqli $conexao, int $idEmpre
         return assinaturaServicoNovaContratacaoResultado(false, 'PLANO_INDISPONIVEL', 'O plano escolhido não está disponível para contratação ou não comporta os usuários ativos da empresa.');
     }
 
+    if ($pendente !== null) {
+        // Pagamento da primeira cobrança pelo cartão (Preapproval): enquanto a assinatura externa puder cobrar (mesmo sem
+        // autorização, pois o pagador pode concluir um checkout antigo), nem a oferta é substituída nem o contrato trocado.
+        if (assinaturaServicoPreapprovalPrimeiraCobrancaViva($conexao, $idEmpresa, (int)$pendente['id_assinatura'])) {
+            return assinaturaServicoNovaContratacaoResultado(false, 'PAGAMENTO_CARTAO_EM_ANDAMENTO', 'A contratação atual está sendo paga pelo cartão no Mercado Pago. Para alterá-la, use antes a opção "Pagar com PIX em vez do cartão" e aguarde a confirmação.');
+        }
+    }
+
     // Ofertas antigas não pagas saem de cena antes da nova; oferta com pagamento exige análise.
     $bloqueioOferta = assinaturaServicoCancelarOfertasNaoPagas($conexao, $idEmpresa, $ator);
     if ($bloqueioOferta !== null) {
@@ -2468,13 +2476,16 @@ function assinaturaServicoSituacaoNovaContratacao(mysqli $conexao, int $idEmpres
                 }
             }
         }
+        // Só o cartão de contratos anteriores; o da própria contratação pendente é o pagamento da primeira cobrança.
         $cartao = assinaturaServicoConsultaFinanceira(
             $conexao,
             "SELECT 1 FROM assinatura_pagamento_recorrente
               WHERE id_empresa = ? AND status IN ('cancelamento_pendente', 'pendente', 'ativa', 'suspensa', 'atualizacao_necessaria')
+                AND NOT (id_assinatura <=> ?)
               LIMIT 1",
-            'i',
-            $idEmpresa
+            'ii',
+            $idEmpresa,
+            $estado['ok'] && $estado['pendente'] !== null ? (int)$estado['pendente']['id_assinatura'] : null
         );
         $situacao['cartao_sincronizacao_pendente'] = $cartao !== [];
 
@@ -3845,6 +3856,10 @@ const ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS = 180;
 const ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE = 50;
 const ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS = 4;
 const ASSINATURA_SERVICO_PREAPPROVAL_FUSO = 'America/Sao_Paulo';
+/** Antecedência da `start_date` da Preapproval da primeira cobrança em relação ao envio. */
+const ASSINATURA_SERVICO_PREAPPROVAL_PRIMEIRA_MARGEM_MINUTOS = 10;
+/** Distância máxima (dias) entre o início da oferta e a primeira parcela; a mesma de MP_SUB_TOLERANCIA_COMPETENCIA_DIAS. */
+const ASSINATURA_SERVICO_PREAPPROVAL_TOLERANCIA_PRIMEIRA_DIAS = 1;
 
 /** @return array{ok: bool, codigo: ?string, mensagem: string} */
 function assinaturaServicoPreapprovalFalha(AssinaturaServicoConversaoErro $erro): array
@@ -4209,7 +4224,7 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
 
     $linhas = assinaturaServicoConsultaFinanceira(
         $conexao,
-        "SELECT a.id_assinatura, a.valor_contratado, a.periodicidade, a.status, a.modalidade, a.data_fim,
+        "SELECT a.id_assinatura, a.id_plano, a.valor_contratado, a.periodicidade, a.status, a.modalidade, a.motivo_suspensao, a.data_fim,
                 p.nome AS plano_nome, p.gera_cobranca
            FROM assinatura a
           INNER JOIN plano p ON p.id_plano = a.id_plano
@@ -4223,7 +4238,9 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
         throw new AssinaturaServicoConversaoErro('ASSINATURA_INCONSISTENTE', 'Não foi possível determinar sua assinatura vigente.', 409);
     }
     $contrato = $linhas[0] ?? null;
-    if ($contrato === null || (string)$contrato['status'] !== 'ativa') {
+    // Contratação nova ainda não paga: a Preapproval quita a cobrança do primeiro período (oferta) e segue recorrente.
+    $primeiraCobranca = $contrato !== null && assinaturaServicoPreapprovalContratacaoPendente($contrato);
+    if ($contrato === null || ((string)$contrato['status'] !== 'ativa' && !$primeiraCobranca)) {
         throw new AssinaturaServicoConversaoErro('ASSINATURA_INATIVA', 'Não há assinatura ativa para configurar o pagamento recorrente.', 409);
     }
     if ((string)$contrato['modalidade'] === 'teste') {
@@ -4252,21 +4269,180 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
     return [
         'id_empresa' => $idEmpresa,
         'id_assinatura' => (int)$contrato['id_assinatura'],
+        'id_plano' => (int)$contrato['id_plano'],
         'plano_nome' => (string)$contrato['plano_nome'],
         'periodicidade' => (string)$contrato['periodicidade'],
         'valor_centavos' => $centavos,
         'frequencia_meses' => $frequencia,
+        'primeira_cobranca' => $primeiraCobranca
+            ? assinaturaServicoPreapprovalOfertaPrimeiraCobranca($conexao, $idEmpresa, (int)$contrato['id_assinatura'], $centavos)
+            : null,
     ];
+}
+
+/** Contrato pago criado pela nova contratação e ainda aguardando o pagamento do primeiro período. */
+function assinaturaServicoPreapprovalContratacaoPendente(array $contrato): bool
+{
+    return (string)$contrato['status'] === 'suspensa' && (string)($contrato['motivo_suspensao'] ?? '') === 'contratacao_pendente'
+        && (string)$contrato['modalidade'] === 'paga' && $contrato['data_fim'] === null;
+}
+
+/**
+ * Cobrança do primeiro período que a Preapproval vai quitar: a única oferta do contrato, pendente, sem pagamento
+ * confirmado e com o valor contratado. Deve rodar na transação do chamador (bloqueia a cobrança).
+ *
+ * @return array{id_cobranca: int, periodo_inicio: string, periodo_fim: string}
+ * @throws AssinaturaServicoConversaoErro
+ */
+function assinaturaServicoPreapprovalOfertaPrimeiraCobranca(mysqli $conexao, int $idEmpresa, int $idAssinatura, int $valorCentavos): array
+{
+    $ofertas = assinaturaServicoOfertasDoContrato($conexao, $idEmpresa, $idAssinatura);
+    $oferta = count($ofertas) === 1 ? $ofertas[0] : null;
+    if ($oferta !== null && $oferta['quitada']) {
+        throw new AssinaturaServicoConversaoErro('CONTRATACAO_JA_PAGA', 'A cobrança de contratação já foi paga. Conclua a contratação para liberar o acesso.', 409);
+    }
+    if ($oferta === null || (string)$oferta['status'] !== 'pendente' || (int)$oferta['pago_centavos'] !== 0
+        || pagamentoGatewayValorCentavos((string)$oferta['valor']) !== $valorCentavos) {
+        throw new AssinaturaServicoConversaoErro('OFERTA_CONTRATACAO_INDISPONIVEL', 'A cobrança de contratação precisa de verificação antes do pagamento no cartão.', 409);
+    }
+
+    return [
+        'id_cobranca' => (int)$oferta['id_cobranca'],
+        'periodo_inicio' => (string)$oferta['periodo_inicio'],
+        'periodo_fim' => (string)$oferta['periodo_fim'],
+    ];
+}
+
+/**
+ * Datas da Preapproval que quita a primeira cobrança. Sem período pago, nada há a proteger antes do início da oferta:
+ * - limite: 00:00 do início do período da oferta (nenhuma cobrança externa pode cair antes disso);
+ * - envio: `start_date` enviada ao provedor, alguns minutos à frente (o provedor não aceita início no passado), para
+ *   que a primeira parcela seja cobrada logo após a autorização do pagador, dentro do período da oferta.
+ *
+ * @return array{limite: DateTimeImmutable, envio: DateTimeImmutable}
+ */
+function assinaturaServicoPreapprovalInicioPrimeiraCobranca(string $periodoInicio, ?DateTimeImmutable $agora = null): array
+{
+    if (!assinaturaServicoDataValida($periodoInicio, 'Y-m-d')) {
+        throw new InvalidArgumentException('Início do período da oferta inválido.');
+    }
+    $fuso = new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO);
+    $limite = new DateTimeImmutable($periodoInicio . ' 00:00:00', $fuso);
+    $envio = ($agora ?? new DateTimeImmutable('now', $fuso))->setTimezone($fuso)
+        ->modify('+' . ASSINATURA_SERVICO_PREAPPROVAL_PRIMEIRA_MARGEM_MINUTOS . ' minutes');
+    $envio = $envio->setTime((int)$envio->format('H'), (int)$envio->format('i'));
+
+    return ['limite' => $limite, 'envio' => $envio > $limite ? $envio : $limite];
+}
+
+/**
+ * A primeira cobrança da contratação já tem uma Preapproval que pode cobrar (ou cuja criação está em conciliação):
+ * enquanto isso, PIX e troca de plano ficam bloqueados para não haver duas cobranças do mesmo período.
+ * Deve rodar na transação do chamador.
+ */
+function assinaturaServicoPreapprovalPrimeiraCobrancaViva(mysqli $conexao, int $idEmpresa, int $idAssinatura): bool
+{
+    return assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT 1 FROM assinatura_pagamento_recorrente v
+          WHERE v.id_empresa = ? AND v.id_assinatura = ? AND v.motor_recorrencia = 'preapproval'
+            AND v.status NOT IN ('cancelada', 'encerrada')
+            AND (v.assinatura_externa_id IS NOT NULL
+                 OR EXISTS (SELECT 1 FROM operacao_assinatura_gateway o
+                             WHERE o.id_assinatura_pagamento = v.id_assinatura_pagamento
+                               AND o.status_processamento IN ('pendente', 'processando', 'conciliacao')))
+          LIMIT 1",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    ) !== [];
+}
+
+/**
+ * Oferta de outro dia na primeira cobrança pelo cartão. Na transação do chamador.
+ * - Sem Preapproval que possa cobrar: a oferta (sem pagamento) é renovada pelo mesmo caminho da nova contratação
+ *   (mesmo plano; a antiga é cancelada e auditada), para que a primeira parcela caia no início do período.
+ * - Com Preapproval ainda pendente e oferta fora da tolerância: a oferta NÃO é tocada (o pagador pode concluir o
+ *   checkout antigo); a Preapproval antiga é cancelada pelo outbox e a nova tentativa só ocorre após a confirmação.
+ * - Demais casos (autorizada, em conciliação ou dentro da tolerância): nada muda.
+ *
+ * @param array<string, mixed> $contrato retorno de assinaturaServicoPreapprovalContrato() com primeira_cobranca
+ * @return array{contrato: array<string, mixed>, expirada: ?array<string, mixed>}
+ * @throws AssinaturaServicoConversaoErro
+ */
+function assinaturaServicoPreapprovalRenovarOfertaAntiga(mysqli $conexao, int $idEmpresa, array $contrato, ?array $ator = null): array
+{
+    $hoje = assinaturaServicoHojeBanco($conexao);
+    $inicioOferta = (string)$contrato['primeira_cobranca']['periodo_inicio'];
+    if ($inicioOferta === $hoje) {
+        return ['contrato' => $contrato, 'expirada' => null];
+    }
+    $idAssinatura = (int)$contrato['id_assinatura'];
+    if (assinaturaServicoPreapprovalPrimeiraCobrancaViva($conexao, $idEmpresa, $idAssinatura)) {
+        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, $idAssinatura);
+        $limite = (new DateTimeImmutable($hoje))->modify('-' . ASSINATURA_SERVICO_PREAPPROVAL_TOLERANCIA_PRIMEIRA_DIAS . ' days')->format('Y-m-d');
+        $pendenteNoProvedor = $vinculo !== null && $vinculo['assinatura_externa_id'] !== null && (string)$vinculo['status'] === 'pendente'
+            && (string)($vinculo['status_externo'] ?? '') === 'pending';
+        if ($inicioOferta >= $limite || !$pendenteNoProvedor) {
+            return ['contrato' => $contrato, 'expirada' => null];
+        }
+        $cancelamento = assinaturaServicoPreapprovalCancelarPrimeiraExterna($conexao, $vinculo, $ator);
+        if ($cancelamento === null) {
+            throw new AssinaturaServicoConversaoErro('VINCULO_INCONSISTENTE', 'O pagamento no cartão precisa de verificação. Fale com o suporte.', 409);
+        }
+
+        return ['contrato' => $contrato, 'expirada' => $cancelamento];
+    }
+    $renovada = assinaturaServicoSolicitarNovaContratacao($conexao, $idEmpresa, (int)$contrato['id_plano'], $ator);
+    if (($renovada['ok'] ?? false) !== true) {
+        throw new AssinaturaServicoConversaoErro((string)$renovada['codigo'], (string)$renovada['mensagem'], 409);
+    }
+
+    return ['contrato' => assinaturaServicoPreapprovalContrato($conexao, $idEmpresa), 'expirada' => null];
+}
+
+/**
+ * Estrutura que permite um novo vínculo para o mesmo contrato depois do encerramento confirmado do anterior
+ * (SQL manual da Fase 21: o índice único passa a valer só para vínculos não encerrados). Sem ela, um contrato
+ * continua com um único vínculo, e nenhuma nova autorização é criada após o cancelamento (falha fechada).
+ */
+function assinaturaServicoPreapprovalNovoVinculoPermitido(mysqli $conexao): bool
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    $indices = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT INDEX_NAME, MIN(NON_UNIQUE) AS non_unique, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS colunas
+           FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'assinatura_pagamento_recorrente'
+          GROUP BY INDEX_NAME"
+    );
+    $unicoPorContrato = false;
+    $unicoVigente = false;
+    foreach ($indices as $indice) {
+        if ((int)$indice['non_unique'] !== 0) {
+            continue;
+        }
+        $unicoPorContrato = $unicoPorContrato || (string)$indice['colunas'] === 'id_assinatura';
+        $unicoVigente = $unicoVigente || (string)$indice['colunas'] === 'vinculo_vigente_assinatura';
+    }
+
+    return $cache = !$unicoPorContrato && $unicoVigente;
 }
 
 /**
  * Etapa 1 (transação): valida, reserva a intenção local e a "vez" de falar com o provedor.
  *
- * @return array{acao: string, contrato: array<string, mixed>, vinculo: array<string, mixed>, operacao: ?array<string, mixed>, inicio: DateTimeImmutable}
+ * Contratação nova não paga (primeira cobrança): não há período pago; `inicio` é o início da oferta (nenhuma cobrança
+ * externa antes dele) e `inicio_envio` é a `start_date` enviada. Nos demais casos `inicio_envio` é null.
+ *
+ * @return array{acao: string, contrato: array<string, mixed>, vinculo: array<string, mixed>, operacao: ?array<string, mixed>, inicio: DateTimeImmutable, inicio_envio: ?DateTimeImmutable}
  *         acao: 'criar' | 'conciliar' | 'vinculada' | 'em_andamento'
  * @throws AssinaturaServicoConversaoErro
  */
-function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente, int $idEmpresa): array
+function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente, int $idEmpresa, ?array $ator = null): array
 {
     $contrato = assinaturaServicoPreapprovalContrato($conexao, $idEmpresa);
     $idAssinatura = $contrato['id_assinatura'];
@@ -4278,11 +4454,25 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
     if ($pendencia !== null) {
         throw new AssinaturaServicoConversaoErro((string)$pendencia['codigo'], (string)$pendencia['mensagem'], 409);
     }
-    $fimPago = assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura);
-    if ($fimPago === null) {
-        throw new AssinaturaServicoConversaoErro('PERIODO_PAGO_INDISPONIVEL', 'Não há período pago vigente para preservar.', 409);
+    $envio = null;
+    if ($contrato['primeira_cobranca'] !== null) {
+        $renovacao = assinaturaServicoPreapprovalRenovarOfertaAntiga($conexao, $idEmpresa, $contrato, $ator);
+        $contrato = $renovacao['contrato'];
+        if ($renovacao['expirada'] !== null) {
+            // Checkout antigo: nenhuma autorização é oferecida até o cancelamento da Preapproval anterior ser confirmado.
+            return ['acao' => 'expirada', 'contrato' => $contrato, 'vinculo' => assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, $idAssinatura),
+                'operacao' => ['id_operacao' => $renovacao['expirada']['id_operacao'] ?? null], 'inicio' => null, 'inicio_envio' => null];
+        }
+        $datas = assinaturaServicoPreapprovalInicioPrimeiraCobranca($contrato['primeira_cobranca']['periodo_inicio']);
+        $inicio = $datas['limite'];
+        $envio = $datas['envio'];
+    } else {
+        $fimPago = assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura);
+        if ($fimPago === null) {
+            throw new AssinaturaServicoConversaoErro('PERIODO_PAGO_INDISPONIVEL', 'Não há período pago vigente para preservar.', 409);
+        }
+        $inicio = assinaturaServicoPreapprovalInicioCobranca($fimPago);
     }
-    $inicio = assinaturaServicoPreapprovalInicioCobranca($fimPago);
 
     $vinculos = assinaturaServicoConsultaFinanceira(
         $conexao,
@@ -4296,9 +4486,14 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         $idEmpresa
     );
     $vinculo = null;
+    $encerrado = null;
     foreach ($vinculos as $linha) {
         if ((int)$linha['id_assinatura'] === $idAssinatura) {
-            $vinculo = $linha;
+            if ((string)$linha['motor_recorrencia'] === 'preapproval' && in_array((string)$linha['status'], ['cancelada', 'encerrada'], true)) {
+                $encerrado = $linha; // Histórico: uma Preapproval encerrada nunca é reaproveitada.
+            } else {
+                $vinculo = $linha;
+            }
             continue;
         }
         if ((int)($linha['slot_ativo'] ?? 0) === 1
@@ -4307,7 +4502,11 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         }
     }
 
+    if ($vinculo === null && $encerrado !== null && !assinaturaServicoPreapprovalNovoVinculoPermitido($conexao)) {
+        throw new AssinaturaServicoConversaoErro('NOVA_AUTORIZACAO_INDISPONIVEL', 'O pagamento no cartão deste contrato foi encerrado e uma nova autorização ainda não está disponível. Use o PIX.', 409);
+    }
     if ($vinculo === null) {
+        // Sem vínculo vigente (nenhum, ou só encerrados com a estrutura da Fase 21): nova intenção, nova referência.
         $vinculo = assinaturaServicoPreapprovalInserirIntencao($conexao, $ambiente, $idEmpresa, $idAssinatura);
     } else {
         if ((string)$vinculo['provedor'] !== ASSINATURA_SERVICO_PREAPPROVAL_PROVEDOR || (string)$vinculo['ambiente'] !== $ambiente) {
@@ -4316,8 +4515,12 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         if ((string)$vinculo['motor_recorrencia'] !== 'preapproval') {
             throw new AssinaturaServicoConversaoErro('MOTOR_ORDERS_EXISTENTE', 'Já existe um vínculo de pagamento por cartão no motor atual para este contrato.', 409);
         }
+        if ((string)$vinculo['status'] === 'cancelamento_pendente') {
+            // Nunca devolve o link de uma Preapproval cujo cancelamento já foi pedido.
+            throw new AssinaturaServicoConversaoErro('CANCELAMENTO_CARTAO_EM_ANDAMENTO', 'O cancelamento da autorização anterior no cartão ainda está sendo confirmado pelo Mercado Pago. Tente novamente em instantes.', 409);
+        }
         if ($vinculo['assinatura_externa_id'] !== null) {
-            return ['acao' => 'vinculada', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => null, 'inicio' => $inicio];
+            return ['acao' => 'vinculada', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => null, 'inicio' => $inicio, 'inicio_envio' => $envio];
         }
         if ($vinculo['referencia_externa_assinatura'] === null || !in_array((string)$vinculo['status'], ['pendente', 'erro'], true)) {
             throw new AssinaturaServicoConversaoErro('VINCULO_INCONSISTENTE', 'O vínculo de pagamento recorrente está inconsistente.', 409);
@@ -4341,7 +4544,7 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         $interrompida = (string)$aberta['status_processamento'] === 'processando'
             && (int)$aberta['idade_segundos'] > ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS;
         if ((string)$aberta['status_processamento'] === 'processando' && !$interrompida) {
-            return ['acao' => 'em_andamento', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => $aberta, 'inicio' => $inicio];
+            return ['acao' => 'em_andamento', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => $aberta, 'inicio' => $inicio, 'inicio_envio' => $envio];
         }
         if ($interrompida && $aberta['erro_codigo'] === null) {
             // Morreu antes de marcar o envio: o POST certamente não saiu; a tentativa é encerrada e refeita.
@@ -4403,7 +4606,7 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         );
     }
 
-    return ['acao' => $acao, 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => $aberta, 'inicio' => $inicio];
+    return ['acao' => $acao, 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => $aberta, 'inicio' => $inicio, 'inicio_envio' => $envio];
 }
 
 /** Insere a intenção local (referência opaca e única) antes de qualquer chamada externa. */
@@ -4717,8 +4920,9 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
  * ou devolvem o vínculo existente. Nenhuma ativação, cobrança ou alteração de contrato/cobrança.
  *
  * @param object $gateway MercadoPagoGateway (ou equivalente com a mesma interface, em testes)
+ * @param array<string, mixed>|null $ator auditoria da renovação da oferta da primeira cobrança; null usa a sessão
  */
-function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, int $idEmpresa, string $emailPagador): array
+function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, int $idEmpresa, string $emailPagador, ?array $ator = null): array
 {
     if ($idEmpresa <= 0 || strlen($emailPagador) > 254 || !filter_var($emailPagador, FILTER_VALIDATE_EMAIL)) {
         return assinaturaServicoNovaContratacaoResultado(false, 'DADOS_INVALIDOS', 'Dados inválidos para configurar o pagamento recorrente.', ['http_status' => 422]);
@@ -4731,7 +4935,7 @@ function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, i
     try {
         $reserva = assinaturaServicoPreapprovalTransacao(
             $conexao,
-            static fn (): array => assinaturaServicoPreapprovalReservar($conexao, $ambiente, $idEmpresa)
+            static fn (): array => assinaturaServicoPreapprovalReservar($conexao, $ambiente, $idEmpresa, $ator)
         );
     } catch (AssinaturaServicoConversaoErro $e) {
         return assinaturaServicoPreapprovalFalha($e);
@@ -4745,11 +4949,24 @@ function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, i
     if ($reserva['acao'] === 'em_andamento') {
         return assinaturaServicoNovaContratacaoResultado(false, 'OPERACAO_EM_ANDAMENTO', 'Já existe uma operação de assinatura recorrente em andamento.', $base + ['http_status' => 409]);
     }
+    if ($reserva['acao'] === 'expirada') {
+        return assinaturaServicoPreapprovalResultadoExpirada($reserva);
+    }
     if ($reserva['acao'] === 'conciliar') {
         return assinaturaServicoPreapprovalEsclarecer($conexao, $gateway, $reserva, $emailPagador);
     }
 
     return assinaturaServicoPreapprovalEnviar($conexao, $gateway, $reserva, $emailPagador);
+}
+
+/** Checkout antigo cancelado pelo outbox: o chamador pode processar a operação; a nova autorização vem depois. */
+function assinaturaServicoPreapprovalResultadoExpirada(array $reserva): array
+{
+    return assinaturaServicoNovaContratacaoResultado(false, 'AUTORIZACAO_ANTERIOR_EXPIRADA', 'A autorização anterior no cartão era de outro dia e está sendo cancelada no Mercado Pago. Assim que o cancelamento for confirmado, você poderá autorizar novamente ou pagar com PIX.', [
+        'http_status' => 409,
+        'id_assinatura_pagamento' => (int)($reserva['vinculo']['id_assinatura_pagamento'] ?? 0),
+        'id_operacao' => $reserva['operacao']['id_operacao'] ?? null,
+    ]);
 }
 
 /** Etapa 2: o único POST, sem transação aberta, depois de marcar na operação que o envio foi iniciado. */
@@ -4762,7 +4979,7 @@ function assinaturaServicoPreapprovalEnviar(mysqli $conexao, object $gateway, ar
         $reserva['contrato'],
         (string)$vinculo['referencia_externa_assinatura'],
         $emailPagador,
-        $reserva['inicio'],
+        $reserva['inicio_envio'] ?? $reserva['inicio'],
         assinaturaServicoPreapprovalBackUrl($gateway::urlPublicaConfigurada())
     );
 
@@ -4863,6 +5080,7 @@ function assinaturaServicoPreapprovalConciliar(mysqli $conexao, object $gateway,
     return match ($reserva['acao']) {
         'vinculada' => assinaturaServicoPreapprovalAutorizacaoExistente($gateway, $reserva, $emailPagador),
         'em_andamento' => assinaturaServicoNovaContratacaoResultado(false, 'OPERACAO_EM_ANDAMENTO', 'Já existe uma operação de assinatura recorrente em andamento.', $base + ['http_status' => 409]),
+        'expirada' => assinaturaServicoPreapprovalResultadoExpirada($reserva),
         default => assinaturaServicoPreapprovalEsclarecer($conexao, $gateway, $reserva, $emailPagador),
     };
 }
@@ -4921,6 +5139,21 @@ function assinaturaServicoPreapprovalBloqueioPix(mysqli $conexao, int $idEmpresa
 
     if ((string)$cobranca['status'] !== 'pendente') {
         return null;
+    }
+    // Primeira cobrança da contratação: existindo Preapproval que pode cobrar (mesmo ainda não autorizada, pois o
+    // pagador pode concluir o checkout a qualquer momento), o PIX só volta depois do cancelamento confirmado.
+    $contratacaoPendente = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT 1 FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? AND status = 'suspensa' AND motivo_suspensao = 'contratacao_pendente' LIMIT 1",
+        'ii',
+        (int)$cobranca['id_assinatura'],
+        $idEmpresa
+    ) !== [];
+    if ($contratacaoPendente && assinaturaServicoPreapprovalPrimeiraCobrancaViva($conexao, $idEmpresa, (int)$cobranca['id_assinatura'])) {
+        return [
+            'codigo' => 'COBRANCA_PRIMEIRA_PREAPPROVAL',
+            'mensagem' => 'Esta contratação está sendo paga pelo cartão no Mercado Pago. Para pagar com PIX, use antes a opção "Pagar com PIX em vez do cartão".',
+        ];
     }
     $vinculo = assinaturaServicoConsultaFinanceira(
         $conexao,
@@ -4982,19 +5215,31 @@ function assinaturaServicoPreapprovalBloqueioPix(mysqli $conexao, int $idEmpresa
 const ASSINATURA_SERVICO_PREAPPROVAL_DESTINOS = ['pausar' => 'paused', 'reativar' => 'authorized', 'cancelar' => 'canceled'];
 
 /** Vínculo do contrato, bloqueado. Deve rodar na transação do chamador, com a assinatura já bloqueada. */
-function assinaturaServicoPreapprovalVinculoDoContrato(mysqli $conexao, int $idEmpresa, int $idAssinatura): ?array
+function assinaturaServicoPreapprovalVinculoDoContrato(mysqli $conexao, int $idEmpresa, int $idAssinatura, ?int $idAssinaturaPagamento = null): ?array
 {
-    return assinaturaServicoConsultaFinanceira(
+    // Vários vínculos por contrato só depois de encerrados (histórico): vale o vigente; sem ele, o mais recente.
+    $linhas = assinaturaServicoConsultaFinanceira(
         $conexao,
-        'SELECT id_assinatura_pagamento, id_empresa, id_assinatura, provedor, ambiente, motor_recorrencia, status, slot_ativo,
+        "SELECT id_assinatura_pagamento, id_empresa, id_assinatura, provedor, ambiente, motor_recorrencia, status, slot_ativo,
                 assinatura_externa_id, referencia_externa_assinatura, cobrar_a_partir_de, status_externo
            FROM assinatura_pagamento_recorrente
           WHERE id_empresa = ? AND id_assinatura = ?
-          FOR UPDATE',
+          ORDER BY (status IN ('cancelada', 'encerrada')) ASC, id_assinatura_pagamento DESC
+          FOR UPDATE",
         'ii',
         $idEmpresa,
         $idAssinatura
-    )[0] ?? null;
+    );
+    if ($idAssinaturaPagamento === null) {
+        return $linhas[0] ?? null;
+    }
+    foreach ($linhas as $linha) {
+        if ((int)$linha['id_assinatura_pagamento'] === $idAssinaturaPagamento) {
+            return $linha;
+        }
+    }
+
+    return null;
 }
 
 function assinaturaServicoPreapprovalAuditarOperacao(mysqli $conexao, string $evento, array $vinculo, string $tipo, ?int $idOperacao, array $extra, ?array $ator): void
@@ -5127,6 +5372,98 @@ function assinaturaServicoPreapprovalSolicitarCancelamento(mysqli $conexao, int 
     return ['aplicavel' => true, 'situacao' => 'solicitado', 'id_operacao' => $operacao['id_operacao'], 'situacao_operacao' => $operacao['situacao']];
 }
 
+/**
+ * "Pagar com PIX em vez do cartão" na primeira cobrança da contratação: registra o cancelamento da Preapproval do
+ * contrato pendente no outbox (sem rede). Enquanto o provedor não confirmar o cancelamento, o PIX segue bloqueado
+ * (assinaturaServicoPreapprovalBloqueioPix) e o slot fica ocupado, como em qualquer cancelamento externo pendente.
+ * Deve rodar na transação do chamador. A cobrança de contratação não é alterada.
+ *
+ * @return array<string, mixed>
+ */
+function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(mysqli $conexao, int $idEmpresa, ?array $ator = null): array
+{
+    $contratos = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_assinatura, status, modalidade, motivo_suspensao, data_fim FROM assinatura
+          WHERE id_empresa = ? AND status IN ('ativa', 'suspensa') FOR UPDATE",
+        'i',
+        $idEmpresa
+    );
+    if (count($contratos) !== 1 || !assinaturaServicoPreapprovalContratacaoPendente($contratos[0])) {
+        return assinaturaServicoNovaContratacaoResultado(false, 'SEM_CONTRATACAO_PENDENTE', 'Não há contratação aguardando o pagamento da primeira cobrança.', ['http_status' => 409]);
+    }
+    $idAssinatura = (int)$contratos[0]['id_assinatura'];
+    $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, $idAssinatura);
+    if ($vinculo === null || (string)$vinculo['motor_recorrencia'] !== 'preapproval'
+        || in_array((string)$vinculo['status'], ['cancelada', 'encerrada'], true)) {
+        return assinaturaServicoNovaContratacaoResultado(true, 'SEM_CARTAO', 'Não há pagamento no cartão para esta contratação.', ['situacao' => 'sem_cartao']);
+    }
+    $operacaoAberta = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT tipo_operacao FROM operacao_assinatura_gateway
+          WHERE id_assinatura_pagamento = ? AND status_processamento IN ('pendente', 'processando', 'conciliacao') FOR UPDATE",
+        'i',
+        (int)$vinculo['id_assinatura_pagamento']
+    )[0]['tipo_operacao'] ?? null;
+    if ($vinculo['assinatura_externa_id'] === null) {
+        if ($operacaoAberta !== null) {
+            // A criação pode ter chegado ao provedor: só a conciliação diz se há algo a cancelar.
+            return assinaturaServicoNovaContratacaoResultado(false, 'CRIACAO_EM_CONCILIACAO', 'A autorização no cartão ainda está sendo confirmada com o Mercado Pago. Tente novamente em instantes.', ['http_status' => 409]);
+        }
+        $r = assinaturaServicoPreapprovalSolicitarCancelamento($conexao, $idEmpresa, $idAssinatura, $ator);
+
+        return assinaturaServicoNovaContratacaoResultado(true, 'CARTAO_DESCARTADO', 'O pagamento no cartão foi descartado. Você já pode pagar com PIX.', ['situacao' => (string)$r['situacao']]);
+    }
+    $r = assinaturaServicoPreapprovalCancelarPrimeiraExterna($conexao, $vinculo, $ator);
+    if ($r === null) {
+        return assinaturaServicoNovaContratacaoResultado(false, 'VINCULO_INCONSISTENTE', 'O pagamento no cartão precisa de verificação. Fale com o suporte.', ['http_status' => 409]);
+    }
+
+    return assinaturaServicoNovaContratacaoResultado(true, 'CANCELAMENTO_CARTAO_SOLICITADO', 'O cancelamento do pagamento no cartão foi solicitado. O PIX será liberado assim que o Mercado Pago confirmar.', [
+        'situacao' => (string)$r['situacao'],
+        'id_operacao' => $r['id_operacao'] ?? null,
+    ]);
+}
+
+/**
+ * Cancelamento externo da Preapproval (já criada) da primeira cobrança, pelo outbox. Na transação do chamador, com o
+ * contrato bloqueado. Null quando o vínculo não pôde passar a 'cancelamento_pendente'.
+ *
+ * @param array<string, mixed> $vinculo retorno de assinaturaServicoPreapprovalVinculoDoContrato()
+ * @return array<string, mixed>|null resultado de assinaturaServicoPreapprovalSolicitarCancelamento()
+ */
+function assinaturaServicoPreapprovalCancelarPrimeiraExterna(mysqli $conexao, array $vinculo, ?array $ator = null): ?array
+{
+    $idEmpresa = (int)$vinculo['id_empresa'];
+    if ((string)$vinculo['status'] === 'pendente') {
+        // Mesmo sem autorização local, o pagador ainda pode concluir o checkout: cancelamento externo obrigatório, com o
+        // slot ocupado até a confirmação (chk_aspr_slot_ativo, chk_aspr_data_cobranca).
+        try {
+            $afetadas = assinaturaServicoPreapprovalExec(
+                $conexao,
+                "UPDATE assinatura_pagamento_recorrente
+                    SET status = 'cancelamento_pendente', slot_ativo = 1,
+                        cobrar_a_partir_de = COALESCE(cobrar_a_partir_de, proxima_cobranca_em, NOW())
+                  WHERE id_assinatura_pagamento = ? AND id_empresa = ? AND status = 'pendente' AND slot_ativo IS NULL
+                    AND assinatura_externa_id IS NOT NULL",
+                'ii',
+                (int)$vinculo['id_assinatura_pagamento'],
+                $idEmpresa
+            );
+        } catch (RuntimeException $e) {
+            if (!assinaturaServicoPreapprovalChaveDuplicada($e)) {
+                throw $e;
+            }
+            $afetadas = 0;
+        }
+        if ($afetadas !== 1) {
+            return null;
+        }
+    }
+
+    return assinaturaServicoPreapprovalSolicitarCancelamento($conexao, $idEmpresa, (int)$vinculo['id_assinatura'], $ator);
+}
+
 /** Suspensão administrativa: registra 'pausar'. Inadimplência jamais chama esta função. */
 function assinaturaServicoPreapprovalSolicitarPausa(mysqli $conexao, int $idEmpresa, int $idAssinatura, ?array $ator = null): array
 {
@@ -5218,7 +5555,7 @@ function assinaturaServicoPreapprovalGarantirOperacao(mysqli $conexao, int $idAs
         throw new RuntimeException('Vínculo fora do escopo de empresa.');
     }
 
-    return assinaturaServicoPreapprovalTransacao($conexao, static function () use ($conexao, $ref, $ator): ?array {
+    return assinaturaServicoPreapprovalTransacao($conexao, static function () use ($conexao, $ref, $ator, $idAssinaturaPagamento): ?array {
         $contrato = assinaturaServicoConsultaFinanceira(
             $conexao,
             'SELECT status, data_fim, motivo_suspensao FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? FOR UPDATE',
@@ -5226,7 +5563,7 @@ function assinaturaServicoPreapprovalGarantirOperacao(mysqli $conexao, int $idAs
             (int)$ref['id_assinatura'],
             (int)$ref['id_empresa']
         )[0] ?? null;
-        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, (int)$ref['id_empresa'], (int)$ref['id_assinatura']);
+        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, (int)$ref['id_empresa'], (int)$ref['id_assinatura'], $idAssinaturaPagamento);
         if ($contrato === null || $vinculo === null) {
             return null;
         }

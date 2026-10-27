@@ -1638,7 +1638,7 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
     try {
         $assinatura = assinaturaServicoConsultaFinanceira(
             $conexao,
-            'SELECT a.status, a.modalidade, a.data_fim, p.gera_cobranca
+            'SELECT a.status, a.modalidade, a.motivo_suspensao, a.data_fim, p.gera_cobranca
                FROM assinatura a INNER JOIN plano p ON p.id_plano = a.id_plano
               WHERE a.id_assinatura = ? AND a.id_empresa = ? FOR UPDATE',
             'ii',
@@ -1671,7 +1671,10 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
         }
 
         $statusLocal = (string)$atual['status'];
-        $assinaturaApta = (string)$assinatura['status'] === 'ativa' && (string)$assinatura['modalidade'] === 'paga'
+        // Contratação nova ainda não paga também é apta: a Preapproval autorizada vai cobrar a primeira mensalidade.
+        // O vínculo ativo é só a recorrência autorizada; o contrato só é ativado depois do pagamento confirmado.
+        $assinaturaApta = ((string)$assinatura['status'] === 'ativa' || assinaturaServicoPreapprovalContratacaoPendente($assinatura))
+            && (string)$assinatura['modalidade'] === 'paga'
             && (int)$assinatura['gera_cobranca'] === 1 && $assinatura['data_fim'] === null;
         $novoStatus = $statusLocal;
         $sinal = null;
@@ -1836,6 +1839,12 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
     if (count($aceitas) === 1) {
         return ['cobranca' => $aceitas[0], 'criada' => false];
     }
+    if (assinaturaServicoPreapprovalContratacaoPendente($assinatura)) {
+        // Primeira parcela de uma contratação ainda não ativada fora da data da oferta (ex.: checkout antigo autorizado
+        // dias depois): o período e as renovações não conferem. O pagamento fica em conciliação e o contrato não é
+        // ativado; nunca se cria competência para contrato não ativado.
+        return 'PRIMEIRA_COBRANCA_FORA_DO_PERIODO';
+    }
 
     $esperado = $ultimoFim === null
         ? new DateTimeImmutable((string)$assinatura['data_inicio'] . ' 00:00:00', $fuso)
@@ -1887,7 +1896,7 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
  * @param array<string, mixed> $fatura
  * @param array<string, mixed>|string|null $pagamento
  */
-function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, array $fatura, array|string|null $pagamento, ?int $idEvento): array
+function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, array $fatura, array|string|null $pagamento, ?int $idEvento, ?string $pagamentoAnteriorRecusado = null): array
 {
     $idEmpresa = (int)$vinculo['id_empresa'];
     $idAspr = (int)$vinculo['id_assinatura_pagamento'];
@@ -1900,7 +1909,8 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
     try {
         $assinatura = assinaturaServicoConsultaFinanceira(
             $conexao,
-            'SELECT id_assinatura, id_empresa, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim
+            'SELECT id_assinatura, id_empresa, valor_contratado, periodicidade, dia_vencimento, data_inicio, data_fim,
+                    status, modalidade, motivo_suspensao
                FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? FOR UPDATE',
             'ii',
             (int)$vinculo['id_assinatura'],
@@ -2048,6 +2058,7 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
         $valorCobranca = pagamentoGatewayValorCentavos((string)$cobranca['valor']);
         $pagamentoOk = is_array($pagamento) ? $pagamento : null;
         $motivo = null;
+        $retentativa = false;
         if ((int)$transacao['id_cobranca'] !== (int)$cobranca['id_cobranca']
             || (int)$transacao['id_assinatura_pagamento'] !== $idAspr
             || $transacao['tipo_operacao'] !== 'assinatura_preapproval'
@@ -2064,7 +2075,11 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
             && ($pagamentoOk['preapproval_id'] ?? null) !== (string)$fatura['preapproval_id']) {
             $motivo = 'Pagamento sem vínculo com a assinatura recorrente.';
         } elseif ($pagamentoOk !== null && $transacao['pagamento_externo_id'] !== null
-            && $transacao['pagamento_externo_id'] !== $pagamentoOk['id']) {
+            && $transacao['pagamento_externo_id'] !== $pagamentoOk['id']
+            // Retentativa do provedor (novo pagamento na mesma fatura) só com recusa do pagamento anterior comprovada no
+            // provedor (mpSubPagamentoAnteriorRecusado) e transação sem pagamento local nem confirmação.
+            && !($retentativa = $pagamentoAnteriorRecusado !== null && $transacao['pagamento_externo_id'] === $pagamentoAnteriorRecusado
+                && $transacao['id_pagamento'] === null && in_array($transacao['status'], ['recusada', 'processando', 'aguardando'], true))) {
             $motivo = 'Payment ID divergente da transação financeira local.';
         } elseif ($classe['classe'] === 'conciliacao') {
             $motivo = (string)$classe['motivo'];
@@ -2093,8 +2108,36 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
             return mpSubResultado('processado', 'CONCILIACAO', ['id_transacao' => $idTransacao, 'id_assinatura_pagamento' => $idAspr]);
         }
 
+        if ($retentativa) {
+            // A tentativa anterior (recusada no provedor) fica registrada na auditoria; a transação passa a acompanhar a nova.
+            assinaturaServicoPreapprovalExec(
+                $conexao,
+                'UPDATE transacao_pagamento SET pagamento_externo_id = ? WHERE id_transacao = ? AND id_empresa = ? AND pagamento_externo_id = ? AND id_pagamento IS NULL',
+                'siis',
+                (string)$pagamentoOk['id'],
+                $idTransacao,
+                $idEmpresa,
+                (string)$pagamentoAnteriorRecusado
+            );
+            auditoriaRegistrar($conexao, 'pagamento.recusado_gateway', [
+                'ator' => mpWebhookAtorSistema($idEmpresa),
+                'entidade_id' => $idTransacao,
+                'entidade_rotulo' => 'Transação de pagamento #' . $idTransacao,
+                'alteracoes' => mpWebhookAlteracoes([
+                    'id_empresa' => $idEmpresa,
+                    'id_cobranca' => (int)$cobranca['id_cobranca'],
+                    'id_transacao' => $idTransacao,
+                    'status' => 'recusada',
+                    'status_externo' => $transacao['status_externo'],
+                    'detalhe_status_externo' => $transacao['detalhe_status_externo'],
+                ], ['status' => $transacao['status']]),
+                'contexto' => ['origem' => mpWebhookOrigemAuditoria(), 'motivo' => 'Retentativa do provedor: pagamento ' . $pagamentoAnteriorRecusado . ' recusado substituído por ' . $pagamentoOk['id'] . '.'],
+            ]);
+            $transacao['pagamento_externo_id'] = (string)$pagamentoOk['id'];
+        }
         $idPagamentoExterno = $pagamentoOk['id'] ?? null;
         $ator = mpWebhookAtorSistema($idEmpresa);
+        $concluirContratacao = false;
         if ($classe['classe'] === 'confirmada' && $pagamentoOk !== null) {
             $existentePag = assinaturaServicoConsultaFinanceira(
                 $conexao,
@@ -2154,6 +2197,8 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
                 $motivos[] = 'Transação já vinculada a outro pagamento local.';
             }
             $requer = $motivos === [] ? 0 : 1;
+            // Primeira mensalidade quitada pela Preapproval: a contratação é ativada depois do commit (pagamento já persistido).
+            $concluirContratacao = $requer === 0 && $recalculo['saldo'] === 0 && assinaturaServicoPreapprovalContratacaoPendente($assinatura);
             assinaturaServicoPreapprovalExec(
                 $conexao,
                 "UPDATE transacao_pagamento
@@ -2285,10 +2330,37 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
             'id_assinatura_pagamento' => $idAspr,
             'status' => $classe['status'],
             'cobranca_criada' => $criada,
+            'contratacao' => $concluirContratacao ? mpSubConcluirContratacaoPaga($conexao, $idEmpresa) : null,
         ]);
     } catch (Throwable $e) {
         mpWebhookRollback($conexao);
         throw $e;
+    }
+}
+
+/**
+ * Ativa a contratação cuja primeira mensalidade acabou de ser confirmada pela Preapproval, pelas mesmas regras (e locks)
+ * do CRON e do painel. Transação própria; falha não desfaz o pagamento já gravado: o CRON de contratações pagas e o
+ * botão "Concluir contratação" refazem a tentativa.
+ */
+function mpSubConcluirContratacaoPaga(mysqli $conexao, int $idEmpresa): string
+{
+    try {
+        $conexao->begin_transaction();
+        $r = assinaturaServicoConcluirNovaContratacao($conexao, $idEmpresa, mpWebhookAtorSistema($idEmpresa), ['origem' => mpWebhookOrigemAuditoria(), 'motor' => 'preapproval']);
+        if (($r['ok'] ?? false) !== true) {
+            $conexao->rollback();
+
+            return (string)($r['codigo'] ?? 'CONTRATACAO_NAO_CONCLUIDA');
+        }
+        $conexao->commit();
+
+        return 'ativada';
+    } catch (Throwable $e) {
+        mpWebhookRollback($conexao);
+        mpWebhookRegistrarFalha('contratacao_conclusao_falhou', ['empresa' => $idEmpresa, 'classe' => get_class($e)]);
+
+        return 'falha';
     }
 }
 
@@ -2333,7 +2405,39 @@ function mpSubProcessarFatura(mysqli $conexao, object $gateway, string $ambiente
         }
     }
 
-    return mpSubAplicarFatura($conexao, $ambiente, $vinculo, $fatura, $pagamento, $idEvento);
+    return mpSubAplicarFatura($conexao, $ambiente, $vinculo, $fatura, $pagamento, $idEvento,
+        mpSubPagamentoAnteriorRecusado($conexao, $gateway, $ambiente, $fatura, $pagamento));
+}
+
+/**
+ * Retentativa do provedor (novo pagamento na mesma fatura): devolve o Payment ID anterior somente quando a consulta
+ * autoritativa ao provedor prova que ele foi recusado ou cancelado. Consulta indisponível ou qualquer outro estado
+ * (em processamento, aprovado, incerto) devolve null, e a divergência segue para conciliação. Sem lock: a aplicação
+ * confere de novo, sob lock, que a transação ainda aponta para esse pagamento.
+ */
+function mpSubPagamentoAnteriorRecusado(mysqli $conexao, object $gateway, string $ambiente, array $fatura, array|string|null $pagamento): ?string
+{
+    if (!is_array($pagamento)) {
+        return null;
+    }
+    $anterior = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        'SELECT pagamento_externo_id FROM transacao_pagamento WHERE provedor = ? AND ambiente = ? AND fatura_externa_id = ? AND id_pagamento IS NULL LIMIT 1',
+        'sss',
+        MP_WEBHOOK_PROVEDOR,
+        $ambiente,
+        (string)$fatura['id']
+    )[0]['pagamento_externo_id'] ?? null;
+    if ($anterior === null || (string)$anterior === $pagamento['id']) {
+        return null;
+    }
+    $consulta = $gateway->consultarPagamento((string)$anterior);
+    if (($consulta['sucesso'] ?? false) !== true || !is_array($consulta['dados'] ?? null)) {
+        return null;
+    }
+    $dados = mpSubNormalizarPagamento($consulta['dados'], (string)$anterior, $ambiente);
+
+    return is_array($dados) && in_array($dados['status'], ['rejected', 'cancelled'], true) ? (string)$anterior : null;
 }
 
 /**
@@ -2656,7 +2760,7 @@ function mpSubOperacaoProcessar(mysqli $conexao, object $gateway, int $idOperaca
             (int)$ref['id_assinatura'],
             $idEmpresa
         )[0] ?? null;
-        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, (int)$ref['id_assinatura']);
+        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, (int)$ref['id_assinatura'], (int)$ref['id_assinatura_pagamento']);
         $op = assinaturaServicoConsultaFinanceira(
             $conexao,
             "SELECT status_processamento, erro_codigo, tentativas_processamento,
@@ -3166,7 +3270,7 @@ function mpSubOperacaoReabrir(mysqli $conexao, object $gateway, int $idOperacao,
     $conexao->begin_transaction();
     try {
         assinaturaServicoConsultaFinanceira($conexao, 'SELECT id_assinatura FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? FOR UPDATE', 'ii', (int)$ref['id_assinatura'], $idEmpresa);
-        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, (int)$ref['id_assinatura']);
+        $vinculo = assinaturaServicoPreapprovalVinculoDoContrato($conexao, $idEmpresa, (int)$ref['id_assinatura'], (int)$ref['id_assinatura_pagamento']);
         $aberta = assinaturaServicoConsultaFinanceira(
             $conexao,
             "SELECT 1 FROM operacao_assinatura_gateway

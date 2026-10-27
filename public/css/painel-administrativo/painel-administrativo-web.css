@@ -122,6 +122,7 @@
 #faturamento .faturamento-cartao-identidade span { color:#71829a; font-size:11px; font-weight:700; }
 #faturamento .faturamento-cartao-identidade strong { color:#102c57; font-size:17px; overflow-wrap:anywhere; }
 #faturamento .faturamento-cartao-identidade small { color:#64748b; font-size:12px; line-height:1.45; }
+#faturamento .faturamento-cartao-card .faturamento-acoes { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; }
 #faturamento .faturamento-cartao-icone { display:grid; place-items:center; flex:0 0 50px; width:50px; height:50px; border-radius:15px; background:#e4f0ff; color:#1163dd; font-size:20px; }
 .faturamento-cartao-modal { width:min(680px,94vw); }
 .faturamento-cartao-modal .modal-topo p { margin:4px 0 0; color:#64748b; font-size:13px; }

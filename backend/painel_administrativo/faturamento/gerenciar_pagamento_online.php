@@ -467,7 +467,7 @@ function pagamentoCartaoAssinaturaAtiva(mysqli $db, int $empresa, bool $bloquear
 {
     $sufixo = $bloquear ? ' FOR UPDATE' : '';
     $linhas = pagamentoOnlineConsulta($db,
-        "SELECT a.id_assinatura,a.valor_contratado,a.status,p.gera_cobranca
+        "SELECT a.id_assinatura,a.valor_contratado,a.status,a.modalidade,a.motivo_suspensao,a.data_fim,p.gera_cobranca
            FROM assinatura a
            INNER JOIN plano p
                    ON p.id_plano = a.id_plano
@@ -520,7 +520,7 @@ function pagamentoCartaoConfiguracao(mysqli $db, MercadoPagoGateway $gateway, in
     $vinculo = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
     $assinatura = pagamentoCartaoAssinaturaAtiva($db, $empresa);
     if (pagamentoCartaoMotor($vinculo, $assinatura, $gateway::subscriptionsHabilitado()) === 'preapproval') {
-        return pagamentoCartaoDadosPreapproval($vinculo, $assinatura, $gateway::subscriptionsHabilitado());
+        return pagamentoCartaoDadosPreapproval($vinculo, $assinatura, $gateway::subscriptionsHabilitado(), $db, $empresa);
     }
     try {
         $chave = MercadoPagoGateway::chavePublicaAtiva();
@@ -552,12 +552,74 @@ function pagamentoCartaoMotor(?array $vinculo, ?array $assinatura, bool $habilit
     return $habilitado ? 'preapproval' : 'orders';
 }
 
-function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bool $habilitado): array
+/**
+ * Primeira mensalidade da contratação nova (contrato pendente): estado público da escolha entre PIX e cartão.
+ * Somente leitura; a decisão de cada ação é refeita pelo serviço sob lock. Null quando não se aplica.
+ */
+function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assinatura, ?array $vinculo): ?array
 {
+    if ($assinatura === null || !assinaturaServicoPreapprovalContratacaoPendente($assinatura)) return null;
+    $idAssinatura = (int)$assinatura['id_assinatura'];
+    $ofertas = pagamentoOnlineConsulta($db,
+        "SELECT c.id_cobranca,c.valor,c.status,c.periodo_inicio,c.periodo_fim,
+                (SELECT COALESCE(SUM(p.valor_pago),0) FROM pagamento p WHERE p.id_cobranca=c.id_cobranca AND p.id_empresa=c.id_empresa AND p.status='confirmado') AS pago
+           FROM cobranca c WHERE c.id_empresa=? AND c.id_assinatura=? AND c.status<>'cancelada' ORDER BY c.id_cobranca",
+        'ii', $empresa, $idAssinatura)->fetch_all(MYSQLI_ASSOC);
+    $oferta = count($ofertas) === 1 ? $ofertas[0] : null;
+    if ($oferta === null) return ['situacao' => 'indisponivel', 'pode_pagar_pix' => false, 'pode_trocar_para_pix' => false, 'pix_em_andamento' => false];
+    $paga = $oferta['status'] === 'paga' && pagamentoGatewayValorCentavos((string)$oferta['pago']) >= pagamentoGatewayValorCentavos((string)$oferta['valor']);
+    $v = $vinculo !== null && (int)$vinculo['id_assinatura'] === $idAssinatura && ($vinculo['motor_recorrencia'] ?? '') === 'preapproval' ? $vinculo : null;
+    $idCobranca = (int)$oferta['id_cobranca'];
+    $tentativa = pagamentoOnlineConsulta($db,
+        "SELECT status,detalhe_status_externo,requer_conciliacao FROM transacao_pagamento
+          WHERE id_empresa=? AND id_cobranca=? AND tipo_operacao='assinatura_preapproval' ORDER BY id_transacao DESC LIMIT 1",
+        'ii', $empresa, $idCobranca)->fetch_assoc() ?: null;
+    $pixEmAndamento = pagamentoOnlineConsulta($db,
+        "SELECT 1 FROM transacao_pagamento
+          WHERE id_empresa=? AND id_cobranca=? AND metodo='pix' AND status IN ('criada','enviando','aguardando','processando','conciliacao') LIMIT 1",
+        'ii', $empresa, $idCobranca)->fetch_assoc() !== null;
+    $viva = assinaturaServicoPreapprovalPrimeiraCobrancaViva($db, $empresa, $idAssinatura);
+    $status = (string)($v['status'] ?? '');
+    $externa = $v !== null && $v['assinatura_externa_id'] !== null;
+    $situacao = match (true) {
+        $paga => 'pagamento_confirmado',
+        $v === null, $status === 'erro' && !$externa => $pixEmAndamento ? 'pix_em_andamento' : 'escolha',
+        in_array($status, ['cancelada', 'encerrada'], true) => 'cartao_cancelado',
+        $status === 'cancelamento_pendente' => 'cancelando_cartao',
+        $tentativa !== null && ((int)$tentativa['requer_conciliacao'] === 1 || in_array($tentativa['status'], ['conciliacao', 'confirmada'], true)) => 'em_verificacao',
+        // Recusa com nova tentativa agendada pelo provedor ('recycling') ou recusa definitiva.
+        $tentativa !== null && ($tentativa['status'] === 'recusada'
+            || ($tentativa['status'] === 'processando' && $tentativa['detalhe_status_externo'] === 'retry')) => 'pagamento_recusado',
+        $tentativa !== null && $tentativa['status'] === 'processando' => 'processando',
+        $tentativa !== null => 'aguardando_primeira_cobranca',
+        $status === 'pendente' && ($v['status_externo'] ?? null) === 'authorized' => 'autorizacao_em_analise',
+        $status === 'pendente' => 'aguardando_autorizacao',
+        $status === 'ativa' => 'aguardando_primeira_cobranca',
+        default => 'em_verificacao',
+    };
+
+    return [
+        'id_cobranca' => $idCobranca,
+        'valor' => (string)$oferta['valor'],
+        'periodo_inicio' => (string)$oferta['periodo_inicio'],
+        'periodo_fim' => (string)$oferta['periodo_fim'],
+        'situacao' => $situacao,
+        'pix_em_andamento' => $pixEmAndamento,
+        // PIX só sem Preapproval capaz de cobrar o mesmo período; a troca para PIX cancela a Preapproval antes.
+        'pode_pagar_pix' => !$paga && $oferta['status'] === 'pendente' && !$viva,
+        'pode_trocar_para_pix' => !$paga && $viva && $status !== 'cancelamento_pendente' && $situacao !== 'processando',
+    ];
+}
+
+function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bool $habilitado, ?mysqli $db = null, int $empresa = 0): array
+{
+    $primeira = $db === null ? null : pagamentoCartaoPrimeiraCobranca($db, $empresa, $assinatura, $vinculo);
     $atual = $vinculo !== null && $assinatura !== null && (int)$vinculo['id_assinatura'] === (int)$assinatura['id_assinatura'];
     $v = $atual ? $vinculo : null;
     $status = $v['status'] ?? 'nao_configurado';
-    $novo = $vinculo === null || (!$atual && in_array((string)$vinculo['status'], ['cancelada', 'encerrada'], true));
+    // Vínculo do próprio contrato já encerrado (cancelamento confirmado): nova autorização só com a estrutura da Fase 21.
+    $novo = $vinculo === null || (in_array((string)$vinculo['status'], ['cancelada', 'encerrada'], true)
+        && (!$atual || ($db !== null && assinaturaServicoPreapprovalNovoVinculoPermitido($db))));
     $criada = $v !== null && $v['assinatura_externa_id'] !== null;
     // Autorização retomável: (a) já criada e ainda pendente no provedor (o serviço devolve o mesmo link, sem novo POST);
     // (b) vínculo pendente ou em erro SEM Preapproval criada (tentativa anterior falhou ou ficou incerta): o serviço
@@ -569,18 +631,37 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
         'autorizacao_criada' => $criada,
         'configurado' => $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1,
-        'pode_configurar' => $habilitado && $assinatura !== null && $assinatura['status'] === 'ativa'
+        'pode_configurar' => $habilitado && $assinatura !== null
+            && ($assinatura['status'] === 'ativa' || ($primeira !== null && $primeira['situacao'] !== 'pagamento_confirmado' && !$primeira['pix_em_andamento']))
             && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $retomavel),
         'pode_verificar' => $habilitado && $criada,
         'status' => $status, 'status_externo' => $v['status_externo'] ?? null,
         'valor_referencia' => $assinatura['valor_contratado'] ?? null,
         'cobrar_a_partir_de' => $v['cobrar_a_partir_de'] ?? null,
+        'primeira_cobranca' => $primeira,
     ];
 }
 
 function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $empresa, string $email): array
 {
     $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+    if (($r['ok'] ?? false) !== true && ($r['codigo'] ?? '') === 'AUTORIZACAO_ANTERIOR_EXPIRADA' && ($r['id_operacao'] ?? null) !== null) {
+        // Checkout antigo: tenta confirmar agora o cancelamento da Preapproval anterior; confirmado, a nova tentativa cria
+        // outra autorização (com a oferta renovada). Sem confirmação, o serviço não devolve link nenhum.
+        if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+        if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
+        require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+        try {
+            $cancelada = mpSubOperacaoProcessar($db, $gateway, (int)$r['id_operacao'], $empresa)['resultado'] === 'concluida';
+        } catch (Throwable $e) {
+            mpWebhookRollback($db);
+            error_log('PAGAMENTO_CARTAO_EXPIRADA: ' . get_class($e));
+            $cancelada = false;
+        }
+        if ($cancelada) {
+            $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+        }
+    }
     if (($r['ok'] ?? false) === true && ($r['codigo'] ?? '') === 'PREAPPROVAL_VINCULADA'
         && ($r['status_externo'] ?? '') === 'pending' && ($r['init_point'] ?? null) === null) {
         // Recém-criada, mas o link da resposta da criação não passou: a retomada idempotente (JA_VINCULADA) só
@@ -599,7 +680,7 @@ function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $emp
         return $dados;
     }
     $vinculoAtual = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
-    $dados = pagamentoCartaoDadosPreapproval($vinculoAtual, pagamentoCartaoAssinaturaAtiva($db, $empresa), $gateway::subscriptionsHabilitado());
+    $dados = pagamentoCartaoDadosPreapproval($vinculoAtual, pagamentoCartaoAssinaturaAtiva($db, $empresa), $gateway::subscriptionsHabilitado(), $db, $empresa);
     // Só o link retornado pelo serviço (que já aplicou a regra de origem do `activation`) e validado novamente,
     // contra a Preapproval vinculada a esta empresa, pode sair ao navegador.
     $dados['init_point'] = ($r['status_externo'] ?? '') === 'pending' && $vinculoAtual !== null && $vinculoAtual['assinatura_externa_id'] !== null
@@ -624,7 +705,7 @@ function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $e
     }
     // Retorno duplicado ou atualização repetida: sem nova consulta ao provedor logo após uma sincronização.
     if (!$forcar && $v['assinatura_externa_id'] !== null && $v['idade_sincronia'] !== null && (int)$v['idade_sincronia'] >= 0 && (int)$v['idade_sincronia'] < 10) {
-        return pagamentoCartaoDadosPreapproval($v, $contratoAtual, true);
+        return pagamentoCartaoDadosPreapproval($v, $contratoAtual, true, $db, $empresa);
     }
     if ($v['assinatura_externa_id'] === null) {
         $r = assinaturaServicoPreapprovalConciliar($db, $gateway, $empresa, $email);
@@ -643,7 +724,17 @@ function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $e
     if ($r['resultado'] !== 'processado') {
         pagamentoOnlineFalhar('AUTORIZACAO_VERIFICACAO_PENDENTE', 'Não foi possível confirmar a autorização. Atualize a situação novamente mais tarde.', 503);
     }
-    return pagamentoCartaoDadosPreapproval(pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()), pagamentoCartaoAssinaturaAtiva($db, $empresa), true);
+    if (assinaturaServicoPreapprovalContratacaoPendente($contratoAtual)) {
+        // Primeira mensalidade: além da autorização, busca a fatura da Preapproval no provedor (webhook atrasado ou
+        // perdido). O pagamento só é registrado pela fatura e pelo pagamento autoritativos, nunca pelo retorno.
+        try {
+            mpSubConciliarVinculo($db, $gateway, (int)$v['id_assinatura_pagamento'], $empresa);
+        } catch (Throwable $e) {
+            mpWebhookRollback($db);
+            error_log('PAGAMENTO_CARTAO_PRIMEIRA_CONCILIACAO: ' . get_class($e));
+        }
+    }
+    return pagamentoCartaoDadosPreapproval(pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente()), pagamentoCartaoAssinaturaAtiva($db, $empresa), true, $db, $empresa);
 }
 
 function pagamentoCartaoReservar(mysqli $db, int $empresa, string $ambiente): array
@@ -1003,7 +1094,9 @@ try {
             out(['ok'=>true,
                 'code'=>$dados['init_point'] !== null ? 'AUTORIZACAO_REDIRECIONAMENTO' : 'AUTORIZACAO_EXISTENTE',
                 'user_msg'=>$dados['init_point'] !== null
-                    ? 'Você será levado ao Mercado Pago para autorizar o cartão. Nenhuma cobrança será feita agora.'
+                    ? (($dados['primeira_cobranca'] ?? null) !== null
+                        ? 'Você será levado ao Mercado Pago para autorizar o cartão. A primeira mensalidade é cobrada após a autorização.'
+                        : 'Você será levado ao Mercado Pago para autorizar o cartão. Nenhuma cobrança será feita agora.')
                     : 'A autorização recorrente já existe. Atualize a situação para conferir.',
                 'data'=>$dados]);
         }
@@ -1017,6 +1110,43 @@ try {
         }
         out(['ok'=>true,'code'=>$dados['configurado'] ? 'CARTAO_AUTORIZADO' : 'CARTAO_PROCESSANDO',
             'user_msg'=>$dados['configurado'] ? 'Cartão configurado para pagamentos automáticos.' : 'Cartão recebido e em validação pelo Mercado Pago.',
+            'data'=>$dados]);
+    }
+    if ($rota === 'painel/faturamento/pagamento/cartao/usar-pix' && $metodo === 'POST') {
+        // Primeira mensalidade: desiste do cartão (Preapproval) para pagar com PIX. Só registra o cancelamento externo e
+        // tenta enviá-lo agora; o PIX é liberado quando o provedor confirmar o cancelamento.
+        exigirPermissao($conexao, 'faturamento.pagar', $contexto);
+        csrfValidarSessao();
+        $gatewayCartao = pagamentoCartaoGatewayAtivo();
+        if (!$conexao->begin_transaction()) throw new RuntimeException('Falha ao iniciar a troca para PIX.');
+        try {
+            $r = assinaturaServicoPreapprovalDesistirPrimeiraCobranca($conexao, $empresa);
+            if (($r['ok'] ?? false) !== true) {
+                $conexao->rollback();
+                pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
+            }
+            if (!$conexao->commit()) throw new RuntimeException('Falha ao confirmar a troca para PIX.');
+        } catch (PagamentoOnlineErro $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            try { $conexao->rollback(); } catch (Throwable) {}
+            throw $e;
+        }
+        if (($r['id_operacao'] ?? null) !== null) {
+            if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+            if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
+            require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+            try {
+                mpSubOperacaoProcessar($conexao, $gatewayCartao, (int)$r['id_operacao'], $empresa);
+            } catch (Throwable $e) {
+                mpWebhookRollback($conexao);
+                error_log('PAGAMENTO_CARTAO_USAR_PIX: ' . get_class($e));
+            }
+        }
+        $dados = pagamentoCartaoConfiguracao($conexao, $gatewayCartao, $empresa);
+        $liberado = ($dados['primeira_cobranca']['pode_pagar_pix'] ?? false) === true;
+        out(['ok'=>true,'code'=>$liberado ? 'PIX_LIBERADO' : 'CANCELAMENTO_CARTAO_SOLICITADO',
+            'user_msg'=>$liberado ? 'Pagamento no cartão cancelado. Você já pode pagar com PIX.' : (string)$r['mensagem'],
             'data'=>$dados]);
     }
     if ($rota === 'painel/faturamento/pagamento/cartao/status' && ($metodo === 'GET' || $metodo === 'POST')) {
@@ -1041,7 +1171,7 @@ try {
         }
         if ($motorCartao === 'preapproval') {
             out(['ok'=>true,'code'=>'CARTAO_STATUS','user_msg'=>'Situação do pagamento automático.',
-                'data'=>pagamentoCartaoDadosPreapproval($vinculoCartao, $assinaturaCartao, $gatewayCartao::subscriptionsHabilitado())]);
+                'data'=>pagamentoCartaoDadosPreapproval($vinculoCartao, $assinaturaCartao, $gatewayCartao::subscriptionsHabilitado(), $conexao, $empresa)]);
         }
         out(['ok'=>true,'code'=>'CARTAO_STATUS','user_msg'=>'Situação do cartão atualizada.',
             'data'=>pagamentoCartaoConsultarStatus($conexao, $gatewayCartao, $empresa, $email)]);

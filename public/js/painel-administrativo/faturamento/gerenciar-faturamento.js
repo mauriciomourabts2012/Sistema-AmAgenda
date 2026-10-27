@@ -160,11 +160,11 @@
     secao.hidden = false;
     const pendente = contratacao.pendente;
     const detalhes = pendente ? `<div><span>Plano escolhido</span><strong>${esc(pendente.plano || "Plano")}</strong></div><div><span>Valor do período</span><strong>${moeda(pendente.valor)} / ${esc(texto(pendente.periodicidade))}</strong></div>${pendente.data_vencimento ? `<div><span>Vencimento</span><strong>${br(pendente.data_vencimento)}</strong></div>` : ""}` : "";
-    const orientacao = pendente && !pendente.paga ? "<p>Pague a cobrança de contratação na lista de cobranças abaixo. Depois da confirmação, conclua a contratação.</p>" : "";
+    const orientacao = pendente && !pendente.paga ? "<p>Pague a primeira mensalidade com PIX ou com cartão de crédito (pagamento automático) na seção de pagamento abaixo. O acesso é liberado somente após a confirmação do pagamento.</p>" : "";
     const concluir = pendente ? `<button class="botao-geral destaque" type="button" data-concluir-contratacao>${pendente.paga ? "Concluir contratação" : "Verificar pagamento"}</button>` : "";
     const temPlanosPublicos = Array.isArray(contratacao.planos) && contratacao.planos.length > 0;
     const contratar = temPlanosPublicos ? `<button class="botao-geral${pendente ? "" : " destaque"}" type="button" data-abrir-contratacao>${pendente ? "Escolher outro plano" : "Contratar novamente"}</button>` : "";
-    const cartao = contratacao.cartao_sincronizacao_pendente ? "<p><small>O cartão do contrato anterior aguarda confirmação de encerramento. A contratação é paga via PIX; o pagamento automático poderá ser configurado depois dessa confirmação.</small></p>" : "";
+    const cartao = contratacao.cartao_sincronizacao_pendente ? "<p><small>O cartão do contrato anterior aguarda confirmação de encerramento. Até lá, a contratação é paga via PIX; o cartão poderá ser usado depois dessa confirmação.</small></p>" : "";
     el.innerHTML = `<p><strong>${esc(contratacao.mensagem || "")}</strong></p>${detalhes}${orientacao}${cartao}${concluir}${contratar}`;
   }
   function textoLimiteContratacao(valor, singular, plural) {
