@@ -743,9 +743,13 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     ];
 }
 
-function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $empresa, string $email): array
+/**
+ * `$email` e `$usuario` vêm da sessão autenticada (nunca do navegador). Uma NOVA Preapproval só é criada depois de o serviço
+ * conferir, no banco, o e-mail atual e o perfil de proprietário desse usuário; divergência responde 401 sem POST.
+ */
+function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $empresa, string $email, int $usuario): array
 {
-    $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+    $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email, null, $usuario);
     if (($r['ok'] ?? false) !== true && ($r['codigo'] ?? '') === 'AUTORIZACAO_ANTERIOR_EXPIRADA' && ($r['id_operacao'] ?? null) !== null) {
         // Checkout antigo: tenta confirmar agora o cancelamento da Preapproval anterior; confirmado, a nova tentativa cria
         // outra autorização (com a oferta renovada). Sem confirmação, o serviço não devolve link nenhum.
@@ -760,14 +764,14 @@ function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $emp
             $cancelada = false;
         }
         if ($cancelada) {
-            $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+            $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email, null, $usuario);
         }
     }
     if (($r['ok'] ?? false) === true && ($r['codigo'] ?? '') === 'PREAPPROVAL_VINCULADA'
         && ($r['status_externo'] ?? '') === 'pending' && ($r['init_point'] ?? null) === null) {
         // Recém-criada, mas o link da resposta da criação não passou: a retomada idempotente (JA_VINCULADA) só
         // consulta a mesma Preapproval por id — nunca há novo POST.
-        $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email);
+        $r = assinaturaServicoPreapprovalIniciar($db, $gateway, $empresa, $email, null, $usuario);
     }
     if (($r['ok'] ?? false) !== true) {
         pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
@@ -802,7 +806,7 @@ function pagamentoCartaoPreapprovalIniciar(mysqli $db, object $gateway, int $emp
  *
  * @return array{0: array<string, mixed>, 1: string} dados públicos (com init_point quando houver) e mensagem
  */
-function pagamentoCartaoPreapprovalOutroCartao(mysqli $db, object $gateway, int $empresa, string $email): array
+function pagamentoCartaoPreapprovalOutroCartao(mysqli $db, object $gateway, int $empresa, string $email, int $usuario): array
 {
     $dados = pagamentoCartaoPreapprovalConsultar($db, $gateway, $empresa, $email, true);
     $dados['init_point'] = null;
@@ -859,7 +863,7 @@ function pagamentoCartaoPreapprovalOutroCartao(mysqli $db, object $gateway, int 
         return [$atual + ['init_point' => null], 'A autorização anterior foi encerrada. Confira a situação da primeira mensalidade antes de continuar.'];
     }
 
-    return [pagamentoCartaoPreapprovalIniciar($db, $gateway, $empresa, $email),
+    return [pagamentoCartaoPreapprovalIniciar($db, $gateway, $empresa, $email, $usuario),
         'Autorização anterior encerrada. Você será levado ao Mercado Pago para usar outro cartão.'];
 }
 
@@ -1402,13 +1406,13 @@ try {
             // Fluxo por redirecionamento: nenhum dado de cartão trafega por aqui; valor, plano e contrato vêm do servidor.
             unset($_POST['token'], $_POST['payment_method_id']);
             if (($_POST['outro_cartao'] ?? '') === '1') {
-                [$dados, $mensagemOutro] = pagamentoCartaoPreapprovalOutroCartao($conexao, $gatewayCartao, $empresa, $email);
+                [$dados, $mensagemOutro] = pagamentoCartaoPreapprovalOutroCartao($conexao, $gatewayCartao, $empresa, $email, (int)($contexto['id_usuario'] ?? 0));
                 out(['ok'=>true,
                     'code'=>($dados['init_point'] ?? null) !== null ? 'AUTORIZACAO_REDIRECIONAMENTO' : 'OUTRO_CARTAO_PENDENTE',
                     'user_msg'=>$mensagemOutro,
                     'data'=>$dados]);
             }
-            $dados = pagamentoCartaoPreapprovalIniciar($conexao, $gatewayCartao, $empresa, $email);
+            $dados = pagamentoCartaoPreapprovalIniciar($conexao, $gatewayCartao, $empresa, $email, (int)($contexto['id_usuario'] ?? 0));
             out(['ok'=>true,
                 'code'=>$dados['init_point'] !== null ? 'AUTORIZACAO_REDIRECIONAMENTO' : 'AUTORIZACAO_EXISTENTE',
                 'user_msg'=>$dados['init_point'] !== null

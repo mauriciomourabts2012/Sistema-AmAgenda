@@ -4714,16 +4714,92 @@ function assinaturaServicoPreapprovalNovoVinculoPermitido(mysqli $conexao): bool
 }
 
 /**
+ * Identidade do pagador de uma NOVA Preapproval (função pura, sem banco). Confere os dados lidos do banco contra a
+ * sessão: o usuário e a empresa precisam ser os da sessão; usuário, empresa, vínculo e perfil, ativos; o perfil, o do
+ * proprietário; o e-mail do banco, válido e igual (sem diferenciar maiúsculas) ao da sessão. Qualquer falha exige nova
+ * autenticação (401 SESSION_REAUTH_REQUIRED), sem expor e-mails na mensagem. Devolve exclusivamente o e-mail do banco.
+ *
+ * @param array<string, mixed> $dados id_usuario, id_empresa, usuario_status, empresa_status, vinculo_status, perfil_status, perfil_nome, email
+ * @throws AssinaturaServicoConversaoErro
+ */
+function assinaturaServicoPreapprovalIdentidadePagadorValidarDados(array $dados, int $idEmpresa, int $idUsuario, string $emailSessao): string
+{
+    $emailValido = static fn (string $e): bool => $e !== '' && strlen($e) <= 254 && filter_var($e, FILTER_VALIDATE_EMAIL) !== false;
+    $perfil = mb_strtolower(trim((string)($dados['perfil_nome'] ?? '')), 'UTF-8');
+    $emailBanco = trim((string)($dados['email'] ?? ''));
+    $emailSessao = trim($emailSessao);
+
+    if ($idEmpresa <= 0 || $idUsuario <= 0
+        || (int)($dados['id_usuario'] ?? 0) !== $idUsuario || (int)($dados['id_empresa'] ?? 0) !== $idEmpresa
+        || ($dados['usuario_status'] ?? null) !== 'ativo' || ($dados['empresa_status'] ?? null) !== 'ativo'
+        || ($dados['vinculo_status'] ?? null) !== 'ativo' || ($dados['perfil_status'] ?? null) !== 'ativo'
+        || !in_array($perfil, ['proprietário', 'proprietario'], true)
+        || !$emailValido($emailBanco) || !$emailValido($emailSessao)
+        || mb_strtolower($emailBanco, 'UTF-8') !== mb_strtolower($emailSessao, 'UTF-8')) {
+        throw assinaturaServicoPreapprovalIdentidadePagadorErro();
+    }
+
+    return $emailBanco;
+}
+
+/** Erro único de identidade do pagador: 401 SESSION_REAUTH_REQUIRED, sem qualquer e-mail na mensagem. */
+function assinaturaServicoPreapprovalIdentidadePagadorErro(): AssinaturaServicoConversaoErro
+{
+    return new AssinaturaServicoConversaoErro(
+        'SESSION_REAUTH_REQUIRED',
+        'Não foi possível confirmar a sua identidade para este pagamento. Entre novamente e tente de novo.',
+        401
+    );
+}
+
+/**
+ * Lê o usuário e o vínculo empresarial atuais e devolve o e-mail validado para `payer_email`. Só é chamada quando a
+ * operação realmente vai criar uma nova Preapproval, dentro da transação de reserva: qualquer falha desfaz a reserva
+ * (nenhuma operação fica em 'processando') e nenhum POST é feito. O e-mail nunca vem do navegador: a sessão fornece
+ * apenas `id_usuario` e `email`, que são conferidos contra o banco.
+ *
+ * @param array<string, mixed> $identidade id_usuario e email da sessão autenticada
+ * @throws AssinaturaServicoConversaoErro
+ */
+function assinaturaServicoPreapprovalIdentidadePagador(mysqli $conexao, int $idEmpresa, array $identidade): string
+{
+    $idUsuario = is_int($identidade['id_usuario'] ?? null) ? $identidade['id_usuario'] : 0;
+    $emailSessao = is_string($identidade['email'] ?? null) ? $identidade['email'] : '';
+    $dados = $idEmpresa > 0 && $idUsuario > 0 ? (assinaturaServicoConsultaFinanceira(
+        $conexao,
+        'SELECT u.id_usuario, eu.id_empresa, u.status AS usuario_status, e.status AS empresa_status,
+                eu.status AS vinculo_status, pf.status AS perfil_status, pf.nome AS perfil_nome, u.email
+           FROM empresa_usuario eu
+          INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+          INNER JOIN empresa e ON e.id_empresa = eu.id_empresa
+          INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+          WHERE eu.id_empresa = ? AND eu.id_usuario = ?
+          LIMIT 1',
+        'ii',
+        $idEmpresa,
+        $idUsuario
+    )[0] ?? []) : [];
+
+    return assinaturaServicoPreapprovalIdentidadePagadorValidarDados($dados, $idEmpresa, $idUsuario, $emailSessao);
+}
+
+/**
  * Etapa 1 (transação): valida, reserva a intenção local e a "vez" de falar com o provedor.
  *
  * Contratação nova não paga (primeira cobrança): não há período pago; `inicio` é o início da oferta (nenhuma cobrança
  * externa antes dele) e `inicio_envio` é a `start_date` enviada. Nos demais casos `inicio_envio` é null.
  *
- * @return array{acao: string, contrato: array<string, mixed>, vinculo: array<string, mixed>, operacao: ?array<string, mixed>, inicio: DateTimeImmutable, inicio_envio: ?DateTimeImmutable}
+ * Identidade do pagador: quando `$identidadePagador` é informada e a ação é 'criar', o e-mail atual do proprietário é
+ * validado no banco (assinaturaServicoPreapprovalIdentidadePagador) e devolvido em `email_pagador`; falha desfaz a
+ * transação inteira. Chamadas que nunca criam (conciliação) passam null e seguem inalteradas. As demais ações
+ * (vinculada, conciliar, em_andamento, expirada) não consultam a identidade: Preapprovals existentes não mudam.
+ *
+ * @param array<string, mixed>|null $identidadePagador id_usuario e email da sessão; null somente para quem não cria
+ * @return array{acao: string, contrato: array<string, mixed>, vinculo: array<string, mixed>, operacao: ?array<string, mixed>, inicio: DateTimeImmutable, inicio_envio: ?DateTimeImmutable, email_pagador?: string}
  *         acao: 'criar' | 'conciliar' | 'vinculada' | 'em_andamento'
  * @throws AssinaturaServicoConversaoErro
  */
-function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente, int $idEmpresa, ?array $ator = null): array
+function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente, int $idEmpresa, ?array $ator = null, ?array $identidadePagador = null): array
 {
     $contrato = assinaturaServicoPreapprovalContrato($conexao, $idEmpresa);
     $idAssinatura = $contrato['id_assinatura'];
@@ -4890,7 +4966,16 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         );
     }
 
-    return ['acao' => $acao, 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => $aberta, 'inicio' => $inicio, 'inicio_envio' => $envio];
+    $reserva = ['acao' => $acao, 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => $aberta, 'inicio' => $inicio, 'inicio_envio' => $envio];
+    if ($reserva['acao'] === 'criar') {
+        // Só uma nova Preapproval consulta a identidade do pagador. Falha aqui desfaz a reserva (rollback do chamador) e
+        // nenhum POST é feito. Quem nunca cria (conciliação) não informa identidade e segue o fluxo de antes.
+        if ($identidadePagador !== null) {
+            $reserva['email_pagador'] = assinaturaServicoPreapprovalIdentidadePagador($conexao, $idEmpresa, $identidadePagador);
+        }
+    }
+
+    return $reserva;
 }
 
 /** Insere a intenção local (referência opaca e única) antes de qualquer chamada externa. */
@@ -5206,8 +5291,12 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
  *
  * @param object $gateway MercadoPagoGateway (ou equivalente com a mesma interface, em testes)
  * @param array<string, mixed>|null $ator auditoria da renovação da oferta da primeira cobrança; null usa a sessão
+ * @param int|null $idUsuario usuário autenticado (sessão) que contrata; `$emailPagador` é o e-mail da sessão. Uma NOVA
+ *        Preapproval só é criada com o e-mail atual do proprietário lido do banco e conferido com a sessão
+ *        (assinaturaServicoPreapprovalIdentidadePagador); sem `$idUsuario`, a criação é recusada (401) antes de qualquer POST.
+ *        A retomada de uma Preapproval existente continua usando só `$emailPagador`, como antes.
  */
-function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, int $idEmpresa, string $emailPagador, ?array $ator = null): array
+function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, int $idEmpresa, string $emailPagador, ?array $ator = null, ?int $idUsuario = null): array
 {
     if ($idEmpresa <= 0 || strlen($emailPagador) > 254 || !filter_var($emailPagador, FILTER_VALIDATE_EMAIL)) {
         return assinaturaServicoNovaContratacaoResultado(false, 'DADOS_INVALIDOS', 'Dados inválidos para configurar o pagamento recorrente.', ['http_status' => 422]);
@@ -5216,13 +5305,23 @@ function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, i
         return assinaturaServicoNovaContratacaoResultado(false, 'SUBSCRIPTIONS_DESABILITADO', 'Pagamento recorrente indisponível.', ['http_status' => 503]);
     }
     $ambiente = $gateway->ambiente();
+    $identidadePagador = ['id_usuario' => (int)($idUsuario ?? 0), 'email' => $emailPagador];
 
     try {
         $reserva = assinaturaServicoPreapprovalTransacao(
             $conexao,
-            static fn (): array => assinaturaServicoPreapprovalReservar($conexao, $ambiente, $idEmpresa, $ator)
+            static function () use ($conexao, $ambiente, $idEmpresa, $ator, $identidadePagador): array {
+                $reserva = assinaturaServicoPreapprovalReservar($conexao, $ambiente, $idEmpresa, $ator, $identidadePagador);
+                if ($reserva['acao'] === 'criar' && !is_string($reserva['email_pagador'] ?? null)) {
+                    // Nunca criar sem identidade validada: a exceção desfaz a reserva (nada fica em 'processando').
+                    throw assinaturaServicoPreapprovalIdentidadePagadorErro();
+                }
+
+                return $reserva;
+            }
         );
     } catch (AssinaturaServicoConversaoErro $e) {
+        // Inclui SESSION_REAUTH_REQUIRED (401): a transação já foi desfeita e nenhum POST foi feito.
         return assinaturaServicoPreapprovalFalha($e);
     }
 
@@ -5241,7 +5340,9 @@ function assinaturaServicoPreapprovalIniciar(mysqli $conexao, object $gateway, i
         return assinaturaServicoPreapprovalEsclarecer($conexao, $gateway, $reserva, $emailPagador);
     }
 
-    return assinaturaServicoPreapprovalEnviar($conexao, $gateway, $reserva, $emailPagador);
+    // Nova Preapproval: payer_email é exclusivamente o e-mail validado no banco (nunca o da requisição); a transação
+    // acima já garantiu que ele existe.
+    return assinaturaServicoPreapprovalEnviar($conexao, $gateway, $reserva, (string)$reserva['email_pagador']);
 }
 
 /** Checkout antigo cancelado pelo outbox: o chamador pode processar a operação; a nova autorização vem depois. */

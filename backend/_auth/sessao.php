@@ -288,7 +288,7 @@ out([
       'empresa_slug'  => $empresaSlug,
       'agenda_online_path' => $empresaSlug !== '' ? '/agendar/' . rawurlencode($empresaSlug) : '',
       'agenda_online_disponivel' => $agendaOnlineDisponivel,
-      'nome_completo' => (string)($auth['nome_completo'] ?? ''),
+      'nome_completo' => (string)($auth['nome'] ?? $auth['nome_completo'] ?? ''),
       'email'         => (string)($auth['email'] ?? ''),
       'telefone'      => (string)($auth['telefone'] ?? ''),
       'perfil'        => (string)($auth['perfil_nome'] ?? $auth['perfil'] ?? ''),

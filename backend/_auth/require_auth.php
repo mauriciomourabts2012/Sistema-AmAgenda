@@ -196,6 +196,8 @@ if ($tipoUsuario !== 'super_admin') {
             '_auth/logout',
             // Troca obrigatória da própria senha (senha temporária) antes da regularização.
             'perfil/alterar-senha',
+            // Consulta somente o próprio usuário; o handler não aceita id externo nem alteração.
+            'perfil/buscar-foto',
             'painel/faturamento/resumo',
             'painel/faturamento/cancelar',
             'painel/faturamento/contratacao',
@@ -216,7 +218,7 @@ if ($tipoUsuario !== 'super_admin') {
 
         if ($assinaturaCancelada) {
             $rotasPermitidasRegularizacao = [
-                '_auth/session', '_auth/logout', 'perfil/alterar-senha',
+                '_auth/session', '_auth/logout', 'perfil/alterar-senha', 'perfil/buscar-foto',
                 'painel/faturamento/resumo', 'painel/faturamento/contratacao', 'painel/faturamento/cobrancas',
                 'painel/faturamento/pagamentos', 'painel/faturamento/pagamento/transacao',
                 'painel/faturamento/pagamento/pix/iniciar',

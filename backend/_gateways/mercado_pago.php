@@ -636,8 +636,9 @@ final class MercadoPagoGateway
             }
         }
 
-        if (array_key_exists('payer_email', $corpo)) {
-            $email = $corpo['payer_email'];
+        // A criação sempre exige o e-mail do pagador (validado antes pelo serviço); nas demais operações ele é opcional.
+        if ($operacao === 'criar_preapproval' || array_key_exists('payer_email', $corpo)) {
+            $email = $corpo['payer_email'] ?? null;
             if (!is_string($email) || strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 return false;
             }
