@@ -2288,7 +2288,7 @@
       criarElemento(
         "span",
         "",
-        `/${String(plano.cobranca ?? "")}`
+        `/${plano.cobranca === "diaria" ? "diária" : String(plano.cobranca ?? "")}`
       )
     );
     card.appendChild(preco);

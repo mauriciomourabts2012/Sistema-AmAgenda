@@ -31,17 +31,6 @@ function cobrancasAutomaticasData(string $valor, string $campo): DateTimeImmutab
     return $data;
 }
 
-function cobrancasAutomaticasMesesPeriodicidade(string $periodicidade): int
-{
-    return match ($periodicidade) {
-        'mensal' => 1,
-        'trimestral' => 3,
-        'semestral' => 6,
-        'anual' => 12,
-        default => throw new RuntimeException('Periodicidade da assinatura inválida.'),
-    };
-}
-
 function cobrancasAutomaticasCalcularVencimento(DateTimeImmutable $periodoInicio, int $diaVencimento): DateTimeImmutable
 {
     if ($diaVencimento < 1 || $diaVencimento > 28) {
@@ -140,7 +129,6 @@ $resumo = [
     'assinaturas_analisadas' => 0,
     'cobrancas_geradas' => 0,
     'sem_cobranca_necessaria' => 0,
-    'recorrencia_diaria_sem_geracao_local' => 0,
     'inconsistencias' => 0,
     'erros' => 0,
 ];
@@ -442,15 +430,6 @@ try {
             continue;
         }
 
-        if (assinaturaServicoRecorrenciaDiaria($idEmpresaReferencia)) {
-            // Recorrência diária de homologação: este gerador não consulta o Mercado Pago e não sabe se a Preapproval
-            // diária segue autorizada, foi cancelada ou passou do end_date. Nenhuma cobrança local é gerada; cada
-            // competência diária nasce só da fatura autoritativa no webhook (mpSubResolverCobranca), que limita a janela.
-            $resumo['recorrencia_diaria_sem_geracao_local']++;
-            fwrite(STDERR, "Assinatura #{$idAssinaturaReferencia}: recorrência diária de homologação ativa; geração local impedida.\n");
-            continue;
-        }
-
         $cobrancasGeradasNestaAssinatura = 0;
 
         while (true) {
@@ -575,8 +554,9 @@ try {
                     break;
                 }
 
-                $meses = cobrancasAutomaticasMesesPeriodicidade((string) $assinaturaBloqueada['periodicidade']);
-                $periodoFim = $periodoInicio->modify("+{$meses} months")->modify('-1 day');
+                // Competência e vencimento pela periodicidade do contrato (diária: um dia, vencendo no próprio dia).
+                $periodicidadeContrato = (string) $assinaturaBloqueada['periodicidade'];
+                $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, $periodicidadeContrato);
                 if ($assinaturaBloqueada['data_fim'] !== null
                     && $periodoFim->format('Y-m-d') > (string)$assinaturaBloqueada['data_fim']) {
                     cobrancasAutomaticasRollback($conexao);
@@ -584,7 +564,8 @@ try {
                     break;
                 }
                 $diaVencimento = (int) $assinaturaBloqueada['dia_vencimento'];
-                $dataVencimento = cobrancasAutomaticasCalcularVencimento($periodoInicio, $diaVencimento);
+                $dataVencimento = assinaturaServicoPeriodicidadeDiaria($periodicidadeContrato)
+                    ? $periodoInicio : cobrancasAutomaticasCalcularVencimento($periodoInicio, $diaVencimento);
                 $valor = trim((string) $assinaturaBloqueada['valor_contratado']);
 
                 if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $valor)) {
@@ -685,7 +666,6 @@ echo "Assinaturas suspensas por inadimplência: {$resumo['assinaturas_suspensas_
 echo "Assinaturas analisadas: {$resumo['assinaturas_analisadas']}\n";
 echo "Cobranças geradas: {$resumo['cobrancas_geradas']}\n";
 echo "Sem cobrança necessária: {$resumo['sem_cobranca_necessaria']}\n";
-echo "Recorrência diária sem geração local: {$resumo['recorrencia_diaria_sem_geracao_local']}\n";
 echo "Inconsistências: {$resumo['inconsistencias']}\n";
 echo "Erros: {$resumo['erros']}\n";
 

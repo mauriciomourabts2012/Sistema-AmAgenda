@@ -888,7 +888,7 @@
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ""));
     return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
   };
-  const periodicidadeTexto = (p) => ({ mensal: "mensal", trimestral: "trimestral", semestral: "semestral", anual: "anual" }[p] || p || "");
+  const periodicidadeTexto = (p) => ({ diaria: "diária", mensal: "mensal", trimestral: "trimestral", semestral: "semestral", anual: "anual" }[p] || p || "");
 
   function ocultarContratacao() {
     contrSituacao = null;

@@ -110,7 +110,7 @@ if ($preco_raw === '') $erros['e_preco'] = 'Informe o preço mensal.';
 if ($cobranca === '') $erros['e_cobranca'] = 'Selecione a cobrança.';
 if ($limite_usuarios < 1) $erros['e_limite_usuarios'] = 'O limite de usuários deve ser no mínimo 1.';
 
-$allowedCobranca = ['mensal','trimestral','semestral','anual'];
+$allowedCobranca = ['diaria','mensal','trimestral','semestral','anual'];
 if ($cobranca !== '' && !in_array($cobranca, $allowedCobranca, true)) {
   $erros['e_cobranca'] = 'Cobrança inválida.';
 }
@@ -252,6 +252,26 @@ try {
       ], 409);
     }
     $st->close();
+  }
+
+  // A periodicidade do contrato é copiada do plano na contratação e a Preapproval segue a do contrato: trocar a cobrança
+  // de um plano em uso criaria planos e contratos com ciclos diferentes. Só é permitida sem assinatura vigente.
+  if ($cobranca !== (string)$planoAnterior['cobranca']) {
+    $st = $conexao->prepare("SELECT 1 FROM assinatura WHERE id_plano = ? AND status IN ('ativa','suspensa') LIMIT 1");
+    if (!$st) throw new Exception('Prepare check assinaturas falhou.');
+    $st->bind_param('i', $id_plano);
+    $st->execute();
+    $st->store_result();
+    $emUso = $st->num_rows > 0;
+    $st->close();
+    if ($emUso) {
+      out([
+        'ok' => false,
+        'code' => 'COBRANCA_PLANO_EM_USO',
+        'user_msg' => 'A cobrança deste plano não pode ser alterada porque há assinaturas vigentes nele. Crie um novo plano com a periodicidade desejada.',
+        'fields' => ['e_cobranca' => 'Plano com assinaturas vigentes.'],
+      ], 409);
+    }
   }
 
   $conexao->begin_transaction();

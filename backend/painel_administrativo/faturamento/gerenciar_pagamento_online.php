@@ -964,7 +964,7 @@ function pagamentoCartaoPreapprovalTrocarCartao(mysqli $db, object $gateway, int
         $condicoes = pagamentoOnlineConsulta($db,
             'SELECT valor_contratado,periodicidade FROM assinatura WHERE id_assinatura=? AND id_empresa=?',
             'ii', (int)$contrato['id_assinatura'], $empresa)->fetch_assoc();
-        $recorrencia = $condicoes ? assinaturaServicoPreapprovalRecorrencia($empresa, (string)$condicoes['periodicidade']) : null;
+        $recorrencia = $condicoes ? assinaturaServicoPreapprovalRecorrencia((string)$condicoes['periodicidade']) : null;
         if ($recorrencia === null) {
             pagamentoOnlineFalhar('TROCA_CARTAO_CONTRATO_INDISPONIVEL', 'Não foi possível conferir o contrato para trocar o cartão.', 409);
         }

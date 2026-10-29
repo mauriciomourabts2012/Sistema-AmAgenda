@@ -16,6 +16,8 @@
   const br = valor => /^\d{4}-\d{2}-\d{2}/.test(String(valor || "")) ? String(valor).slice(0, 10).split("-").reverse().join("/") : "—";
   const moeda = valor => Number(valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const texto = valor => String(valor || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "—";
+  // Periodicidade do plano: "diaria" é exibida com acento; as demais seguem o formato geral.
+  const periodicidadeTexto = valor => (valor === "diaria" ? "Diária" : texto(valor));
   const avisar = (tipo, msg) => (window.MensagemSistema?.[tipo] || window.MensagemSistema?.info)?.(msg);
   const MENSAGEM_PIX_RESIDUAL = "Sua mensalidade já está paga. Não utilize o PIX gerado anteriormente para evitar pagamento duplicado.";
   // A conclusão recarrega a página para liberar o acesso; o aviso precisa sobreviver à recarga.
@@ -83,7 +85,7 @@
     const rotuloPlano = assinatura.status === "cancelada" ? "Último plano contratado" : "Plano atual";
     const situacao = assinatura.motivo_suspensao === "contratacao_pendente" ? "Aguardando pagamento da contratação"
       : assinatura.data_fim && assinatura.status === "ativa" ? `Cancelamento programado: acesso até ${br(assinatura.data_fim)}` : texto(assinatura.status);
-    el.innerHTML = `<div class="faturamento-plano-identidade"><span class="faturamento-plano-icone" aria-hidden="true"><i class="fa-solid fa-crown"></i></span><div class="faturamento-assinatura-plano"><span class="faturamento-assinatura-rotulo">${rotuloPlano}</span><strong class="faturamento-assinatura-nome">${esc(assinatura.plano || "Plano não identificado")}</strong><div class="faturamento-assinatura-preco"><b>${moeda(assinatura.valor_contratado)}</b><small>/ ${esc(texto(assinatura.periodicidade))}</small></div></div></div><div><span>Vencimento</span><strong>Dia ${esc(assinatura.dia_vencimento)}</strong></div><div><span>Início</span><strong>${br(assinatura.data_inicio)}</strong></div>${encerramento}<span class="${statusClasse(assinatura.status)}">${esc(situacao)}</span>${acaoRegularizacao}${acaoTrocar}${acaoCancelar}${trocaPendente}`;
+    el.innerHTML = `<div class="faturamento-plano-identidade"><span class="faturamento-plano-icone" aria-hidden="true"><i class="fa-solid fa-crown"></i></span><div class="faturamento-assinatura-plano"><span class="faturamento-assinatura-rotulo">${rotuloPlano}</span><strong class="faturamento-assinatura-nome">${esc(assinatura.plano || "Plano não identificado")}</strong><div class="faturamento-assinatura-preco"><b>${moeda(assinatura.valor_contratado)}</b><small>/ ${esc(periodicidadeTexto(assinatura.periodicidade))}</small></div></div></div><div><span>Vencimento</span><strong>Dia ${esc(assinatura.dia_vencimento)}</strong></div><div><span>Início</span><strong>${br(assinatura.data_inicio)}</strong></div>${encerramento}<span class="${statusClasse(assinatura.status)}">${esc(situacao)}</span>${acaoRegularizacao}${acaoTrocar}${acaoCancelar}${trocaPendente}`;
     agendarVerificacaoTroca();
   }
   function renderIndicadores(indicadores) {
@@ -162,7 +164,7 @@
     if (!aplicavel || !podeContratar()) { secao.hidden = true; el.innerHTML = ""; return; }
     secao.hidden = false;
     const pendente = contratacao.pendente;
-    const detalhes = pendente ? `<div><span>Plano escolhido</span><strong>${esc(pendente.plano || "Plano")}</strong></div><div><span>Valor do período</span><strong>${moeda(pendente.valor)} / ${esc(texto(pendente.periodicidade))}</strong></div>${pendente.data_vencimento ? `<div><span>Vencimento</span><strong>${br(pendente.data_vencimento)}</strong></div>` : ""}` : "";
+    const detalhes = pendente ? `<div><span>Plano escolhido</span><strong>${esc(pendente.plano || "Plano")}</strong></div><div><span>Valor do período</span><strong>${moeda(pendente.valor)} / ${esc(periodicidadeTexto(pendente.periodicidade))}</strong></div>${pendente.data_vencimento ? `<div><span>Vencimento</span><strong>${br(pendente.data_vencimento)}</strong></div>` : ""}` : "";
     const aguardando = !!pendente && !pendente.paga;
     const concluir = pendente ? `<button class="botao-geral destaque" type="button" data-concluir-contratacao>${pendente.paga ? "Concluir contratação" : "Verificar pagamento"}</button>` : "";
     const temPlanosPublicos = Array.isArray(contratacao.planos) && contratacao.planos.length > 0;
@@ -189,7 +191,7 @@
       if (botao) botao.disabled = true;
       return;
     }
-    if (resumo) resumo.textContent = `Você selecionou ${plano.nome}: ${moeda(plano.valor)} por ${texto(plano.periodicidade)}. A cobrança será gerada após a confirmação.`;
+    if (resumo) resumo.textContent = `Você selecionou ${plano.nome}: ${moeda(plano.valor)} por ${periodicidadeTexto(plano.periodicidade)}. A cobrança será gerada após a confirmação.`;
     if (botao) botao.disabled = false;
   }
   function criarOpcaoContratacao(plano, selecionado, nomeCampo = "id_plano", rotuloTipo = "", atual = false) {
@@ -219,7 +221,7 @@
     }
     const preco = document.createElement("span");
     preco.className = "faturamento-contratacao-plano-preco";
-    preco.textContent = `${moeda(plano.valor)} / ${texto(plano.periodicidade)}`;
+    preco.textContent = `${moeda(plano.valor)} / ${periodicidadeTexto(plano.periodicidade)}`;
     const descricao = document.createElement("small");
     descricao.className = "faturamento-contratacao-plano-descricao";
     descricao.textContent = plano.descricao || "Plano disponível para contratação.";
@@ -255,7 +257,7 @@
     const valores = {
       nome: assinatura.plano || "—",
       valor: moeda(assinatura.valor_contratado),
-      periodicidade: texto(assinatura.periodicidade),
+      periodicidade: periodicidadeTexto(assinatura.periodicidade),
       inicio: br(assinatura.data_inicio),
       vencimento: vencimento ? br(vencimento) : (assinatura.dia_vencimento ? `Dia ${assinatura.dia_vencimento}` : "—")
     };

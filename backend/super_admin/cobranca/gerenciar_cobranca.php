@@ -51,17 +51,6 @@ function cobrancaData(string $valor, string $campo): DateTimeImmutable
     return $data;
 }
 
-function cobrancaMesesPeriodicidade(string $periodicidade): int
-{
-    return match ($periodicidade) {
-        'mensal' => 1,
-        'trimestral' => 3,
-        'semestral' => 6,
-        'anual' => 12,
-        default => throw new RuntimeException('Periodicidade da assinatura inválida.'),
-    };
-}
-
 function cobrancaCalcularVencimento(DateTimeImmutable $inicio, int $dia): DateTimeImmutable
 {
     if ($dia < 1 || $dia > 28) {
@@ -1087,17 +1076,8 @@ try {
             'user_msg' => 'A modalidade da assinatura precisa de verificação.',
         ], 409);
     }
-    if (assinaturaServicoRecorrenciaDiaria($idEmpresa)) {
-        // Recorrência diária de homologação: sem consulta ao Mercado Pago não há como saber se a Preapproval diária segue
-        // autorizada ou dentro do end_date; cada competência diária nasce só da fatura autoritativa no webhook.
-        cobrancaErroTransacional($conexao, [
-            'ok' => false,
-            'code' => 'RECORRENCIA_DIARIA_SEM_GERACAO_LOCAL',
-            'user_msg' => 'Esta empresa está na recorrência diária de homologação. As cobranças diárias são criadas apenas pelo pagamento confirmado no Mercado Pago.',
-        ], 409);
-    }
     $idAssinatura = (int)$assinatura['id_assinatura'];
-    $meses = cobrancaMesesPeriodicidade((string)$assinatura['periodicidade']);
+    $periodicidade = (string)$assinatura['periodicidade'];
     $dataInicioAssinatura = cobrancaData((string)$assinatura['data_inicio'], 'data_inicio da assinatura');
     $valor = (float)$assinatura['valor_contratado'];
     if ($valor < 0) {
@@ -1117,8 +1097,10 @@ try {
     $ultima = $resUltima ? ($resUltima->fetch_assoc() ?: null) : null;
     $stmtUltima->close();
     $periodoInicio = $ultima ? cobrancaData((string)$ultima['periodo_fim'], 'periodo_fim da cobrança anterior')->modify('+1 day') : $dataInicioAssinatura;
-    $periodoFim = $periodoInicio->modify('+' . $meses . ' months')->modify('-1 day');
-    $dataVencimento = cobrancaCalcularVencimento($periodoInicio, (int)$assinatura['dia_vencimento']);
+    // Competência e vencimento pela periodicidade do contrato (diária: um dia, vencendo no próprio dia).
+    $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, $periodicidade);
+    $dataVencimento = assinaturaServicoPeriodicidadeDiaria($periodicidade)
+        ? $periodoInicio : cobrancaCalcularVencimento($periodoInicio, (int)$assinatura['dia_vencimento']);
     $periodoInicioSql = $periodoInicio->format('Y-m-d');
     $periodoFimSql = $periodoFim->format('Y-m-d');
     if (assinaturaServicoDowngradeProgramadoAte($conexao, $idAssinatura, $periodoInicioSql)) {

@@ -100,7 +100,7 @@ if ($preco_raw === '') $erros['p_preco'] = 'Informe o preço mensal.';
 if ($cobranca === '') $erros['p_cobranca'] = 'Selecione a cobrança.';
 if ($limite_usuarios < 1) $erros['p_limite_usuarios'] = 'O limite de usuários deve ser no mínimo 1.';
 
-$allowedCobranca = ['mensal','trimestral','semestral','anual'];
+$allowedCobranca = ['diaria','mensal','trimestral','semestral','anual'];
 if ($cobranca !== '' && !in_array($cobranca, $allowedCobranca, true)) {
   $erros['p_cobranca'] = 'Cobrança inválida.';
 }
