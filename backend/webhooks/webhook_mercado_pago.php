@@ -1642,7 +1642,17 @@ function mpSubCobrancaAntecipadaNaAtivacao(mysqli $conexao, array $vinculo, arra
         return null;
     }
 
-    return assinaturaServicoPreapprovalConferirInicioExterno($dados, assinaturaServicoPreapprovalInicioCobranca($fimPago));
+    // Antecipação controlada (diária): a cobrança externa até 1 dia civil antes do primeiro dia não pago autoriza o
+    // vínculo; a fatura e o pagamento continuam dependendo do débito e do pagamento autoritativos (mpSubResolverCobranca).
+    return assinaturaServicoPreapprovalConferirInicioExterno(
+        $dados,
+        assinaturaServicoPreapprovalInicioCobranca($fimPago),
+        false,
+        assinaturaServicoPreapprovalAntecipacaoDias(
+            (string)($assinatura['periodicidade'] ?? ''),
+            assinaturaServicoDiasCicloContrato($conexao, (int)$vinculo['id_empresa'], (int)$vinculo['id_assinatura'], (string)($assinatura['periodicidade'] ?? ''))
+        )
+    );
 }
 
 /** Mapeia o status externo da Preapproval ao vínculo local; nunca reativa vínculo cancelado/encerrado. */
@@ -1734,7 +1744,7 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
     try {
         $assinatura = assinaturaServicoConsultaFinanceira(
             $conexao,
-            "SELECT a.status, a.modalidade, a.motivo_suspensao, a.data_fim, p.gera_cobranca,
+            "SELECT a.status, a.modalidade, a.motivo_suspensao, a.data_fim, a.periodicidade, p.gera_cobranca,
                     DATE_FORMAT(a.teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em
                FROM assinatura a INNER JOIN plano p ON p.id_plano = a.id_plano
               WHERE a.id_assinatura = ? AND a.id_empresa = ? FOR UPDATE",
@@ -1917,6 +1927,77 @@ function mpSubVinculoComCompetenciaDiaria(mysqli $conexao, int $idAssinaturaPaga
 }
 
 /**
+ * Cobranças regulares (não canceladas) que COMEÇAM depois do dia do débito e até o limite da antecipação controlada.
+ * Função pura, sem banco.
+ *
+ * @param list<array<string, mixed>> $todas
+ * @return list<array<string, mixed>>
+ */
+function mpSubCompetenciasAntecipaveis(array $todas, string $diaDebito, string $limite): array
+{
+    $candidatas = [];
+    foreach ($todas as $cobranca) {
+        if ((string)$cobranca['finalidade'] === 'regular' && (string)$cobranca['status'] !== 'cancelada'
+            && (string)$cobranca['periodo_inicio'] > $diaDebito && (string)$cobranca['periodo_inicio'] <= $limite) {
+            $candidatas[] = $cobranca;
+        }
+    }
+
+    return $candidatas;
+}
+
+/**
+ * A próxima competência da sequência (ainda inexistente) começa a 1..$antecipacaoDias dia(s) do débito: ela pode ser criada,
+ * com as datas normais, para receber este débito. Exige competência anterior (nunca antecipa a primeira) e janela > 0.
+ * Função pura, sem banco.
+ */
+function mpSubDebitoAntecipaProximaCompetencia(int $diasAteInicioEsperado, bool $haCompetenciaAnterior, int $antecipacaoDias): bool
+{
+    return $antecipacaoDias > 0 && $haCompetenciaAnterior && $diasAteInicioEsperado > 0 && $diasAteInicioEsperado <= $antecipacaoDias;
+}
+
+/**
+ * Competência já existente que um débito de véspera pode quitar: pendente (nunca quitada, cancelada nem em outro estado)
+ * e sem PIX em andamento ou confirmado para o mesmo período. Em qualquer dúvida devolve o código do impedimento (o
+ * pagamento externo fica preservado em conciliação) em vez de atribuir por suposição. Na transação, com a assinatura
+ * bloqueada.
+ *
+ * @param array<string, mixed> $cobranca
+ * @return array{cobranca: array<string, mixed>, criada: bool}|string
+ */
+function mpSubCompetenciaAntecipadaElegivel(mysqli $conexao, array $cobranca): array|string
+{
+    if ((string)$cobranca['status'] !== 'pendente') {
+        return 'COMPETENCIA_ANTECIPADA_NAO_PENDENTE';
+    }
+    $concorrente = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT 1 FROM transacao_pagamento
+          WHERE id_empresa = ? AND id_cobranca = ? AND metodo <> 'cartao_recorrente'
+            AND (status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao', 'confirmada') OR requer_conciliacao = 1)
+          LIMIT 1",
+        'ii',
+        (int)$cobranca['id_empresa'],
+        (int)$cobranca['id_cobranca']
+    );
+    if ($concorrente !== []) {
+        return 'COMPETENCIA_ANTECIPADA_COM_PIX';
+    }
+    $quitacao = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT 1 FROM pagamento WHERE id_empresa = ? AND id_cobranca = ? AND status = 'confirmado' LIMIT 1",
+        'ii',
+        (int)$cobranca['id_empresa'],
+        (int)$cobranca['id_cobranca']
+    );
+    if ($quitacao !== []) {
+        return 'COMPETENCIA_ANTECIPADA_JA_QUITADA';
+    }
+
+    return ['cobranca' => $cobranca, 'criada' => false];
+}
+
+/**
  * Competência da fatura: a cobrança regular que começa no dia do débito (única) ou, sem ela, a que começa a ±1 dia
  * (tolerância zero na periodicidade diária); senão, a próxima cobrança da sequência (mesma regra do gerador automático),
  * criada no formato da periodicidade do contrato. Competência diária só casa com débito no seu início. Deve rodar
@@ -1985,6 +2066,22 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
     if (count($exatas) === 1) {
         return ['cobranca' => $exatas[0], 'criada' => false];
     }
+    // Débito de véspera (antecipação controlada, só periodicidade diária): a fatura é da competência que COMEÇA nos
+    // dias seguintes (dentro da janela) e ainda não foi quitada, sem alterar seu início nem seu fim. Débito sem competência
+    // elegível nunca é atribuído por suposição: cai em conciliação com o código do impedimento.
+    $antecipacaoDias = assinaturaServicoPreapprovalAntecipacaoDias(
+        $periodicidade,
+        assinaturaServicoDiasCicloContrato($conexao, $idEmpresa, (int)$assinatura['id_assinatura'], $periodicidade)
+    );
+    if ($antecipacaoDias > 0) {
+        $antecipadas = mpSubCompetenciasAntecipaveis($todas, $diaSql, $dia->modify('+' . $antecipacaoDias . ' days')->format('Y-m-d'));
+        if (count($antecipadas) > 1) {
+            return 'COMPETENCIA_AMBIGUA';
+        }
+        if (count($antecipadas) === 1) {
+            return mpSubCompetenciaAntecipadaElegivel($conexao, $antecipadas[0]);
+        }
+    }
     if (count($aceitas) > 1) {
         return 'COMPETENCIA_AMBIGUA';
     }
@@ -2001,7 +2098,10 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
     $esperado = $ultimoFim === null
         ? new DateTimeImmutable((string)$assinatura['data_inicio'] . ' 00:00:00', $fuso)
         : (new DateTimeImmutable($ultimoFim . ' 00:00:00', $fuso))->modify('+1 day');
-    if (abs((int)$esperado->diff($dia)->format('%r%a')) > $tolerancia) {
+    // A competência esperada (sequência após a última existente) pode ser cobrada com a antecipação controlada: ela é
+    // criada com o início e o fim de sempre, nunca deslocados para o dia do débito.
+    $antecipada = mpSubDebitoAntecipaProximaCompetencia((int)$dia->diff($esperado)->format('%r%a'), $ultimoFim !== null, $antecipacaoDias);
+    if (!$antecipada && abs((int)$esperado->diff($dia)->format('%r%a')) > $tolerancia) {
         return 'COMPETENCIA_NAO_ALINHADA';
     }
     $diasDiaria = assinaturaServicoDiasCicloContrato(

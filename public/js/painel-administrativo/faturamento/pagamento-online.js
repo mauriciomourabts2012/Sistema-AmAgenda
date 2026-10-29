@@ -395,7 +395,7 @@
       // Cancela só a cobrança automática no cartão; "Cancelar assinatura" (contrato) fica no resumo do Faturamento.
       const cancelarAutomatico = atual.pode_cancelar_automatico
         ? '<button class="botao-geral" type="button" data-cancelar-automatico><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pagamento automático</button>' : "";
-      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${trocar}${cancelarAutomatico}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
+      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${trocar}${cancelarAutomatico}${botaoVerificar}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
       return;
     }
     definirCabecalhoSecao("Pagamento automático", "Configure um cartão para automatizar as próximas mensalidades.");
@@ -424,7 +424,7 @@
     }
     // Autorização cancelada (confirmada no provedor) segue para o cadastro abaixo; os demais estados reais são exibidos.
     const mensagens = {
-      cancelamento_pendente: ["fa-solid fa-hourglass-half", "Cancelamento em andamento", "O cancelamento do pagamento automático está sendo confirmado."],
+      cancelamento_pendente: ["fa-solid fa-hourglass-half", "Cancelamento em andamento", "O cancelamento do pagamento automático aguarda a confirmação do Mercado Pago. Até lá, as cobranças automáticas ainda podem ocorrer. Atualize a situação para conferir."],
       suspensa: ["fa-solid fa-circle-pause", "Pagamento automático pausado", "As cobranças automáticas estão pausadas."],
       atualizacao_necessaria: ["fa-solid fa-triangle-exclamation", "Atualização necessária", "O pagamento automático precisa de atenção. Atualize a situação."],
       // Ativo localmente, mas sem autorização confirmada pelo Mercado Pago (ex.: pausada no provedor): não é "sem cartão".
@@ -454,6 +454,10 @@
     const encerrada = ["cancelada", "encerrada"].includes(status);
     if (encerrada && cadastro.elegivel === true && atual.pode_configurar) {
       texto = "A autorização anterior foi encerrada no Mercado Pago. Você pode tentar com outro cartão para as próximas cobranças; o período já pago continua valendo.";
+    }
+    if (encerrada && !(cadastro.elegivel === true && atual.pode_configurar) && atual.subscriptions_habilitado !== false) {
+      // Situação real: encerrada (confirmada pelo Mercado Pago); nenhum cartão ativo e nenhuma reativação automática.
+      texto = "O pagamento automático foi cancelado no Mercado Pago. Sua assinatura e os períodos já pagos continuam valendo; as próximas mensalidades podem ser pagas via PIX.";
     }
     const titulo = encerrada ? "Pagamento automático cancelado" : "Nenhum cartão cadastrado";
     alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", titulo, texto, nota)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar(encerrada ? "Tentar com outro cartão" : "Cadastrar cartão") : ""}${botaoVerificar}</div>`;

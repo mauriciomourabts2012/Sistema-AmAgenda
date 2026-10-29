@@ -4524,7 +4524,8 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
         $codigoData = assinaturaServicoPreapprovalConferirInicioExterno(
             $dados,
             $esperado['inicio'],
-            ($esperado['inicio_pendente_opcional'] ?? false) === true
+            ($esperado['inicio_pendente_opcional'] ?? false) === true,
+            (int)($esperado['antecipacao_dias'] ?? 0)
         );
         if ($codigoData !== null) {
             return $codigoData;
@@ -4543,22 +4544,75 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
  * - authorized (e demais estados): vale a próxima cobrança efetivamente programada (`next_payment_date`; na falta
  *   dela, `start_date`). Sem nenhuma das duas, INICIO_EXTERNO_INDETERMINADO.
  * Retorna null quando a data respeita o período pago.
+ *
+ * Antecipação controlada (`$diasAntecipacao` > 0, ver assinaturaServicoPreapprovalAntecipacaoDias): o provedor pode
+ * programar a primeira cobrança antes do `start_date` contratual (ex.: no dia da autorização). Só então, e só para a
+ * `next_payment_date` de uma Preapproval já autorizada, vale o dia civil (fuso do negócio) de até `$diasAntecipacao` dia(s)
+ * antes do primeiro dia não pago, desde que o `start_date` contratual respeite o período pago. A antecipação apenas
+ * autoriza o vínculo: nenhuma fatura é criada nem quitada por esta data (isso é do débito e do pagamento autoritativos).
  */
-function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio, bool $permitirAusentePendente = false): ?string
+function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio, bool $permitirAusentePendente = false, int $diasAntecipacao = 0): ?string
 {
     $recorrencia = is_array($dados['auto_recurring'] ?? null) ? $dados['auto_recurring'] : [];
     $inicioExterno = assinaturaServicoPreapprovalDataExterna($recorrencia['start_date'] ?? null);
     if (($dados['status'] ?? null) === 'pending' && $inicioExterno === null && $permitirAusentePendente) {
         return null;
     }
+    $proximaExterna = assinaturaServicoPreapprovalDataExterna($dados['next_payment_date'] ?? null);
     $data = ($dados['status'] ?? null) === 'pending'
         ? $inicioExterno
-        : (assinaturaServicoPreapprovalDataExterna($dados['next_payment_date'] ?? null) ?? $inicioExterno);
+        : ($proximaExterna ?? $inicioExterno);
     if ($data === null) {
         return 'INICIO_EXTERNO_INDETERMINADO';
     }
+    if (assinaturaServicoPreapprovalDataNaoAntecipada($data, $inicio)) {
+        return null;
+    }
+    if ($diasAntecipacao > 0 && ($dados['status'] ?? null) === 'authorized' && $proximaExterna !== null
+        && $inicioExterno !== null && assinaturaServicoPreapprovalDataNaoAntecipada($inicioExterno, $inicio)
+        && assinaturaServicoPreapprovalDataDentroAntecipacao($proximaExterna, $inicio, $diasAntecipacao)) {
+        return null;
+    }
 
-    return assinaturaServicoPreapprovalDataNaoAntecipada($data, $inicio) ? null : 'COBRANCA_EXTERNA_ANTECIPADA';
+    return 'COBRANCA_EXTERNA_ANTECIPADA';
+}
+
+/**
+ * Janela de antecipação CONTROLADA da cobrança externa, em dias civis antes do primeiro dia não pago. É uma política local
+ * de segurança, não uma janela oficial do Mercado Pago: só a periodicidade diária no ciclo de 2 dias (homologação), em
+ * que o provedor foi observado programando a cobrança no dia da autorização, tem 1 dia. O ciclo diário legado de 1 dia
+ * e as demais periodicidades não antecipam nada.
+ */
+const ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_DIARIA = 1;
+
+function assinaturaServicoPreapprovalAntecipacaoDias(string $periodicidade, int $diasCiclo = 1): int
+{
+    return assinaturaServicoPeriodicidadeDiaria($periodicidade) && $diasCiclo >= 2
+        ? ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_DIARIA : 0;
+}
+
+/**
+ * Antecipação só vale para a recorrência que preserva um período já pago (contrato pago sem primeira cobrança nem teste
+ * grátis em curso); nos demais casos as datas têm outro significado e nada é antecipado.
+ *
+ * @param array<string, mixed> $contrato retorno de assinaturaServicoPreapprovalContrato()
+ */
+function assinaturaServicoPreapprovalAntecipacaoDiasContrato(array $contrato): int
+{
+    $diasCiclo = (string)($contrato['frequencia_tipo'] ?? '') === 'days' ? (int)($contrato['frequencia_meses'] ?? 1) : 1;
+
+    return ($contrato['primeira_cobranca'] ?? null) === null && ($contrato['teste'] ?? null) === null
+        ? assinaturaServicoPreapprovalAntecipacaoDias((string)($contrato['periodicidade'] ?? ''), $diasCiclo)
+        : 0;
+}
+
+/** O dia civil (fuso do negócio) da data externa está a no máximo `$dias` dia(s) antes do primeiro dia não pago. */
+function assinaturaServicoPreapprovalDataDentroAntecipacao(DateTimeImmutable $externa, DateTimeImmutable $inicio, int $dias): bool
+{
+    $fuso = new DateTimeZone(ASSINATURA_SERVICO_PREAPPROVAL_FUSO);
+    $limite = $inicio->setTimezone($fuso)->setTime(0, 0)->modify('-' . max(0, $dias) . ' days')->format('Y-m-d');
+
+    return $externa->setTimezone($fuso)->format('Y-m-d') >= $limite;
 }
 
 /**
@@ -4731,6 +4785,7 @@ function assinaturaServicoPreapprovalAutorizacaoExistente(object $gateway, array
         'ambiente' => (string)$v['ambiente'], 'valor_centavos' => $c['valor_centavos'],
         'frequencia_meses' => $c['frequencia_meses'], 'frequencia_tipo' => $c['frequencia_tipo'], 'inicio' => $reserva['inicio'],
         'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($c, $reserva['inicio']),
+        'antecipacao_dias' => assinaturaServicoPreapprovalAntecipacaoDiasContrato($c),
         'status_permitidos' => ['pending', 'authorized', 'paused', 'canceled'],
     ]);
     if ($erro !== null) {
@@ -5773,6 +5828,7 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
         'email' => $emailPagador,
         'inicio' => $inicio,
         'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($contrato, $inicio),
+        'antecipacao_dias' => assinaturaServicoPreapprovalAntecipacaoDiasContrato($contrato),
     ]);
     if ($divergencia !== null) {
         assinaturaServicoPreapprovalMarcarConciliacao($conexao, $vinculo, $idOperacao, $divergencia, 'Assinatura externa divergente do contrato interno.');

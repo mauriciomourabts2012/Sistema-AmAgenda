@@ -14,7 +14,7 @@ declare(strict_types=1);
  * testá-la com simulações (tests/cancelamento_recorrencia_test.php).
  */
 
-const CANCELAMENTO_RECORRENCIA_MSG_PRIMEIRO = 'Para cancelar sua assinatura, primeiro cancele o pagamento automático do cartão.';
+const CANCELAMENTO_RECORRENCIA_MSG_PRIMEIRO = 'Para cancelar esta assinatura, primeiro cancele o pagamento automático.';
 const CANCELAMENTO_RECORRENCIA_MSG_AGUARDANDO = 'O cancelamento do pagamento automático ainda aguarda a confirmação do Mercado Pago. Assim que for confirmado, você poderá cancelar a assinatura.';
 const CANCELAMENTO_RECORRENCIA_MSG_OK_ADMIN = 'Pagamento automático cancelado com sucesso. A assinatura continua ativa.';
 const CANCELAMENTO_RECORRENCIA_MSG_PENDENTE_ADMIN = 'O cancelamento foi solicitado. Aguarde a confirmação do Mercado Pago.';
