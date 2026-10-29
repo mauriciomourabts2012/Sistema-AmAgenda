@@ -123,7 +123,7 @@ function auditoriaCatalogo(): array
         ]),
         'assinatura.contratacao_ativada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Ativou uma nova contratação após a quitação do primeiro período.', [
             'id_empresa', 'id_assinatura', 'id_cobranca', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo',
-            'data_inicio', 'motivo_suspensao', 'suspensa_em', 'depois',
+            'data_inicio', 'periodo_inicio', 'periodo_fim', 'motivo_suspensao', 'suspensa_em', 'depois',
         ]),
         'assinatura.cancelamento_programado' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Programou o cancelamento de uma assinatura.', [
             'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo', 'data_fim', 'depois',

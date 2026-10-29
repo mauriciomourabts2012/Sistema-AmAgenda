@@ -361,6 +361,87 @@ function assinaturaServicoTotalPagoCentavos(mysqli $conexao, int $idEmpresa, int
     return $total;
 }
 
+/**
+ * Momento em que os pagamentos confirmados registrados no AmAgenda completaram o valor da cobrança.
+ * As linhas devem estar ordenadas por criado_em e id_pagamento; pagamentos ainda não confirmados não participam.
+ *
+ * @param list<array{valor_pago: mixed, criado_em: mixed}> $pagamentos
+ */
+function assinaturaServicoDataQuitacaoRegistrada(array $pagamentos, int $valorCobrancaCentavos): DateTimeImmutable
+{
+    if ($valorCobrancaCentavos <= 0) {
+        throw new RuntimeException('Valor inválido para determinar a confirmação financeira.');
+    }
+
+    $totalCentavos = 0;
+    foreach ($pagamentos as $pagamento) {
+        $totalCentavos += pagamentoGatewayValorCentavos((string)($pagamento['valor_pago'] ?? ''));
+        if ($totalCentavos < $valorCobrancaCentavos) {
+            continue;
+        }
+
+        $confirmacao = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', (string)($pagamento['criado_em'] ?? ''));
+        if ($confirmacao === false) {
+            throw new RuntimeException('Data inválida no registro da confirmação financeira.');
+        }
+
+        return $confirmacao;
+    }
+
+    throw new RuntimeException('Os pagamentos confirmados não completam o valor da cobrança.');
+}
+
+/** @return array{inicio: string, fim: string} */
+function assinaturaServicoPeriodoConfirmado(DateTimeImmutable $confirmacao, string $periodicidade): array
+{
+    $inicio = $confirmacao->setTime(0, 0);
+    $meses = assinaturaServicoMesesPeriodicidade($periodicidade);
+    $primeiroDiaDestino = $inicio->modify('first day of this month')->modify("+{$meses} months");
+    $diaDestino = min((int)$inicio->format('d'), (int)$primeiroDiaDestino->format('t'));
+    $proximoInicio = $primeiroDiaDestino->setDate(
+        (int)$primeiroDiaDestino->format('Y'),
+        (int)$primeiroDiaDestino->format('m'),
+        $diaDestino
+    );
+
+    return [
+        'inicio' => $inicio->format('Y-m-d'),
+        'fim' => $proximoInicio->modify('-1 day')->format('Y-m-d'),
+    ];
+}
+
+/** @return array{inicio: string, fim: string, vencimento: string} */
+function assinaturaServicoOfertaContratacaoDatas(DateTimeImmutable $contratacao, string $periodicidade): array
+{
+    $periodo = assinaturaServicoPeriodoConfirmado($contratacao, $periodicidade);
+
+    return $periodo + ['vencimento' => $periodo['inicio']];
+}
+
+/** Deve ser chamada dentro da transação que conclui a contratação, após o lock da cobrança. */
+function assinaturaServicoPeriodoQuitadoDaOferta(
+    mysqli $conexao,
+    int $idEmpresa,
+    int $idCobranca,
+    int $valorCobrancaCentavos,
+    string $periodicidade
+): array {
+    $pagamentos = assinaturaServicoLinhas(
+        $conexao,
+        "SELECT valor_pago, DATE_FORMAT(criado_em, '%Y-%m-%d %H:%i:%s') AS criado_em
+           FROM pagamento
+          WHERE id_empresa = ? AND id_cobranca = ? AND status = 'confirmado'
+          ORDER BY criado_em, id_pagamento
+          FOR UPDATE",
+        'ii',
+        $idEmpresa,
+        $idCobranca
+    );
+    $confirmacao = assinaturaServicoDataQuitacaoRegistrada($pagamentos, $valorCobrancaCentavos);
+
+    return assinaturaServicoPeriodoConfirmado($confirmacao, $periodicidade);
+}
+
 /** Último dia de cobertura contínua e integralmente paga a partir de hoje. */
 function assinaturaServicoFimPeriodoPago(mysqli $conexao, int $idEmpresa, int $idAssinatura): ?string
 {
@@ -2103,8 +2184,9 @@ function assinaturaServicoCancelarOfertasNaoPagas(mysqli $conexao, int $idEmpres
 }
 
 /**
- * Gera a cobrança do primeiro período (oferta) do contrato pendente: começa hoje, vencimento pelo dia
- * contratado, finalidade regular. O acesso só é liberado após a quitação integral dela.
+ * Gera a cobrança do primeiro período (oferta) do contrato pendente: começa provisoriamente hoje, com
+ * vencimento imediato e finalidade regular. Na quitação, o período é reposicionado para a data em que a
+ * confirmação financeira foi registrada. O acesso só é liberado após a quitação integral dela.
  *
  * @param array<string, mixed> $assinatura
  * @return array<string, int|string>
@@ -2121,10 +2203,10 @@ function assinaturaServicoGerarOfertaContratacao(mysqli $conexao, int $idEmpresa
     if ($inicio === false) {
         throw new RuntimeException('Data inválida para a cobrança de contratação.');
     }
-    $meses = assinaturaServicoMesesPeriodicidade((string)$assinatura['periodicidade']);
-    $periodoInicio = $inicio->format('Y-m-d');
-    $periodoFim = $inicio->modify("+{$meses} months")->modify('-1 day')->format('Y-m-d');
-    $vencimento = assinaturaServicoCalcularVencimento($inicio, (int)$assinatura['dia_vencimento'])->format('Y-m-d');
+    $datasOferta = assinaturaServicoOfertaContratacaoDatas($inicio, (string)$assinatura['periodicidade']);
+    $periodoInicio = $datasOferta['inicio'];
+    $periodoFim = $datasOferta['fim'];
+    $vencimento = $datasOferta['vencimento'];
 
     $stmt = $conexao->prepare(
         "INSERT INTO cobranca (id_empresa, id_assinatura, periodo_inicio, periodo_fim, data_vencimento, valor, status, finalidade)
@@ -2447,7 +2529,44 @@ function assinaturaServicoConcluirNovaContratacao(mysqli $conexao, int $idEmpres
 
     assinaturaServicoEfetivarFinsProgramados($conexao, $idEmpresa, $estado['fins_vencidos'], $ator);
 
-    $dataInicio = (string)$oferta['periodo_inicio'];
+    $periodoConfirmado = assinaturaServicoPeriodoQuitadoDaOferta(
+        $conexao,
+        $idEmpresa,
+        (int)$oferta['id_cobranca'],
+        pagamentoGatewayValorCentavos((string)$oferta['valor']),
+        (string)$pendente['periodicidade']
+    );
+    $dataInicio = $periodoConfirmado['inicio'];
+    $periodoInicioAnterior = (string)$oferta['periodo_inicio'];
+    $periodoFimAnterior = (string)$oferta['periodo_fim'];
+    if ($dataInicio !== $periodoInicioAnterior || $periodoConfirmado['fim'] !== $periodoFimAnterior) {
+        $stmtPeriodo = $conexao->prepare(
+            "UPDATE cobranca SET periodo_inicio = ?, periodo_fim = ?
+              WHERE id_cobranca = ? AND id_empresa = ? AND id_assinatura = ?
+                AND status = 'paga' AND finalidade = 'regular'
+                AND periodo_inicio = ? AND periodo_fim = ?"
+        );
+        if (!$stmtPeriodo) {
+            throw new RuntimeException('Falha ao preparar o período pago da nova contratação.');
+        }
+        $idCobranca = (int)$oferta['id_cobranca'];
+        $periodoFim = $periodoConfirmado['fim'];
+        $stmtPeriodo->bind_param(
+            'ssiiiss',
+            $dataInicio,
+            $periodoFim,
+            $idCobranca,
+            $idEmpresa,
+            $idAssinatura,
+            $periodoInicioAnterior,
+            $periodoFimAnterior
+        );
+        if (!$stmtPeriodo->execute() || $stmtPeriodo->affected_rows !== 1) {
+            $stmtPeriodo->close();
+            throw new RuntimeException('A atualização do período pago não alterou exatamente uma cobrança.');
+        }
+        $stmtPeriodo->close();
+    }
     $stmt = $conexao->prepare(
         "UPDATE assinatura SET status = 'ativa', motivo_suspensao = NULL, suspensa_em = NULL, data_inicio = ?
           WHERE id_assinatura = ? AND id_empresa = ? AND status = 'suspensa' AND modalidade = 'paga'
@@ -2500,6 +2619,8 @@ function assinaturaServicoConcluirNovaContratacao(mysqli $conexao, int $idEmpres
             'status_anterior' => $depois('suspensa'),
             'status_novo' => $depois('ativa'),
             'data_inicio' => ['antes' => (string)$pendente['data_inicio'], 'depois' => $dataInicio],
+            'periodo_inicio' => ['antes' => $periodoInicioAnterior, 'depois' => $dataInicio],
+            'periodo_fim' => ['antes' => $periodoFimAnterior, 'depois' => $periodoConfirmado['fim']],
             'motivo_suspensao' => ['antes' => 'contratacao_pendente', 'depois' => null],
             'suspensa_em' => ['antes' => $pendente['suspensa_em'], 'depois' => null],
         ],
@@ -4683,6 +4804,121 @@ function assinaturaServicoPreapprovalRenovarOfertaAntiga(mysqli $conexao, int $i
 }
 
 /**
+ * Fase 5B.2: o cartão só é cadastrado depois da primeira mensalidade quitada, para as próximas. Enquanto a Fase 5B.4 não
+ * comprovar que a nova Preapproval nunca cobra uma competência já quitada, nenhuma autorização nova é criada: a
+ * elegibilidade local é calculada e exibida, mas a operação externa fica bloqueada aqui e em Reservar().
+ */
+const ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO = false;
+
+const ASSINATURA_SERVICO_CADASTRO_CARTAO_MENSAGENS = [
+    'CONTRATO_NAO_ELEGIVEL' => 'O cadastro do cartão fica disponível com o plano ativo, depois da primeira mensalidade paga.',
+    'PERIODO_PAGO_INDISPONIVEL' => 'O cadastro do cartão fica disponível quando a mensalidade do período atual estiver paga.',
+    'TROCA_PLANO_PENDENTE' => 'Há uma troca de plano em andamento. Conclua ou cancele a troca antes de cadastrar o cartão.',
+    'COBRANCA_VENCIDA_PENDENTE' => 'Há cobrança vencida em aberto. Quite os débitos do faturamento antes de cadastrar o cartão.',
+    'PAGAMENTO_AGUARDANDO_CONFIRMACAO' => 'O pagamento anterior ainda precisa de confirmação. Atualize a situação antes de realizar uma nova tentativa ou entre em contato com o suporte.',
+    'OPERACAO_EXTERNA_PENDENTE' => 'Há uma operação do pagamento automático aguardando confirmação do Mercado Pago. Atualize a situação em instantes.',
+    'RECORRENCIA_EXISTENTE' => 'Já existe uma configuração de pagamento automático para esta empresa. Atualize a situação para conferir.',
+    'NOVA_AUTORIZACAO_INDISPONIVEL' => 'Uma nova autorização no cartão ainda não está disponível para este contrato. Fale com o suporte.',
+];
+
+/**
+ * Elegibilidade local do cadastro do cartão depois da primeira quitação. Somente leitura: a criação refaz as
+ * validações sob lock (Reservar()) e continua bloqueada enquanto `liberado` for false.
+ *
+ * @param array<string, mixed>|null $contrato id_assinatura, status, modalidade, data_fim, gera_cobranca
+ * @return array{elegivel: bool, liberado: bool, motivo: ?string, mensagem: ?string}
+ */
+function assinaturaServicoPreapprovalCadastroPosQuitacao(mysqli $conexao, int $idEmpresa, ?array $contrato): array
+{
+    $motivo = assinaturaServicoPreapprovalCadastroPosQuitacaoMotivo($conexao, $idEmpresa, $contrato);
+
+    return [
+        'elegivel' => $motivo === null,
+        'liberado' => ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO,
+        'motivo' => $motivo,
+        'mensagem' => $motivo === null ? null : ASSINATURA_SERVICO_CADASTRO_CARTAO_MENSAGENS[$motivo],
+    ];
+}
+
+/** @param array<string, mixed>|null $contrato */
+function assinaturaServicoPreapprovalCadastroPosQuitacaoMotivo(mysqli $conexao, int $idEmpresa, ?array $contrato): ?string
+{
+    // Contrato pago e ativo: só existe depois da quitação da primeira mensalidade (contratação ou conversão do teste).
+    if ($contrato === null || (string)$contrato['status'] !== 'ativa' || (string)$contrato['modalidade'] !== 'paga'
+        || ($contrato['data_fim'] ?? null) !== null || (int)($contrato['gera_cobranca'] ?? 0) !== 1) {
+        return 'CONTRATO_NAO_ELEGIVEL';
+    }
+    $idAssinatura = (int)$contrato['id_assinatura'];
+    // Competência de hoje coberta por pagamentos confirmados; um estorno devolve o saldo e desfaz a cobertura.
+    if (assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura) === null) {
+        return 'PERIODO_PAGO_INDISPONIVEL';
+    }
+    if (assinaturaServicoTrocaPendenteEmpresa($conexao, $idEmpresa)) {
+        return 'TROCA_PLANO_PENDENTE';
+    }
+    // PIX ou cartão em andamento/conciliação também impedem: um único meio por competência.
+    $pendencia = assinaturaServicoPendenciaFinanceira($conexao, $idEmpresa);
+    if ($pendencia !== null) {
+        return $pendencia['tipo'] === 'divida' ? 'COBRANCA_VENCIDA_PENDENTE' : 'PAGAMENTO_AGUARDANDO_CONFIRMACAO';
+    }
+    $vinculos = assinaturaServicoLinhas(
+        $conexao,
+        "SELECT v.id_assinatura, v.status, v.slot_ativo, v.assinatura_externa_id,
+                EXISTS (SELECT 1 FROM operacao_assinatura_gateway o
+                         WHERE o.id_assinatura_pagamento = v.id_assinatura_pagamento
+                           AND o.status_processamento IN ('pendente', 'processando', 'conciliacao')) AS operacao_aberta
+           FROM assinatura_pagamento_recorrente v
+          WHERE v.id_empresa = ?",
+        'i',
+        $idEmpresa
+    );
+    $avaliacao = assinaturaServicoPreapprovalCadastroVinculosMotivo($vinculos, $idAssinatura);
+    if ($avaliacao['motivo'] !== null) {
+        return $avaliacao['motivo'];
+    }
+    if ($avaliacao['encerrado_do_contrato'] && !assinaturaServicoPreapprovalNovoVinculoPermitido($conexao)) {
+        return 'NOVA_AUTORIZACAO_INDISPONIVEL';
+    }
+
+    return null;
+}
+
+/**
+ * Vínculos da empresa que impedem o cadastro, sem rede nem banco. Alinhado a Reservar(): de outro contrato, só o
+ * histórico que não pode mais cobrar deixa de contar (encerrado com cancelamento confirmado, ou erro sem Preapproval
+ * criada), e nunca com slot ativo ou operação externa aberta. Do próprio contrato, qualquer vínculo não encerrado conta
+ * (o vínculo pendente ou em erro dele é retomado sob lock pelo serviço, nunca recriado). Status desconhecido conta.
+ *
+ * @param list<array<string, mixed>> $vinculos id_assinatura, status, slot_ativo, assinatura_externa_id, operacao_aberta
+ * @return array{motivo: ?string, encerrado_do_contrato: bool}
+ */
+function assinaturaServicoPreapprovalCadastroVinculosMotivo(array $vinculos, int $idAssinatura): array
+{
+    $encerradoDoContrato = false;
+    foreach ($vinculos as $vinculo) {
+        $status = (string)($vinculo['status'] ?? '');
+        $encerrado = in_array($status, ['cancelada', 'encerrada'], true);
+        $slotAtivo = (int)($vinculo['slot_ativo'] ?? 0) === 1;
+        $operacaoAberta = (int)($vinculo['operacao_aberta'] ?? 0) === 1;
+        $doContrato = (int)($vinculo['id_assinatura'] ?? 0) === $idAssinatura;
+        $historicoInerte = !$slotAtivo && !$operacaoAberta
+            && ($encerrado || ($status === 'erro' && ($vinculo['assinatura_externa_id'] ?? null) === null));
+        if (!$doContrato && $historicoInerte) {
+            continue;
+        }
+        if ($operacaoAberta) {
+            return ['motivo' => 'OPERACAO_EXTERNA_PENDENTE', 'encerrado_do_contrato' => $encerradoDoContrato];
+        }
+        if ($slotAtivo || !$encerrado) {
+            return ['motivo' => 'RECORRENCIA_EXISTENTE', 'encerrado_do_contrato' => $encerradoDoContrato];
+        }
+        $encerradoDoContrato = true;
+    }
+
+    return ['motivo' => null, 'encerrado_do_contrato' => $encerradoDoContrato];
+}
+
+/**
  * Estrutura que permite um novo vínculo para o mesmo contrato depois do encerramento confirmado do anterior
  * (SQL manual da Fase 21: o índice único passa a valer só para vínculos não encerrados). Sem ela, um contrato
  * continua com um único vínculo, e nenhuma nova autorização é criada após o cancelamento (falha fechada).
@@ -4945,6 +5181,14 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         }
 
         return ['acao' => 'sem_pendencia', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => null, 'inicio' => $inicio, 'inicio_envio' => $envio];
+    }
+    if ($acao === 'criar' && ($contrato['primeira_cobranca'] !== null || $contrato['teste'] !== null)) {
+        // Fase 5B.2: a primeira mensalidade (contratação nova ou fim do teste grátis) é paga por PIX ou pelo suporte;
+        // o cartão só é cadastrado depois dela. Vínculos já existentes seguem apenas pela conciliação.
+        throw new AssinaturaServicoConversaoErro('CARTAO_SOMENTE_APOS_QUITACAO', 'Pague a primeira mensalidade via PIX. O cartão poderá ser cadastrado depois da ativação do plano.', 409);
+    }
+    if ($acao === 'criar' && !ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO) {
+        throw new AssinaturaServicoConversaoErro('CADASTRO_CARTAO_INDISPONIVEL', 'O cadastro do cartão ainda não está disponível. Pague as mensalidades via PIX ou fale com o suporte.', 409);
     }
     if ($acao === 'criar') {
         $chave = pagamentoGatewayChaveIdempotencia();
@@ -6439,8 +6683,12 @@ function assinaturaServicoPreapprovalRecorrenciaAnteriorPendente(mysqli $conexao
  */
 const ASSINATURA_SERVICO_TROCA_CARTAO_TOKEN = '/^[A-Za-z0-9_-]{32,33}$/D';
 
-/** Pré-condições locais da troca, sem rede. Retorna o código de bloqueio ou null. */
-function assinaturaServicoPreapprovalTrocaCartaoElegivel(?array $vinculo, ?array $contrato, int $idEmpresa, bool $operacaoAberta): ?string
+/**
+ * Pré-condições locais da troca, sem rede. Retorna o código de bloqueio ou null.
+ * `$pagamentoEmAndamento`: parcela no cartão ainda sem desfecho conhecido (recusa em recycling não bloqueia: trocar o
+ * cartão é justamente o que permite a nova tentativa do provedor).
+ */
+function assinaturaServicoPreapprovalTrocaCartaoElegivel(?array $vinculo, ?array $contrato, int $idEmpresa, bool $operacaoAberta, bool $pagamentoEmAndamento = false): ?string
 {
     if ($vinculo === null || $contrato === null) {
         return 'TROCA_CARTAO_SEM_AUTORIZACAO';
@@ -6464,6 +6712,9 @@ function assinaturaServicoPreapprovalTrocaCartaoElegivel(?array $vinculo, ?array
     // Troca de valor, pausa ou cancelamento em curso: um segundo PUT concorrente não é enviado.
     if ($operacaoAberta) {
         return 'TROCA_CARTAO_OPERACAO_PENDENTE';
+    }
+    if ($pagamentoEmAndamento) {
+        return 'TROCA_CARTAO_PAGAMENTO_EM_ANDAMENTO';
     }
 
     return null;

@@ -593,7 +593,7 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
     $encerrado = in_array($status, ['cancelada', 'encerrada'], true);
     $situacao = match (true) {
         $paga => 'pagamento_confirmado',
-        $v === null, $status === 'erro' && !$externa => $pixEmAndamento ? 'pix_em_andamento' : 'escolha',
+        $v === null, $status === 'erro' && !$externa => $pixEmAndamento ? 'pix_em_andamento' : ($cartaoEmProcessamento ? 'em_verificacao' : 'escolha'),
         $encerrado && $cartaoEmProcessamento => 'em_verificacao',
         $encerrado => 'cartao_cancelado',
         $status === 'cancelamento_pendente' => 'cancelando_cartao',
@@ -618,8 +618,9 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
         'situacao' => $situacao,
         'pix_em_andamento' => $pixEmAndamento,
         'cartao_em_processamento' => $cartaoEmProcessamento,
-        // PIX só sem Preapproval capaz de cobrar o mesmo período; a troca para PIX cancela a Preapproval antes.
-        'pode_pagar_pix' => !$paga && $oferta['status'] === 'pendente' && !$viva,
+        // PIX só sem Preapproval capaz de cobrar o mesmo período nem tentativa no cartão sem desfecho (a mesma regra de
+        // assinaturaServicoPreapprovalBloqueioPix); a troca para PIX cancela a Preapproval antes.
+        'pode_pagar_pix' => !$paga && $oferta['status'] === 'pendente' && !$viva && !$cartaoEmProcessamento,
         'pode_trocar_para_pix' => !$paga && $viva && $status !== 'cancelamento_pendente' && $situacao !== 'processando',
     ];
 }
@@ -674,13 +675,29 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
     ];
 }
 
+/**
+ * Parcela da Preapproval do vínculo informado ainda sem desfecho (enviada, processando sem recusa ou em conciliação).
+ * A recusa em recycling não conta: o provedor tenta de novo e trocar o cartão é o que pode resolvê-la. Transações de
+ * outros vínculos (autorizações anteriores, outros contratos) não decidem a troca do cartão deste.
+ */
+function pagamentoCartaoParcelaEmAndamento(mysqli $db, int $empresa, int $idAssinaturaPagamento): bool
+{
+    return pagamentoOnlineConsulta($db,
+        "SELECT 1 FROM transacao_pagamento
+          WHERE id_empresa=? AND id_assinatura_pagamento=? AND tipo_operacao='assinatura_preapproval'
+            AND (status IN ('criada','enviando','aguardando','conciliacao')
+                 OR (status='processando' AND erro_codigo IS NULL AND COALESCE(detalhe_status_externo,'')<>'retry')
+                 OR (requer_conciliacao=1 AND status<>'confirmada')) LIMIT 1",
+        'ii', $empresa, $idAssinaturaPagamento)->fetch_assoc() !== null;
+}
+
 function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bool $habilitado, ?mysqli $db = null, int $empresa = 0): array
 {
     $primeira = $db === null ? null : pagamentoCartaoPrimeiraCobranca($db, $empresa, $assinatura, $vinculo);
     $testeGratis = $db === null ? null : pagamentoCartaoTesteGratis($db, $empresa, $assinatura, $vinculo);
-    // Teste grátis: só autoriza enquanto o teste dura (com margem para o checkout); o servidor recusaria depois.
-    $testeAutorizavel = $assinatura === null || (string)$assinatura['modalidade'] !== 'teste'
-        || ((string)$assinatura['status'] === 'ativa' && (int)($assinatura['teste_autorizavel'] ?? 0) === 1);
+    // Fase 5B.2: primeira mensalidade e teste grátis não oferecem cartão; depois da quitação, o servidor decide a elegibilidade.
+    $cadastro = $db === null || $primeira !== null || $testeGratis !== null
+        ? null : assinaturaServicoPreapprovalCadastroPosQuitacao($db, $empresa, $assinatura);
     $atual = $vinculo !== null && $assinatura !== null && (int)$vinculo['id_assinatura'] === (int)$assinatura['id_assinatura'];
     $v = $atual ? $vinculo : null;
     $status = $v['status'] ?? 'nao_configurado';
@@ -698,28 +715,19 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     $configurado = $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1;
     // Oferta visual apenas; a rota de troca refaz todas as verificações (inclusive operação externa em curso) sob trava.
     $chavePublica = null;
-    if ($habilitado && $configurado && assinaturaServicoPreapprovalTrocaCartaoElegivel($v, $assinatura, (int)$v['id_empresa'], false) === null) {
+    if ($habilitado && $configurado && assinaturaServicoPreapprovalTrocaCartaoElegivel($v, $assinatura, (int)$v['id_empresa'], false,
+            $db !== null && pagamentoCartaoParcelaEmAndamento($db, (int)$v['id_empresa'], (int)$v['id_assinatura_pagamento'])) === null) {
         try {
             $chavePublica = MercadoPagoGateway::chavePublicaAtiva();
         } catch (RuntimeException $e) {
             $chavePublica = null;
         }
     }
-    // Primeira mensalidade: nova tentativa no cartão (inclusive outro cartão depois de uma autorização encerrada) só sem PIX
-    // nem tentativa no cartão ainda sem desfecho; a cobrança de contratação é a mesma (o serviço refaz tudo sob lock).
-    $primeiraLivre = $primeira !== null && $primeira['situacao'] !== 'pagamento_confirmado'
-        && !$primeira['pix_em_andamento'] && !$primeira['cartao_em_processamento'];
-    $podeConfigurar = $habilitado && $assinatura !== null
-        && ($assinatura['status'] === 'ativa' || $primeiraLivre)
-        && (int)($assinatura['gera_cobranca'] ?? 0) === 1 && ($novo || $retomavel) && $testeAutorizavel;
-    // Motivo exibido quando a primeira mensalidade não pode seguir no cartão agora (sem ele, a tela só mostraria o PIX).
-    $motivoCartao = $primeira === null || $podeConfigurar || $primeira['situacao'] === 'pagamento_confirmado' ? null : match (true) {
-        !$habilitado => 'cartao_desabilitado',
-        $primeira['pix_em_andamento'] => 'pix_em_andamento',
-        $primeira['cartao_em_processamento'] => 'cartao_em_processamento',
-        $encerradoAtual && !$novoVinculoPermitido => 'nova_autorizacao_indisponivel',
-        default => null,
-    };
+    // Cadastro (ou retomada do checkout já criado para o contrato ativo) só com elegibilidade local e liberação técnica;
+    // o vínculo pendente do próprio contrato é o único "recorrência existente" que admite retomada.
+    $elegivel = $cadastro !== null && $cadastro['liberado']
+        && ($cadastro['elegivel'] || ($retomavel && $cadastro['motivo'] === 'RECORRENCIA_EXISTENTE'));
+    $podeConfigurar = $habilitado && $elegivel && ($novo || $retomavel);
     return [
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
         'autorizacao_criada' => $criada,
@@ -729,12 +737,12 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         // Bandeira e final só existem no vínculo depois de uma troca confirmada pelo GET da Preapproval.
         'bandeira' => $configurado ? ($v['bandeira'] ?? null) : null,
         'final_cartao' => $configurado ? ($v['final_cartao'] ?? null) : null,
+        // Próxima cobrança só como sincronizada do provedor (next_payment_date), nunca calculada aqui.
+        'proxima_cobranca_em' => $configurado ? ($v['proxima_cobranca_em'] ?? null) : null,
         'pode_configurar' => $podeConfigurar,
-        // Checkout abandonado: a Preapproval da primeira mensalidade ainda pendente (sem autorização) pode ser encerrada
-        // para dar lugar a outra, desde que um novo vínculo seja possível e nada esteja em andamento.
-        'pode_tentar_outro_cartao' => $habilitado && $primeiraLivre && $criada && $status === 'pendente'
-            && ($v['status_externo'] ?? '') === 'pending' && $db !== null && assinaturaServicoPreapprovalNovoVinculoPermitido($db),
-        'motivo_cartao_indisponivel' => $motivoCartao,
+        'cadastro_cartao' => $cadastro,
+        // A primeira mensalidade não cria outra autorização no cartão (Fase 5B.2): a troca de checkout fica desativada.
+        'pode_tentar_outro_cartao' => false,
         'pode_verificar' => $habilitado && $criada,
         'status' => $status, 'status_externo' => $v['status_externo'] ?? null,
         'valor_referencia' => $assinatura['valor_contratado'] ?? null,
@@ -920,6 +928,7 @@ const PAGAMENTO_CARTAO_TROCA_MENSAGENS = [
     'TROCA_CARTAO_CONTRATO_INATIVO' => 'A troca de cartão exige uma assinatura ativa.',
     'TROCA_CARTAO_AUTORIZACAO_INATIVA' => 'O pagamento automático precisa estar ativo para trocar o cartão.',
     'TROCA_CARTAO_OPERACAO_PENDENTE' => 'Há uma alteração da assinatura em andamento no Mercado Pago. Tente trocar o cartão em instantes.',
+    'TROCA_CARTAO_PAGAMENTO_EM_ANDAMENTO' => 'O pagamento anterior ainda precisa de confirmação. Atualize a situação antes de alterar o cartão ou entre em contato com o suporte.',
 ];
 
 /**
@@ -944,7 +953,9 @@ function pagamentoCartaoPreapprovalTrocarCartao(mysqli $db, object $gateway, int
             "SELECT 1 FROM operacao_assinatura_gateway
               WHERE id_assinatura_pagamento=? AND status_processamento IN ('pendente','processando','conciliacao') LIMIT 1",
             'i', (int)$vinculo['id_assinatura_pagamento'])->fetch_assoc() !== null;
-        $bloqueio = assinaturaServicoPreapprovalTrocaCartaoElegivel($vinculo, $contrato, $empresa, $operacaoAberta);
+        // Sem vínculo, TrocaCartaoElegivel já bloqueia (TROCA_CARTAO_SEM_AUTORIZACAO); nada é consultado.
+        $bloqueio = assinaturaServicoPreapprovalTrocaCartaoElegivel($vinculo, $contrato, $empresa, $operacaoAberta,
+            $vinculo !== null && pagamentoCartaoParcelaEmAndamento($db, $empresa, (int)$vinculo['id_assinatura_pagamento']));
         if ($bloqueio !== null) {
             pagamentoOnlineFalhar($bloqueio, PAGAMENTO_CARTAO_TROCA_MENSAGENS[$bloqueio] ?? 'Não foi possível trocar o cartão.', 409);
         }
@@ -1406,6 +1417,15 @@ try {
         if (pagamentoCartaoMotor($vinculoCartao, $assinaturaCartao, $gatewayCartao::subscriptionsHabilitado()) === 'preapproval') {
             // Fluxo por redirecionamento: nenhum dado de cartão trafega por aqui; valor, plano e contrato vêm do servidor.
             unset($_POST['token'], $_POST['payment_method_id']);
+            // Fase 5B.2: a interface não é a única proteção. Sem liberação técnica (5B.4) nada é criado nem retomado; liberado,
+            // só o contrato pago elegível segue (o vínculo pendente do próprio contrato é conferido sob lock pelo serviço).
+            $cadastroCartao = assinaturaServicoPreapprovalCadastroPosQuitacao($conexao, $empresa, $assinaturaCartao);
+            if (!$cadastroCartao['liberado']) {
+                pagamentoOnlineFalhar('CADASTRO_CARTAO_INDISPONIVEL', 'O cadastro do cartão ainda não está disponível. Pague as mensalidades via PIX ou fale com o suporte.', 409);
+            }
+            if (!$cadastroCartao['elegivel'] && $cadastroCartao['motivo'] !== 'RECORRENCIA_EXISTENTE') {
+                pagamentoOnlineFalhar((string)$cadastroCartao['motivo'], (string)$cadastroCartao['mensagem'], 409);
+            }
             if (($_POST['outro_cartao'] ?? '') === '1') {
                 [$dados, $mensagemOutro] = pagamentoCartaoPreapprovalOutroCartao($conexao, $gatewayCartao, $empresa, $email, (int)($contexto['id_usuario'] ?? 0));
                 out(['ok'=>true,
