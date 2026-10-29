@@ -417,9 +417,10 @@ final class MercadoPagoGateway
 
     /**
      * GET /authorized_payments/search (faturas de uma Preapproval). Somente leitura; a camada de
-     * negócio confere `preapproval_id` e `payment.id` de cada resultado.
+     * negócio confere `preapproval_id` e `payment.id` de cada resultado. O endpoint não aceita
+     * `limit`/`offset` (HTTP 400 "Invalid value for limit"): a consulta devolve uma única página.
      *
-     * @param array{preapproval_id?:string,payment_id?:string,status?:string,limit?:int,offset?:int} $filtros
+     * @param array{preapproval_id?:string,payment_id?:string} $filtros
      */
     public function buscarFaturasAutorizadas(array $filtros): array
     {
@@ -543,11 +544,15 @@ final class MercadoPagoGateway
         return [$metodo, $caminho, $idEsperado];
     }
 
-    /** @return array{0:string,1:string,2:?string}|null exige preapproval_id ou payment_id; filtros em ordem fixa */
+    /**
+     * @return array{0:string,1:string,2:?string}|null exige preapproval_id ou payment_id; filtros em ordem fixa.
+     * `limit`/`offset` são recusados aqui: o provedor os rejeita, e ignorá-los faria uma "página N" devolver a primeira.
+     * `status` também: não é filtro documentado do endpoint; o status de cada fatura é conferido pela camada de negócio.
+     */
     private static function rotaBuscaFaturasAutorizadas(array $filtros): ?array
     {
         if ($filtros === [] || array_is_list($filtros)
-            || array_diff(array_keys($filtros), ['preapproval_id', 'payment_id', 'status', 'limit', 'offset']) !== []) {
+            || array_diff(array_keys($filtros), ['preapproval_id', 'payment_id']) !== []) {
             return null;
         }
 
@@ -565,19 +570,6 @@ final class MercadoPagoGateway
         if ($consulta === []) {
             return null; // Nunca varre a conta inteira sem filtro.
         }
-        if (array_key_exists('status', $filtros)) {
-            $status = $filtros['status'];
-            if (!is_string($status) || !in_array($status, ['scheduled', 'processed', 'recycling', 'cancelled', 'canceled'], true)) return null;
-            $consulta['status'] = $status;
-        }
-        $limite = $filtros['limit'] ?? 50;
-        $deslocamento = $filtros['offset'] ?? 0;
-        if (!is_int($limite) || $limite < 1 || $limite > 50 || !is_int($deslocamento)
-            || $deslocamento < 0 || $deslocamento > 10000) {
-            return null;
-        }
-        $consulta['limit'] = $limite;
-        $consulta['offset'] = $deslocamento;
 
         return ['GET', '/authorized_payments/search?' . http_build_query($consulta, '', '&', PHP_QUERY_RFC3986), null];
     }

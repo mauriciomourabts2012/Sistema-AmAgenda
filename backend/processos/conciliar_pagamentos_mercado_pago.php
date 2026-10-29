@@ -450,7 +450,8 @@ try {
             ]);
             conciliacaoMpLinha(['outbox_garantidas' => $r['outbox']['garantidas'], 'outbox_processadas' => $r['outbox']['processadas'],
                 'outbox_concluidas' => $r['outbox']['concluidas'], 'outbox_erros' => $r['outbox']['erros'],
-                'vinculos_sincronizados' => $r['vinculos'], 'criacoes_conciliadas' => $r['criacoes'], 'erros' => $r['erros']]);
+                'vinculos_sincronizados' => $r['vinculos'], 'criacoes_conciliadas' => $r['criacoes'],
+                'criacoes_pendentes' => $r['criacoes_pendentes'], 'erros' => $r['erros']]);
             if ($r['erros'] > 0 || $r['outbox']['erros'] > 0) {
                 $falhasSubscriptions++;
             }

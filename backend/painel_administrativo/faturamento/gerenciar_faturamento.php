@@ -254,7 +254,7 @@ function faturamentoConciliarPixAbertos(mysqli $db, int $empresa): void {
  */
 function faturamentoConciliarCancelamentosAnteriores(mysqli $db, int $empresa): void {
     try {
-        $stmt = $db->prepare("SELECT v.id_assinatura_pagamento,
+        $stmt = $db->prepare("SELECT v.id_assinatura_pagamento, v.id_empresa, v.ambiente, v.assinatura_externa_id,
                 (SELECT MIN(o.id_operacao) FROM operacao_assinatura_gateway o
                   WHERE o.id_assinatura_pagamento = v.id_assinatura_pagamento AND o.id_empresa = v.id_empresa
                     AND o.tipo_operacao IN ('pausar','reativar','cancelar','atualizar_valor')
@@ -278,6 +278,8 @@ function faturamentoConciliarCancelamentosAnteriores(mysqli $db, int $empresa): 
             $idOperacao = $vinculo['id_operacao'] ?? (assinaturaServicoPreapprovalGarantirOperacao(
                 $db, (int)$vinculo['id_assinatura_pagamento'], null, $empresa)['id_operacao'] ?? null);
             if ($idOperacao !== null) mpSubOperacaoProcessar($db, $gateway, (int)$idOperacao, $empresa);
+            // Intenção bloqueada por rejeição: sem novo PUT; só um GET que já mostre 'canceled' encerra o vínculo.
+            else mpSubConfirmarCancelamentoExterno($db, $gateway, $vinculo, $empresa);
         }
     } catch (Throwable $erro) {
         if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);

@@ -133,11 +133,25 @@ function mpWebhookConfiguracao(): array
     return ['ambiente' => $ambiente, 'secret' => $secret, 'gateway' => $gateway];
 }
 
+/**
+ * Recusa a notificação registrando só a etapa e o motivo estrutural (nunca assinatura, segredo, manifesto ou corpo),
+ * para que uma rejeição antes da persistência não fique silenciosa.
+ */
+function mpWebhookRecusar(int $httpStatus, string $codigo, string $motivo): never
+{
+    mpWebhookRegistrarFalha('notificacao_recusada', [
+        'http' => $httpStatus,
+        'motivo' => $motivo,
+        'tipo' => mpWebhookCampoExterno(mpWebhookQueryExata('type'), 60) ?? '-',
+    ]);
+    mpWebhookResponder($httpStatus, $codigo);
+}
+
 function mpWebhookValidarAssinatura(string $dataId, string $requestId, string $secret): string
 {
     $assinatura = (string) ($_SERVER['HTTP_X_SIGNATURE'] ?? '');
     if ($assinatura === '' || strlen($assinatura) > 512) {
-        mpWebhookResponder(401, 'INVALID_SIGNATURE');
+        mpWebhookRecusar(401, 'INVALID_SIGNATURE', 'assinatura_ausente');
     }
     $timestamp = null;
     $assinaturasV1 = [];
@@ -147,18 +161,18 @@ function mpWebhookValidarAssinatura(string $dataId, string $requestId, string $s
         $valor = trim($valor);
         if ($chave === 'ts') {
             if ($timestamp !== null || !preg_match('/^[0-9]{10,16}$/D', $valor)) {
-                mpWebhookResponder(401, 'INVALID_SIGNATURE');
+                mpWebhookRecusar(401, 'INVALID_SIGNATURE', 'ts_invalido');
             }
             $timestamp = $valor;
         } elseif ($chave === 'v1') {
             if (!preg_match('/^[0-9a-f]{64}$/D', $valor)) {
-                mpWebhookResponder(401, 'INVALID_SIGNATURE');
+                mpWebhookRecusar(401, 'INVALID_SIGNATURE', 'v1_invalido');
             }
             $assinaturasV1[] = $valor;
         }
     }
     if ($timestamp === null || $assinaturasV1 === []) {
-        mpWebhookResponder(401, 'INVALID_SIGNATURE');
+        mpWebhookRecusar(401, 'INVALID_SIGNATURE', 'componentes_ausentes');
     }
 
     $manifesto = 'id:' . strtolower($dataId)
@@ -171,38 +185,45 @@ function mpWebhookValidarAssinatura(string $dataId, string $requestId, string $s
         }
     }
 
-    mpWebhookResponder(401, 'INVALID_SIGNATURE');
+    mpWebhookRecusar(401, 'INVALID_SIGNATURE', 'hmac_divergente');
 }
 
 /** @return array{acao:string,versao:?int,payload_hash:string} */
 function mpWebhookValidarCorpo(string $corpo, string $dataId, string $ambiente, string $tipo = 'order'): array
 {
     if ($corpo === '' || strlen($corpo) > MP_WEBHOOK_CORPO_MAX_BYTES) {
-        mpWebhookResponder(400, 'INVALID_EVENT');
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'corpo_tamanho_invalido');
     }
     try {
         $dados = json_decode($corpo, true, 64, JSON_THROW_ON_ERROR);
     } catch (JsonException) {
-        mpWebhookResponder(400, 'INVALID_EVENT');
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'corpo_json_invalido');
     }
     if (!is_array($dados) || array_is_list($dados) || ($dados['type'] ?? null) !== $tipo
         || !is_array($dados['data'] ?? null)) {
-        mpWebhookResponder(400, 'INVALID_EVENT');
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'corpo_tipo_divergente');
     }
     $idCorpo = mpWebhookCampoExterno($dados['data']['id'] ?? null, 150);
     $acao = mpWebhookCampoExterno($dados['action'] ?? null, 100);
     if ($idCorpo === null || !hash_equals(strtolower($dataId), strtolower($idCorpo))
         || $acao === null
-        || !preg_match($tipo === 'order' ? '/^order\.[a-z_]+$/D' : '/^[a-z_]+(\.[a-z_]+)?$/D', $acao)
-        || !is_bool($dados['live_mode'] ?? null)
-        || ($ambiente === 'teste' && $dados['live_mode'] !== false)
-        || ($ambiente === 'producao' && $dados['live_mode'] !== true)) {
-        mpWebhookResponder(400, 'INVALID_EVENT');
+        || !preg_match($tipo === 'order' ? '/^order\.[a-z_]+$/D' : '/^[a-z_]+(\.[a-z_]+)?$/D', $acao)) {
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'corpo_id_ou_acao_invalido');
+    }
+    // Order exige live_mode. Nas notificações de Subscriptions o campo pode faltar: a autenticidade vem do HMAC e o
+    // estado é sempre lido por GET com as credenciais do ambiente ativo; quando presente, continua tendo de bater.
+    $liveMode = $dados['live_mode'] ?? null;
+    if ($tipo === 'order' ? !is_bool($liveMode) : ($liveMode !== null && !is_bool($liveMode))) {
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'live_mode_invalido');
+    }
+    if (is_bool($liveMode)
+        && (($ambiente === 'teste' && $liveMode !== false) || ($ambiente === 'producao' && $liveMode !== true))) {
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'live_mode_divergente');
     }
 
     $versao = $dados['data']['version'] ?? null;
     if ($versao !== null && (!is_int($versao) || $versao < 0 || $versao > 2147483647)) {
-        mpWebhookResponder(400, 'INVALID_EVENT');
+        mpWebhookRecusar(400, 'INVALID_EVENT', 'versao_invalida');
     }
 
     return [
@@ -1314,8 +1335,6 @@ const MP_SUB_TIPOS = ['subscription_preapproval', 'subscription_authorized_payme
  * provedor não repetir a notificação a cada 15 minutos.
  */
 const MP_SUB_TIPOS_SEM_ACAO = ['subscription_preapproval_plan', 'topic_claims_integration_wh'];const MP_SUB_TOLERANCIA_COMPETENCIA_DIAS = 1;
-const MP_SUB_BUSCA_LIMITE = 50;
-const MP_SUB_BUSCA_PAGINAS = 4;
 
 /** Escopo opcional da CLI. O marcador fica no WHERE externo, antes dos demais parâmetros. */
 function mpSubConsultaEmpresa(mysqli $conexao, string $sql, ?int $idEmpresa, string $coluna = 'id_empresa', string $tipos = '', mixed ...$valores): array
@@ -1504,8 +1523,10 @@ function mpSubClassificarFatura(array $fatura, array|string|null $pagamento): ar
         return $r('processando', 'normal', null, $detalhe);
     }
     if ($statusPagamento === 'rejected') {
+        // Em 'recycling' o provedor ainda vai tentar de novo: segue em processamento, mas com o motivo real da recusa
+        // (ex.: cc_rejected_high_risk); 'retry' só quando o provedor não informa status_detail.
         return $statusFatura === 'recycling'
-            ? $r('processando', 'normal', null, 'retry')
+            ? $r('processando', 'normal', null, $detalhe ?? 'retry')
             : $r('recusada', 'normal', null, $detalhe);
     }
     if ($statusPagamento === 'cancelled' || $statusPagamento === 'expired') {
@@ -2478,7 +2499,9 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
                 ]);
             }
         } else {
-            // aguardando / processando / recusada / cancelada: registra o estado, sem quitar nada.
+            // aguardando / processando / recusada / cancelada: registra o estado, sem quitar nada. A recusa com nova
+            // tentativa do provedor ('recycling') continua 'processando', marcada em erro_codigo com o motivo real.
+            $recusa = $classe['status'] === 'recusada' || ($pagamentoOk['status'] ?? null) === 'rejected';
             assinaturaServicoPreapprovalExec(
                 $conexao,
                 "UPDATE transacao_pagamento
@@ -2493,7 +2516,7 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
                 $detalheExterno,
                 $idPagamentoExterno,
                 max(1, min(65000, $fatura['tentativa'] + 1)),
-                $classe['status'] === 'recusada' ? ($detalheExterno ?? 'pagamento_recusado') : null,
+                $recusa ? ($detalheExterno ?? 'pagamento_recusado') : null,
                 $idTransacao,
                 $idEmpresa
             );
@@ -2670,30 +2693,19 @@ function mpSubProcessarPagamento(mysqli $conexao, object $gateway, string $ambie
     }
 
     $preapprovalId = (string)($vinculo['assinatura_externa_id'] ?? $pagamento['preapproval_id']);
+    // O provedor rejeita limit/offset nesta busca: uma única consulta filtrada pela Preapproval.
+    $busca = $gateway->buscarFaturasAutorizadas(['preapproval_id' => $preapprovalId]);
+    if (($busca['sucesso'] ?? false) !== true || !is_array($busca['dados']['results'] ?? null)) {
+        return mpSubResultado('erro', 'busca_faturas_falhou');
+    }
     $faturaId = null;
-    $offset = 0;
-    for ($pagina = 0; $pagina < MP_SUB_BUSCA_PAGINAS && $faturaId === null; $pagina++) {
-        $busca = $gateway->buscarFaturasAutorizadas([
-            'preapproval_id' => $preapprovalId,
-            'limit' => MP_SUB_BUSCA_LIMITE,
-            'offset' => $offset,
-        ]);
-        if (($busca['sucesso'] ?? false) !== true || !is_array($busca['dados']['results'] ?? null)) {
-            return mpSubResultado('erro', 'busca_faturas_falhou');
-        }
-        foreach ($busca['dados']['results'] as $item) {
-            $idPagamentoItem = is_array($item) && is_array($item['payment'] ?? null)
-                ? mpWebhookCampoExterno($item['payment']['id'] ?? null, 150)
-                : null;
-            if (is_array($item) && $idPagamentoItem !== null && $idPagamentoItem === $pagamento['id']
-                && (string)($item['preapproval_id'] ?? '') === $preapprovalId) {
-                $faturaId = (string)$item['id'];
-                break;
-            }
-        }
-        $total = $busca['dados']['paging']['total'] ?? null;
-        $offset += MP_SUB_BUSCA_LIMITE;
-        if (count($busca['dados']['results']) < MP_SUB_BUSCA_LIMITE || (is_int($total) && $offset >= $total)) {
+    foreach ($busca['dados']['results'] as $item) {
+        $idPagamentoItem = is_array($item) && is_array($item['payment'] ?? null)
+            ? mpWebhookCampoExterno($item['payment']['id'] ?? null, 150)
+            : null;
+        if (is_array($item) && $idPagamentoItem !== null && $idPagamentoItem === $pagamento['id']
+            && (string)($item['preapproval_id'] ?? '') === $preapprovalId) {
+            $faturaId = (string)$item['id'];
             break;
         }
     }
@@ -2780,21 +2792,14 @@ function mpSubConciliarVinculo(mysqli $conexao, object $gateway, int $idAssinatu
     $sincronia = mpSubSincronizarPreapproval($conexao, $gateway, $ambiente, $preapprovalId, null, $idEmpresa);
     if ($idEmpresa !== null && $sincronia['resultado'] === 'erro') return $sincronia;
     $faturas = [];
-    $offset = 0;
-    for ($pagina = 0; $pagina < MP_SUB_BUSCA_PAGINAS; $pagina++) {
-        $busca = $gateway->buscarFaturasAutorizadas(['preapproval_id' => $preapprovalId, 'limit' => MP_SUB_BUSCA_LIMITE, 'offset' => $offset]);
-        if (($busca['sucesso'] ?? false) !== true || !is_array($busca['dados']['results'] ?? null)) {
-            return mpSubResultado('erro', 'busca_faturas_falhou', ['sincronizacao' => $sincronia['codigo'] ?? $sincronia['resultado']]);
-        }
-        foreach ($busca['dados']['results'] as $item) {
-            if (is_array($item) && (string)($item['preapproval_id'] ?? '') === $preapprovalId && isset($item['id'])) {
-                $faturas[(string)$item['id']] = true;
-            }
-        }
-        $total = $busca['dados']['paging']['total'] ?? null;
-        $offset += MP_SUB_BUSCA_LIMITE;
-        if (count($busca['dados']['results']) < MP_SUB_BUSCA_LIMITE || (is_int($total) && $offset >= $total)) {
-            break;
+    // Uma única página (o provedor rejeita limit/offset); faturas abertas localmente entram logo abaixo de qualquer forma.
+    $busca = $gateway->buscarFaturasAutorizadas(['preapproval_id' => $preapprovalId]);
+    if (($busca['sucesso'] ?? false) !== true || !is_array($busca['dados']['results'] ?? null)) {
+        return mpSubResultado('erro', 'busca_faturas_falhou', ['sincronizacao' => $sincronia['codigo'] ?? $sincronia['resultado']]);
+    }
+    foreach ($busca['dados']['results'] as $item) {
+        if (is_array($item) && (string)($item['preapproval_id'] ?? '') === $preapprovalId && isset($item['id'])) {
+            $faturas[(string)$item['id']] = true;
         }
     }
     foreach (assinaturaServicoConsultaFinanceira(
@@ -3197,6 +3202,29 @@ function mpSubOpConcluir(mysqli $conexao, object $gateway, string $ambiente, int
 }
 
 /**
+ * Intenção bloqueada (rejeição definitiva ou falha recente): nada é reenviado ao provedor. Um GET autoritativo
+ * encerra o vínculo pelo caminho normal da sincronização somente se o provedor já mostrar 'canceled'; em qualquer
+ * outro estado nada é gravado (o slot continua ocupado e o sinal da rejeição é preservado).
+ *
+ * @param array<string, mixed> $vinculo id_empresa, ambiente e assinatura_externa_id
+ */
+function mpSubConfirmarCancelamentoExterno(mysqli $conexao, object $gateway, array $vinculo, ?int $idEmpresaEscopo = null): bool
+{
+    mpSubConferirEmpresa($idEmpresaEscopo, $vinculo);
+    $preapprovalId = (string)($vinculo['assinatura_externa_id'] ?? '');
+    if ($preapprovalId === '' || $gateway->ambiente() !== (string)$vinculo['ambiente']) {
+        return false;
+    }
+    $consulta = $gateway->consultarPreapproval($preapprovalId);
+    if (($consulta['sucesso'] ?? false) !== true || !is_array($consulta['dados'] ?? null)
+        || mpSubStatusPreapproval($consulta['dados']) !== 'canceled') {
+        return false;
+    }
+
+    return mpSubSincronizarPreapproval($conexao, $gateway, (string)$vinculo['ambiente'], $preapprovalId, null, $idEmpresaEscopo)['resultado'] === 'processado';
+}
+
+/**
  * Rotina de processamento do outbox (sem CRON configurado): garante as intenções derivadas do estado e processa as
  * operações vencidas, uma a uma. Nunca cria Preapproval nem cobra.
  *
@@ -3211,7 +3239,7 @@ function mpSubOperacoesProcessarPendentes(mysqli $conexao, object $gateway, int 
 
     $candidatos = mpSubConsultaEmpresa(
         $conexao,
-        "SELECT a.id_assinatura_pagamento, a.id_empresa
+        "SELECT a.id_assinatura_pagamento, a.id_empresa, a.ambiente, a.assinatura_externa_id
            FROM assinatura_pagamento_recorrente a
            JOIN assinatura s ON s.id_assinatura = a.id_assinatura AND s.id_empresa = a.id_empresa
           WHERE /*empresa*/ a.motor_recorrencia = 'preapproval' AND a.assinatura_externa_id IS NOT NULL
@@ -3230,6 +3258,8 @@ function mpSubOperacoesProcessarPendentes(mysqli $conexao, object $gateway, int 
         try {
             if (assinaturaServicoPreapprovalGarantirOperacao($conexao, (int)$c['id_assinatura_pagamento'], mpWebhookAtorSistema((int)$c['id_empresa']), $idEmpresa) !== null) {
                 $total['garantidas']++;
+            } else {
+                mpSubConfirmarCancelamentoExterno($conexao, $gateway, $c, $idEmpresa);
             }
         } catch (Throwable $e) {
             mpWebhookRollback($conexao);
@@ -3602,7 +3632,8 @@ function mpSubRotina(mysqli $conexao, object $gateway, array $opcoes = []): arra
     $limite = max(1, min(100, (int)($opcoes['limite'] ?? 20)));
     $sincroniaMin = max(1, min(1440, (int)($opcoes['sincronia-min'] ?? 30)));
     $pausa = max(0, min(5000, (int)($opcoes['pausa-ms'] ?? 0)));
-    $resumo = ['outbox' => mpSubOperacoesProcessarPendentes($conexao, $gateway, $limite, $idEmpresa), 'vinculos' => 0, 'criacoes' => 0, 'erros' => 0];
+    // vinculos e criacoes contam só os sucessos; tentativas que seguem pendentes ficam em criacoes_pendentes.
+    $resumo = ['outbox' => mpSubOperacoesProcessarPendentes($conexao, $gateway, $limite, $idEmpresa), 'vinculos' => 0, 'criacoes' => 0, 'criacoes_pendentes' => 0, 'erros' => 0];
 
     $vinculos = mpSubConsultaEmpresa(
         $conexao,
@@ -3623,9 +3654,10 @@ function mpSubRotina(mysqli $conexao, object $gateway, array $opcoes = []): arra
                 usleep($pausa * 1000);
             }
             $r = mpSubConciliarVinculo($conexao, $gateway, (int)$v['id_assinatura_pagamento'], $idEmpresa);
-            $resumo['vinculos']++;
             if (($r['resultado'] ?? '') === 'erro') {
                 $resumo['erros']++;
+            } elseif (($r['resultado'] ?? '') === 'processado') {
+                $resumo['vinculos']++;
             }
         } catch (Throwable $e) {
             mpWebhookRollback($conexao);
@@ -3636,9 +3668,10 @@ function mpSubRotina(mysqli $conexao, object $gateway, array $opcoes = []): arra
     $empresas = mpSubConsultaEmpresa(
         $conexao,
         "SELECT DISTINCT o.id_empresa FROM operacao_assinatura_gateway o
-          WHERE /*empresa*/ o.tipo_operacao = 'conciliar' AND o.status_processamento IN ('conciliacao', 'processando')
-            AND (o.proxima_tentativa_em IS NULL OR o.proxima_tentativa_em <= NOW(6)
-                 OR o.ultima_tentativa_em < DATE_SUB(NOW(6), INTERVAL " . ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS . " SECOND))
+          WHERE /*empresa*/ o.tipo_operacao = 'conciliar'
+            AND ((o.status_processamento = 'conciliacao' AND (o.proxima_tentativa_em IS NULL OR o.proxima_tentativa_em <= NOW(6)))
+                 OR (o.status_processamento = 'processando'
+                     AND o.ultima_tentativa_em < DATE_SUB(NOW(6), INTERVAL " . ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS . " SECOND)))
           LIMIT {$limite}",
         $idEmpresa,
         'o.id_empresa'
@@ -3646,8 +3679,8 @@ function mpSubRotina(mysqli $conexao, object $gateway, array $opcoes = []): arra
     foreach ($empresas as $e) {
         mpSubConferirEmpresa($idEmpresa, $e);
         try {
-            assinaturaServicoPreapprovalConciliar($conexao, $gateway, (int)$e['id_empresa'], null);
-            $resumo['criacoes']++;
+            $r = assinaturaServicoPreapprovalConciliar($conexao, $gateway, (int)$e['id_empresa'], null);
+            $resumo[($r['ok'] ?? false) === true ? 'criacoes' : 'criacoes_pendentes']++;
         } catch (Throwable $erro) {
             mpWebhookRollback($conexao);
             $resumo['erros']++;
@@ -3672,7 +3705,7 @@ $tipoQuery = mpWebhookQueryExata('type');
 $requestId = mpWebhookCampoExterno($_SERVER['HTTP_X_REQUEST_ID'] ?? null, 150);
 if ($dataId === null || ($tipoQuery !== 'order' && !in_array($tipoQuery, MP_SUB_TIPOS, true) && !in_array($tipoQuery, MP_SUB_TIPOS_SEM_ACAO, true)) || $requestId === null
     || !preg_match('/^[A-Za-z0-9_-]{1,150}$/D', $dataId)) {
-    mpWebhookResponder(400, 'INVALID_EVENT');
+    mpWebhookRecusar(400, 'INVALID_EVENT', 'query_ou_request_id_invalido');
 }
 
 try {

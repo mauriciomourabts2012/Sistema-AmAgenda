@@ -4796,10 +4796,10 @@ function assinaturaServicoPreapprovalIdentidadePagador(mysqli $conexao, int $idE
  *
  * @param array<string, mixed>|null $identidadePagador id_usuario e email da sessão; null somente para quem não cria
  * @return array{acao: string, contrato: array<string, mixed>, vinculo: array<string, mixed>, operacao: ?array<string, mixed>, inicio: DateTimeImmutable, inicio_envio: ?DateTimeImmutable, email_pagador?: string}
- *         acao: 'criar' | 'conciliar' | 'vinculada' | 'em_andamento'
+ *         acao: 'criar' | 'conciliar' | 'vinculada' | 'em_andamento' | 'sem_pendencia' (só com $permiteCriar = false)
  * @throws AssinaturaServicoConversaoErro
  */
-function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente, int $idEmpresa, ?array $ator = null, ?array $identidadePagador = null): array
+function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente, int $idEmpresa, ?array $ator = null, ?array $identidadePagador = null, bool $permiteCriar = true): array
 {
     $contrato = assinaturaServicoPreapprovalContrato($conexao, $idEmpresa);
     $idAssinatura = $contrato['id_assinatura'];
@@ -4865,7 +4865,8 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
     if ($vinculo === null && $encerrado !== null && !assinaturaServicoPreapprovalNovoVinculoPermitido($conexao)) {
         throw new AssinaturaServicoConversaoErro('NOVA_AUTORIZACAO_INDISPONIVEL', 'O pagamento no cartão deste contrato foi encerrado e uma nova autorização ainda não está disponível. Use o PIX.', 409);
     }
-    if ($vinculo === null) {
+    $intencaoNova = $vinculo === null;
+    if ($intencaoNova) {
         // Sem vínculo vigente (nenhum, ou só encerrados com a estrutura da Fase 21): nova intenção, nova referência.
         $vinculo = assinaturaServicoPreapprovalInserirIntencao($conexao, $ambiente, $idEmpresa, $idAssinatura);
     } else {
@@ -4935,6 +4936,16 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
         }
     }
 
+    if ($acao === 'criar' && !$permiteCriar) {
+        // Conciliação nunca cria. Vínculo recém-inserido: a exceção desfaz a transação, como antes. Vínculo existente:
+        // devolve sem inserir nada, para que o encerramento acima de uma tentativa interrompida antes do envio
+        // (TENTATIVA_NAO_ENVIADA) seja gravado em vez de desfeito junto com a intenção de criar.
+        if ($intencaoNova) {
+            throw new AssinaturaServicoConversaoErro('SEM_CONCILIACAO_PENDENTE', 'Não há conciliação pendente.', 409);
+        }
+
+        return ['acao' => 'sem_pendencia', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => null, 'inicio' => $inicio, 'inicio_envio' => $envio];
+    }
     if ($acao === 'criar') {
         $chave = pagamentoGatewayChaveIdempotencia();
         try {
@@ -5043,7 +5054,11 @@ function assinaturaServicoPreapprovalTransacao(mysqli $conexao, callable $etapa)
     }
 }
 
-/** Fecha a operação aberta que esta execução detém ('processando'). */
+/**
+ * Fecha a operação aberta que esta execução detém ('processando'). A conciliação nunca vira 'erro' sozinha (isso
+ * liberaria um novo POST e uma Preapproval duplicada); por isso a espera cresce com as tentativas, até um dia, e a
+ * pendência antiga aparece no diagnóstico para análise manual.
+ */
 function assinaturaServicoPreapprovalEncerrarOperacao(mysqli $conexao, int $idOperacao, string $status, ?string $codigo, ?string $motivo): bool
 {
     return assinaturaServicoPreapprovalExec(
@@ -5051,7 +5066,10 @@ function assinaturaServicoPreapprovalEncerrarOperacao(mysqli $conexao, int $idOp
         "UPDATE operacao_assinatura_gateway
             SET status_processamento = ?, erro_codigo = ?, erro_motivo = ?,
                 concluida_em = CASE WHEN ? = 'concluida' THEN NOW(6) ELSE NULL END,
-                proxima_tentativa_em = CASE WHEN ? = 'conciliacao' THEN DATE_ADD(NOW(6), INTERVAL 5 MINUTE) ELSE NULL END
+                proxima_tentativa_em = CASE WHEN ? = 'conciliacao' THEN DATE_ADD(NOW(6), INTERVAL
+                    CASE WHEN tentativas_processamento <= 3 THEN 5 WHEN tentativas_processamento <= 6 THEN 30
+                         WHEN tentativas_processamento <= 10 THEN 120 WHEN tentativas_processamento <= 15 THEN 720
+                         ELSE 1440 END MINUTE) ELSE NULL END
           WHERE id_operacao = ? AND status_processamento = 'processando'",
         'sssssi',
         $status,
@@ -5448,15 +5466,7 @@ function assinaturaServicoPreapprovalConciliar(mysqli $conexao, object $gateway,
     try {
         $reserva = assinaturaServicoPreapprovalTransacao(
             $conexao,
-            static function () use ($conexao, $gateway, $idEmpresa): array {
-                $reserva = assinaturaServicoPreapprovalReservar($conexao, $gateway->ambiente(), $idEmpresa);
-                if ($reserva['acao'] === 'criar') {
-                    // Conciliar nunca cria: desfaz a intenção de envio recém-reservada.
-                    throw new AssinaturaServicoConversaoErro('SEM_CONCILIACAO_PENDENTE', 'Não há conciliação pendente.', 409);
-                }
-
-                return $reserva;
-            }
+            static fn (): array => assinaturaServicoPreapprovalReservar($conexao, $gateway->ambiente(), $idEmpresa, null, null, false)
         );
     } catch (AssinaturaServicoConversaoErro $e) {
         return assinaturaServicoPreapprovalFalha($e);
@@ -5464,6 +5474,8 @@ function assinaturaServicoPreapprovalConciliar(mysqli $conexao, object $gateway,
 
     $base = ['id_assinatura_pagamento' => (int)$reserva['vinculo']['id_assinatura_pagamento']];
     return match ($reserva['acao']) {
+        // Nada a conciliar (a transação já gravou o eventual encerramento de uma tentativa não enviada).
+        'sem_pendencia' => assinaturaServicoNovaContratacaoResultado(false, 'SEM_CONCILIACAO_PENDENTE', 'Não há conciliação pendente.', $base + ['http_status' => 409]),
         'vinculada' => assinaturaServicoPreapprovalAutorizacaoExistente($gateway, $reserva, $emailPagador),
         'em_andamento' => assinaturaServicoNovaContratacaoResultado(false, 'OPERACAO_EM_ANDAMENTO', 'Já existe uma operação de assinatura recorrente em andamento.', $base + ['http_status' => 409]),
         'expirada' => assinaturaServicoPreapprovalResultadoExpirada($reserva),
@@ -5988,12 +6000,18 @@ function assinaturaServicoPreapprovalGarantirOperacao(mysqli $conexao, int $idAs
         if ($tipo === null) {
             return null;
         }
-        // Falha definitiva recente da mesma operação: sem nova tentativa automática (evita PUT repetido às cegas).
+        // Falha recente da mesma operação: sem nova tentativa automática (evita PUT repetido às cegas). Se a última dessas
+        // operações foi rejeitada pelo provedor (ou achou destino incompatível), o bloqueio não expira: só a reabertura
+        // controlada, com a causa confirmada como corrigida (mpSubOperacaoReabrir), volta a enviar.
         $falhouAntes = assinaturaServicoConsultaFinanceira(
             $conexao,
-            "SELECT 1 FROM operacao_assinatura_gateway
-              WHERE id_assinatura_pagamento = ? AND tipo_operacao = ? AND status_processamento = 'erro'
-                AND atualizado_em > DATE_SUB(NOW(6), INTERVAL 1 DAY) LIMIT 1",
+            "SELECT 1 FROM operacao_assinatura_gateway o
+              WHERE o.id_assinatura_pagamento = ? AND o.tipo_operacao = ? AND o.status_processamento = 'erro'
+                AND (o.atualizado_em > DATE_SUB(NOW(6), INTERVAL 1 DAY)
+                     OR (o.erro_codigo IN ('PROVEDOR_REJEITOU', 'DESTINO_INCOMPATIVEL')
+                         AND o.id_operacao = (SELECT MAX(u.id_operacao) FROM operacao_assinatura_gateway u
+                                               WHERE u.id_assinatura_pagamento = o.id_assinatura_pagamento
+                                                 AND u.tipo_operacao = o.tipo_operacao))) LIMIT 1",
             'is',
             (int)$vinculo['id_assinatura_pagamento'],
             $tipo
@@ -6846,7 +6864,7 @@ function assinaturaServicoPreapprovalDiagnostico(mysqli $conexao, object $gatewa
     );
 
     $resultado['faturas'] = [];
-    $busca = $gateway->buscarFaturasAutorizadas(['preapproval_id' => $preapprovalId, 'limit' => ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE, 'offset' => 0]);
+    $busca = $gateway->buscarFaturasAutorizadas(['preapproval_id' => $preapprovalId]);
     if (($busca['sucesso'] ?? false) === true && is_array($busca['dados']['results'] ?? null)) {
         foreach ($busca['dados']['results'] as $item) {
             if (is_array($item) && (string)($item['preapproval_id'] ?? '') === $preapprovalId) {

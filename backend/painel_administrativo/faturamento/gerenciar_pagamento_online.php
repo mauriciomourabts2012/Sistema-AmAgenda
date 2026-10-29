@@ -574,7 +574,7 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
     $v = $vinculo !== null && (int)$vinculo['id_assinatura'] === $idAssinatura && ($vinculo['motor_recorrencia'] ?? '') === 'preapproval' ? $vinculo : null;
     $idCobranca = (int)$oferta['id_cobranca'];
     $tentativa = pagamentoOnlineConsulta($db,
-        "SELECT status,detalhe_status_externo,requer_conciliacao FROM transacao_pagamento
+        "SELECT status,detalhe_status_externo,erro_codigo,requer_conciliacao FROM transacao_pagamento
           WHERE id_empresa=? AND id_cobranca=? AND tipo_operacao='assinatura_preapproval' ORDER BY id_transacao DESC LIMIT 1",
         'ii', $empresa, $idCobranca)->fetch_assoc() ?: null;
     $pixEmAndamento = pagamentoOnlineConsulta($db,
@@ -598,9 +598,10 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
         $encerrado => 'cartao_cancelado',
         $status === 'cancelamento_pendente' => 'cancelando_cartao',
         $tentativa !== null && ((int)$tentativa['requer_conciliacao'] === 1 || in_array($tentativa['status'], ['conciliacao', 'confirmada'], true)) => 'em_verificacao',
-        // Recusa com nova tentativa agendada pelo provedor ('recycling') ou recusa definitiva.
+        // Recusa com nova tentativa agendada pelo provedor ('recycling', marcada em erro_codigo ou, no legado, 'retry')
+        // ou recusa definitiva.
         $tentativa !== null && ($tentativa['status'] === 'recusada'
-            || ($tentativa['status'] === 'processando' && $tentativa['detalhe_status_externo'] === 'retry')) => 'pagamento_recusado',
+            || ($tentativa['status'] === 'processando' && ($tentativa['detalhe_status_externo'] === 'retry' || $tentativa['erro_codigo'] !== null))) => 'pagamento_recusado',
         $tentativa !== null && $tentativa['status'] === 'processando' => 'processando',
         $tentativa !== null => 'aguardando_primeira_cobranca',
         $status === 'pendente' && ($v['status_externo'] ?? null) === 'authorized' => 'autorizacao_em_analise',
@@ -637,7 +638,7 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
     $emTeste = (string)$assinatura['status'] === 'ativa';
     $viva = assinaturaServicoPreapprovalPrimeiraCobrancaViva($db, $empresa, $idAssinatura);
     $tentativa = pagamentoOnlineConsulta($db,
-        "SELECT t.status,t.detalhe_status_externo,t.requer_conciliacao FROM transacao_pagamento t
+        "SELECT t.status,t.detalhe_status_externo,t.erro_codigo,t.requer_conciliacao FROM transacao_pagamento t
            JOIN cobranca c ON c.id_cobranca=t.id_cobranca AND c.id_empresa=t.id_empresa
           WHERE t.id_empresa=? AND c.id_assinatura=? AND c.finalidade='conversao_trial' AND c.status<>'cancelada'
             AND t.tipo_operacao='assinatura_preapproval' ORDER BY t.id_transacao DESC LIMIT 1",
@@ -648,7 +649,7 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
         $status === 'cancelamento_pendente' => 'cancelando_cartao',
         $tentativa !== null && ((int)$tentativa['requer_conciliacao'] === 1 || in_array($tentativa['status'], ['conciliacao', 'confirmada'], true)) => 'em_verificacao',
         $tentativa !== null && ($tentativa['status'] === 'recusada'
-            || ($tentativa['status'] === 'processando' && $tentativa['detalhe_status_externo'] === 'retry')) => 'pagamento_recusado',
+            || ($tentativa['status'] === 'processando' && ($tentativa['detalhe_status_externo'] === 'retry' || $tentativa['erro_codigo'] !== null))) => 'pagamento_recusado',
         $tentativa !== null && $tentativa['status'] === 'processando' => 'processando',
         $status === 'pendente' && ($v['status_externo'] ?? null) === 'authorized' => 'autorizacao_em_analise',
         $status === 'pendente' => 'aguardando_autorizacao',
