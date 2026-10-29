@@ -360,7 +360,8 @@
       const titulo = bandeira && final ? `${bandeira} •••• ${final}` : (bandeira || "Cartão autorizado no Mercado Pago");
       // Próxima cobrança só quando sincronizada do Mercado Pago.
       const proxima = dataBr(atual.proxima_cobranca_em);
-      const texto = `Recorrência autorizada no Mercado Pago.${proxima ? ` Próxima cobrança: ${proxima}.` : ""}`;
+      // Contrato pago: o checkout do Mercado Pago pode chamar os dias já pagos de "teste grátis"; aqui vale o contrato.
+      const texto = `Recorrência autorizada no Mercado Pago. Sua próxima mensalidade será cobrada automaticamente na data programada pelo Mercado Pago.${proxima ? ` Próxima cobrança: ${proxima}.` : ""}`;
       const trocar = atual.pode_trocar_cartao
         ? '<button class="botao-geral destaque" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
       alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${trocar}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;

@@ -1444,7 +1444,9 @@ try {
                         ? 'Você será levado ao Mercado Pago para autorizar o cartão. A primeira mensalidade é cobrada após a autorização.'
                         : (($dados['teste_gratis'] ?? null) !== null
                             ? 'Você será levado ao Mercado Pago para autorizar o cartão. Seus dias grátis continuam valendo: a primeira mensalidade fica programada para o fim do teste grátis.'
-                            : 'Você será levado ao Mercado Pago para autorizar o cartão das próximas mensalidades. A primeira cobrança automática fica programada para a próxima competência não paga.'))
+                            // O checkout hospedado apresenta o intervalo até o start_date como "dias grátis"; o AmAgenda não o
+                            // controla e esclarece que se trata do período já pago.
+                            : 'Você será levado ao Mercado Pago para autorizar o cartão das próximas mensalidades. A primeira cobrança automática fica programada para a próxima competência não paga. Se o Mercado Pago indicar dias grátis, eles correspondem ao período que você já pagou.'))
                     : 'A autorização recorrente já existe. Atualize a situação para conferir.',
                 'data'=>$dados]);
         }
