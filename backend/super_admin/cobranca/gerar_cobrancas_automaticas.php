@@ -140,6 +140,7 @@ $resumo = [
     'assinaturas_analisadas' => 0,
     'cobrancas_geradas' => 0,
     'sem_cobranca_necessaria' => 0,
+    'recorrencia_diaria_sem_geracao_local' => 0,
     'inconsistencias' => 0,
     'erros' => 0,
 ];
@@ -441,6 +442,15 @@ try {
             continue;
         }
 
+        if (assinaturaServicoRecorrenciaDiaria($idEmpresaReferencia)) {
+            // Recorrência diária de homologação: este gerador não consulta o Mercado Pago e não sabe se a Preapproval
+            // diária segue autorizada, foi cancelada ou passou do end_date. Nenhuma cobrança local é gerada; cada
+            // competência diária nasce só da fatura autoritativa no webhook (mpSubResolverCobranca), que limita a janela.
+            $resumo['recorrencia_diaria_sem_geracao_local']++;
+            fwrite(STDERR, "Assinatura #{$idAssinaturaReferencia}: recorrência diária de homologação ativa; geração local impedida.\n");
+            continue;
+        }
+
         $cobrancasGeradasNestaAssinatura = 0;
 
         while (true) {
@@ -675,6 +685,7 @@ echo "Assinaturas suspensas por inadimplência: {$resumo['assinaturas_suspensas_
 echo "Assinaturas analisadas: {$resumo['assinaturas_analisadas']}\n";
 echo "Cobranças geradas: {$resumo['cobrancas_geradas']}\n";
 echo "Sem cobrança necessária: {$resumo['sem_cobranca_necessaria']}\n";
+echo "Recorrência diária sem geração local: {$resumo['recorrencia_diaria_sem_geracao_local']}\n";
 echo "Inconsistências: {$resumo['inconsistencias']}\n";
 echo "Erros: {$resumo['erros']}\n";
 

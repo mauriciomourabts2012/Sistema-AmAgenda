@@ -1087,6 +1087,15 @@ try {
             'user_msg' => 'A modalidade da assinatura precisa de verificação.',
         ], 409);
     }
+    if (assinaturaServicoRecorrenciaDiaria($idEmpresa)) {
+        // Recorrência diária de homologação: sem consulta ao Mercado Pago não há como saber se a Preapproval diária segue
+        // autorizada ou dentro do end_date; cada competência diária nasce só da fatura autoritativa no webhook.
+        cobrancaErroTransacional($conexao, [
+            'ok' => false,
+            'code' => 'RECORRENCIA_DIARIA_SEM_GERACAO_LOCAL',
+            'user_msg' => 'Esta empresa está na recorrência diária de homologação. As cobranças diárias são criadas apenas pelo pagamento confirmado no Mercado Pago.',
+        ], 409);
+    }
     $idAssinatura = (int)$assinatura['id_assinatura'];
     $meses = cobrancaMesesPeriodicidade((string)$assinatura['periodicidade']);
     $dataInicioAssinatura = cobrancaData((string)$assinatura['data_inicio'], 'data_inicio da assinatura');

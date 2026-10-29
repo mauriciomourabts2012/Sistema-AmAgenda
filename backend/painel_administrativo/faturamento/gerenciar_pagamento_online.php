@@ -695,9 +695,10 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
 {
     $primeira = $db === null ? null : pagamentoCartaoPrimeiraCobranca($db, $empresa, $assinatura, $vinculo);
     $testeGratis = $db === null ? null : pagamentoCartaoTesteGratis($db, $empresa, $assinatura, $vinculo);
-    // Fase 5B.2: primeira mensalidade e teste grátis não oferecem cartão; depois da quitação, o servidor decide a elegibilidade.
-    $cadastro = $db === null || $primeira !== null || $testeGratis !== null
-        ? null : assinaturaServicoPreapprovalCadastroPosQuitacao($db, $empresa, $assinatura);
+    // A primeira mensalidade sem teste grátis não oferece cartão (PIX); no teste grátis ativo e no contrato pago, o servidor
+    // decide a elegibilidade.
+    $cadastro = $db === null || $primeira !== null
+        ? null : assinaturaServicoPreapprovalCadastroCartao($db, $empresa, $assinatura);
     $atual = $vinculo !== null && $assinatura !== null && (int)$vinculo['id_assinatura'] === (int)$assinatura['id_assinatura'];
     $v = $atual ? $vinculo : null;
     $status = $v['status'] ?? 'nao_configurado';
@@ -727,7 +728,8 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     // o vínculo pendente do próprio contrato é o único "recorrência existente" que admite retomada.
     $elegivel = $cadastro !== null && $cadastro['liberado']
         && ($cadastro['elegivel'] || ($retomavel && $cadastro['motivo'] === 'RECORRENCIA_EXISTENTE'));
-    $podeConfigurar = $habilitado && $elegivel && ($novo || $retomavel);
+    // Recorrência já autorizada nunca oferece cadastro: só a troca ("Alterar cartão").
+    $podeConfigurar = $habilitado && $elegivel && ($novo || $retomavel) && !$configurado;
     return [
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
         'autorizacao_criada' => $criada,
@@ -962,15 +964,16 @@ function pagamentoCartaoPreapprovalTrocarCartao(mysqli $db, object $gateway, int
         $condicoes = pagamentoOnlineConsulta($db,
             'SELECT valor_contratado,periodicidade FROM assinatura WHERE id_assinatura=? AND id_empresa=?',
             'ii', (int)$contrato['id_assinatura'], $empresa)->fetch_assoc();
-        $frequencia = $condicoes ? assinaturaServicoPreapprovalFrequenciaMeses((string)$condicoes['periodicidade']) : null;
-        if ($frequencia === null) {
+        $recorrencia = $condicoes ? assinaturaServicoPreapprovalRecorrencia($empresa, (string)$condicoes['periodicidade']) : null;
+        if ($recorrencia === null) {
             pagamentoOnlineFalhar('TROCA_CARTAO_CONTRATO_INDISPONIVEL', 'Não foi possível conferir o contrato para trocar o cartão.', 409);
         }
         $r = assinaturaServicoPreapprovalTrocarCartao($gateway, (string)$vinculo['assinatura_externa_id'], $tokenCartao, [
             'referencia' => (string)$vinculo['referencia_externa_assinatura'],
             'ambiente' => $gateway->ambiente(),
             'valor_centavos' => pagamentoGatewayValorCentavos((string)$condicoes['valor_contratado']),
-            'frequencia_meses' => $frequencia,
+            'frequencia_meses' => $recorrencia['frequencia'],
+            'frequencia_tipo' => $recorrencia['tipo'],
         ]);
         if ($r['codigo'] !== 'TOKEN_CARTAO_INVALIDO') {
             $r = pagamentoCartaoRegistrarTroca($db, $vinculo, $r);
@@ -1419,7 +1422,7 @@ try {
             unset($_POST['token'], $_POST['payment_method_id']);
             // Fase 5B.2: a interface não é a única proteção. Sem liberação técnica (5B.4) nada é criado nem retomado; liberado,
             // só o contrato pago elegível segue (o vínculo pendente do próprio contrato é conferido sob lock pelo serviço).
-            $cadastroCartao = assinaturaServicoPreapprovalCadastroPosQuitacao($conexao, $empresa, $assinaturaCartao);
+            $cadastroCartao = assinaturaServicoPreapprovalCadastroCartao($conexao, $empresa, $assinaturaCartao);
             if (!$cadastroCartao['liberado']) {
                 pagamentoOnlineFalhar('CADASTRO_CARTAO_INDISPONIVEL', 'O cadastro do cartão ainda não está disponível. Pague as mensalidades via PIX ou fale com o suporte.', 409);
             }
@@ -1440,8 +1443,8 @@ try {
                     ? (($dados['primeira_cobranca'] ?? null) !== null
                         ? 'Você será levado ao Mercado Pago para autorizar o cartão. A primeira mensalidade é cobrada após a autorização.'
                         : (($dados['teste_gratis'] ?? null) !== null
-                            ? 'Você será levado ao Mercado Pago para autorizar o cartão. Nada é cobrado agora: a primeira mensalidade fica programada para o fim do teste grátis.'
-                            : 'Você será levado ao Mercado Pago para autorizar o cartão. Nenhuma cobrança será feita agora.'))
+                            ? 'Você será levado ao Mercado Pago para autorizar o cartão. Seus dias grátis continuam valendo: a primeira mensalidade fica programada para o fim do teste grátis.'
+                            : 'Você será levado ao Mercado Pago para autorizar o cartão das próximas mensalidades. A primeira cobrança automática fica programada para a próxima competência não paga.'))
                     : 'A autorização recorrente já existe. Atualize a situação para conferir.',
                 'data'=>$dados]);
         }

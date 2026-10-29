@@ -13,7 +13,7 @@
   const cartao = { configuracao: null, carregando: false, controller: null, redirecionando: false, retornoProcessado: false, retornoEmCurso: false, trocando: false };
   const TEXTOS_MODAL_CARTAO = {
     configurar: { titulo: "Configurar cartão", consentimento: "Ao autorizar, este cartão poderá ser usado nos pagamentos futuros automáticos das cobranças da sua assinatura AmAgenda. Nenhuma cobrança será feita agora.", enviar: "Autorizar cartão" },
-    trocar: { titulo: "Alterar cartão de crédito", consentimento: "O novo cartão substituirá o atual nas próximas cobranças automáticas da sua assinatura AmAgenda. Plano, valor e data da próxima cobrança não mudam, e nada é cobrado agora.", enviar: "Salvar novo cartão" }
+    trocar: { titulo: "Alterar cartão de crédito", consentimento: "O novo cartão substituirá o atual nas próximas cobranças automáticas da sua assinatura AmAgenda. O Mercado Pago processará a atualização do cartão, e plano e valor não mudam.", enviar: "Salvar novo cartão" }
   };
   // Destino do redirecionamento de autorização: somente o checkout de assinaturas do Mercado Pago (o servidor valida antes).
   // Query lida literalmente: preapproval_id obrigatório e activation opcional (opaco), cada um uma única vez.
@@ -264,12 +264,12 @@
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${pix}${trocar}${botaoVerificar}</div>`;
   }
 
-  // Teste grátis: nada é cobrado durante ele e nenhum cartão novo é autorizado; a primeira mensalidade segue pelo PIX.
-  // Autorizações criadas antes dessa regra continuam exibidas (o cartão autorizado cobra no fim do teste).
+  // Teste grátis (só contratos em modalidade teste; o servidor envia teste_gratis apenas para eles): cadastro de cartão
+  // opcional, com a primeira mensalidade programada para depois do teste e sujeita à confirmação do Mercado Pago.
   const SITUACOES_TESTE = {
     escolha: ["fa-regular fa-calendar-check", "Nada é cobrado durante o teste", "Ao final do teste grátis, pague a primeira mensalidade via PIX para ativar o plano. Depois disso, você poderá cadastrar um cartão para as próximas mensalidades automáticas."],
-    aguardando_autorizacao: ["fa-solid fa-hourglass-half", "Aguardando sua autorização", "Conclua a autorização do cartão no Mercado Pago. Nada é cobrado durante o teste grátis."],
-    autorizacao_em_analise: ["fa-solid fa-hourglass-half", "Autorização em análise", "A autorização foi recebida no Mercado Pago e está sendo conferida. Nada é cobrado durante o teste grátis."],
+    aguardando_autorizacao: ["fa-solid fa-hourglass-half", "Aguardando sua autorização", "Conclua a autorização do cartão no Mercado Pago. Seus dias grátis continuam valendo: a primeira mensalidade está programada para depois do teste grátis, sujeita à confirmação do Mercado Pago."],
+    autorizacao_em_analise: ["fa-solid fa-hourglass-half", "Autorização em análise", "A autorização foi recebida no Mercado Pago e está sendo conferida. Seus dias grátis continuam valendo: a primeira mensalidade está programada para depois do teste grátis, sujeita à confirmação do Mercado Pago."],
     cartao_autorizado: ["fa-regular fa-credit-card", "Cartão autorizado para cobranças futuras", "Seu cartão está autorizado. A primeira mensalidade está prevista para após o encerramento do teste grátis."],
     processando: ["fa-solid fa-hourglass-half", "Primeira mensalidade em processamento", "O Mercado Pago está processando a primeira mensalidade no cartão. O plano pago é liberado após a confirmação."],
     pagamento_recusado: ["fa-solid fa-triangle-exclamation", "Pagamento recusado", "O cartão recusou a primeira mensalidade. O Mercado Pago pode tentar novamente; se preferir, pague com PIX em vez do cartão."],
@@ -284,18 +284,36 @@
     const prevista = dataBr(t.primeira_cobranca_prevista);
     const fim = dataBr(t.expira_em);
     const rotulo = t.em_teste ? `Teste grátis${fim ? ` até ${fim}` : ""}` : "Teste grátis encerrado";
-    definirCabecalhoSecao("Pagamento automático", "O cartão pode ser cadastrado depois da primeira mensalidade paga.");
+    // Teste grátis ativo: cadastro opcional para as mensalidades depois do teste (elegibilidade e liberação do servidor).
+    const cadastro = atual.cadastro_cartao || {};
+    definirCabecalhoSecao("Pagamento automático", cadastro.caminho === "teste"
+      ? "O cadastro do cartão é opcional durante o teste grátis."
+      : "O cartão pode ser cadastrado depois da primeira mensalidade paga.");
+    let nota = "";
     if (prevista && ["aguardando_autorizacao", "autorizacao_em_analise", "cartao_autorizado"].includes(t.situacao)) {
       texto += ` Primeira mensalidade prevista para ${prevista}.`;
+    }
+    if (t.em_teste && t.situacao === "escolha" && atual.pode_configurar) {
+      titulo = "Cadastro de cartão opcional";
+      // Sem promessa de que nada é cobrado antes do fim do teste: a data é a programada, confirmada pelo Mercado Pago.
+      texto = "Você pode cadastrar um cartão agora para as mensalidades depois do teste grátis. Seus dias grátis continuam valendo e você pode cancelar o cartão antes do fim do teste.";
+      const inicio = dataBr(cadastro.primeira_cobranca_prevista);
+      nota = `${inicio ? `Primeira cobrança automática prevista para ${inicio}, sujeita à confirmação do Mercado Pago. ` : ""}Se preferir, pague via PIX ao fim do teste.`;
+    } else if (t.em_teste && t.situacao === "escolha" && cadastro.elegivel === true) {
+      nota = "O cadastro do cartão estará disponível em breve. Até lá, a primeira mensalidade é paga via PIX ao fim do teste.";
     }
     if (!t.em_teste && ["escolha", "cartao_cancelado"].includes(t.situacao)) {
       texto = "Sem cartão para cobrar a primeira mensalidade. Use \"Gerar cobrança de regularização\" para pagar com PIX.";
     }
     const criada = atual.autorizacao_criada === true && !["cancelada", "encerrada"].includes(String(atual.status || ""));
-    const autorizar = atual.pode_configurar ? botaoAutorizarCartao(criada ? "Continuar no Mercado Pago" : "Autorizar cartão no Mercado Pago") : "";
+    // Autorização confirmada: "Alterar cartão" substitui o cadastro (o servidor só oferece a troca para a recorrência ativa);
+    // os dois nunca aparecem juntos, mesmo que o servidor sinalize ambos.
+    const trocar = atual.pode_trocar_cartao
+      ? '<button class="botao-geral" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
+    const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(criada ? "Continuar no Mercado Pago" : "Cadastrar cartão") : "";
     const remover = t.pode_remover_cartao
       ? `<button class="botao-geral" type="button" data-usar-pix><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${t.em_teste ? "Cancelar cartão autorizado" : "Pagar com PIX em vez do cartão"}</button>` : "";
-    alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto)}<div class="faturamento-acoes">${autorizar}${remover}${botaoVerificar}</div>`;
+    alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${autorizar}${trocar}${remover}${botaoVerificar}</div>`;
   }
 
   async function usarPix() {
@@ -353,10 +371,15 @@
       // Pendente com Preapproval já criada: o servidor devolve o mesmo link (sem nova criação). Pendente sem Preapproval
       // criada (tentativa anterior falhou ou ficou incerta): o servidor concilia e só então cria, uma única vez.
       const criada = atual.autorizacao_criada !== false;
+      if (criada && atual.status_externo === "authorized") {
+        // Autorizada no provedor, mas ainda não ativada aqui (ex.: próxima cobrança fora da competência esperada): nunca "concluído".
+        alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Pagamento automático", "Autorização em conferência", "O Mercado Pago registrou a autorização do cartão. O pagamento automático só é ativado depois de confirmada a próxima cobrança fora do período já pago. Atualize a situação ou entre em contato com o suporte.")}<div class="faturamento-acoes">${botaoVerificar}</div>`;
+        return;
+      }
       const titulo = criada ? "Aguardando sua autorização" : "Autorização ainda não criada";
       const texto = criada
-        ? "A autorização só vale depois da confirmação do Mercado Pago. Nenhuma cobrança é feita nesta etapa."
-        : "A autorização ainda não foi criada no Mercado Pago. Clique para tentar novamente; nenhuma cobrança é feita agora e nada é duplicado.";
+        ? "A autorização só vale depois da confirmação do Mercado Pago."
+        : "A autorização ainda não foi criada no Mercado Pago. Clique para tentar novamente; a tentativa anterior é conferida antes de qualquer nova criação.";
       const semAcao = !atual.pode_configurar && !atual.pode_verificar
         ? (atual.subscriptions_habilitado === false ? "O pagamento automático por este meio ainda não está disponível." : "Atualize a página ou fale com o suporte caso a situação persista.")
         : (!atual.pode_configurar && criada ? "O Mercado Pago já registrou outra situação para esta autorização. Atualize para conferir." : "");
@@ -384,6 +407,12 @@
     if (atual.subscriptions_habilitado === false) texto = "O pagamento automático por este meio ainda não está disponível.";
     else if (cadastro.elegivel !== true) texto = String(cadastro.mensagem || "O cadastro do cartão fica disponível com o plano ativo, depois da primeira mensalidade paga.");
     else if (!atual.pode_configurar) nota = "O cadastro do cartão estará disponível em breve. Até lá, pague as mensalidades via PIX.";
+    else {
+      // Sem promessa de que a competência paga nunca é cobrada: a data é a programada, confirmada pelo Mercado Pago.
+      texto = "Seu plano está ativo. Cadastre um cartão para automatizar as próximas mensalidades.";
+      const prevista = dataBr(cadastro.primeira_cobranca_prevista);
+      nota = `${prevista ? `Primeira cobrança automática prevista para ${prevista}, sujeita à confirmação do Mercado Pago. ` : ""}Se preferir, continue pagando via PIX.`;
+    }
     const titulo = status === "cancelada" ? "Pagamento automático cancelado" : "Nenhum cartão cadastrado";
     alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", titulo, texto, nota)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar("Cadastrar cartão") : ""}${botaoVerificar}</div>`;
   }

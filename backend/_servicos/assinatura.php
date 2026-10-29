@@ -326,6 +326,53 @@ function assinaturaServicoMesesPeriodicidade(string $periodicidade): int
     };
 }
 
+/*
+ * ---------------------------------------------------------------------
+ * Recorrência diária de homologação — exclusiva da empresa 34, desativada por padrão.
+ *
+ * Com a chave ligada, e só para ASSINATURA_SERVICO_RECORRENCIA_DIARIA_EMPRESA, cada competência dura um dia em todo o
+ * fluxo: oferta e período confirmado (PIX), Preapproval (frequency 1 / days, com end_date), conferência externa e
+ * competências do webhook (tolerância zero, no máximo DURACAO_DIAS competências por vínculo). O gerador automático e a
+ * geração manual não criam cobrança diária (não sabem se a Preapproval segue autorizada): cada competência nasce só da
+ * fatura autoritativa. A periodicidade gravada no banco não muda (continua a do plano) e o valor contratado também
+ * não. Demais empresas: sem efeito.
+ *
+ * Não antecipa competência paga: o primeiro dia diário é sempre o seguinte ao último período já cobrado.
+ * end_date (DURACAO_DIAS após o start_date) só limita o teste no provedor; não substitui o cancelamento confirmado.
+ *
+ * Ativar: pré-requisitos do roteiro (vínculos anteriores da empresa encerrados e confirmados, nada em andamento),
+ * ATIVA = true e deploy. Desativar: cancelar a Preapproval diária e confirmar `canceled` por GET, ATIVA = false e
+ * deploy. O histórico (cobranças diárias, pagamentos e transações) permanece como foi gravado; o próximo período
+ * volta a ser calculado pela periodicidade do contrato a partir do último período existente, sem SQL de ajuste.
+ * Uma Preapproval diária ainda viva depois de desligar diverge (frequência) e é sinalizada, nunca reativada; fatura
+ * diária atrasada casa só com a competência do próprio dia e nunca cria competência mensal (fica em conciliação).
+ * ---------------------------------------------------------------------
+ */
+const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_ATIVA = false;
+const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_EMPRESA = 34;
+const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_DURACAO_DIAS = 7;
+
+function assinaturaServicoRecorrenciaDiaria(int $idEmpresa): bool
+{
+    return ASSINATURA_SERVICO_RECORRENCIA_DIARIA_ATIVA && $idEmpresa === ASSINATURA_SERVICO_RECORRENCIA_DIARIA_EMPRESA;
+}
+
+/** Último dia da competência que começa em `$inicio`: o próprio dia na recorrência diária; senão, a periodicidade. */
+function assinaturaServicoFimCompetencia(int $idEmpresa, DateTimeImmutable $inicio, string $periodicidade): DateTimeImmutable
+{
+    if (assinaturaServicoRecorrenciaDiaria($idEmpresa)) {
+        return $inicio;
+    }
+
+    return $inicio->modify('+' . assinaturaServicoMesesPeriodicidade($periodicidade) . ' months')->modify('-1 day');
+}
+
+/** Vencimento da competência: o próprio dia na recorrência diária; senão, o dia de vencimento contratado. */
+function assinaturaServicoVencimentoCompetencia(int $idEmpresa, DateTimeImmutable $inicio, int $diaVencimento): DateTimeImmutable
+{
+    return assinaturaServicoRecorrenciaDiaria($idEmpresa) ? $inicio : assinaturaServicoCalcularVencimento($inicio, $diaVencimento);
+}
+
 /** Mesma regra do gerador de cobranças: primeiro vencimento no dia contratado, nunca antes do início do período. */
 function assinaturaServicoCalcularVencimento(DateTimeImmutable $periodoInicio, int $diaVencimento): DateTimeImmutable
 {
@@ -391,10 +438,17 @@ function assinaturaServicoDataQuitacaoRegistrada(array $pagamentos, int $valorCo
     throw new RuntimeException('Os pagamentos confirmados não completam o valor da cobrança.');
 }
 
-/** @return array{inicio: string, fim: string} */
-function assinaturaServicoPeriodoConfirmado(DateTimeImmutable $confirmacao, string $periodicidade): array
+/**
+ * `$diaria`: recorrência diária de homologação (assinaturaServicoRecorrenciaDiaria()); o período é o próprio dia.
+ *
+ * @return array{inicio: string, fim: string}
+ */
+function assinaturaServicoPeriodoConfirmado(DateTimeImmutable $confirmacao, string $periodicidade, bool $diaria = false): array
 {
     $inicio = $confirmacao->setTime(0, 0);
+    if ($diaria) {
+        return ['inicio' => $inicio->format('Y-m-d'), 'fim' => $inicio->format('Y-m-d')];
+    }
     $meses = assinaturaServicoMesesPeriodicidade($periodicidade);
     $primeiroDiaDestino = $inicio->modify('first day of this month')->modify("+{$meses} months");
     $diaDestino = min((int)$inicio->format('d'), (int)$primeiroDiaDestino->format('t'));
@@ -411,9 +465,9 @@ function assinaturaServicoPeriodoConfirmado(DateTimeImmutable $confirmacao, stri
 }
 
 /** @return array{inicio: string, fim: string, vencimento: string} */
-function assinaturaServicoOfertaContratacaoDatas(DateTimeImmutable $contratacao, string $periodicidade): array
+function assinaturaServicoOfertaContratacaoDatas(DateTimeImmutable $contratacao, string $periodicidade, bool $diaria = false): array
 {
-    $periodo = assinaturaServicoPeriodoConfirmado($contratacao, $periodicidade);
+    $periodo = assinaturaServicoPeriodoConfirmado($contratacao, $periodicidade, $diaria);
 
     return $periodo + ['vencimento' => $periodo['inicio']];
 }
@@ -439,7 +493,7 @@ function assinaturaServicoPeriodoQuitadoDaOferta(
     );
     $confirmacao = assinaturaServicoDataQuitacaoRegistrada($pagamentos, $valorCobrancaCentavos);
 
-    return assinaturaServicoPeriodoConfirmado($confirmacao, $periodicidade);
+    return assinaturaServicoPeriodoConfirmado($confirmacao, $periodicidade, assinaturaServicoRecorrenciaDiaria($idEmpresa));
 }
 
 /** Último dia de cobertura contínua e integralmente paga a partir de hoje. */
@@ -2203,7 +2257,7 @@ function assinaturaServicoGerarOfertaContratacao(mysqli $conexao, int $idEmpresa
     if ($inicio === false) {
         throw new RuntimeException('Data inválida para a cobrança de contratação.');
     }
-    $datasOferta = assinaturaServicoOfertaContratacaoDatas($inicio, (string)$assinatura['periodicidade']);
+    $datasOferta = assinaturaServicoOfertaContratacaoDatas($inicio, (string)$assinatura['periodicidade'], assinaturaServicoRecorrenciaDiaria($idEmpresa));
     $periodoInicio = $datasOferta['inicio'];
     $periodoFim = $datasOferta['fim'];
     $vencimento = $datasOferta['vencimento'];
@@ -4195,6 +4249,22 @@ function assinaturaServicoPreapprovalFrequenciaMeses(string $periodicidade): ?in
     };
 }
 
+/**
+ * Recorrência da Preapproval da empresa: `frequencia` e `tipo` (auto_recurring.frequency/frequency_type). Mensal pela
+ * periodicidade do contrato; 1/days só na recorrência diária de homologação. Null: periodicidade sem suporte.
+ *
+ * @return array{frequencia: int, tipo: string}|null
+ */
+function assinaturaServicoPreapprovalRecorrencia(int $idEmpresa, string $periodicidade): ?array
+{
+    if (assinaturaServicoRecorrenciaDiaria($idEmpresa)) {
+        return ['frequencia' => 1, 'tipo' => 'days'];
+    }
+    $meses = assinaturaServicoPreapprovalFrequenciaMeses($periodicidade);
+
+    return $meses === null ? null : ['frequencia' => $meses, 'tipo' => 'months'];
+}
+
 /** Data (00:00 no fuso do negócio) em que a Preapproval pode cobrar pela primeira vez: o dia seguinte ao fim do período pago. */
 function assinaturaServicoPreapprovalInicioCobranca(string $fimPeriodoPago): DateTimeImmutable
 {
@@ -4285,13 +4355,18 @@ function assinaturaServicoPreapprovalMontarCorpo(array $contrato, string $refere
         'status' => 'pending',
         'auto_recurring' => [
             'frequency' => (int)$contrato['frequencia_meses'],
-            'frequency_type' => 'months',
+            'frequency_type' => (string)($contrato['frequencia_tipo'] ?? 'months'),
             'transaction_amount' => (float)pagamentoGatewayValorDecimal((int)$contrato['valor_centavos']),
             'currency_id' => 'BRL',
         ],
     ];
     if ($inicio !== null) {
         $corpo['auto_recurring']['start_date'] = $inicio->format('Y-m-d\TH:i:s.vP');
+        if (($contrato['frequencia_tipo'] ?? 'months') === 'days') {
+            // Recorrência diária de homologação: o provedor encerra sozinho depois do teste (limite, não cancelamento).
+            $corpo['auto_recurring']['end_date'] = $inicio
+                ->modify('+' . ASSINATURA_SERVICO_RECORRENCIA_DIARIA_DURACAO_DIAS . ' days')->format('Y-m-d\TH:i:s.vP');
+        }
     }
     if ($backUrl !== null) {
         $corpo['back_url'] = $backUrl;
@@ -4305,7 +4380,9 @@ function assinaturaServicoPreapprovalMontarCorpo(array $contrato, string $refere
  * Retorna null quando tudo confere; senão, o código da divergência. Nada é gravado.
  *
  * @param array<string, mixed> $dados resposta do provedor
- * @param array<string, mixed> $esperado referencia, ambiente, valor_centavos, frequencia_meses, id?, email?, inicio?, inicio_pendente_opcional?
+ * @param array<string, mixed> $esperado referencia, ambiente, valor_centavos, frequencia_meses (frequência na unidade de
+ *        frequencia_tipo), frequencia_tipo? ('months' por padrão; 'days' na recorrência diária de homologação), id?,
+ *        email?, inicio?, inicio_pendente_opcional?
  */
 function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperado): ?string
 {
@@ -4339,10 +4416,15 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
         || (int)round(((float)$valor) * 100) !== (int)$esperado['valor_centavos']) {
         return 'VALOR_EXTERNO_DIVERGENTE';
     }
-    if (($recorrencia['frequency_type'] ?? null) !== 'months'
+    $tipoEsperado = (string)($esperado['frequencia_tipo'] ?? 'months');
+    if (($recorrencia['frequency_type'] ?? null) !== $tipoEsperado
         || !is_int($recorrencia['frequency'] ?? null)
         || $recorrencia['frequency'] !== (int)$esperado['frequencia_meses']) {
         return 'PERIODICIDADE_EXTERNA_DIVERGENTE';
+    }
+    if ($tipoEsperado === 'days' && assinaturaServicoPreapprovalDataExterna($recorrencia['end_date'] ?? null) === null) {
+        // Recorrência diária sem o limite de encerramento confirmado pelo provedor: não vincula nem ativa.
+        return 'FIM_EXTERNO_AUSENTE';
     }
 
     $email = $dados['payer_email'] ?? null;
@@ -4560,7 +4642,7 @@ function assinaturaServicoPreapprovalAutorizacaoExistente(object $gateway, array
     $erro = assinaturaServicoPreapprovalValidarExterna($d, [
         'id' => (string)$v['assinatura_externa_id'], 'referencia' => (string)$v['referencia_externa_assinatura'],
         'ambiente' => (string)$v['ambiente'], 'valor_centavos' => $c['valor_centavos'],
-        'frequencia_meses' => $c['frequencia_meses'], 'inicio' => $reserva['inicio'],
+        'frequencia_meses' => $c['frequencia_meses'], 'frequencia_tipo' => $c['frequencia_tipo'], 'inicio' => $reserva['inicio'],
         'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($c, $reserva['inicio']),
         'status_permitidos' => ['pending', 'authorized', 'paused', 'canceled'],
     ]);
@@ -4654,8 +4736,8 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
     if ($contrato['data_fim'] !== null) {
         throw new AssinaturaServicoConversaoErro('CANCELAMENTO_PROGRAMADO', 'A assinatura possui cancelamento programado.', 409);
     }
-    $frequencia = assinaturaServicoPreapprovalFrequenciaMeses((string)$contrato['periodicidade']);
-    if ($frequencia === null) {
+    $recorrencia = assinaturaServicoPreapprovalRecorrencia($idEmpresa, (string)$contrato['periodicidade']);
+    if ($recorrencia === null) {
         throw new AssinaturaServicoConversaoErro('PERIODICIDADE_NAO_SUPORTADA', 'A periodicidade da assinatura não permite pagamento recorrente.', 409);
     }
     try {
@@ -4674,7 +4756,9 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
         'plano_nome' => (string)$contrato['plano_nome'],
         'periodicidade' => (string)$contrato['periodicidade'],
         'valor_centavos' => $centavos,
-        'frequencia_meses' => $frequencia,
+        // Frequência na unidade de frequencia_tipo (meses; dias só na recorrência diária de homologação).
+        'frequencia_meses' => $recorrencia['frequencia'],
+        'frequencia_tipo' => $recorrencia['tipo'],
         'primeira_cobranca' => $primeiraCobranca
             ? assinaturaServicoPreapprovalOfertaPrimeiraCobranca($conexao, $idEmpresa, (int)$contrato['id_assinatura'], $centavos)
             : null,
@@ -4804,14 +4888,16 @@ function assinaturaServicoPreapprovalRenovarOfertaAntiga(mysqli $conexao, int $i
 }
 
 /**
- * Fase 5B.2: o cartão só é cadastrado depois da primeira mensalidade quitada, para as próximas. Enquanto a Fase 5B.4 não
- * comprovar que a nova Preapproval nunca cobra uma competência já quitada, nenhuma autorização nova é criada: a
- * elegibilidade local é calculada e exibida, mas a operação externa fica bloqueada aqui e em Reservar().
+ * Fases 5B.2 e 5B.4: o cartão é cadastrado depois da primeira mensalidade quitada ou, opcionalmente, durante o teste
+ * grátis, sempre para cobranças futuras (start_date na competência seguinte ou no fim do teste). Liberação global por
+ * decisão comercial; a chave existe apenas para desligar novas autorizações em todas as empresas de uma vez (aqui e
+ * em Reservar()), sem afetar conciliação, troca de cartão ou cancelamento.
  */
-const ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO = false;
+const ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO = true;
 
 const ASSINATURA_SERVICO_CADASTRO_CARTAO_MENSAGENS = [
     'CONTRATO_NAO_ELEGIVEL' => 'O cadastro do cartão fica disponível com o plano ativo, depois da primeira mensalidade paga.',
+    'TESTE_ENCERRADO' => 'O teste grátis terminou ou está terminando. Pague a primeira mensalidade via PIX pela regularização; depois disso, cadastre o cartão.',
     'PERIODO_PAGO_INDISPONIVEL' => 'O cadastro do cartão fica disponível quando a mensalidade do período atual estiver paga.',
     'TROCA_PLANO_PENDENTE' => 'Há uma troca de plano em andamento. Conclua ou cancele a troca antes de cadastrar o cartão.',
     'COBRANCA_VENCIDA_PENDENTE' => 'Há cobrança vencida em aberto. Quite os débitos do faturamento antes de cadastrar o cartão.',
@@ -4822,44 +4908,93 @@ const ASSINATURA_SERVICO_CADASTRO_CARTAO_MENSAGENS = [
 ];
 
 /**
- * Elegibilidade local do cadastro do cartão depois da primeira quitação. Somente leitura: a criação refaz as
- * validações sob lock (Reservar()) e continua bloqueada enquanto `liberado` for false.
+ * Elegibilidade local do cadastro do cartão, em dois caminhos: teste grátis ativo (cadastro opcional; a primeira
+ * mensalidade só depois do fim do teste) e contrato pago ativo com a competência atual quitada. A contratação sem teste
+ * ainda não paga não é elegível (primeira mensalidade via PIX). Somente leitura: a criação refaz as validações sob lock
+ * (Reservar() e assinaturaServicoPreapprovalContrato()) e fica bloqueada se `liberado` for desligado.
+ * `primeira_cobranca_prevista`: data enviada como start_date (dia seguinte ao período pago, ou o fim do teste); é
+ * previsão local até a confirmação do Mercado Pago (next_payment_date na sincronização), nunca garantia de que o
+ * provedor nada cobra antes dela.
  *
- * @param array<string, mixed>|null $contrato id_assinatura, status, modalidade, data_fim, gera_cobranca
- * @return array{elegivel: bool, liberado: bool, motivo: ?string, mensagem: ?string}
+ * @param array<string, mixed>|null $contrato id_assinatura, status, modalidade, motivo_suspensao, data_fim, gera_cobranca,
+ *                                            teste_expira_em, teste_autorizavel (pagamentoCartaoAssinaturaAtiva())
+ * @return array{caminho: ?string, elegivel: bool, liberado: bool, motivo: ?string, mensagem: ?string, primeira_cobranca_prevista: ?string}
  */
-function assinaturaServicoPreapprovalCadastroPosQuitacao(mysqli $conexao, int $idEmpresa, ?array $contrato): array
+function assinaturaServicoPreapprovalCadastroCartao(mysqli $conexao, int $idEmpresa, ?array $contrato): array
 {
-    $motivo = assinaturaServicoPreapprovalCadastroPosQuitacaoMotivo($conexao, $idEmpresa, $contrato);
+    ['caminho' => $caminho, 'motivo' => $motivo] = assinaturaServicoPreapprovalCadastroCartaoMotivo($conexao, $idEmpresa, $contrato);
+    $prevista = null;
+    if ($motivo === null && $caminho === 'teste') {
+        $prevista = assinaturaServicoPreapprovalInicioTeste((string)$contrato['teste_expira_em']);
+    } elseif ($motivo === null) {
+        $fimPago = assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, (int)$contrato['id_assinatura']);
+        $prevista = $fimPago === null ? null : assinaturaServicoPreapprovalInicioCobranca($fimPago);
+    }
 
     return [
+        'caminho' => $caminho,
         'elegivel' => $motivo === null,
         'liberado' => ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO,
         'motivo' => $motivo,
         'mensagem' => $motivo === null ? null : ASSINATURA_SERVICO_CADASTRO_CARTAO_MENSAGENS[$motivo],
+        'primeira_cobranca_prevista' => $prevista?->format('Y-m-d'),
     ];
 }
 
-/** @param array<string, mixed>|null $contrato */
-function assinaturaServicoPreapprovalCadastroPosQuitacaoMotivo(mysqli $conexao, int $idEmpresa, ?array $contrato): ?string
+/**
+ * Caminho do contrato no cadastro do cartão, sem banco: 'teste' (teste grátis ativo, com tempo para o checkout antes do
+ * fim) ou 'pago' (contrato pago ativo). Os demais estados não são elegíveis.
+ *
+ * @param array<string, mixed>|null $contrato
+ * @return array{caminho: ?string, motivo: ?string}
+ */
+function assinaturaServicoPreapprovalCadastroCartaoCaminho(?array $contrato): array
 {
+    if ($contrato === null || ($contrato['data_fim'] ?? null) !== null || (int)($contrato['gera_cobranca'] ?? 0) !== 1) {
+        return ['caminho' => null, 'motivo' => 'CONTRATO_NAO_ELEGIVEL'];
+    }
+    if ((string)$contrato['modalidade'] === 'teste') {
+        if ((string)$contrato['status'] !== 'ativa' || !assinaturaServicoPreapprovalTesteApto($contrato)) {
+            return ['caminho' => null, 'motivo' => 'TESTE_ENCERRADO'];
+        }
+        // Mesma margem de assinaturaServicoPreapprovalContrato(): o checkout precisa terminar antes do fim do teste.
+        return (int)($contrato['teste_autorizavel'] ?? 0) === 1
+            ? ['caminho' => 'teste', 'motivo' => null]
+            : ['caminho' => null, 'motivo' => 'TESTE_ENCERRADO'];
+    }
     // Contrato pago e ativo: só existe depois da quitação da primeira mensalidade (contratação ou conversão do teste).
-    if ($contrato === null || (string)$contrato['status'] !== 'ativa' || (string)$contrato['modalidade'] !== 'paga'
-        || ($contrato['data_fim'] ?? null) !== null || (int)($contrato['gera_cobranca'] ?? 0) !== 1) {
-        return 'CONTRATO_NAO_ELEGIVEL';
+    if ((string)$contrato['modalidade'] === 'paga' && (string)$contrato['status'] === 'ativa') {
+        return ['caminho' => 'pago', 'motivo' => null];
+    }
+
+    return ['caminho' => null, 'motivo' => 'CONTRATO_NAO_ELEGIVEL'];
+}
+
+/**
+ * @param array<string, mixed>|null $contrato
+ * @return array{caminho: ?string, motivo: ?string}
+ */
+function assinaturaServicoPreapprovalCadastroCartaoMotivo(mysqli $conexao, int $idEmpresa, ?array $contrato): array
+{
+    $avaliacao = assinaturaServicoPreapprovalCadastroCartaoCaminho($contrato);
+    $caminho = $avaliacao['caminho'];
+    $bloqueio = static fn (string $motivo): array => ['caminho' => $caminho, 'motivo' => $motivo];
+    if ($avaliacao['motivo'] !== null) {
+        return $avaliacao;
     }
     $idAssinatura = (int)$contrato['id_assinatura'];
-    // Competência de hoje coberta por pagamentos confirmados; um estorno devolve o saldo e desfaz a cobertura.
-    if (assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura) === null) {
-        return 'PERIODO_PAGO_INDISPONIVEL';
+    // Contrato pago: competência de hoje coberta por pagamentos confirmados; um estorno devolve o saldo e desfaz a cobertura.
+    if ($caminho === 'pago' && assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura) === null) {
+        return $bloqueio('PERIODO_PAGO_INDISPONIVEL');
     }
     if (assinaturaServicoTrocaPendenteEmpresa($conexao, $idEmpresa)) {
-        return 'TROCA_PLANO_PENDENTE';
+        return $bloqueio('TROCA_PLANO_PENDENTE');
     }
-    // PIX ou cartão em andamento/conciliação também impedem: um único meio por competência.
-    $pendencia = assinaturaServicoPendenciaFinanceira($conexao, $idEmpresa);
+    // PIX ou cartão em andamento/conciliação também impedem: um único meio por competência. Mesmos parâmetros de
+    // Reservar(), para o botão nunca divergir da autorização efetiva.
+    $pendencia = assinaturaServicoPendenciaFinanceira($conexao, $idEmpresa, true);
     if ($pendencia !== null) {
-        return $pendencia['tipo'] === 'divida' ? 'COBRANCA_VENCIDA_PENDENTE' : 'PAGAMENTO_AGUARDANDO_CONFIRMACAO';
+        return $bloqueio($pendencia['tipo'] === 'divida' ? 'COBRANCA_VENCIDA_PENDENTE' : 'PAGAMENTO_AGUARDANDO_CONFIRMACAO');
     }
     $vinculos = assinaturaServicoLinhas(
         $conexao,
@@ -4872,15 +5007,15 @@ function assinaturaServicoPreapprovalCadastroPosQuitacaoMotivo(mysqli $conexao, 
         'i',
         $idEmpresa
     );
-    $avaliacao = assinaturaServicoPreapprovalCadastroVinculosMotivo($vinculos, $idAssinatura);
-    if ($avaliacao['motivo'] !== null) {
-        return $avaliacao['motivo'];
+    $vinculosAvaliados = assinaturaServicoPreapprovalCadastroVinculosMotivo($vinculos, $idAssinatura);
+    if ($vinculosAvaliados['motivo'] !== null) {
+        return $bloqueio($vinculosAvaliados['motivo']);
     }
-    if ($avaliacao['encerrado_do_contrato'] && !assinaturaServicoPreapprovalNovoVinculoPermitido($conexao)) {
-        return 'NOVA_AUTORIZACAO_INDISPONIVEL';
+    if ($vinculosAvaliados['encerrado_do_contrato'] && !assinaturaServicoPreapprovalNovoVinculoPermitido($conexao)) {
+        return $bloqueio('NOVA_AUTORIZACAO_INDISPONIVEL');
     }
 
-    return null;
+    return ['caminho' => $caminho, 'motivo' => null];
 }
 
 /**
@@ -5182,9 +5317,10 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
 
         return ['acao' => 'sem_pendencia', 'contrato' => $contrato, 'vinculo' => $vinculo, 'operacao' => null, 'inicio' => $inicio, 'inicio_envio' => $envio];
     }
-    if ($acao === 'criar' && ($contrato['primeira_cobranca'] !== null || $contrato['teste'] !== null)) {
-        // Fase 5B.2: a primeira mensalidade (contratação nova ou fim do teste grátis) é paga por PIX ou pelo suporte;
-        // o cartão só é cadastrado depois dela. Vínculos já existentes seguem apenas pela conciliação.
+    if ($acao === 'criar' && $contrato['primeira_cobranca'] !== null) {
+        // Contratação sem teste grátis: a primeira mensalidade é paga por PIX ou pelo suporte e o cartão só é cadastrado
+        // depois dela. No teste grátis ativo o cadastro é opcional (start_date = fim do teste, validado na criação e na
+        // ativação). Vínculos já existentes seguem apenas pela conciliação.
         throw new AssinaturaServicoConversaoErro('CARTAO_SOMENTE_APOS_QUITACAO', 'Pague a primeira mensalidade via PIX. O cartão poderá ser cadastrado depois da ativação do plano.', 409);
     }
     if ($acao === 'criar' && !ASSINATURA_SERVICO_PREAPPROVAL_CADASTRO_CARTAO_LIBERADO) {
@@ -5520,6 +5656,7 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
         'ambiente' => (string)$vinculo['ambiente'],
         'valor_centavos' => $contrato['valor_centavos'],
         'frequencia_meses' => $contrato['frequencia_meses'],
+        'frequencia_tipo' => $contrato['frequencia_tipo'],
         'id' => $idEsperado,
         'email' => $emailPagador,
         'inicio' => $inicio,
@@ -6761,7 +6898,7 @@ function assinaturaServicoPreapprovalTrocaCartaoCondicoes(array $dados): array
  * confirmada | recusada | sem_alteracao | incerta | divergente | bloqueada.
  * O token nunca integra o resultado.
  *
- * @param array{referencia:string,ambiente:string,valor_centavos:int,frequencia_meses:int} $esperado
+ * @param array{referencia:string,ambiente:string,valor_centavos:int,frequencia_meses:int,frequencia_tipo?:string} $esperado
  */
 function assinaturaServicoPreapprovalTrocarCartao(object $gateway, string $preapprovalId, string $tokenCartao, array $esperado): array
 {
@@ -7085,16 +7222,17 @@ function assinaturaServicoPreapprovalDiagnostico(mysqli $conexao, object $gatewa
     if (($dados['status'] ?? null) === 'cancelled') {
         $dados['status'] = 'canceled';
     }
-    $frequencia = $contrato === null ? null : assinaturaServicoPreapprovalFrequenciaMeses((string)$contrato['periodicidade']);
+    $recorrencia = $contrato === null ? null : assinaturaServicoPreapprovalRecorrencia($idEmpresa, (string)$contrato['periodicidade']);
     $resultado['preapproval'] = assinaturaServicoPreapprovalDiagnosticoResumo($dados) + [
         'referencia_confere' => ($dados['external_reference'] ?? null) === $vinculo['referencia_externa_assinatura'] ? 'sim' : 'nao',
-        'conferencia_contrato' => $contrato === null || $frequencia === null ? 'CONTRATO_LOCAL_INDISPONIVEL'
+        'conferencia_contrato' => $contrato === null || $recorrencia === null ? 'CONTRATO_LOCAL_INDISPONIVEL'
             : (assinaturaServicoPreapprovalValidarExterna($dados, [
                 'id' => $preapprovalId,
                 'referencia' => (string)$vinculo['referencia_externa_assinatura'],
                 'ambiente' => $ambiente,
                 'valor_centavos' => pagamentoGatewayValorCentavos((string)$contrato['valor_contratado']),
-                'frequencia_meses' => $frequencia,
+                'frequencia_meses' => $recorrencia['frequencia'],
+                'frequencia_tipo' => $recorrencia['tipo'],
                 'status_permitidos' => ['pending', 'authorized', 'paused', 'canceled'],
             ]) ?? 'OK'),
     ];
