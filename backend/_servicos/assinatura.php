@@ -328,7 +328,8 @@ function assinaturaServicoMesesPeriodicidade(string $periodicidade): int
 
 /*
  * ---------------------------------------------------------------------
- * Recorrência diária de homologação — exclusiva da empresa 34, desativada por padrão.
+ * Recorrência diária de homologação — exclusiva da empresa 35, desativada por padrão. Todas as demais empresas,
+ * inclusive a 34 (contrato 41, Preapproval mensal autorizada), seguem a periodicidade do contrato.
  *
  * Com a chave ligada, e só para ASSINATURA_SERVICO_RECORRENCIA_DIARIA_EMPRESA, cada competência dura um dia em todo o
  * fluxo: oferta e período confirmado (PIX), Preapproval (frequency 1 / days, com end_date), conferência externa e
@@ -349,7 +350,7 @@ function assinaturaServicoMesesPeriodicidade(string $periodicidade): int
  * ---------------------------------------------------------------------
  */
 const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_ATIVA = false;
-const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_EMPRESA = 34;
+const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_EMPRESA = 35;
 const ASSINATURA_SERVICO_RECORRENCIA_DIARIA_DURACAO_DIAS = 7;
 
 function assinaturaServicoRecorrenciaDiaria(int $idEmpresa): bool
