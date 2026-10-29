@@ -30,7 +30,7 @@
     line-height: 1.2;
   }
 
-  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-notificacoes{
+  :is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) :is(.cabecalho-notificacoes, .cabecalho-atualizar){
     width: 40px;
     height: 40px;
   }

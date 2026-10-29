@@ -1797,10 +1797,22 @@
         rgba(255,255,255,0.57);
 
       font-size: 13px;
+
+      overflow-wrap: anywhere;
     }
 
     .rodape-coluna a:hover {
       color: white;
+    }
+
+    .rodape-coluna a.rodape-link-icone {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .rodape-link-icone svg {
+      flex: 0 0 auto;
     }
 
     .rodape-final {

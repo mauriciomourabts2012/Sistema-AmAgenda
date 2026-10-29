@@ -132,7 +132,7 @@ body{
   gap: 8px;
 }
 
-:is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) .cabecalho-notificacoes{
+:is(body[data-menu-contexto="agenda"], body[data-menu-contexto="painel-administrativo"], body[data-menu-contexto="cliente"]) :is(.cabecalho-notificacoes, .cabecalho-atualizar){
   width: 42px;
   height: 42px;
   font-size: 17px;

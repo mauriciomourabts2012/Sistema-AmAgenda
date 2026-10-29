@@ -138,7 +138,8 @@
     gap: 9px;
   }
 
-  .cabecalho-notificacoes {
+  .cabecalho-notificacoes,
+  .cabecalho-atualizar {
     width: 42px;
     height: 42px;
   }
@@ -188,7 +189,8 @@
   }
 
   .sidebar-abrir,
-  .cabecalho-notificacoes {
+  .cabecalho-notificacoes,
+  .cabecalho-atualizar {
     width: 40px;
     height: 40px;
     flex-basis: 40px;
@@ -201,7 +203,8 @@
 }
 
 @media (max-width: 360px) {
-  .cabecalho-notificacoes { display: inline-flex; }
+  .cabecalho-notificacoes,
+  .cabecalho-atualizar { display: inline-flex; }
   .cabecalho-dia { font-size: 18px; }
   .cabecalho-data { font-size: 10px; }
 

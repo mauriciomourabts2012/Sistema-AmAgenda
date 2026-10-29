@@ -431,6 +431,19 @@
     if (devolverFoco) estadoNotificacoes.ultimoFoco?.focus?.({ preventScroll: true });
   }
 
+  // Botão global de atualização: reaproveita o cabeçalho que já recebe o sino (telas internas autenticadas).
+  function inserirBotaoAtualizarPagina(referencia) {
+    if (!referencia?.parentNode || document.querySelector(".cabecalho-atualizar")) return;
+    const atualizar = document.createElement("button");
+    atualizar.type = "button";
+    atualizar.className = "cabecalho-atualizar";
+    atualizar.title = "Atualizar página";
+    atualizar.setAttribute("aria-label", "Atualizar página");
+    atualizar.innerHTML = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
+    atualizar.addEventListener("click", () => window.location.reload());
+    referencia.parentNode.insertBefore(atualizar, referencia);
+  }
+
   function inicializarCentroNotificacoes() {
     const botao = document.querySelector(".cabecalho-notificacoes");
     if (!botao || botao.closest(".centro-notificacoes")) return;
@@ -439,6 +452,7 @@
     container.className = "centro-notificacoes";
     botao.parentNode?.insertBefore(container, botao);
     container.appendChild(botao);
+    inserirBotaoAtualizarPagina(container);
     botao.setAttribute("aria-haspopup", "dialog");
     botao.setAttribute("aria-expanded", "false");
     botao.setAttribute("aria-controls", "notificacoesDropdown");

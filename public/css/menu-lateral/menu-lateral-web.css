@@ -294,6 +294,7 @@ body.sidebar-agenda-aberta .sidebar-badge {
 }
 
 .cabecalho-notificacoes,
+.cabecalho-atualizar,
 .cabecalho-perfil {
   display: inline-flex;
   align-items: center;
@@ -303,7 +304,8 @@ body.sidebar-agenda-aberta .sidebar-badge {
   transition: transform .16s ease, box-shadow .2s ease, border-color .2s ease;
 }
 
-.cabecalho-notificacoes {
+.cabecalho-notificacoes,
+.cabecalho-atualizar {
   width: 46px;
   height: 46px;
   border: 1px solid #dbe4ef;
@@ -335,6 +337,7 @@ body.sidebar-agenda-aberta .sidebar-badge {
 }
 
 .cabecalho-notificacoes:hover,
+.cabecalho-atualizar:hover,
 .cabecalho-perfil:hover {
   transform: translateY(-1px);
   border-color: var(--am-marca-borda, #b9d3f3);
@@ -372,6 +375,7 @@ body.sidebar-agenda-aberta .sidebar-badge {
 }
 
 .cabecalho-notificacoes:focus-visible,
+.cabecalho-atualizar:focus-visible,
 .notificacoes-fechar:focus-visible,
 .notificacao-item:focus-visible {
   outline: 3px solid rgba(17, 99, 221, .32);
