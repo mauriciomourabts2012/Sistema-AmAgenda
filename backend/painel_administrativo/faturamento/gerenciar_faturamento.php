@@ -65,7 +65,17 @@ function faturamentoAssinatura(mysqli $db, int $empresa): ?array {
     if (count($rows) > 1) out(['ok'=>false,'code'=>'CONTRACT_INCONSISTENT','user_msg'=>'Não foi possível determinar a assinatura vigente.'], 409);
     if (!$rows) return null;
     $r = $rows[0];
-    return ['id_assinatura'=>(int)$r['id_assinatura'],'plano'=>$r['plano'] === null ? null : (string)$r['plano'],
+    // Duração da competência diária (1 ou 2 dias) pelo ciclo já persistido; só exibição. Outras periodicidades: null.
+    $diasCiclo = null;
+    if ((string)$r['periodicidade'] === 'diaria') {
+        try {
+            require_once __DIR__ . '/../../_servicos/assinatura.php';
+            $diasCiclo = assinaturaServicoDiasCicloContrato($db, $empresa, (int)$r['id_assinatura'], 'diaria');
+        } catch (Throwable $erro) {
+            error_log('FATURAMENTO_DIAS_CICLO: ' . get_class($erro));
+        }
+    }
+    return ['dias_ciclo'=>$diasCiclo,'id_assinatura'=>(int)$r['id_assinatura'],'plano'=>$r['plano'] === null ? null : (string)$r['plano'],
         'valor_contratado'=>faturamentoDecimal($r['valor_contratado']),'periodicidade'=>(string)$r['periodicidade'],
         'dia_vencimento'=>(int)$r['dia_vencimento'],'data_inicio'=>(string)$r['data_inicio'],
         'data_fim'=>$r['data_fim'] === null ? null : (string)$r['data_fim'],'status'=>(string)$r['status'],

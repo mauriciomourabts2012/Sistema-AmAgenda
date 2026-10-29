@@ -2036,6 +2036,8 @@ function assinaturaServicoNovaContratacaoPlanos(mysqli $conexao, int $idEmpresa,
             'nome' => (string)$plano['nome'],
             'valor' => pagamentoGatewayValorDecimal(pagamentoGatewayValorCentavos($valor)),
             'periodicidade' => (string)$plano['cobranca'],
+            // Só para exibição: duração da competência de um contrato diário novo (homologação de 2 dias).
+            'dias_ciclo' => assinaturaServicoPeriodicidadeDiaria((string)$plano['cobranca']) ? ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS : null,
             'descricao' => (string)($plano['descricao'] ?? ''),
             'limite_usuarios' => (int)$plano['limite_usuarios'],
             'limite_proprietarios' => (int)$plano['limite_proprietarios'],
@@ -6284,32 +6286,58 @@ function assinaturaServicoPreapprovalSolicitarCancelamento(mysqli $conexao, int 
 }
 
 /**
- * Cancelamento só do pagamento automático (o contrato continua) recusado pelo provedor: o vínculo volta a 'ativa', pois
- * a Preapproval segue autorizada e cobrando, e nada fica cancelado apenas no banco. Exige contrato vigente sem fim
- * programado (o cancelamento do contrato não é desfeito aqui), a operação informada encerrada como PROVEDOR_REJEITOU,
- * nenhuma outra operação aberta e o estado externo já sincronizado como 'authorized'. Na transação do chamador.
+ * Cancelamento só do pagamento automático (o contrato continua) recusado pelo provedor: o vínculo volta ao estado em que
+ * estava ANTES do pedido, informado por quem registrou a intenção (`$statusOrigem`); nada fica cancelado apenas no banco.
+ * - 'ativa': volta a 'ativa' (a Preapproval segue autorizada e cobrando). Exige contrato vigente sem fim programado (o
+ *   cancelamento do contrato não é desfeito aqui).
+ * - 'pendente' (autorizada no provedor, ainda não ativada aqui): volta a 'pendente', sem slot e sem data de cobrança, como
+ *   a sincronização a grava; nunca vira 'ativa' por causa de uma recusa. O sinal (ex.: COBRANCA_EXTERNA_ANTECIPADA) é
+ *   recalculado pela sincronização que o chamador executa em seguida.
+ * - Qualquer outra origem (inclusive 'cancelamento_pendente' retomado, de origem desconhecida: o estado anterior não é
+ *   persistido) NÃO é revertida: o vínculo permanece em 'cancelamento_pendente', estado seguro e conciliável.
+ * Exige a operação informada encerrada como PROVEDOR_REJEITOU, nenhuma outra operação aberta e o estado externo já
+ * sincronizado como 'authorized'. Na transação do chamador.
  */
-function assinaturaServicoPreapprovalReverterCancelamentoRecusado(mysqli $conexao, int $idEmpresa, int $idAssinaturaPagamento, int $idOperacao): bool
+function assinaturaServicoPreapprovalReverterCancelamentoRecusado(mysqli $conexao, int $idEmpresa, int $idAssinaturaPagamento, int $idOperacao, string $statusOrigem = ''): bool
 {
-    return assinaturaServicoPreapprovalExec(
-        $conexao,
-        "UPDATE assinatura_pagamento_recorrente v
-           JOIN assinatura a ON a.id_assinatura = v.id_assinatura AND a.id_empresa = v.id_empresa
-            SET v.status = 'ativa', v.ultimo_erro_codigo = 'CANCELAMENTO_RECUSADO',
-                v.ultimo_erro_motivo = 'O provedor recusou o cancelamento do pagamento automático.'
-          WHERE v.id_assinatura_pagamento = ? AND v.id_empresa = ? AND v.status = 'cancelamento_pendente' AND v.slot_ativo = 1
-            AND v.status_externo = 'authorized' AND a.status = 'ativa' AND a.data_fim IS NULL
-            AND EXISTS (SELECT 1 FROM operacao_assinatura_gateway o
+    $operacaoRecusada = "EXISTS (SELECT 1 FROM operacao_assinatura_gateway o
                          WHERE o.id_operacao = ? AND o.id_assinatura_pagamento = v.id_assinatura_pagamento AND o.tipo_operacao = 'cancelar'
                            AND o.status_processamento = 'erro' AND o.erro_codigo = 'PROVEDOR_REJEITOU')
             AND NOT EXISTS (SELECT 1 FROM operacao_assinatura_gateway o2
                              WHERE o2.id_assinatura_pagamento = v.id_assinatura_pagamento
-                               AND o2.status_processamento IN ('pendente', 'processando', 'conciliacao'))",
-        'iii',
-        $idAssinaturaPagamento,
-        $idEmpresa,
-        $idOperacao
-    ) === 1;
+                               AND o2.status_processamento IN ('pendente', 'processando', 'conciliacao'))";
+    if ($statusOrigem === 'ativa') {
+        return assinaturaServicoPreapprovalExec(
+            $conexao,
+            "UPDATE assinatura_pagamento_recorrente v
+               JOIN assinatura a ON a.id_assinatura = v.id_assinatura AND a.id_empresa = v.id_empresa
+                SET v.status = 'ativa', v.ultimo_erro_codigo = 'CANCELAMENTO_RECUSADO',
+                    v.ultimo_erro_motivo = 'O provedor recusou o cancelamento do pagamento automático.'
+              WHERE v.id_assinatura_pagamento = ? AND v.id_empresa = ? AND v.status = 'cancelamento_pendente' AND v.slot_ativo = 1
+                AND v.status_externo = 'authorized' AND a.status = 'ativa' AND a.data_fim IS NULL
+                AND {$operacaoRecusada}",
+            'iii',
+            $idAssinaturaPagamento,
+            $idEmpresa,
+            $idOperacao
+        ) === 1;
+    }
+    if ($statusOrigem === 'pendente') {
+        return assinaturaServicoPreapprovalExec(
+            $conexao,
+            "UPDATE assinatura_pagamento_recorrente v
+                SET v.status = 'pendente', v.slot_ativo = NULL, v.cobrar_a_partir_de = NULL
+              WHERE v.id_assinatura_pagamento = ? AND v.id_empresa = ? AND v.status = 'cancelamento_pendente' AND v.slot_ativo = 1
+                AND v.status_externo = 'authorized' AND v.assinatura_externa_id IS NOT NULL
+                AND {$operacaoRecusada}",
+            'iii',
+            $idAssinaturaPagamento,
+            $idEmpresa,
+            $idOperacao
+        ) === 1;
+    }
+
+    return false;
 }
 
 /**

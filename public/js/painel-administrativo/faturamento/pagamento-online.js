@@ -348,7 +348,7 @@
   // recusa (422) ou confirmação pendente (202) mantêm o estado real retornado.
   async function cancelarPagamentoAutomatico() {
     if (cartao.redirecionando || cartao.trocando || !cartao.configuracao?.pode_cancelar_automatico) return;
-    const mensagem = "Somente a cobrança automática no cartão será cancelada no Mercado Pago. Sua assinatura, o acesso da empresa e os períodos já pagos continuam valendo, e as próximas mensalidades poderão ser pagas via PIX ou com outro cartão. Para encerrar o plano, use \"Cancelar assinatura\". Deseja continuar?";
+    const mensagem = "Cancelar pagamento automático? As próximas cobranças automáticas serão interrompidas. Sua assinatura e o período já pago serão mantidos.";
     const confirmado = window.MensagemSistema?.confirmar
       ? await window.MensagemSistema.confirmar(mensagem, { titulo: "Cancelar pagamento automático", textoConfirmar: "Cancelar pagamento automático" })
       : window.confirm(mensagem);
@@ -405,7 +405,11 @@
       const criada = atual.autorizacao_criada !== false;
       if (criada && atual.status_externo === "authorized") {
         // Autorizada no provedor, mas ainda não ativada aqui (ex.: próxima cobrança fora da competência esperada): nunca "concluído".
-        alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Pagamento automático", "Autorização em conferência", "O Mercado Pago registrou a autorização do cartão. O pagamento automático só é ativado depois de confirmada a próxima cobrança fora do período já pago. Atualize a situação ou entre em contato com o suporte.")}<div class="faturamento-acoes">${botaoVerificar}</div>`;
+        // O servidor calcula a permissão (pode_cancelar_automatico); o Mercado Pago pode cobrar esta autorização, então o cliente
+        // precisa poder interrompê-la mesmo com a conferência financeira pendente. "Alterar cartão" não é oferecido aqui.
+        const cancelarAutomaticoPendente = atual.pode_cancelar_automatico
+          ? '<button class="botao-geral" type="button" data-cancelar-automatico><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pagamento automático</button>' : "";
+        alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Pagamento automático", "Autorização em conferência", "O Mercado Pago registrou a autorização do cartão. O pagamento automático só é ativado depois de confirmada a próxima cobrança fora do período já pago. Atualize a situação ou entre em contato com o suporte.")}<div class="faturamento-acoes">${cancelarAutomaticoPendente}${botaoVerificar}</div>`;
         return;
       }
       const titulo = criada ? "Aguardando sua autorização" : "Autorização ainda não criada";

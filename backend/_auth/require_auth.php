@@ -210,6 +210,8 @@ if ($tipoUsuario !== 'super_admin') {
             'painel/faturamento/pagamento/cartao/autorizar',
             'painel/faturamento/pagamento/cartao/status',
             'painel/faturamento/pagamento/cartao/usar-pix',
+            // Só interrompe a cobrança externa autorizada; a rota exige permissão e CSRF e não reativa nem libera o acesso.
+            'painel/faturamento/pagamento/cartao/cancelar-automatico',
             'documentos-legais/pendencias',
             'documentos-legais/conteudo',
             'documentos-legais/manifestar',

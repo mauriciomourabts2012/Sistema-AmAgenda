@@ -724,6 +724,10 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     $retomavel = $atual && (($status === 'pendente' && (!$criada || ($v['status_externo'] ?? '') === 'pending'))
         || ($status === 'erro' && !$criada));
     $configurado = $atual && $status === 'ativa' && ($v['status_externo'] ?? '') === 'authorized' && (int)($v['slot_ativo'] ?? 0) === 1;
+    $podeCancelarPendente = $atual && $status === 'pendente' && $criada && ($v['status_externo'] ?? '') === 'authorized'
+        && is_string($v['assinatura_externa_id']) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,149}$/D', $v['assinatura_externa_id']) === 1
+        && $assinatura !== null && (string)$assinatura['modalidade'] === 'paga' && $assinatura['data_fim'] === null
+        && in_array((string)$assinatura['status'], ['ativa', 'suspensa'], true);
     // Oferta visual apenas; a rota de troca refaz todas as verificações (inclusive operação externa em curso) sob trava.
     $chavePublica = null;
     if ($habilitado && $configurado && assinaturaServicoPreapprovalTrocaCartaoElegivel($v, $assinatura, (int)$v['id_empresa'], false,
@@ -746,7 +750,8 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         'configurado' => $configurado,
         'pode_trocar_cartao' => $chavePublica !== null,
         // Cancelar só o pagamento automático: contrato pago com a autorização confirmada (o servidor revalida na rota).
-        'pode_cancelar_automatico' => $habilitado && $configurado && $primeira === null && $testeGratis === null,
+        // Também com vínculo 'pendente' autorizado no provedor (ex.: COBRANCA_EXTERNA_ANTECIPADA): o servidor revalida na rota.
+        'pode_cancelar_automatico' => $habilitado && $primeira === null && $testeGratis === null && ($configurado || $podeCancelarPendente),
         'public_key' => $chavePublica,
         // Bandeira e final só existem no vínculo depois de uma troca confirmada pelo GET da Preapproval.
         'bandeira' => $configurado ? ($v['bandeira'] ?? null) : null,
@@ -1091,11 +1096,13 @@ function pagamentoCartaoRegistrarTroca(mysqli $db, array $vinculo, array $r): ar
 
 /**
  * "Cancelar pagamento automático": cancela no provedor só a Preapproval autorizada do contrato pago; contrato, acesso e
- * períodos pagos não mudam (diferente de cancelar a assinatura). Reaproveita a intenção do outbox
- * (assinaturaServicoPreapprovalSolicitarCancelamento) e o processamento dele (GET, PUT `canceled` e GET de
- * confirmação). O vínculo só fica 'cancelada' com o `canceled` lido do provedor; recusa explícita devolve o vínculo a
- * 'ativa'; resultado incerto mantém 'cancelamento_pendente' para a conciliação. A trava por empresa é a mesma da troca de
- * cartão: nenhuma das duas corre junto com a outra.
+ * períodos pagos não mudam (diferente de cancelar a assinatura). A decisão e o envio são do serviço compartilhado
+ * (cancelamentoRecorrenciaCancelarPreapproval, o mesmo do Super Admin), que reaproveita a intenção do outbox e o processamento
+ * dele (GET, PUT `canceled` e GET de confirmação). Aceita vínculo 'ativa' autorizado, 'cancelamento_pendente' (retomada) e
+ * 'pendente' com Preapproval `authorized` no provedor (ex.: COBRANCA_EXTERNA_ANTECIPADA), este sem nunca virar 'ativa'.
+ * O vínculo só fica 'cancelada' com o `canceled` lido do provedor; recusa explícita restaura o estado de origem;
+ * resultado incerto mantém 'cancelamento_pendente' para a conciliação. A trava por empresa é a mesma da troca de cartão:
+ * nenhuma das duas corre junto com a outra.
  *
  * @return array{0: string, 1: int, 2: string} desfecho (cancelado|recusado|pendente), HTTP e mensagem
  */
@@ -1104,12 +1111,17 @@ function pagamentoCartaoCancelarAutomatico(mysqli $db, object $gateway, int $emp
     if (!$gateway::subscriptionsHabilitado()) {
         pagamentoOnlineFalhar('SUBSCRIPTIONS_DESABILITADO', 'O cancelamento do pagamento automático está indisponível no momento.', 503);
     }
+    require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
     $trava = 'amagenda_troca_cartao_' . $empresa;
     $obtida = (int)(pagamentoOnlineConsulta($db, 'SELECT GET_LOCK(?, 0) AS obtida', 's', $trava)->fetch_assoc()['obtida'] ?? 0);
     if ($obtida !== 1) {
         pagamentoOnlineFalhar('OPERACAO_CARTAO_EM_ANDAMENTO', 'Já existe uma operação no pagamento automático em andamento. Aguarde a conclusão.', 409);
     }
     try {
+        if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+        if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
+        require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+
         $vinculo = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
         $contrato = pagamentoCartaoAssinaturaAtiva($db, $empresa);
         if ($vinculo === null || $contrato === null || ($vinculo['motor_recorrencia'] ?? '') !== 'preapproval'
@@ -1120,76 +1132,34 @@ function pagamentoCartaoCancelarAutomatico(mysqli $db, object $gateway, int $emp
         if (in_array($status, ['cancelada', 'encerrada'], true)) {
             pagamentoOnlineFalhar('PAGAMENTO_AUTOMATICO_JA_CANCELADO', 'O pagamento automático já está cancelado.', 409);
         }
-        // Contrato pago e vigente, com a autorização confirmada (ou um cancelamento já pedido, retomado sem duplicar).
-        // Primeira mensalidade e teste grátis têm fluxo próprio ("Pagar com PIX em vez do cartão" / "Cancelar cartão autorizado").
+        // Contrato pago e sem encerramento programado, com a autorização confirmada (ou um cancelamento já pedido, retomado
+        // sem duplicar). 'pendente' só com o `authorized` do provedor (o serviço o revalida agora). Empresa suspensa
+        // (inadimplência) também pode interromper a cobrança externa; contratação ainda não paga e teste grátis têm fluxo
+        // próprio ("Pagar com PIX em vez do cartão" / "Cancelar cartão autorizado").
         $autorizada = $status === 'ativa' && ($vinculo['status_externo'] ?? '') === 'authorized' && (int)($vinculo['slot_ativo'] ?? 0) === 1;
-        if ((string)$contrato['status'] !== 'ativa' || (string)$contrato['modalidade'] !== 'paga' || $contrato['data_fim'] !== null
-            || !($autorizada || $status === 'cancelamento_pendente')) {
+        $pendenteAutorizada = $status === 'pendente' && ($vinculo['status_externo'] ?? '') === 'authorized';
+        $contratoElegivel = in_array((string)$contrato['status'], ['ativa', 'suspensa'], true)
+            && (string)($contrato['motivo_suspensao'] ?? '') !== 'contratacao_pendente'
+            && (string)$contrato['modalidade'] === 'paga' && $contrato['data_fim'] === null;
+        if (!$contratoElegivel || !($autorizada || $pendenteAutorizada || $status === 'cancelamento_pendente')) {
             pagamentoOnlineFalhar('CANCELAMENTO_AUTOMATICO_INDISPONIVEL', 'O pagamento automático não está em um estado que permita o cancelamento agora. Atualize a situação.', 409);
         }
         if (pagamentoCartaoParcelaEmAndamento($db, $empresa, (int)$vinculo['id_assinatura_pagamento'])) {
             pagamentoOnlineFalhar('CANCELAMENTO_PAGAMENTO_EM_ANDAMENTO', 'Há uma cobrança no cartão em processamento. Aguarde a confirmação do Mercado Pago e atualize a situação antes de cancelar.', 409);
         }
 
-        if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar o cancelamento do pagamento automático.');
-        try {
-            // A intenção é registrada com o contrato bloqueado (mesma exigência do cancelamento do contrato).
-            pagamentoOnlineConsulta($db, 'SELECT id_assinatura FROM assinatura WHERE id_assinatura=? AND id_empresa=? FOR UPDATE',
-                'ii', (int)$contrato['id_assinatura'], $empresa);
-            $pedido = assinaturaServicoPreapprovalSolicitarCancelamento($db, $empresa, (int)$contrato['id_assinatura']);
-            if (!$db->commit()) throw new RuntimeException('Falha ao registrar o cancelamento do pagamento automático.');
-        } catch (Throwable $e) {
-            try { $db->rollback(); } catch (Throwable) {}
-            throw $e;
+        $r = cancelamentoRecorrenciaCancelarPreapproval($db, $gateway, $empresa, (int)$contrato['id_assinatura'], null);
+        if ($r['desfecho'] === 'cancelado') {
+            return ['cancelado', 200, 'Pagamento automático cancelado com sucesso.'];
         }
-        $idOperacao = (int)($pedido['id_operacao'] ?? 0);
-        if (($pedido['situacao'] ?? '') !== 'solicitado' || $idOperacao <= 0) {
-            pagamentoOnlineFalhar('CANCELAMENTO_AUTOMATICO_INDISPONIVEL', 'Não foi possível registrar o cancelamento. Atualize a situação.', 409);
+        if ($r['desfecho'] === 'pendente') {
+            return ['pendente', 202, 'Cancelamento solicitado. Aguarde a confirmação do Mercado Pago.'];
         }
-
-        if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
-        if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
-        require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
-        try {
-            $r = mpSubOperacaoProcessar($db, $gateway, $idOperacao, $empresa);
-        } catch (Throwable $e) {
-            mpWebhookRollback($db);
-            error_log('PAGAMENTO_CARTAO_CANCELAR_AUTOMATICO: ' . get_class($e));
-            $r = ['resultado' => 'erro', 'codigo' => 'FALHA_INTERNA'];
+        if ($r['desfecho'] === 'recusado' && $r['http'] === 422) {
+            return ['recusado', 422, 'Não foi possível cancelar o pagamento automático.'];
         }
-        $idAspr = (int)$vinculo['id_assinatura_pagamento'];
-        $atual = static fn(): ?array => pagamentoOnlineConsulta($db,
-            'SELECT status FROM assinatura_pagamento_recorrente WHERE id_assinatura_pagamento=? AND id_empresa=?',
-            'ii', $idAspr, $empresa)->fetch_assoc() ?: null;
-        // Confirmado só pelo vínculo local já encerrado pela sincronização do GET (inclusive quando o provedor já estava 'canceled').
-        if (in_array((string)($atual()['status'] ?? ''), ['cancelada', 'encerrada'], true)) {
-            return ['cancelado', 200, 'Pagamento automático cancelado no Mercado Pago. Sua assinatura e os períodos já pagos continuam valendo; as próximas mensalidades podem ser pagas via PIX.'];
-        }
-        if (($r['resultado'] ?? '') === 'erro' && ($r['codigo'] ?? '') === 'PROVEDOR_REJEITOU') {
-            // Recusa explícita: lê o estado real e, se a Preapproval segue autorizada, o vínculo volta a 'ativa'.
-            mpSubSincronizarPreapproval($db, $gateway, $gateway->ambiente(), (string)$vinculo['assinatura_externa_id'], null, $empresa);
-            if (in_array((string)($atual()['status'] ?? ''), ['cancelada', 'encerrada'], true)) {
-                return ['cancelado', 200, 'Pagamento automático cancelado no Mercado Pago. Sua assinatura e os períodos já pagos continuam valendo.'];
-            }
-            if (!$db->begin_transaction()) throw new RuntimeException('Falha ao registrar a recusa do cancelamento.');
-            try {
-                $revertido = assinaturaServicoPreapprovalReverterCancelamentoRecusado($db, $empresa, $idAspr, $idOperacao);
-                if (!$db->commit()) throw new RuntimeException('Falha ao registrar a recusa do cancelamento.');
-            } catch (Throwable $e) {
-                try { $db->rollback(); } catch (Throwable) {}
-                throw $e;
-            }
-
-            return ['recusado', 422, $revertido
-                ? 'O Mercado Pago recusou o cancelamento. O pagamento automático continua ativo e as próximas cobranças seguem no cartão. Tente novamente mais tarde ou fale com o suporte.'
-                : 'O Mercado Pago recusou o cancelamento. A situação do pagamento automático precisa de verificação; atualize a situação ou fale com o suporte.'];
-        }
-
-        if (($r['resultado'] ?? '') === 'erro') {
-            return ['pendente', 202, 'O cancelamento não pôde ser confirmado pelo Mercado Pago e precisa de verificação. O pagamento automático não foi dado como cancelado; atualize a situação ou fale com o suporte.'];
-        }
-
-        return ['pendente', 202, 'Cancelamento solicitado. Aguardando a confirmação do Mercado Pago; o pagamento automático só é dado como cancelado depois dela. Atualize a situação em instantes.'];
+        // Demais recusas do serviço (estado inadequado, indisponibilidade, falha ao registrar): erro com o código dele.
+        pagamentoOnlineFalhar($r['code'], $r['msg'], $r['http']);
     } finally {
         try {
             pagamentoOnlineConsulta($db, 'SELECT RELEASE_LOCK(?) AS liberada', 's', $trava);

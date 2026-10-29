@@ -216,7 +216,9 @@ function assinaturaCancelarRecorrencia(mysqli $conexao, int $idEmpresa, int $idA
     try {
         $ator = auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa);
         $gateway = cancelamentoRecorrenciaCarregarGateway();
-        $r = cancelamentoRecorrenciaCancelarPreapproval($conexao, $gateway, $idEmpresa, $idAssinatura, $ator);
+        // Mesmo serviço do proprietário (inclui vínculo 'pendente' autorizado e a restauração do estado após recusa); o
+        // administrador também pode encerrar um checkout ainda `pending` no provedor, para não travar o cancelamento comercial.
+        $r = cancelamentoRecorrenciaCancelarPreapproval($conexao, $gateway, $idEmpresa, $idAssinatura, $ator, true);
     } catch (Throwable $erro) {
         error_log('GESTAO_ASSINATURA_CANCELAR_RECORRENCIA: ' . get_class($erro));
         out(['ok' => false, 'code' => 'CANCELAMENTO_AUTOMATICO_ERRO', 'user_msg' => CANCELAMENTO_RECORRENCIA_MSG_FALHA_ADMIN], 503);

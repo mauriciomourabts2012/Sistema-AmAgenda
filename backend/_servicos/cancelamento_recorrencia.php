@@ -102,9 +102,7 @@ function cancelamentoRecorrenciaVerificarBloqueio(array $p): array
 function cancelamentoRecorrenciaCarregarGateway(): MercadoPagoGateway
 {
     require_once __DIR__ . '/../_gateways/mercado_pago.php';
-    if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
-    if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
-    require_once __DIR__ . '/../webhooks/webhook_mercado_pago.php';
+    cancelamentoRecorrenciaCarregarBibliotecaWebhook();
 
     return MercadoPagoGateway::daConfiguracao();
 }
@@ -199,30 +197,68 @@ function cancelamentoRecorrenciaResumoPorAssinaturas(mysqli $db, array $ids): ar
     return $resumo;
 }
 
-/**
- * "Cancelar pagamento automático" pelo Super Admin: cancela no provedor só a Preapproval do contrato (empresa já validada
- * pelo chamador); contrato, acesso, cobranças e pagamentos não mudam. Mesmo serviço e outbox do botão do proprietário
- * (assinaturaServicoPreapprovalSolicitarCancelamento / mpSubOperacaoProcessar). O vínculo só fica 'cancelada' com o
- * `canceled` lido do provedor; recusa explícita devolve o vínculo a 'ativa'; resultado incerto mantém
- * 'cancelamento_pendente' para a reconciliação. O chamador mantém a trava por empresa.
- *
- * @param array<string, mixed>|null $ator ator da auditoria (Super Admin)
- * @return array{desfecho: string, http: int, code: string, msg: string} desfecho: cancelado | pendente | recusado | indisponivel
- */
-function cancelamentoRecorrenciaCancelarPreapproval(mysqli $db, object $gateway, int $empresa, int $idAssinatura, ?array $ator): array
+/** Carrega a biblioteca do webhook (funções mpSub*) sem executar o receptor público. */
+function cancelamentoRecorrenciaCarregarBibliotecaWebhook(): void
 {
-    $r = static fn(string $desfecho, int $http, string $code, string $msg): array => ['desfecho' => $desfecho, 'http' => $http, 'code' => $code, 'msg' => $msg];
+    if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+    if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
+    require_once __DIR__ . '/../webhooks/webhook_mercado_pago.php';
+}
+
+/**
+ * "Cancelar pagamento automático" (proprietário e Super Admin): cancela no provedor só a Preapproval do contrato (empresa
+ * já validada pelo chamador); contrato, acesso, cobranças e pagamentos não mudam. Mesmo serviço e outbox para os dois
+ * (assinaturaServicoPreapprovalSolicitarCancelamento / mpSubOperacaoProcessar). O vínculo só fica 'cancelada' com o
+ * `canceled` lido do provedor. O chamador mantém a trava por empresa.
+ *
+ * Vínculo 'pendente' (autorizado no provedor, ainda não ativado aqui, ex.: COBRANCA_EXTERNA_ANTECIPADA) é aceito só com
+ * identificador externo válido e `authorized` REVALIDADO agora pela sincronização existente (mpSubSincronizarPreapproval,
+ * que pode inclusive ativá-lo pelas regras normais). Ele entra em 'cancelamento_pendente' pelo serviço da primeira
+ * cobrança (assinaturaServicoPreapprovalCancelarPrimeiraExterna) e nunca passa por 'ativa' para isso.
+ *
+ * Recusa explícita do provedor: o vínculo volta ao estado de ORIGEM conhecido nesta chamada ('ativa' ou 'pendente', ver
+ * assinaturaServicoPreapprovalReverterCancelamentoRecusado). Origem desconhecida (retomada de 'cancelamento_pendente') ou
+ * outra origem não é revertida: fica em 'cancelamento_pendente', estado seguro e conciliável. Resultado incerto também
+ * mantém 'cancelamento_pendente' com a operação aberta.
+ *
+ * @param array<string, mixed>|null $ator ator da auditoria (Super Admin); null = sistema/sessão do proprietário
+ * @param bool $aceitarPendenteNaoAutorizada Super Admin: também cancela checkout ainda `pending` no provedor
+ * @return array{desfecho: string, http: int, code: string, msg: string, estado: string}
+ *         desfecho: cancelado | pendente | recusado | indisponivel; estado: situação do vínculo ao final
+ */
+function cancelamentoRecorrenciaCancelarPreapproval(mysqli $db, object $gateway, int $empresa, int $idAssinatura, ?array $ator, bool $aceitarPendenteNaoAutorizada = false): array
+{
+    $estado = 'indefinido';
+    $r = static function (string $desfecho, int $http, string $code, string $msg) use (&$estado): array {
+        return ['desfecho' => $desfecho, 'http' => $http, 'code' => $code, 'msg' => $msg, 'estado' => $estado];
+    };
     $falha = static fn(string $code = 'CANCELAMENTO_AUTOMATICO_RECUSADO', int $http = 409): array => $r('recusado', $http, $code, CANCELAMENTO_RECORRENCIA_MSG_FALHA_ADMIN);
-    $ok = $r('cancelado', 200, 'PAGAMENTO_AUTOMATICO_CANCELADO', CANCELAMENTO_RECORRENCIA_MSG_OK_ADMIN);
-    $pendente = $r('pendente', 202, 'CANCELAMENTO_AUTOMATICO_PENDENTE', CANCELAMENTO_RECORRENCIA_MSG_PENDENTE_ADMIN);
-    $ler = static fn(): ?array => assinaturaServicoConsultaFinanceira($db,
-        "SELECT id_assinatura_pagamento, id_empresa, ambiente, status, status_externo, assinatura_externa_id FROM assinatura_pagamento_recorrente
-          WHERE id_empresa = ? AND id_assinatura = ? AND motor_recorrencia = 'preapproval'
-          ORDER BY (status IN ('cancelada','encerrada')) ASC, id_assinatura_pagamento DESC LIMIT 1", 'ii', $empresa, $idAssinatura)[0] ?? null;
+    $ok = static fn(): array => $r('cancelado', 200, 'PAGAMENTO_AUTOMATICO_CANCELADO', CANCELAMENTO_RECORRENCIA_MSG_OK_ADMIN);
+    $pendente = static fn(): array => $r('pendente', 202, 'CANCELAMENTO_AUTOMATICO_PENDENTE', CANCELAMENTO_RECORRENCIA_MSG_PENDENTE_ADMIN);
+    $ler = static function () use ($db, $empresa, $idAssinatura, &$estado): ?array {
+        $v = assinaturaServicoConsultaFinanceira($db,
+            "SELECT id_assinatura_pagamento, id_empresa, ambiente, status, status_externo, assinatura_externa_id FROM assinatura_pagamento_recorrente
+              WHERE id_empresa = ? AND id_assinatura = ? AND motor_recorrencia = 'preapproval'
+              ORDER BY (status IN ('cancelada','encerrada')) ASC, id_assinatura_pagamento DESC LIMIT 1", 'ii', $empresa, $idAssinatura)[0] ?? null;
+        $estado = $v === null ? 'inexistente' : (string)$v['status'];
+
+        return $v;
+    };
     $encerrado = static fn(?array $v): bool => $v !== null && in_array((string)$v['status'], ['cancelada', 'encerrada'], true);
+    $idValido = static fn(mixed $id): bool => is_string($id) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,149}$/D', $id) === 1;
+    $sincronizar = static function (string $preapprovalId) use ($db, $gateway, $empresa): bool {
+        try {
+            return (mpSubSincronizarPreapproval($db, $gateway, $gateway->ambiente(), $preapprovalId, null, $empresa)['resultado'] ?? '') === 'processado';
+        } catch (Throwable $e) {
+            if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
+            error_log('CANCELAMENTO_RECORRENCIA_SINCRONIZAR: ' . get_class($e));
+
+            return false;
+        }
+    };
 
     $vinculo = $ler();
-    if ($vinculo === null || $vinculo['assinatura_externa_id'] === null) {
+    if ($vinculo === null || !$idValido($vinculo['assinatura_externa_id'])) {
         return $r('recusado', 409, 'PAGAMENTO_AUTOMATICO_INEXISTENTE', 'Não há pagamento automático ativo para cancelar.');
     }
     if ($encerrado($vinculo)) {
@@ -233,6 +269,7 @@ function cancelamentoRecorrenciaCancelarPreapproval(mysqli $db, object $gateway,
     }
 
     $idAspr = (int)$vinculo['id_assinatura_pagamento'];
+    $preapprovalId = (string)$vinculo['assinatura_externa_id'];
     if ((string)$vinculo['status'] === 'erro') {
         // Situação incerta/erro: sem novo envio; só a atualização pelo provedor (GET) pode confirmar o encerramento.
         try {
@@ -242,20 +279,43 @@ function cancelamentoRecorrenciaCancelarPreapproval(mysqli $db, object $gateway,
             error_log('CANCELAMENTO_RECORRENCIA_ADMIN_CONFIRMAR: ' . get_class($e));
         }
 
-        return $encerrado($ler()) ? $ok : $r('recusado', 409, 'PAGAMENTO_AUTOMATICO_REQUER_VERIFICACAO',
+        return $encerrado($ler()) ? $ok() : $r('recusado', 409, 'PAGAMENTO_AUTOMATICO_REQUER_VERIFICACAO',
             'A situação do pagamento automático precisa de verificação. Atualize a situação ou consulte o suporte técnico.');
+    }
+    if ((string)$vinculo['status'] === 'pendente') {
+        // Revalida o estado externo antes de qualquer pedido: sem confirmação do provedor nada é registrado.
+        if (!$sincronizar($preapprovalId)) {
+            return $r('indisponivel', 503, 'AUTORIZACAO_VERIFICACAO_PENDENTE', CANCELAMENTO_RECORRENCIA_MSG_FALHA_ADMIN);
+        }
+        $vinculo = $ler();
+        if ($encerrado($vinculo)) return $ok();
+        if ($vinculo === null || (string)$vinculo['status'] === 'pendente'
+            && ($vinculo['status_externo'] ?? '') !== 'authorized'
+            && !($aceitarPendenteNaoAutorizada && ($vinculo['status_externo'] ?? '') === 'pending')) {
+            return $r('recusado', 409, 'PAGAMENTO_AUTOMATICO_NAO_AUTORIZADO',
+                'O Mercado Pago ainda não confirma uma autorização de cartão para cancelar. Atualize a situação.');
+        }
     }
 
     // Etapa 1 (transação, sem rede): intenção registrada com o contrato bloqueado, pelo serviço existente.
+    $statusOrigem = '';
     try {
         if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar o cancelamento do pagamento automático.');
         assinaturaServicoConsultaFinanceira($db, 'SELECT id_assinatura FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? FOR UPDATE', 'ii', $idAssinatura, $empresa);
         $atual = assinaturaServicoPreapprovalVinculoDoContrato($db, $empresa, $idAssinatura, $idAspr);
         if ($atual === null || $encerrado($atual)) {
             $db->rollback();
-            return $encerrado($atual) ? $ok : $falha();
+            return $encerrado($atual) ? $ok() : $falha();
         }
-        $pedido = (string)$atual['status'] === 'pendente'
+        // Estado de origem sob lock: é ele que a recusa restaura (nunca se presume 'ativa').
+        $statusOrigem = (string)$atual['status'];
+        if ($statusOrigem === 'pendente'
+            && (($atual['status_externo'] ?? '') !== 'authorized' && !($aceitarPendenteNaoAutorizada && ($atual['status_externo'] ?? '') === 'pending'))) {
+            $db->rollback();
+            return $r('recusado', 409, 'PAGAMENTO_AUTOMATICO_NAO_AUTORIZADO',
+                'O Mercado Pago ainda não confirma uma autorização de cartão para cancelar. Atualize a situação.');
+        }
+        $pedido = $statusOrigem === 'pendente'
             ? assinaturaServicoPreapprovalCancelarPrimeiraExterna($db, $atual, $ator)
             : assinaturaServicoPreapprovalSolicitarCancelamento($db, $empresa, $idAssinatura, $ator);
         if (($pedido['situacao'] ?? '') !== 'solicitado' || (int)($pedido['id_operacao'] ?? 0) <= 0) {
@@ -279,27 +339,30 @@ function cancelamentoRecorrenciaCancelarPreapproval(mysqli $db, object $gateway,
         $res = ['resultado' => 'erro', 'codigo' => 'FALHA_INTERNA'];
     }
     // Sucesso só pelo vínculo local encerrado a partir do `canceled` lido no provedor, nunca pelo retorno da chamada.
-    if ($encerrado($ler())) return $ok;
+    if ($encerrado($ler())) return $ok();
     if (($res['resultado'] ?? '') === 'erro' && ($res['codigo'] ?? '') === 'PROVEDOR_REJEITOU') {
-        try {
-            mpSubSincronizarPreapproval($db, $gateway, $gateway->ambiente(), (string)$vinculo['assinatura_externa_id'], null, $empresa);
-        } catch (Throwable $e) {
-            if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
-        }
-        if ($encerrado($ler())) return $ok;
+        $sincronizar($preapprovalId);
+        if ($encerrado($ler())) return $ok();
+        $revertido = false;
         try {
             if (!$db->begin_transaction()) throw new RuntimeException('Falha ao registrar a recusa.');
-            assinaturaServicoPreapprovalReverterCancelamentoRecusado($db, $empresa, $idAspr, $idOperacao);
+            $revertido = assinaturaServicoPreapprovalReverterCancelamentoRecusado($db, $empresa, $idAspr, $idOperacao, $statusOrigem);
             if (!$db->commit()) throw new RuntimeException('Falha ao registrar a recusa.');
         } catch (Throwable $e) {
             try { $db->rollback(); } catch (Throwable) {}
             error_log('CANCELAMENTO_RECORRENCIA_ADMIN_RECUSA: ' . get_class($e));
         }
+        if ($revertido && $statusOrigem === 'pendente') {
+            // Restaura o sinal (ex.: COBRANCA_EXTERNA_ANTECIPADA) pelas regras normais da sincronização.
+            $sincronizar($preapprovalId);
+        }
+        $ler();
 
         return $falha('CANCELAMENTO_AUTOMATICO_RECUSADO', 422);
     }
+    $ler();
 
-    return $pendente;
+    return $pendente();
 }
 
 /** Trava por empresa (não bloqueante). false quando outra operação de cartão/cancelamento está em andamento. */

@@ -19,7 +19,7 @@ $GLOBALS['pdo']->exec('INSERT INTO assinatura VALUES (9, 5)');
 $GLOBALS['pdo']->exec('CREATE TABLE operacao_assinatura_gateway (id_operacao INTEGER PRIMARY KEY, id_assinatura_pagamento INT, status_processamento TEXT)');
 $GLOBALS['stub'] = ['vinculo' => null, 'solicitacoes' => 0, 'solicitar' => null, 'atores' => []];
 // Simulador do Mercado Pago: tudo que seria enviado ou lido fica registrado em 'envios'.
-$GLOBALS['mp'] = ['modo' => 'confirma', 'sync_cancelado' => false, 'get_cancelado' => false, 'envios' => [], 'habilitado' => true, 'revertidos' => 0];
+$GLOBALS['mp'] = ['modo' => 'confirma', 'sync_cancelado' => false, 'get_cancelado' => false, 'envios' => [], 'habilitado' => true, 'revertidos' => 0, 'origens' => [], 'sync_ok' => true];
 function assinaturaServicoConsultaFinanceira(object $db, string $sql, string $tipos, mixed ...$params): array
 {
     $st = $GLOBALS['pdo']->prepare(str_replace(' FOR UPDATE', '', $sql));
@@ -54,10 +54,13 @@ function assinaturaServicoPreapprovalCancelarPrimeiraExterna(object $db, array $
 
     return ['aplicavel' => true, 'situacao' => 'solicitado', 'id_operacao' => 7];
 }
-function assinaturaServicoPreapprovalReverterCancelamentoRecusado(object $db, int $empresa, int $idAspr, int $idOperacao): bool
+function assinaturaServicoPreapprovalReverterCancelamentoRecusado(object $db, int $empresa, int $idAspr, int $idOperacao, string $statusOrigem = ''): bool
 {
+    // Espelha o serviço real: só 'ativa' e 'pendente' são restaurados; origem desconhecida nunca é presumida 'ativa'.
+    $GLOBALS['mp']['origens'][] = $statusOrigem;
+    if (!in_array($statusOrigem, ['ativa', 'pendente'], true)) return false;
     $GLOBALS['mp']['revertidos']++;
-    $GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET status='ativa' WHERE status='cancelamento_pendente'");
+    $GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET status='{$statusOrigem}' WHERE status='cancelamento_pendente'");
 
     return true;
 }
@@ -74,6 +77,7 @@ function mpSubOperacaoProcessar(object $db, object $gateway, int $idOperacao, ?i
 function mpSubSincronizarPreapproval(object $db, object $gateway, string $ambiente, string $id, ?int $evento, ?int $empresa = null): array
 {
     $GLOBALS['mp']['envios'][] = 'GET sync';
+    if (!($GLOBALS['mp']['sync_ok'] ?? true)) return ['resultado' => 'erro'];
     if ($GLOBALS['mp']['sync_cancelado']) $GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET status='cancelada', status_externo='canceled'");
 
     return ['resultado' => 'processado'];
@@ -230,9 +234,9 @@ foreach (['Proprietário' => $cancelFat, 'Super Admin' => $cancelSa] as $nome =>
 }
 verificar('Super Admin e proprietário usam a mesma trava por empresa', str_contains($fat, 'cancelamentoRecorrenciaObterTrava') && str_contains($sa, 'cancelamentoRecorrenciaObterTrava'));
 verificar('Super Admin: falha ao verificar não cancela (503, falha fechada)', str_contains($sa, "'CANCELAMENTO_RECORRENCIA_INDISPONIVEL'") && str_contains($sa, "'http' => 503"));
-verificar('somente o botão específico solicita o cancelamento externo (cancelar-automatico)',
-    str_contains($corpo($po, 'pagamentoCartaoCancelarAutomatico'), 'assinaturaServicoPreapprovalSolicitarCancelamento')
-    && str_contains($corpo($po, 'pagamentoCartaoCancelarAutomatico'), 'mpSubOperacaoProcessar'));
+verificar('somente o botão específico (e a ação do Super Admin) solicitam o cancelamento externo, pelo mesmo serviço compartilhado',
+    str_contains($corpo($po, 'pagamentoCartaoCancelarAutomatico'), 'cancelamentoRecorrenciaCancelarPreapproval(')
+    && str_contains($corpo(file_get_contents(__DIR__ . '/../backend/_servicos/cancelamento_recorrencia.php'), 'cancelamentoRecorrenciaCancelarPreapproval'), 'mpSubOperacaoProcessar('));
 $js = $ler('public/js/painel-administrativo/faturamento/gerenciar-faturamento.js');
 $jsPo = $ler('public/js/painel-administrativo/faturamento/pagamento-online.js');
 verificar('destaque só dispara para CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO e é temporário',
@@ -251,7 +255,7 @@ function semear(string $status, ?string $externa = 'PRE-1', string $statusExtern
     $GLOBALS['pdo']->prepare("INSERT INTO assinatura_pagamento_recorrente (id_assinatura_pagamento,id_empresa,id_assinatura,motor_recorrencia,status,status_externo,assinatura_externa_id,ambiente)
         VALUES (1,?,9,'preapproval',?,?,?,'teste')")->execute([$empresa, $status, $statusExterno, $externa]);
     $GLOBALS['stub'] = ['vinculo' => 'db', 'solicitacoes' => 0, 'solicitar' => ['aplicavel' => true, 'situacao' => 'solicitado', 'id_operacao' => 10], 'atores' => []];
-    $GLOBALS['mp'] = ['modo' => 'confirma', 'sync_cancelado' => false, 'get_cancelado' => false, 'envios' => [], 'habilitado' => true, 'revertidos' => 0];
+    $GLOBALS['mp'] = ['modo' => 'confirma', 'sync_cancelado' => false, 'get_cancelado' => false, 'envios' => [], 'habilitado' => true, 'revertidos' => 0, 'origens' => [], 'sync_ok' => true];
 }
 function statusVinculo(): string
 {
@@ -350,6 +354,74 @@ verificar('JS SA: ação só com recorrência elegível e destaque de 6 s abrind
     str_contains($jsSa, 'item.recorrencia?.pode_cancelar === true') && str_contains($jsSa, '}, 6000);') && str_contains($jsSa, 'menuCtrl.toggle(toggle)')
     && str_contains($jsSa, 'destacarCancelarRecorrencia(idBloqueado)') && str_contains($jsSa, 'erro.codigo === "CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO"'));
 verificar('JS SA: "Cancelar assinatura" continua no menu', str_contains($jsSa, 'Cancelar assinatura') && str_contains($jsSa, 'data-acao="cancelar"'));
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fase 1: vínculo 'pendente' + 'authorized' (ex.: COBRANCA_EXTERNA_ANTECIPADA) e reversão pelo estado de origem.
+// ---------------------------------------------------------------------------------------------------------------
+$contarPut = fn(): int => count(array_filter($GLOBALS['mp']['envios'], fn($e) => $e === 'PUT canceled'));
+semear('pendente');
+$r = $cancelar();
+verificar('F1 pendente+authorized: cancela pelo serviço da primeira cobrança, revalidando antes (GET sync) e confirmando só com canceled',
+    $r['desfecho'] === 'cancelado' && $GLOBALS['mp']['envios'][0] === 'GET sync' && $contarPut() === 1 && statusVinculo() === 'cancelada' && $GLOBALS['stub']['solicitacoes'] === 0);
+verificar('F1 pendente: auditoria identifica o Super Admin e o pedido não passa por "ativa"', $r['estado'] === 'cancelada');
+
+semear('pendente'); $GLOBALS['mp']['modo'] = 'recusa';
+$r = $cancelar();
+verificar('F1 recusa com origem pendente: restaura "pendente", nunca "ativa" nem "cancelada"',
+    $r['desfecho'] === 'recusado' && $r['http'] === 422 && statusVinculo() === 'pendente' && $GLOBALS['mp']['origens'] === ['pendente']);
+verificar('F1 recusa com origem pendente: o sinal é recalculado por nova sincronização depois da reversão', count(array_filter($GLOBALS['mp']['envios'], fn($e) => $e === 'GET sync')) === 3);
+
+semear('ativa'); $GLOBALS['mp']['modo'] = 'recusa';
+$cancelar();
+verificar('F1 recusa com origem ativa: continua voltando a "ativa" (comportamento preservado)', statusVinculo() === 'ativa' && $GLOBALS['mp']['origens'] === ['ativa']);
+
+semear('cancelamento_pendente'); $GLOBALS['mp']['modo'] = 'recusa';
+$r = $cancelar();
+verificar('F1 retomada de cancelamento_pendente recusada: origem desconhecida não é presumida ativa; fica em cancelamento_pendente',
+    $r['desfecho'] === 'recusado' && statusVinculo() === 'cancelamento_pendente' && $GLOBALS['mp']['revertidos'] === 0);
+semear('suspensa'); $GLOBALS['mp']['modo'] = 'recusa';
+$cancelar();
+verificar('F1 recusa com origem suspensa: não é revertida para ativa', statusVinculo() === 'cancelamento_pendente' && $GLOBALS['mp']['revertidos'] === 0);
+
+semear('pendente'); $GLOBALS['mp']['modo'] = 'falha';
+$r = $cancelar();
+verificar('F1 falha de comunicação com origem pendente: pendente de confirmação, estado conciliável e nunca cancelada', $r['desfecho'] === 'pendente' && statusVinculo() === 'cancelamento_pendente');
+semear('pendente'); $GLOBALS['mp']['sync_ok'] = false;
+$r = $cancelar();
+verificar('F1 sem revalidar o estado externo: indisponível e nada registrado nem enviado', $r['desfecho'] === 'indisponivel' && $r['http'] === 503 && $contarPut() === 0 && statusVinculo() === 'pendente');
+semear('pendente', 'PRE-1', 'pending');
+$r = cancelamentoRecorrenciaCancelarPreapproval($bd, $gw, 5, 9, null, false);
+verificar('F1 proprietário: pendente com checkout `pending` (não authorized) não é cancelado por esta rota', $r['code'] === 'PAGAMENTO_AUTOMATICO_NAO_AUTORIZADO' && $contarPut() === 0);
+semear('pendente', 'PRE-1', 'pending');
+verificar('F1 Super Admin: pode encerrar o checkout `pending` para não travar o cancelamento comercial', cancelamentoRecorrenciaCancelarPreapproval($bd, $gw, 5, 9, $ator, true)['desfecho'] === 'cancelado');
+semear('pendente', 'id inválido!', 'authorized');
+verificar('F1 identificador externo inválido: não cancela', $cancelar()['code'] === 'PAGAMENTO_AUTOMATICO_INEXISTENTE' && $GLOBALS['mp']['envios'] === []);
+
+// Análise estática dos caminhos de cancelamento e reversão.
+$as = $ler('backend/_servicos/assinatura.php');
+$rv = $corpo($as, 'assinaturaServicoPreapprovalReverterCancelamentoRecusado');
+verificar('reversão: pendente restaura "pendente" sem slot e sem data de cobrança, e nunca grava "ativa" nessa ramificação',
+    str_contains($rv, "v.status = 'pendente', v.slot_ativo = NULL, v.cobrar_a_partir_de = NULL") && substr_count($rv, "SET v.status = 'ativa'") === 1);
+verificar('reversão: origem desconhecida não reverte', str_contains($rv, "string \$statusOrigem = ''") && str_contains($rv, 'return false;'));
+verificar('reversão: só após PROVEDOR_REJEITOU e sem operação aberta', substr_count($rv, 'PROVEDOR_REJEITOU') >= 1 && str_contains($rv, "IN ('pendente', 'processando', 'conciliacao')"));
+$btn = $corpo($po, 'pagamentoCartaoCancelarAutomatico');
+verificar('botão do proprietário: delega ao serviço compartilhado e aceita pendente+authorized sem tocar em "ativa"',
+    str_contains($btn, 'cancelamentoRecorrenciaCancelarPreapproval(') && str_contains($btn, '$pendenteAutorizada') && !str_contains($btn, "SET status = 'ativa'") && !str_contains($btn, 'mpSubOperacaoProcessar'));
+verificar('botão do proprietário: preserva trava por empresa e a verificação de cobrança em andamento', str_contains($btn, 'GET_LOCK') && str_contains($btn, 'pagamentoCartaoParcelaEmAndamento('));
+$rota = substr($po, (int)strpos($po, "cartao/cancelar-automatico' && \$metodo === 'POST'"), 400);
+verificar('rota cancelar-automatico: CSRF e permissão preservados', str_contains($rota, 'exigirPermissao(') && str_contains($rota, 'csrfValidarSessao()'));
+$dp = $corpo($po, 'pagamentoCartaoDadosPreapproval');
+verificar('permissão calculada no servidor para pendente+authorized com id externo válido', str_contains($dp, '$podeCancelarPendente') && str_contains($dp, "=== 'authorized'") && str_contains($dp, 'pode_cancelar_automatico'));
+verificar('Alterar cartão não foi liberado para pendente (continua exigindo vínculo ativa)', str_contains($dp, '$configurado = $atual && $status === \'ativa\''));
+verificar('Super Admin usa o mesmo serviço compartilhado, com o ator auditável', str_contains($fnSa, 'cancelamentoRecorrenciaCancelarPreapproval($conexao, $gateway, $idEmpresa, $idAssinatura, $ator, true)'));
+verificar('Cancelar assinatura continua sem enviar nada ao Mercado Pago (proprietário e Super Admin)',
+    !str_contains($cancelFat, 'cancelamentoRecorrenciaCancelarPreapproval') && !str_contains($cancelSa, 'cancelamentoRecorrenciaCancelarPreapproval'));
+verificar('UI: botão no estado pendente+authorized junto de Atualizar situação, com destaque localizável',
+    str_contains($jsPo, 'cancelarAutomaticoPendente}${botaoVerificar}') && str_contains($jsPo, 'document.querySelector("[data-cancelar-automatico]")'));
+verificar('UI: texto de confirmação aprovado', str_contains($jsPo, 'Cancelar pagamento automático? As próximas cobranças automáticas serão interrompidas. Sua assinatura e o período já pago serão mantidos.'));
+$ra = $ler('backend/_auth/require_auth.php');
+verificar('empresa suspensa: somente a rota de cancelar-automatico foi liberada na regularização (e não na assinatura cancelada)',
+    substr_count($ra, 'cartao/cancelar-automatico') === 1 && strpos($ra, 'cartao/cancelar-automatico') < strpos($ra, '$rotasPermitidasRegularizacao = [', strpos($ra, 'cartao/cancelar-automatico')) && !str_contains($ra, "'painel/faturamento/pagamento/cartao/trocar'"));
 
 echo "\n{$total} verificações, {$falhas} falha(s).\n";
 exit($falhas === 0 ? 0 : 1);
