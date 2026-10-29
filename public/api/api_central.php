@@ -491,6 +491,9 @@ $routes = [
     'painel/faturamento/pagamento/cartao/trocar' => [
         'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
     ],
+    'painel/faturamento/pagamento/cartao/cancelar-automatico' => [
+        'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
+    ],
     'painel/faturamento/pagamento/cartao/status' => [
         'GET' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',
         'POST' => __DIR__ . '/../../backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php',

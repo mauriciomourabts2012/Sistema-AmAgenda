@@ -332,17 +332,46 @@ function assinaturaServicoMesesPeriodicidade(string $periodicidade): int
  */
 const ASSINATURA_SERVICO_PERIODICIDADES = ['diaria', 'mensal', 'trimestral', 'semestral', 'anual'];
 
-/** Periodicidade diária: cada competência dura um dia e vence no próprio dia (Preapproval 1/days). */
+/**
+ * Homologação: novas assinaturas diárias cobrem dois dias por competência. O ciclo fica materializado no primeiro
+ * período financeiro (e, antes dele, na referência da Preapproval), portanto reduzir esta constante para 1 volta o
+ * padrão das novas contratações sem reescrever histórico nem converter autorizações existentes.
+ */
+const ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS = 2;
+
+/** Periodicidade contratual diária; a duração concreta da competência pode ser 1 ou 2 dias. */
 function assinaturaServicoPeriodicidadeDiaria(string $periodicidade): bool
 {
     return $periodicidade === 'diaria';
 }
 
+/** Duração inclusiva de um período diário já persistido (marcador financeiro do ciclo 1/days ou 2/days). */
+function assinaturaServicoDiasPeriodoDiario(string $inicio, string $fim): int
+{
+    if (!assinaturaServicoDataValida($inicio, 'Y-m-d') || !assinaturaServicoDataValida($fim, 'Y-m-d')) {
+        throw new RuntimeException('Período diário inválido.');
+    }
+    $dias = (int)(new DateTimeImmutable($inicio))->diff(new DateTimeImmutable($fim))->format('%r%a') + 1;
+    if (!in_array($dias, [1, 2], true)) {
+        throw new RuntimeException('Duração da competência diária incompatível com o ciclo financeiro.');
+    }
+
+    return $dias;
+}
+
 /** Último dia da competência que começa em `$inicio`, pela periodicidade do contrato. */
-function assinaturaServicoFimCompetencia(DateTimeImmutable $inicio, string $periodicidade): DateTimeImmutable
+function assinaturaServicoFimCompetencia(
+    DateTimeImmutable $inicio,
+    string $periodicidade,
+    int $diasDiaria = ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS
+): DateTimeImmutable
 {
     if (assinaturaServicoPeriodicidadeDiaria($periodicidade)) {
-        return $inicio;
+        if (!in_array($diasDiaria, [1, 2], true)) {
+            throw new RuntimeException('Ciclo diário inválido.');
+        }
+
+        return $inicio->modify('+' . ($diasDiaria - 1) . ' days');
     }
 
     return $inicio->modify('+' . assinaturaServicoMesesPeriodicidade($periodicidade) . ' months')->modify('-1 day');
@@ -420,15 +449,22 @@ function assinaturaServicoDataQuitacaoRegistrada(array $pagamentos, int $valorCo
 }
 
 /**
- * Periodicidade diária: o período é o próprio dia da confirmação.
+ * Periodicidade diária: o período começa no dia da confirmação e conserva o ciclo financeiro (1 ou 2 dias).
  *
  * @return array{inicio: string, fim: string}
  */
-function assinaturaServicoPeriodoConfirmado(DateTimeImmutable $confirmacao, string $periodicidade): array
+function assinaturaServicoPeriodoConfirmado(
+    DateTimeImmutable $confirmacao,
+    string $periodicidade,
+    int $diasDiaria = ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS
+): array
 {
     $inicio = $confirmacao->setTime(0, 0);
     if (assinaturaServicoPeriodicidadeDiaria($periodicidade)) {
-        return ['inicio' => $inicio->format('Y-m-d'), 'fim' => $inicio->format('Y-m-d')];
+        return [
+            'inicio' => $inicio->format('Y-m-d'),
+            'fim' => assinaturaServicoFimCompetencia($inicio, $periodicidade, $diasDiaria)->format('Y-m-d'),
+        ];
     }
     $meses = assinaturaServicoMesesPeriodicidade($periodicidade);
     $primeiroDiaDestino = $inicio->modify('first day of this month')->modify("+{$meses} months");
@@ -446,9 +482,13 @@ function assinaturaServicoPeriodoConfirmado(DateTimeImmutable $confirmacao, stri
 }
 
 /** @return array{inicio: string, fim: string, vencimento: string} */
-function assinaturaServicoOfertaContratacaoDatas(DateTimeImmutable $contratacao, string $periodicidade): array
+function assinaturaServicoOfertaContratacaoDatas(
+    DateTimeImmutable $contratacao,
+    string $periodicidade,
+    int $diasDiaria = ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS
+): array
 {
-    $periodo = assinaturaServicoPeriodoConfirmado($contratacao, $periodicidade);
+    $periodo = assinaturaServicoPeriodoConfirmado($contratacao, $periodicidade, $diasDiaria);
 
     return $periodo + ['vencimento' => $periodo['inicio']];
 }
@@ -459,7 +499,8 @@ function assinaturaServicoPeriodoQuitadoDaOferta(
     int $idEmpresa,
     int $idCobranca,
     int $valorCobrancaCentavos,
-    string $periodicidade
+    string $periodicidade,
+    int $diasDiaria
 ): array {
     $pagamentos = assinaturaServicoLinhas(
         $conexao,
@@ -474,7 +515,7 @@ function assinaturaServicoPeriodoQuitadoDaOferta(
     );
     $confirmacao = assinaturaServicoDataQuitacaoRegistrada($pagamentos, $valorCobrancaCentavos);
 
-    return assinaturaServicoPeriodoConfirmado($confirmacao, $periodicidade);
+    return assinaturaServicoPeriodoConfirmado($confirmacao, $periodicidade, $diasDiaria);
 }
 
 /** Último dia de cobertura contínua e integralmente paga a partir de hoje. */
@@ -779,7 +820,13 @@ function assinaturaServicoObterOuCriarCobrancaConversao(mysqli $conexao, int $id
     if ($periodoInicio === false) {
         throw new RuntimeException('Não foi possível determinar a data da regularização.');
     }
-    $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, (string)$assinatura['periodicidade']);
+    $diasDiaria = assinaturaServicoDiasCicloContrato(
+        $conexao,
+        $idEmpresa,
+        $idAssinatura,
+        (string)$assinatura['periodicidade']
+    );
+    $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, (string)$assinatura['periodicidade'], $diasDiaria);
     $vencimento = assinaturaServicoVencimentoCompetencia($periodoInicio, (string)$assinatura['periodicidade'], (int)$assinatura['dia_vencimento']);
     $periodoInicioSql = $periodoInicio->format('Y-m-d');
     $periodoFimSql = $periodoFim->format('Y-m-d');
@@ -2568,7 +2615,10 @@ function assinaturaServicoConcluirNovaContratacao(mysqli $conexao, int $idEmpres
         $idEmpresa,
         (int)$oferta['id_cobranca'],
         pagamentoGatewayValorCentavos((string)$oferta['valor']),
-        (string)$pendente['periodicidade']
+        (string)$pendente['periodicidade'],
+        assinaturaServicoPeriodicidadeDiaria((string)$pendente['periodicidade'])
+            ? assinaturaServicoDiasPeriodoDiario((string)$oferta['periodo_inicio'], (string)$oferta['periodo_fim'])
+            : 1
     );
     $dataInicio = $periodoConfirmado['inicio'];
     $periodoInicioAnterior = (string)$oferta['periodo_inicio'];
@@ -2757,6 +2807,8 @@ function assinaturaServicoSituacaoNovaContratacao(mysqli $conexao, int $idEmpres
                     'valor' => (string)$pendente['valor_contratado'],
                     'periodicidade' => (string)$pendente['periodicidade'],
                     'id_cobranca' => $oferta === null ? null : (int)$oferta['id_cobranca'],
+                    'periodo_inicio' => $oferta['periodo_inicio'] ?? null,
+                    'periodo_fim' => $oferta['periodo_fim'] ?? null,
                     'data_vencimento' => $oferta['data_vencimento'] ?? null,
                     'paga' => $paga,
                 ];
@@ -4210,6 +4262,8 @@ const ASSINATURA_SERVICO_PREAPPROVAL_FUSO = 'America/Sao_Paulo';
 const ASSINATURA_SERVICO_PREAPPROVAL_PRIMEIRA_MARGEM_MINUTOS = 10;
 /** Distância máxima (dias) entre o início da oferta e a primeira parcela; a mesma de MP_SUB_TOLERANCIA_COMPETENCIA_DIAS. */
 const ASSINATURA_SERVICO_PREAPPROVAL_TOLERANCIA_PRIMEIRA_DIAS = 1;
+/** Sufixo opaco que preserva o ciclo de uma Preapproval 2/days antes de existir a primeira competência financeira. */
+const ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H = '.d2';
 
 /** @return array{ok: bool, codigo: ?string, mensagem: string} */
 function assinaturaServicoPreapprovalFalha(AssinaturaServicoConversaoErro $erro): array
@@ -4231,18 +4285,78 @@ function assinaturaServicoPreapprovalFrequenciaMeses(string $periodicidade): ?in
 
 /**
  * Recorrência da Preapproval pela periodicidade do contrato: `frequencia` e `tipo` (auto_recurring.frequency/
- * frequency_type). Diária: 1/days; demais: meses. Null: periodicidade sem suporte.
+ * frequency_type). Diária: 1/days no legado ou 2/days na homologação; demais: meses. Null: periodicidade sem suporte.
  *
  * @return array{frequencia: int, tipo: string}|null
  */
-function assinaturaServicoPreapprovalRecorrencia(string $periodicidade): ?array
+function assinaturaServicoPreapprovalRecorrencia(
+    string $periodicidade,
+    int $diasDiaria = ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS
+): ?array
 {
     if (assinaturaServicoPeriodicidadeDiaria($periodicidade)) {
-        return ['frequencia' => 1, 'tipo' => 'days'];
+        if (!in_array($diasDiaria, [1, 2], true)) {
+            throw new RuntimeException('Ciclo diário inválido para a Preapproval.');
+        }
+
+        return ['frequencia' => $diasDiaria, 'tipo' => 'days'];
     }
     $meses = assinaturaServicoPreapprovalFrequenciaMeses($periodicidade);
 
     return $meses === null ? null : ['frequencia' => $meses, 'tipo' => 'months'];
+}
+
+/**
+ * Resolve o ciclo de uma assinatura diária sem converter histórico: primeiro usa a competência financeira mais antiga
+ * ainda válida; antes dela, usa a referência do vínculo mais recente; só contratos sem evidência adotam a configuração
+ * de homologação. Demais periodicidades devolvem 1 apenas como parâmetro neutro dos helpers de data.
+ */
+function assinaturaServicoDiasCicloContrato(
+    mysqli $conexao,
+    int $idEmpresa,
+    int $idAssinatura,
+    string $periodicidade
+): int {
+    if (!assinaturaServicoPeriodicidadeDiaria($periodicidade)) {
+        return 1;
+    }
+    $periodos = assinaturaServicoLinhas(
+        $conexao,
+        "SELECT DATE_FORMAT(periodo_inicio, '%Y-%m-%d') AS periodo_inicio,
+                DATE_FORMAT(periodo_fim, '%Y-%m-%d') AS periodo_fim
+           FROM cobranca
+          WHERE id_empresa = ? AND id_assinatura = ? AND status <> 'cancelada'
+            AND finalidade IN ('regular', 'conversao_trial')
+          ORDER BY id_cobranca
+          LIMIT 1",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    );
+    if ($periodos !== []) {
+        return assinaturaServicoDiasPeriodoDiario(
+            (string)$periodos[0]['periodo_inicio'],
+            (string)$periodos[0]['periodo_fim']
+        );
+    }
+    $vinculos = assinaturaServicoLinhas(
+        $conexao,
+        "SELECT referencia_externa_assinatura
+           FROM assinatura_pagamento_recorrente
+          WHERE id_empresa = ? AND id_assinatura = ? AND motor_recorrencia = 'preapproval'
+          ORDER BY id_assinatura_pagamento DESC
+          LIMIT 1",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    );
+    if ($vinculos !== []) {
+        $referencia = (string)($vinculos[0]['referencia_externa_assinatura'] ?? '');
+
+        return str_ends_with($referencia, ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H) ? 2 : 1;
+    }
+
+    return ASSINATURA_SERVICO_DIARIA_DIAS_NOVOS_CONTRATOS;
 }
 
 /** Data (00:00 no fuso do negócio) em que a Preapproval pode cobrar pela primeira vez: o dia seguinte ao fim do período pago. */
@@ -4707,7 +4821,13 @@ function assinaturaServicoPreapprovalContrato(mysqli $conexao, int $idEmpresa): 
     if ($contrato['data_fim'] !== null) {
         throw new AssinaturaServicoConversaoErro('CANCELAMENTO_PROGRAMADO', 'A assinatura possui cancelamento programado.', 409);
     }
-    $recorrencia = assinaturaServicoPreapprovalRecorrencia((string)$contrato['periodicidade']);
+    $diasDiaria = assinaturaServicoDiasCicloContrato(
+        $conexao,
+        $idEmpresa,
+        (int)$contrato['id_assinatura'],
+        (string)$contrato['periodicidade']
+    );
+    $recorrencia = assinaturaServicoPreapprovalRecorrencia((string)$contrato['periodicidade'], $diasDiaria);
     if ($recorrencia === null) {
         throw new AssinaturaServicoConversaoErro('PERIODICIDADE_NAO_SUPORTADA', 'A periodicidade da assinatura não permite pagamento recorrente.', 409);
     }
@@ -5210,7 +5330,14 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
     $intencaoNova = $vinculo === null;
     if ($intencaoNova) {
         // Sem vínculo vigente (nenhum, ou só encerrados com a estrutura da Fase 21): nova intenção, nova referência.
-        $vinculo = assinaturaServicoPreapprovalInserirIntencao($conexao, $ambiente, $idEmpresa, $idAssinatura);
+        $diasReferencia = (string)$contrato['frequencia_tipo'] === 'days' ? (int)$contrato['frequencia_meses'] : null;
+        $vinculo = assinaturaServicoPreapprovalInserirIntencao(
+            $conexao,
+            $ambiente,
+            $idEmpresa,
+            $idAssinatura,
+            $diasReferencia
+        );
     } else {
         if ((string)$vinculo['provedor'] !== ASSINATURA_SERVICO_PREAPPROVAL_PROVEDOR || (string)$vinculo['ambiente'] !== $ambiente) {
             throw new AssinaturaServicoConversaoErro('AMBIENTE_INCOMPATIVEL', 'A configuração de pagamento existente pertence a outro ambiente.', 409);
@@ -5341,10 +5468,22 @@ function assinaturaServicoPreapprovalReservar(mysqli $conexao, string $ambiente,
 }
 
 /** Insere a intenção local (referência opaca e única) antes de qualquer chamada externa. */
-function assinaturaServicoPreapprovalInserirIntencao(mysqli $conexao, string $ambiente, int $idEmpresa, int $idAssinatura): array
+function assinaturaServicoPreapprovalInserirIntencao(
+    mysqli $conexao,
+    string $ambiente,
+    int $idEmpresa,
+    int $idAssinatura,
+    ?int $diasDiaria = null
+): array
 {
     for ($tentativa = 0; $tentativa < 3; $tentativa++) {
         $referencia = pagamentoGatewayReferenciaInterna();
+        if ($diasDiaria !== null && !in_array($diasDiaria, [1, 2], true)) {
+            throw new RuntimeException('Ciclo diário inválido para a referência da Preapproval.');
+        }
+        if ($diasDiaria === 2) {
+            $referencia .= ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H;
+        }
         try {
             assinaturaServicoPreapprovalExec(
                 $conexao,
@@ -6142,6 +6281,35 @@ function assinaturaServicoPreapprovalSolicitarCancelamento(mysqli $conexao, int 
     $operacao = assinaturaServicoPreapprovalRegistrarOperacao($conexao, $vinculo, 'cancelar', $ator);
 
     return ['aplicavel' => true, 'situacao' => 'solicitado', 'id_operacao' => $operacao['id_operacao'], 'situacao_operacao' => $operacao['situacao']];
+}
+
+/**
+ * Cancelamento só do pagamento automático (o contrato continua) recusado pelo provedor: o vínculo volta a 'ativa', pois
+ * a Preapproval segue autorizada e cobrando, e nada fica cancelado apenas no banco. Exige contrato vigente sem fim
+ * programado (o cancelamento do contrato não é desfeito aqui), a operação informada encerrada como PROVEDOR_REJEITOU,
+ * nenhuma outra operação aberta e o estado externo já sincronizado como 'authorized'. Na transação do chamador.
+ */
+function assinaturaServicoPreapprovalReverterCancelamentoRecusado(mysqli $conexao, int $idEmpresa, int $idAssinaturaPagamento, int $idOperacao): bool
+{
+    return assinaturaServicoPreapprovalExec(
+        $conexao,
+        "UPDATE assinatura_pagamento_recorrente v
+           JOIN assinatura a ON a.id_assinatura = v.id_assinatura AND a.id_empresa = v.id_empresa
+            SET v.status = 'ativa', v.ultimo_erro_codigo = 'CANCELAMENTO_RECUSADO',
+                v.ultimo_erro_motivo = 'O provedor recusou o cancelamento do pagamento automático.'
+          WHERE v.id_assinatura_pagamento = ? AND v.id_empresa = ? AND v.status = 'cancelamento_pendente' AND v.slot_ativo = 1
+            AND v.status_externo = 'authorized' AND a.status = 'ativa' AND a.data_fim IS NULL
+            AND EXISTS (SELECT 1 FROM operacao_assinatura_gateway o
+                         WHERE o.id_operacao = ? AND o.id_assinatura_pagamento = v.id_assinatura_pagamento AND o.tipo_operacao = 'cancelar'
+                           AND o.status_processamento = 'erro' AND o.erro_codigo = 'PROVEDOR_REJEITOU')
+            AND NOT EXISTS (SELECT 1 FROM operacao_assinatura_gateway o2
+                             WHERE o2.id_assinatura_pagamento = v.id_assinatura_pagamento
+                               AND o2.status_processamento IN ('pendente', 'processando', 'conciliacao'))",
+        'iii',
+        $idAssinaturaPagamento,
+        $idEmpresa,
+        $idOperacao
+    ) === 1;
 }
 
 /**
@@ -7193,7 +7361,15 @@ function assinaturaServicoPreapprovalDiagnostico(mysqli $conexao, object $gatewa
     if (($dados['status'] ?? null) === 'cancelled') {
         $dados['status'] = 'canceled';
     }
-    $recorrencia = $contrato === null ? null : assinaturaServicoPreapprovalRecorrencia((string)$contrato['periodicidade']);
+    $recorrencia = $contrato === null ? null : assinaturaServicoPreapprovalRecorrencia(
+        (string)$contrato['periodicidade'],
+        assinaturaServicoDiasCicloContrato(
+            $conexao,
+            $idEmpresa,
+            (int)$vinculo['id_assinatura'],
+            (string)$contrato['periodicidade']
+        )
+    );
     $resultado['preapproval'] = assinaturaServicoPreapprovalDiagnosticoResumo($dados) + [
         'referencia_confere' => ($dados['external_reference'] ?? null) === $vinculo['referencia_externa_assinatura'] ? 'sim' : 'nao',
         'conferencia_contrato' => $contrato === null || $recorrencia === null ? 'CONTRATO_LOCAL_INDISPONIVEL'

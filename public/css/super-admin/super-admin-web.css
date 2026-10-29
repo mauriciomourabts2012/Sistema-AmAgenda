@@ -1520,3 +1520,9 @@
 /* =========================
    FIM
 ========================= */
+
+/* Destaque temporário (6 s) de "Cancelar pagamento automático" no menu Ações; não depende só de cor */
+#assinaturas .assinatura-menu-item--destacado,
+.assinatura-menu.menu-flutuante .assinatura-menu-item--destacado { outline: 3px solid #f59e0b; outline-offset: -3px; background: #fff7e0; font-weight: 700; animation: assinaturaItemPulso 1.2s ease-in-out 3; }
+@keyframes assinaturaItemPulso { 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, .25); } }
+@media (prefers-reduced-motion: reduce) { .assinatura-menu-item--destacado { animation: none !important; } }

@@ -1265,3 +1265,8 @@
 /* ==========================================================
    FIM — MODAIS DO FATURAMENTO
 ========================================================== */
+
+/* Destaque temporário do botão que deve ser usado antes de cancelar a assinatura */
+#faturamento .botao-destacado-temporario { outline:3px solid #f59e0b; outline-offset:3px; box-shadow:0 0 0 6px rgba(245,158,11,.25); animation:botaoDestacadoPulso 1.2s ease-in-out 3; }
+@keyframes botaoDestacadoPulso { 50% { box-shadow:0 0 0 10px rgba(245,158,11,.1); } }
+@media (prefers-reduced-motion: reduce) { #faturamento .botao-destacado-temporario { animation:none; } }

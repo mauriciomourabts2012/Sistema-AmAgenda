@@ -1568,7 +1568,7 @@ function mpSubVinculoPorPreapproval(mysqli $conexao, string $ambiente, string $p
 /** Assinatura externa sem vínculo: se a referência é de uma tentativa local ainda sem vínculo, a notificação deve ser repetida. */
 function mpSubNaoReconhecido(mysqli $conexao, string $ambiente, ?string $referencia): array
 {
-    if ($referencia !== null && preg_match('/^amg_[0-9a-f]{32}$/D', $referencia) === 1) {
+    if ($referencia !== null && preg_match('/^amg_[0-9a-f]{32}(?:\.d2)?$/D', $referencia) === 1) {
         $pendente = assinaturaServicoConsultaFinanceira(
             $conexao,
             "SELECT 1 FROM assinatura_pagamento_recorrente
@@ -1673,7 +1673,15 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
         (int)$vinculo['id_assinatura'],
         (int)$vinculo['id_empresa']
     )[0] ?? null;
-    $recorrencia = $contrato === null ? null : assinaturaServicoPreapprovalRecorrencia((string)$contrato['periodicidade']);
+    $recorrencia = $contrato === null ? null : assinaturaServicoPreapprovalRecorrencia(
+        (string)$contrato['periodicidade'],
+        assinaturaServicoDiasCicloContrato(
+            $conexao,
+            (int)$vinculo['id_empresa'],
+            (int)$vinculo['id_assinatura'],
+            (string)$contrato['periodicidade']
+        )
+    );
     $divergencia = $contrato === null || $recorrencia === null ? 'CONTRATO_LOCAL_INDISPONIVEL' : assinaturaServicoPreapprovalValidarExterna($dados, [
         'referencia' => (string)$vinculo['referencia_externa_assinatura'],
         'ambiente' => $ambiente,
@@ -1889,7 +1897,7 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
 }
 
 /**
- * O vínculo já teve parcela registrada numa competência de um dia (periodicidade diária). Na transação de
+ * O vínculo já teve parcela registrada numa competência diária (legado de 1 dia ou homologação de 2). Na transação de
  * mpSubAplicarFatura.
  */
 function mpSubVinculoComCompetenciaDiaria(mysqli $conexao, int $idAssinaturaPagamento, int $idEmpresa): bool
@@ -1900,7 +1908,7 @@ function mpSubVinculoComCompetenciaDiaria(mysqli $conexao, int $idAssinaturaPaga
            FROM transacao_pagamento t
           INNER JOIN cobranca c ON c.id_cobranca = t.id_cobranca AND c.id_empresa = t.id_empresa
           WHERE t.id_empresa = ? AND t.id_assinatura_pagamento = ? AND t.tipo_operacao = 'assinatura_preapproval'
-            AND c.finalidade = 'regular' AND c.periodo_inicio = c.periodo_fim
+            AND c.finalidade = 'regular' AND DATEDIFF(c.periodo_fim, c.periodo_inicio) IN (0, 1)
           LIMIT 1",
         'ii',
         $idEmpresa,
@@ -1911,7 +1919,7 @@ function mpSubVinculoComCompetenciaDiaria(mysqli $conexao, int $idAssinaturaPaga
 /**
  * Competência da fatura: a cobrança regular que começa no dia do débito (única) ou, sem ela, a que começa a ±1 dia
  * (tolerância zero na periodicidade diária); senão, a próxima cobrança da sequência (mesma regra do gerador automático),
- * criada no formato da periodicidade do contrato. Competência de um dia só casa com débito do próprio dia. Deve rodar
+ * criada no formato da periodicidade do contrato. Competência diária só casa com débito no seu início. Deve rodar
  * na transação, com a assinatura bloqueada.
  *
  * Com `$idAssinaturaPagamento`: débito de um vínculo que já cobrou competências diárias nunca cria competência de
@@ -1955,13 +1963,21 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
         if ((string)$cobranca['periodo_inicio'] === $diaSql) {
             $exatas[] = $cobranca;
         }
-        if ((string)$cobranca['periodo_inicio'] === (string)$cobranca['periodo_fim']) {
-            continue; // Competência de um dia: só o débito do próprio dia (acima) a identifica.
-        }
         $inicio = new DateTimeImmutable((string)$cobranca['periodo_inicio'] . ' 00:00:00', $fuso);
+        $fimCobranca = new DateTimeImmutable((string)$cobranca['periodo_fim'] . ' 00:00:00', $fuso);
+        $diasCobranca = (int)$inicio->diff($fimCobranca)->format('%r%a') + 1;
+        if (in_array($diasCobranca, [1, 2], true)) {
+            continue; // Histórico diário 1/days ou 2/days: só o débito no início (acima) identifica a competência.
+        }
         if (abs((int)$inicio->diff($dia)->format('%r%a')) <= $tolerancia) {
             $aceitas[] = $cobranca;
         }
+    }
+    if (!assinaturaServicoPeriodicidadeDiaria($periodicidade) && $idAssinaturaPagamento !== null
+        && mpSubVinculoComCompetenciaDiaria($conexao, $idAssinaturaPagamento, $idEmpresa)) {
+        // A Preapproval que já cobrou ciclo diário não pode quitar nem mesmo uma cobrança existente de outra
+        // periodicidade; a frequência externa precisa ser conciliada antes de qualquer aplicação financeira.
+        return 'RECORRENCIA_PERIODICIDADE_DIVERGENTE';
     }
     if (count($exatas) > 1) {
         return 'COMPETENCIA_AMBIGUA';
@@ -1988,13 +2004,13 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
     if (abs((int)$esperado->diff($dia)->format('%r%a')) > $tolerancia) {
         return 'COMPETENCIA_NAO_ALINHADA';
     }
-    if (!assinaturaServicoPeriodicidadeDiaria($periodicidade) && $idAssinaturaPagamento !== null
-        && mpSubVinculoComCompetenciaDiaria($conexao, $idAssinaturaPagamento, $idEmpresa)) {
-        // Débito (inclusive atrasado) de uma Preapproval que cobra diariamente: nunca vira competência de outra
-        // periodicidade, mesmo com o mesmo valor.
-        return 'RECORRENCIA_PERIODICIDADE_DIVERGENTE';
-    }
-    $fim = assinaturaServicoFimCompetencia($esperado, $periodicidade);
+    $diasDiaria = assinaturaServicoDiasCicloContrato(
+        $conexao,
+        $idEmpresa,
+        (int)$assinatura['id_assinatura'],
+        $periodicidade
+    );
+    $fim = assinaturaServicoFimCompetencia($esperado, $periodicidade, $diasDiaria);
     if ($assinatura['data_fim'] !== null && $fim->format('Y-m-d') > (string)$assinatura['data_fim']) {
         return 'COMPETENCIA_APOS_ENCERRAMENTO';
     }
@@ -2077,7 +2093,14 @@ function mpSubResolverCobrancaConversaoTeste(mysqli $conexao, array $assinatura,
             : 'COMPETENCIA_CONVERSAO_DIVERGENTE';
     }
 
-    $fim = assinaturaServicoFimCompetencia($inicio, (string)$assinatura['periodicidade']);
+    $periodicidade = (string)$assinatura['periodicidade'];
+    $diasDiaria = assinaturaServicoDiasCicloContrato(
+        $conexao,
+        (int)$assinatura['id_empresa'],
+        (int)$assinatura['id_assinatura'],
+        $periodicidade
+    );
+    $fim = assinaturaServicoFimCompetencia($inicio, $periodicidade, $diasDiaria);
     $vencimento = assinaturaServicoVencimentoCompetencia($inicio, (string)$assinatura['periodicidade'], (int)$assinatura['dia_vencimento']);
     try {
         assinaturaServicoPreapprovalExec(

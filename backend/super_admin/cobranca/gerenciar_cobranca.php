@@ -1097,8 +1097,9 @@ try {
     $ultima = $resUltima ? ($resUltima->fetch_assoc() ?: null) : null;
     $stmtUltima->close();
     $periodoInicio = $ultima ? cobrancaData((string)$ultima['periodo_fim'], 'periodo_fim da cobrança anterior')->modify('+1 day') : $dataInicioAssinatura;
-    // Competência e vencimento pela periodicidade do contrato (diária: um dia, vencendo no próprio dia).
-    $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, $periodicidade);
+    // Competência e vencimento pelo ciclo persistido do contrato (diária: legado de 1 dia ou homologação de 2).
+    $diasDiaria = assinaturaServicoDiasCicloContrato($conexao, $idEmpresa, $idAssinatura, $periodicidade);
+    $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, $periodicidade, $diasDiaria);
     $dataVencimento = assinaturaServicoPeriodicidadeDiaria($periodicidade)
         ? $periodoInicio : cobrancaCalcularVencimento($periodoInicio, (int)$assinatura['dia_vencimento']);
     $periodoInicioSql = $periodoInicio->format('Y-m-d');

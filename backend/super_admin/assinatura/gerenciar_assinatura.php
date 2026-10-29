@@ -123,6 +123,19 @@ function assinaturaListar(mysqli $conexao): void
     }
     $stmt->close();
 
+    // Situação da recorrência no cartão (só leitura) para a ação "Cancelar pagamento automático"; sem ela a ação não aparece.
+    try {
+        require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
+        $recorrencias = cancelamentoRecorrenciaResumoPorAssinaturas($conexao, array_column($items, 'id_assinatura'));
+    } catch (Throwable $erro) {
+        error_log('LISTA_ASSINATURA_RECORRENCIA: ' . get_class($erro));
+        $recorrencias = [];
+    }
+    foreach ($items as &$item) {
+        $item['recorrencia'] = $recorrencias[$item['id_assinatura']] ?? null;
+    }
+    unset($item);
+
     out([
         'ok' => true,
         'code' => 'ASSINATURAS_LISTADAS',
@@ -152,6 +165,66 @@ function assinaturaPreviaCancelamento(mysqli $conexao): void
     ]);
 }
 
+/**
+ * Validação sem efeitos do cancelamento, antes de tocar a recorrência externa: se o cancelamento comercial já é inviável,
+ * a Preapproval não é cancelada. A transação principal repete as validações sob lock.
+ *
+ * @return array{0: string, 1: string, 2: int}|null erro (código, mensagem, HTTP) ou null quando válido
+ */
+function assinaturaPreValidarCancelamento(mysqli $conexao, int $idEmpresa, int $idAssinatura, string $modalidade): ?array
+{
+    $a = assinaturaServicoConsultaFinanceira($conexao,
+        'SELECT id_empresa, status, modalidade, data_fim FROM assinatura WHERE id_assinatura = ? LIMIT 1', 'i', $idAssinatura)[0] ?? null;
+    if ($a === null || (int)$a['id_empresa'] !== $idEmpresa) {
+        return ['ASSINATURA_NAO_ENCONTRADA', 'Assinatura não encontrada para esta empresa.', 404];
+    }
+    if ($a['data_fim'] !== null) {
+        return ['CANCELAMENTO_JA_REGISTRADO', 'Esta assinatura já tem uma data de encerramento. Atualize a lista.', 409];
+    }
+    if (!in_array((string)$a['status'], ['ativa', 'suspensa'], true)) {
+        return ['TRANSICAO_INVALIDA', 'A transição de status da assinatura não é permitida.', 409];
+    }
+    if ($modalidade === 'fim_periodo_pago') {
+        if ((string)$a['status'] !== 'ativa') {
+            return ['CANCELAMENTO_PROGRAMADO_INDISPONIVEL', 'O cancelamento ao fim do período pago exige assinatura ativa.', 409];
+        }
+        if ((string)$a['modalidade'] !== 'paga' || assinaturaServicoFimPeriodoPago($conexao, $idEmpresa, $idAssinatura) === null) {
+            return ['SEM_PERIODO_PAGO', 'Não há período integralmente pago que inclua a data atual.', 409];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * "Cancelar pagamento automático" no painel do Super Admin: só a Preapproval; o contrato não muda. Acesso já restrito ao
+ * Super Admin autenticado (bloquear.php) e fora do modo suporte (ator auditável); CSRF validado por quem chama.
+ */
+function assinaturaCancelarRecorrencia(mysqli $conexao, int $idEmpresa, int $idAssinatura): void
+{
+    require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
+    // A assinatura precisa pertencer à empresa informada; nada é inferido do vínculo.
+    $dono = assinaturaServicoConsultaFinanceira($conexao, 'SELECT id_empresa FROM assinatura WHERE id_assinatura = ? LIMIT 1', 'i', $idAssinatura)[0] ?? null;
+    if ($dono === null || (int)$dono['id_empresa'] !== $idEmpresa) {
+        out(['ok' => false, 'code' => 'ASSINATURA_NAO_ENCONTRADA', 'user_msg' => 'Assinatura não encontrada para esta empresa.'], 404);
+    }
+    // Mesma trava por empresa da troca de cartão, do botão do proprietário e do cancelamento comercial.
+    if (!cancelamentoRecorrenciaObterTrava($conexao, $idEmpresa)) {
+        out(['ok' => false, 'code' => 'OPERACAO_CARTAO_EM_ANDAMENTO', 'user_msg' => 'Já existe uma operação no pagamento automático em andamento. Aguarde a conclusão.'], 409);
+    }
+    register_shutdown_function(static fn() => cancelamentoRecorrenciaLiberarTrava($conexao, $idEmpresa));
+    try {
+        $ator = auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa);
+        $gateway = cancelamentoRecorrenciaCarregarGateway();
+        $r = cancelamentoRecorrenciaCancelarPreapproval($conexao, $gateway, $idEmpresa, $idAssinatura, $ator);
+    } catch (Throwable $erro) {
+        error_log('GESTAO_ASSINATURA_CANCELAR_RECORRENCIA: ' . get_class($erro));
+        out(['ok' => false, 'code' => 'CANCELAMENTO_AUTOMATICO_ERRO', 'user_msg' => CANCELAMENTO_RECORRENCIA_MSG_FALHA_ADMIN], 503);
+    }
+    out(['ok' => in_array($r['desfecho'], ['cancelado', 'pendente'], true), 'code' => $r['code'], 'user_msg' => $r['msg'],
+        'data' => ['id_assinatura' => $idAssinatura, 'id_empresa' => $idEmpresa, 'desfecho' => $r['desfecho']]], $r['http']);
+}
+
 function assinaturaAlterarStatus(mysqli $conexao): void
 {
     require_once __DIR__ . '/../../_auth/csrf.php';
@@ -164,8 +237,12 @@ function assinaturaAlterarStatus(mysqli $conexao): void
     $modalidadeCancelamento = is_scalar($_POST['modalidade_cancelamento'] ?? null)
         ? trim((string)$_POST['modalidade_cancelamento']) : '';
 
-    if ($idAssinatura === null || $idEmpresaInformada === null || !in_array($acao, ['suspender', 'reativar', 'cancelar'], true)) {
+    if ($idAssinatura === null || $idEmpresaInformada === null || !in_array($acao, ['suspender', 'reativar', 'cancelar', 'cancelar_recorrencia'], true)) {
         out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Dados da assinatura inválidos.'], 422);
+    }
+    if ($acao === 'cancelar_recorrencia') {
+        assinaturaCancelarRecorrencia($conexao, $idEmpresaInformada, $idAssinatura);
+        return;
     }
 
     if ($acao === 'cancelar' && ($motivo === '' || strlen($motivo) > 500)) {
@@ -173,6 +250,40 @@ function assinaturaAlterarStatus(mysqli $conexao): void
     }
     if ($acao === 'cancelar' && !in_array($modalidadeCancelamento, ['imediato', 'fim_periodo_pago'], true)) {
         out(['ok' => false, 'code' => 'MODALIDADE_CANCELAMENTO_INVALIDA', 'user_msg' => 'Escolha a modalidade do cancelamento.'], 422);
+    }
+
+    $recorrenciaCancelada = false;
+    if ($acao === 'cancelar') {
+        require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
+        // Mesma trava por empresa da troca de cartão e do cancelamento pelo proprietário; liberada ao fim da requisição.
+        if (!cancelamentoRecorrenciaObterTrava($conexao, $idEmpresaInformada)) {
+            out(['ok' => false, 'code' => 'OPERACAO_CARTAO_EM_ANDAMENTO', 'user_msg' => 'Já existe uma operação no pagamento automático em andamento. Aguarde a conclusão.'], 409);
+        }
+        register_shutdown_function(static fn() => cancelamentoRecorrenciaLiberarTrava($conexao, $idEmpresaInformada));
+        try {
+            $previa = assinaturaPreValidarCancelamento($conexao, $idEmpresaInformada, $idAssinatura, $modalidadeCancelamento);
+            if ($previa !== null) {
+                out(['ok' => false, 'code' => $previa[0], 'user_msg' => $previa[1]], $previa[2]);
+            }
+            // Preapproval ativa, pendente de cancelamento ou incerta bloqueia o cancelamento comercial. Nada é enviado ao
+            // Mercado Pago aqui: a recorrência é encerrada antes, pelo fluxo próprio do pagamento automático.
+            $externo = cancelamentoRecorrenciaVerificarBloqueio(cancelamentoRecorrenciaPortasReais($conexao, $idEmpresaInformada, $idAssinatura));
+        } catch (Throwable $erro) {
+            // Sem conseguir verificar, o contrato não é cancelado (falha fechada).
+            error_log('GESTAO_ASSINATURA_VERIFICAR_RECORRENCIA: ' . get_class($erro));
+            $externo = ['ok' => false, 'recorrencia' => true, 'code' => 'CANCELAMENTO_RECORRENCIA_INDISPONIVEL',
+                'msg' => 'Não foi possível verificar o pagamento automático agora. Tente novamente em instantes.', 'http' => 503];
+        }
+        if (!$externo['ok']) {
+            // Textos do Super Admin; o código segue o mesmo do proprietário.
+            $mensagemAdmin = match ($externo['code']) {
+                'CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO' => 'Para cancelar esta assinatura, primeiro cancele o pagamento automático.',
+                'CANCELAMENTO_RECORRENCIA_AGUARDANDO' => 'Aguarde a confirmação do cancelamento do pagamento automático para continuar.',
+                default => $externo['msg'],
+            };
+            out(['ok' => false, 'code' => $externo['code'], 'user_msg' => $mensagemAdmin, 'data' => ['bloqueio_recorrencia' => true]], $externo['http']);
+        }
+        $recorrenciaCancelada = $externo['recorrencia'];
     }
 
     try {
@@ -386,8 +497,11 @@ function assinaturaAlterarStatus(mysqli $conexao): void
             $stmtRecorrencia->bind_param('ii', $idEmpresaInformada, $idAssinatura);
             if (!$stmtRecorrencia->execute()) throw new RuntimeException('Falha ao bloquear recorrência.');
             $stmtRecorrencia->close();
-            // Preapproval: intenção de cancelar no provedor, com o slot ativo mantido até a confirmação externa.
-            assinaturaServicoPreapprovalSolicitarCancelamento($conexao, $idEmpresaInformada, $idAssinatura);
+            // Preapproval já encerrada ou inexistente (verificado antes); nada é solicitado ao provedor aqui.
+            if (!cancelamentoRecorrenciaFinalizarLocal($conexao, $idEmpresaInformada, $idAssinatura)) {
+                // Uma recorrência viva surgiu entre as etapas: nada é concluído.
+                assinaturaErroTransacional($conexao, ['ok' => false, 'code' => 'CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO', 'user_msg' => 'Para cancelar esta assinatura, primeiro cancele o pagamento automático.', 'data' => ['bloqueio_recorrencia' => true]], 409);
+            }
         } elseif ($acao === 'suspender') {
             // Somente suspensão administrativa pausa a Preapproval; inadimplência nunca passa por aqui.
             assinaturaServicoPreapprovalSolicitarPausa($conexao, $idEmpresaInformada, $idAssinatura);
@@ -473,6 +587,7 @@ function assinaturaAlterarStatus(mysqli $conexao): void
                 'data_fim' => $dataFim,
                 'modalidade_cancelamento' => $modalidadeCancelamento,
                 'operacoes_em_andamento' => $operacoesEmAndamento,
+                'recorrencia_cancelada' => $recorrenciaCancelada,
                 'modalidade' => (string)$assinatura['modalidade'],
                 'motivo_suspensao' => $motivoSuspensao,
                 'suspensa_em' => $suspensaEm,

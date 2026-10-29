@@ -164,7 +164,7 @@
     if (!aplicavel || !podeContratar()) { secao.hidden = true; el.innerHTML = ""; return; }
     secao.hidden = false;
     const pendente = contratacao.pendente;
-    const detalhes = pendente ? `<div><span>Plano escolhido</span><strong>${esc(pendente.plano || "Plano")}</strong></div><div><span>Valor do período</span><strong>${moeda(pendente.valor)} / ${esc(periodicidadeTexto(pendente.periodicidade))}</strong></div>${pendente.data_vencimento ? `<div><span>Vencimento</span><strong>${br(pendente.data_vencimento)}</strong></div>` : ""}` : "";
+    const detalhes = pendente ? `<div><span>Plano escolhido</span><strong>${esc(pendente.plano || "Plano")}</strong></div><div><span>Valor do período</span><strong>${moeda(pendente.valor)} / ${esc(periodicidadeTexto(pendente.periodicidade))}</strong></div>${pendente.periodo_inicio && pendente.periodo_fim ? `<div><span>Período coberto</span><strong>${br(pendente.periodo_inicio)} a ${br(pendente.periodo_fim)}</strong></div>` : ""}${pendente.data_vencimento ? `<div><span>Vencimento</span><strong>${br(pendente.data_vencimento)}</strong></div>` : ""}` : "";
     const aguardando = !!pendente && !pendente.paga;
     const concluir = pendente ? `<button class="botao-geral destaque" type="button" data-concluir-contratacao>${pendente.paga ? "Concluir contratação" : "Verificar pagamento"}</button>` : "";
     const temPlanosPublicos = Array.isArray(contratacao.planos) && contratacao.planos.length > 0;
@@ -524,16 +524,32 @@
       corpo.append("modalidade_cancelamento", modalidade);
       const resposta = await fetch(rotas.cancelar, { method: "POST", body: corpo, credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
       const json = await resposta.json().catch(() => ({}));
-      if (!resposta.ok || json.ok !== true) throw new Error(json.user_msg || "Não foi possível cancelar a assinatura.");
+      if (!resposta.ok || json.ok !== true) {
+        const erro = new Error(json.user_msg || (resposta.status === 503 ? "Serviço indisponível no momento. Tente novamente em instantes." : "Não foi possível cancelar a assinatura."));
+        erro.bloqueioRecorrencia = json.data?.bloqueio_recorrencia === true;
+        erro.codigo = String(json.code || "");
+        throw erro;
+      }
       fecharModalFaturamento("modalCancelarFaturamento");
+      // Sucesso só com a resposta do servidor, que exige a recorrência já confirmada como cancelada.
+      const semNovasCobrancas = json.data?.recorrencia_cancelada === true ? " Não haverá novas cobranças automáticas." : "";
       avisar("sucesso", modalidade === "fim_periodo_pago"
-        ? `Cancelamento programado. O acesso termina após ${br(json.data?.data_fim)}.`
-        : "Assinatura cancelada. O histórico financeiro permanece disponível.");
+        ? `Cancelamento programado. O acesso termina após ${br(json.data?.data_fim)}.${semNovasCobrancas}`
+        : `Sua assinatura foi cancelada com sucesso.${semNovasCobrancas || " O histórico financeiro permanece disponível."}`);
       estado.carregado = false;
       await iniciar();
       if (modalidade === "imediato") window.location.reload();
     } catch (erro) {
-      avisar("erro", erro.message || "Não foi possível cancelar a assinatura.");
+      if (erro.bloqueioRecorrencia) {
+        // Nada foi cancelado nem enviado ao Mercado Pago: o cliente usa o botão próprio do pagamento automático.
+        fecharModalFaturamento("modalCancelarFaturamento");
+        avisar("aviso", erro.message);
+        if (erro.codigo === "CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO") {
+          document.dispatchEvent(new CustomEvent("amagenda:destacar-cancelar-automatico"));
+        }
+      } else {
+        avisar("erro", erro.message || "Não foi possível cancelar a assinatura.");
+      }
     } finally {
       if (botao) botao.disabled = false;
     }

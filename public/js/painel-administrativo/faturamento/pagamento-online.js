@@ -9,6 +9,7 @@
   const CARTAO_STATUS = `${API}?path=painel/faturamento/pagamento/cartao/status`;
   const CARTAO_USAR_PIX = `${API}?path=painel/faturamento/pagamento/cartao/usar-pix`;
   const CARTAO_TROCAR = `${API}?path=painel/faturamento/pagamento/cartao/trocar`;
+  const CARTAO_CANCELAR_AUTOMATICO = `${API}?path=painel/faturamento/pagamento/cartao/cancelar-automatico`;
   const estado = { idCobranca: 0, idTransacao: 0, valor: 0, codigo: "" };
   const cartao = { configuracao: null, carregando: false, controller: null, redirecionando: false, retornoProcessado: false, retornoEmCurso: false, trocando: false };
   const TEXTOS_MODAL_CARTAO = {
@@ -343,6 +344,33 @@
     }
   }
 
+  // Cancelar pagamento automático: só a recorrência no cartão. O sucesso vem apenas do `canceled` confirmado pelo servidor;
+  // recusa (422) ou confirmação pendente (202) mantêm o estado real retornado.
+  async function cancelarPagamentoAutomatico() {
+    if (cartao.redirecionando || cartao.trocando || !cartao.configuracao?.pode_cancelar_automatico) return;
+    const mensagem = "Somente a cobrança automática no cartão será cancelada no Mercado Pago. Sua assinatura, o acesso da empresa e os períodos já pagos continuam valendo, e as próximas mensalidades poderão ser pagas via PIX ou com outro cartão. Para encerrar o plano, use \"Cancelar assinatura\". Deseja continuar?";
+    const confirmado = window.MensagemSistema?.confirmar
+      ? await window.MensagemSistema.confirmar(mensagem, { titulo: "Cancelar pagamento automático", textoConfirmar: "Cancelar pagamento automático" })
+      : window.confirm(mensagem);
+    if (!confirmado) return;
+    const csrf = String(window.__AUTH__?.csrf_token || "");
+    if (!/^[a-f0-9]{64}$/.test(csrf)) { avisar("erro", "Atualize a página para renovar sua sessão."); return; }
+    cartao.redirecionando = true;
+    document.querySelectorAll("[data-cancelar-automatico],[data-trocar-cartao]").forEach(b => { b.disabled = true; });
+    try {
+      const resposta = await fetch(CARTAO_CANCELAR_AUTOMATICO, { method: "POST", body: new FormData(), credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json", "X-CSRF-Token": csrf } });
+      const retorno = await resposta.json().catch(() => ({}));
+      if (retorno?.data) renderizarCartao(retorno.data);
+      const tipo = retorno.code === "PAGAMENTO_AUTOMATICO_CANCELADO" ? "sucesso" : (retorno.code === "CANCELAMENTO_AUTOMATICO_PENDENTE" ? "info" : "erro");
+      avisar(tipo, retorno.user_msg || "Não foi possível cancelar o pagamento automático.");
+    } catch (erro) {
+      avisar("erro", "Não foi possível confirmar o cancelamento agora. Atualize a situação antes de tentar novamente.");
+    } finally {
+      cartao.redirecionando = false;
+      document.querySelectorAll("[data-cancelar-automatico],[data-trocar-cartao]").forEach(b => { b.disabled = false; });
+    }
+  }
+
   // Contratos com Preapproval: o servidor indica o fluxo; o navegador só mostra o estado e redireciona ao Mercado Pago.
   function renderizarAutorizacao(alvo, atual) {
     const cabecalho = cabecalhoCartao;
@@ -364,7 +392,10 @@
       const texto = `Recorrência autorizada no Mercado Pago. Sua próxima mensalidade será cobrada automaticamente na data programada pelo Mercado Pago.${proxima ? ` Próxima cobrança: ${proxima}.` : ""}`;
       const trocar = atual.pode_trocar_cartao
         ? '<button class="botao-geral destaque" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
-      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${trocar}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
+      // Cancela só a cobrança automática no cartão; "Cancelar assinatura" (contrato) fica no resumo do Faturamento.
+      const cancelarAutomatico = atual.pode_cancelar_automatico
+        ? '<button class="botao-geral" type="button" data-cancelar-automatico><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pagamento automático</button>' : "";
+      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${trocar}${cancelarAutomatico}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
       return;
     }
     definirCabecalhoSecao("Pagamento automático", "Configure um cartão para automatizar as próximas mensalidades.");
@@ -414,8 +445,14 @@
       const prevista = dataBr(cadastro.primeira_cobranca_prevista);
       nota = `${prevista ? `Primeira cobrança automática prevista para ${prevista}, sujeita à confirmação do Mercado Pago. ` : ""}Se preferir, continue pagando via PIX.`;
     }
-    const titulo = status === "cancelada" ? "Pagamento automático cancelado" : "Nenhum cartão cadastrado";
-    alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", titulo, texto, nota)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar("Cadastrar cartão") : ""}${botaoVerificar}</div>`;
+    // Autorização anterior encerrada no Mercado Pago (cancelada ou recusas sucessivas): nova tentativa com outro cartão só
+    // quando o servidor confirma que nada da anterior ainda pode cobrar; senão, o motivo e "Atualizar situação".
+    const encerrada = ["cancelada", "encerrada"].includes(status);
+    if (encerrada && cadastro.elegivel === true && atual.pode_configurar) {
+      texto = "A autorização anterior foi encerrada no Mercado Pago. Você pode tentar com outro cartão para as próximas cobranças; o período já pago continua valendo.";
+    }
+    const titulo = encerrada ? "Pagamento automático cancelado" : "Nenhum cartão cadastrado";
+    alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Pagamento automático", titulo, texto, nota)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar(encerrada ? "Tentar com outro cartão" : "Cadastrar cartão") : ""}${botaoVerificar}</div>`;
   }
 
   // outroCartao: checkout anterior abandonado; o servidor encerra a autorização pendente e só então cria outra.
@@ -660,9 +697,20 @@
     if (evento.target.closest("[data-autorizar-assinatura]")) iniciarAutorizacaoAssinatura();
     if (evento.target.closest("[data-outro-cartao]")) iniciarAutorizacaoAssinatura(true);
     if (evento.target.closest("[data-usar-pix]")) usarPix();
+    if (evento.target.closest("[data-cancelar-automatico]")) cancelarPagamentoAutomatico();
     if (evento.target.closest("#modalCartaoRecorrenteFaturamento [data-fechar-modal]")) desmontarBrick();
   });
   document.addEventListener("keydown", evento => { if (evento.key === "Escape") desmontarBrick(); });
+  // "Cancelar assinatura" foi barrado por recorrência ativa: destaca por instantes o botão que a cancela (nunca a cancela sozinho).
+  // Contrato em teste grátis ou na primeira mensalidade tem botão próprio para descartar o cartão.
+  document.addEventListener("amagenda:destacar-cancelar-automatico", () => {
+    const alvo = document.querySelector("[data-cancelar-automatico]") || document.querySelector("[data-usar-pix]");
+    if (!alvo) return;
+    alvo.scrollIntoView({ behavior: "smooth", block: "center" });
+    alvo.classList.add("botao-destacado-temporario");
+    try { alvo.focus({ preventScroll: true }); } catch {}
+    setTimeout(() => alvo.classList.remove("botao-destacado-temporario"), 6000);
+  });
   // Fechar o modal PIX é só visual (nada é cancelado no provedor nem no banco). Se um PIX foi exibido, a tela do
   // Faturamento e a seção do cartão são recarregadas do servidor para refletir um eventual pagamento.
   function aoFecharModalPix() {

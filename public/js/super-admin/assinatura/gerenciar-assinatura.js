@@ -58,30 +58,39 @@
   }
 
   function buildMenuAcoes(item, status) {
-    if (!['ativa', 'suspensa'].includes(status)) return "";
-    if (item.data_fim) return "";
+    const podeCancelarRecorrencia = item.recorrencia?.pode_cancelar === true;
+    const ehAtiva = ['ativa', 'suspensa'].includes(status);
+    // Sem contrato vigente e sem recorrência a cancelar, não há ações.
+    if (!ehAtiva && !podeCancelarRecorrencia) return "";
 
+    const dados = `data-id-assinatura="${esc(item.id_assinatura)}" data-id-empresa="${esc(item.id_empresa)}"`;
+    const pendente = item.recorrencia?.situacao === "cancelamento_pendente";
+    // Só aparece com recorrência externa elegível; some quando a Preapproval está confirmadamente cancelada ou encerrada.
+    const itemRecorrencia = podeCancelarRecorrencia ? `
+        <button class="agenda-menu-item" type="button" role="menuitem" data-acao="cancelar_recorrencia" ${dados}
+          title="${pendente ? "Cancelamento já solicitado: confirmar com o Mercado Pago" : "Cancelar só a cobrança automática no cartão"}">
+          <i class="fa-regular fa-credit-card" aria-hidden="true"></i>
+          Cancelar pagamento automático
+        </button>` : "";
+    const vigente = ehAtiva && !item.data_fim;
     const acaoPrincipal = status === "ativa" ? "suspender" : "reativar";
     const iconePrincipal = status === "ativa" ? "fa-pause" : "fa-play";
     const textoPrincipal = status === "ativa" ? "Suspender" : "Reativar";
 
     return `
       <div class="agenda-menu assinatura-menu" role="menu">
-        <button class="agenda-menu-item" type="button" role="menuitem"
-          data-acao="${acaoPrincipal}"
-          data-id-assinatura="${esc(item.id_assinatura)}"
-          data-id-empresa="${esc(item.id_empresa)}">
+        ${vigente ? `<button class="agenda-menu-item" type="button" role="menuitem"
+          data-acao="${acaoPrincipal}" ${dados}>
           <i class="fa-solid ${iconePrincipal}" aria-hidden="true"></i>
           ${textoPrincipal}
-        </button>
-        <div class="assinatura-menu-separador" role="separator"></div>
+        </button>` : ""}
+        ${itemRecorrencia}
+        ${vigente ? `<div class="assinatura-menu-separador" role="separator"></div>
         <button class="agenda-menu-item danger" type="button" role="menuitem"
-          data-acao="cancelar"
-          data-id-assinatura="${esc(item.id_assinatura)}"
-          data-id-empresa="${esc(item.id_empresa)}">
+          data-acao="cancelar" ${dados}>
           <i class="fa-solid fa-ban" aria-hidden="true"></i>
           Cancelar assinatura
-        </button>
+        </button>` : ""}
       </div>
     `;
   }
@@ -108,7 +117,7 @@
           <div class="assinatura-status-acoes">
             <span class="agenda-status ${statusClass(status)}">${esc(item.data_fim && ['ativa', 'suspensa'].includes(status) ? `Cancelamento programado: ${dataBr(item.data_fim)}` : statusLabel(status))}</span>
             ${menuAcoes ? `<div class="agenda-acoes assinatura-acoes" aria-haspopup="menu">
-              <button class="agenda-btn-acoes" type="button" data-acao="toggle-menu" aria-expanded="false" title="Ações" aria-label="Abrir ações da assinatura">
+              <button class="agenda-btn-acoes" type="button" data-acao="toggle-menu" data-id-assinatura="${esc(item.id_assinatura)}" aria-expanded="false" title="Ações" aria-label="Abrir ações da assinatura">
                 ${iconAcoes()}
               </button>
               ${menuAcoes}
@@ -331,8 +340,15 @@
       cache: "no-store",
       headers: { Accept: "application/json", "X-CSRF-Token": csrf },
     });
-    const json = await resposta.json();
-    if (!resposta.ok || !json.ok) throw new Error(json.user_msg || "Não foi possível atualizar a assinatura.");
+    // 409/422/503 podem vir sem JSON (proxy, erro do servidor): a falha continua tratada e nunca vira sucesso.
+    const json = await resposta.json().catch(() => ({}));
+    if (!resposta.ok || json.ok !== true) {
+      const erro = new Error(json.user_msg || (resposta.status === 503 ? "Serviço indisponível no momento. Tente novamente em instantes." : "Não foi possível atualizar a assinatura."));
+      erro.status = resposta.status;
+      erro.codigo = String(json.code || "");
+      erro.bloqueioRecorrencia = json.data?.bloqueio_recorrencia === true;
+      throw erro;
+    }
     return json;
   }
 
@@ -357,6 +373,44 @@
       avisar("erro", erro.message || "Não foi possível atualizar a assinatura.");
     } finally {
       botao.disabled = false;
+    }
+  }
+
+  // Abre o menu Ações da assinatura e destaca por 6 segundos "Cancelar pagamento automático" (desktop e celular).
+  function destacarCancelarRecorrencia(idAssinatura) {
+    const toggle = document.querySelector(`#assinaturas button[data-acao="toggle-menu"][data-id-assinatura="${CSS.escape(String(idAssinatura))}"]`);
+    if (!toggle) return;
+    toggle.scrollIntoView({ block: "center", behavior: "smooth" });
+    menuCtrl.fechar();
+    menuCtrl.toggle(toggle);
+    const alvo = document.querySelector('.assinatura-menu.menu-flutuante [data-acao="cancelar_recorrencia"]')
+      || toggle.closest(".agenda-card")?.querySelector('[data-acao="cancelar_recorrencia"]');
+    if (!alvo) return;
+    alvo.classList.add("assinatura-menu-item--destacado");
+    alvo.setAttribute("aria-current", "true");
+    try { alvo.focus({ preventScroll: true }); } catch {}
+    setTimeout(() => {
+      alvo.classList.remove("assinatura-menu-item--destacado");
+      alvo.removeAttribute("aria-current");
+    }, 6000);
+  }
+
+  async function cancelarRecorrencia(botao) {
+    const idAssinatura = String(botao.dataset.idAssinatura || "");
+    const idEmpresa = String(botao.dataset.idEmpresa || "");
+    const confirmou = await confirmar("As próximas cobranças automáticas desta empresa serão interrompidas. A assinatura continuará ativa.", {
+      titulo: "Cancelar pagamento automático?", textoCancelar: "Voltar", textoConfirmar: "Confirmar cancelamento",
+    });
+    if (!confirmou) return;
+    try {
+      const resultado = await enviarStatus(idAssinatura, idEmpresa, "cancelar_recorrencia");
+      // Sucesso só com o encerramento confirmado pelo Mercado Pago; pendente nunca é apresentado como concluído.
+      if (resultado.code === "PAGAMENTO_AUTOMATICO_CANCELADO") avisar("sucesso", resultado.user_msg);
+      else avisar("aviso", resultado.user_msg || "O cancelamento foi solicitado. Aguarde a confirmação do Mercado Pago.");
+    } catch (erro) {
+      avisar("erro", erro.message || "Não foi possível cancelar o pagamento automático. Atualize a situação ou tente novamente.");
+    } finally {
+      await carregarAssinaturas();
     }
   }
 
@@ -388,7 +442,16 @@
       limparCancelamento();
       await carregarAssinaturas();
     } catch (erro) {
-      avisar("erro", erro.message || "Não foi possível cancelar a assinatura.");
+      if (erro.bloqueioRecorrencia) {
+        // Recorrência no cartão ativa, pendente ou incerta: o contrato não foi cancelado e nada foi enviado ao Mercado Pago.
+        const idBloqueado = idAssinaturaCancelamento;
+        window.fecharModal?.(document.getElementById("modalCancelarAssinatura"));
+        limparCancelamento();
+        avisar("aviso", erro.message);
+        if (erro.codigo === "CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO") destacarCancelarRecorrencia(idBloqueado);
+      } else {
+        avisar("erro", erro.message || "Não foi possível cancelar a assinatura.");
+      }
     } finally {
       if (botao) botao.disabled = false;
     }
@@ -423,6 +486,7 @@
       if (!botao) return;
       menuCtrl.fechar();
       if (botao.dataset.acao === "cancelar") void abrirCancelamento(botao);
+      else if (botao.dataset.acao === "cancelar_recorrencia") void cancelarRecorrencia(botao);
       else alterarStatus(botao);
     });
     document.getElementById("formCancelarAssinatura")?.addEventListener("submit", cancelar);

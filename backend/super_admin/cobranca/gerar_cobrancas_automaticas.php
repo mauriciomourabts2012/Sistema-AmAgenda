@@ -554,9 +554,15 @@ try {
                     break;
                 }
 
-                // Competência e vencimento pela periodicidade do contrato (diária: um dia, vencendo no próprio dia).
+                // Competência e vencimento pelo ciclo persistido do contrato (diária: legado de 1 dia ou homologação de 2).
                 $periodicidadeContrato = (string) $assinaturaBloqueada['periodicidade'];
-                $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, $periodicidadeContrato);
+                $diasDiaria = assinaturaServicoDiasCicloContrato(
+                    $conexao,
+                    (int)$assinaturaBloqueada['id_empresa'],
+                    (int)$assinaturaBloqueada['id_assinatura'],
+                    $periodicidadeContrato
+                );
+                $periodoFim = assinaturaServicoFimCompetencia($periodoInicio, $periodicidadeContrato, $diasDiaria);
                 if ($assinaturaBloqueada['data_fim'] !== null
                     && $periodoFim->format('Y-m-d') > (string)$assinaturaBloqueada['data_fim']) {
                     cobrancasAutomaticasRollback($conexao);

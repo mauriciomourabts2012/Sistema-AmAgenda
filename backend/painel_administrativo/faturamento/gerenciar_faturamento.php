@@ -106,9 +106,39 @@ function faturamentoPagamentos(mysqli $db, int $empresa): void {
     $stmt=$db->prepare("SELECT pg.id_pagamento,pg.id_cobranca,pg.valor_pago,pg.forma_pagamento,pg.origem,pg.status,DATE_FORMAT(pg.data_pagamento,'%Y-%m-%d %H:%i:%s') data_pagamento {$from} ORDER BY pg.data_pagamento DESC,pg.id_pagamento DESC LIMIT ? OFFSET ?"); if(!$stmt)throw new RuntimeException('Falha ao preparar pagamentos.');$vals[]=$limit;$vals[]=$offset;faturamentoBind($stmt,$types.'ii',$vals);$stmt->execute();$res=$stmt->get_result();$items=[];while($r=$res->fetch_assoc())$items[]=['id_pagamento'=>(int)$r['id_pagamento'],'id_cobranca'=>(int)$r['id_cobranca'],'valor_pago'=>faturamentoDecimal($r['valor_pago']),'forma_pagamento'=>(string)$r['forma_pagamento'],'origem'=>(string)$r['origem'],'status'=>(string)$r['status'],'data_pagamento'=>(string)$r['data_pagamento']];$stmt->close();out(['ok'=>true,'code'=>'PAGAMENTOS_LISTADOS','user_msg'=>'Pagamentos listados com sucesso.','data'=>['items'=>$items,'page'=>$page,'limit'=>$limit,'total'=>$total,'total_pages'=>$total===0?0:(int)ceil($total/$limit)]]);
 }
 
+/**
+ * Valida o contrato para o cancelamento. Com $bloquear, deve rodar na transação do chamador (FOR UPDATE).
+ *
+ * @return array{erro: array{0: string, 1: string, 2: int}}|array{empresa: array<string, mixed>, assinatura: array<string, mixed>, dataFim: string, statusNovo: string}
+ */
+function faturamentoCancelamentoValidar(mysqli $db, int $empresa, string $modalidade, bool $bloquear): array {
+    $trava = $bloquear ? ' FOR UPDATE' : '';
+    $empresas = assinaturaServicoConsultaFinanceira($db,
+        "SELECT id_empresa, nome FROM empresa WHERE id_empresa = ? AND status = 'ativo'{$trava}", 'i', $empresa);
+    $assinaturas = assinaturaServicoConsultaFinanceira($db,
+        "SELECT id_assinatura, id_plano, status, modalidade, data_fim FROM assinatura
+          WHERE id_empresa = ? AND status IN ('ativa','suspensa') ORDER BY id_assinatura DESC{$trava}", 'i', $empresa);
+    if ($empresas === [] || count($assinaturas) !== 1 || $assinaturas[0]['data_fim'] !== null) {
+        return ['erro' => ['CONTRATO_INDISPONIVEL', 'A assinatura foi alterada. Atualize o faturamento.', 409]];
+    }
+    $assinatura = $assinaturas[0];
+    if ($modalidade === 'fim_periodo_pago' && ((string)$assinatura['status'] !== 'ativa' || (string)$assinatura['modalidade'] !== 'paga')) {
+        return ['erro' => ['SEM_PERIODO_PAGO', 'O cancelamento ao fim do período pago exige assinatura paga e ativa.', 409]];
+    }
+    $dataFim = $modalidade === 'fim_periodo_pago'
+        ? assinaturaServicoFimPeriodoPago($db, $empresa, (int)$assinatura['id_assinatura']) : date('Y-m-d');
+    if ($dataFim === null) {
+        return ['erro' => ['SEM_PERIODO_PAGO', 'Não há período integralmente pago que inclua a data atual.', 409]];
+    }
+
+    return ['empresa' => $empresas[0], 'assinatura' => $assinatura, 'dataFim' => $dataFim,
+        'statusNovo' => $modalidade === 'fim_periodo_pago' ? 'ativa' : 'cancelada'];
+}
+
 function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
     require_once __DIR__ . '/../../_auth/csrf.php';
     require_once __DIR__ . '/../../_servicos/assinatura.php';
+    require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
     csrfValidarSessao();
     if (($contexto['perfil'] ?? '') !== 'proprietario' || ($contexto['super_admin_suporte'] ?? false)) {
         out(['ok'=>false,'code'=>'ACCESS_DENIED','user_msg'=>'Somente o proprietário pode cancelar a assinatura.'],403);
@@ -120,31 +150,47 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
         out(['ok'=>false,'code'=>'VALIDATION_ERROR','user_msg'=>'Escolha a modalidade e informe um motivo de até 500 caracteres.'],422);
     }
     $empresa = (int)$contexto['id_empresa'];
+    // Mesma trava por empresa da troca de cartão e do cancelamento do pagamento automático: nunca correm juntas.
+    if (!cancelamentoRecorrenciaObterTrava($db, $empresa)) {
+        out(['ok'=>false,'code'=>'OPERACAO_CARTAO_EM_ANDAMENTO','user_msg'=>'Já existe uma operação no pagamento automático em andamento. Aguarde a conclusão.'],409);
+    }
     try {
-        if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar cancelamento.');
-        $empresas = assinaturaServicoConsultaFinanceira($db,
-            "SELECT id_empresa, nome FROM empresa WHERE id_empresa = ? AND status = 'ativo' FOR UPDATE", 'i', $empresa);
-        $assinaturas = assinaturaServicoConsultaFinanceira($db,
-            "SELECT id_assinatura, id_plano, status, modalidade, data_fim FROM assinatura
-              WHERE id_empresa = ? AND status IN ('ativa','suspensa') ORDER BY id_assinatura DESC FOR UPDATE", 'i', $empresa);
-        if ($empresas === [] || count($assinaturas) !== 1 || $assinaturas[0]['data_fim'] !== null) {
-            $db->rollback();
-            out(['ok'=>false,'code'=>'CONTRATO_INDISPONIVEL','user_msg'=>'A assinatura foi alterada. Atualize o faturamento.'],409);
+        [$payload, $http] = faturamentoCancelarContratoExecutar($db, $empresa, $modalidade, $motivo);
+    } finally {
+        cancelamentoRecorrenciaLiberarTrava($db, $empresa);
+    }
+    out($payload, $http);
+}
+
+/** @return array{0: array<string, mixed>, 1: int} corpo e status HTTP */
+function faturamentoCancelarContratoExecutar(mysqli $db, int $empresa, string $modalidade, string $motivo): array {
+    try {
+        // 1) Validação sem efeitos: a recorrência externa não é tocada se o cancelamento comercial já é inviável.
+        $previa = faturamentoCancelamentoValidar($db, $empresa, $modalidade, false);
+        if (isset($previa['erro'])) {
+            return [['ok'=>false,'code'=>$previa['erro'][0],'user_msg'=>$previa['erro'][1]], $previa['erro'][2]];
         }
-        $assinatura = $assinaturas[0];
+        $idAssinatura = (int)$previa['assinatura']['id_assinatura'];
+
+        // 2) Recorrência externa viva, pendente de cancelamento ou incerta bloqueia o contrato. Nada é enviado ao
+        //    Mercado Pago aqui: o cancelamento da Preapproval é iniciado só pelo botão "Cancelar pagamento automático".
+        $externo = cancelamentoRecorrenciaVerificarBloqueio(cancelamentoRecorrenciaPortasReais($db, $empresa, $idAssinatura));
+        if (!$externo['ok']) {
+            return [['ok'=>false,'code'=>$externo['code'],'user_msg'=>$externo['msg'],'data'=>['bloqueio_recorrencia'=>true]], $externo['http']];
+        }
+
+        // 3) Cancelamento comercial.
+        if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar cancelamento.');
+        $valida = faturamentoCancelamentoValidar($db, $empresa, $modalidade, true);
+        if (isset($valida['erro'])) {
+            $db->rollback();
+            return [['ok'=>false,'code'=>$valida['erro'][0],'user_msg'=>$valida['erro'][1]], $valida['erro'][2]];
+        }
+        $assinatura = $valida['assinatura'];
         $idAssinatura = (int)$assinatura['id_assinatura'];
         $statusAnterior = (string)$assinatura['status'];
-        if ($modalidade === 'fim_periodo_pago' && ($statusAnterior !== 'ativa' || (string)$assinatura['modalidade'] !== 'paga')) {
-            $db->rollback();
-            out(['ok'=>false,'code'=>'SEM_PERIODO_PAGO','user_msg'=>'O cancelamento ao fim do período pago exige assinatura paga e ativa.'],409);
-        }
-        $dataFim = $modalidade === 'fim_periodo_pago'
-            ? assinaturaServicoFimPeriodoPago($db, $empresa, $idAssinatura) : date('Y-m-d');
-        if ($dataFim === null) {
-            $db->rollback();
-            out(['ok'=>false,'code'=>'SEM_PERIODO_PAGO','user_msg'=>'Não há período integralmente pago que inclua a data atual.'],409);
-        }
-        $statusNovo = $modalidade === 'fim_periodo_pago' ? 'ativa' : 'cancelada';
+        $statusNovo = $valida['statusNovo'];
+        $dataFim = $valida['dataFim'];
         $stmt = $db->prepare('UPDATE assinatura SET status = ?, data_fim = ? WHERE id_empresa = ? AND id_assinatura = ? AND status = ? AND data_fim IS NULL');
         if (!$stmt) throw new RuntimeException('Falha ao preparar cancelamento.');
         $stmt->bind_param('ssiis', $statusNovo, $dataFim, $empresa, $idAssinatura, $statusAnterior);
@@ -164,12 +210,14 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
             throw new RuntimeException('Falha ao bloquear recorrência.');
         }
         $stmt->close();
-        // Preapproval: registra a intenção de cancelar no provedor e mantém o slot ativo até a confirmação externa
-        // (chk_aspr_slot_ativo). A cobrança externa só termina quando o provedor confirmar.
-        $cancelamentoCartao = assinaturaServicoPreapprovalSolicitarCancelamento($db, $empresa, $idAssinatura);
+        // Preapproval: já encerrada (ou inexistente). Se uma recorrência viva surgiu entre as etapas, nada é concluído.
+        if (!cancelamentoRecorrenciaFinalizarLocal($db, $empresa, $idAssinatura)) {
+            $db->rollback();
+            return [['ok'=>false,'code'=>'CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO','user_msg'=>CANCELAMENTO_RECORRENCIA_MSG_PRIMEIRO,'data'=>['bloqueio_recorrencia'=>true]], 409];
+        }
         auditoriaRegistrar($db, $modalidade === 'fim_periodo_pago' ? 'assinatura.cancelamento_programado' : 'assinatura.cancelada', [
             'entidade_id' => $idAssinatura,
-            'entidade_rotulo' => 'Assinatura da empresa ' . (string)$empresas[0]['nome'],
+            'entidade_rotulo' => 'Assinatura da empresa ' . (string)$valida['empresa']['nome'],
             'descricao' => $modalidade === 'fim_periodo_pago' ? 'Proprietário programou o cancelamento da assinatura.' : 'Proprietário cancelou imediatamente a assinatura.',
             'alteracoes' => [
                 'status' => ['antes'=>$statusAnterior,'depois'=>$statusNovo],
@@ -178,25 +226,23 @@ function faturamentoCancelarContrato(mysqli $db, array $contexto): void {
             'contexto' => ['origem'=>'painel_administrativo','id_empresa'=>$empresa,
                 'id_assinatura'=>$idAssinatura,'id_plano'=>(int)$assinatura['id_plano'],
                 'status_anterior'=>$statusAnterior,'status_novo'=>$statusNovo,'data_fim'=>$dataFim,
-                'modalidade_cancelamento'=>$modalidade,'motivo'=>$motivo],
+                'modalidade_cancelamento'=>$modalidade,'motivo'=>$motivo,
+                'recorrencia_externa_cancelada'=>$externo['recorrencia']],
         ]);
         if (!$db->commit()) throw new RuntimeException('Falha ao confirmar cancelamento.');
-        if ((string)$assinatura['modalidade'] === 'teste' && ($cancelamentoCartao['id_operacao'] ?? null) !== null) {
-            // Teste grátis com cartão autorizado: o cancelamento da Preapproval é enviado já, para que ela não cobre a primeira
-            // mensalidade no fim do teste. Sem confirmação agora, a operação segue no outbox; o vínculo só muda pelo provedor.
-            faturamentoProcessarCancelamentoCartao($db, (int)$cancelamentoCartao['id_operacao'], $empresa);
-        }
-        out(['ok'=>true,'code'=>'CANCELAMENTO_REGISTRADO',
-            'user_msg'=>$modalidade === 'fim_periodo_pago' ? 'Cancelamento programado.' : 'Assinatura cancelada.',
+        $sufixo = $externo['recorrencia'] ? ' Não haverá novas cobranças automáticas.' : '';
+
+        return [['ok'=>true,'code'=>'CANCELAMENTO_REGISTRADO',
+            'user_msg'=>($modalidade === 'fim_periodo_pago' ? 'Cancelamento programado.' : 'Sua assinatura foi cancelada com sucesso.') . $sufixo,
             'data'=>['id_assinatura'=>$idAssinatura,'status'=>$statusNovo,'data_fim'=>$dataFim,
-                'modalidade_cancelamento'=>$modalidade]]);
+                'modalidade_cancelamento'=>$modalidade,'recorrencia_cancelada'=>$externo['recorrencia']]], 200];
     } catch (Throwable $erro) {
         try { $db->rollback(); } catch (Throwable) {}
         error_log('FATURAMENTO_CANCELAMENTO_EXCEPTION: ' . $erro->getMessage());
         $concorrencia = in_array((int)$erro->getCode(), [1205,1213], true);
-        out(['ok'=>false,'code'=>$concorrencia ? 'FINANCEIRO_EM_ATUALIZACAO' : 'CANCELAMENTO_ERROR',
+        return [['ok'=>false,'code'=>$concorrencia ? 'FINANCEIRO_EM_ATUALIZACAO' : 'CANCELAMENTO_ERROR',
             'user_msg'=>$concorrencia ? 'O financeiro está em atualização. Tente novamente.' : 'Não foi possível cancelar a assinatura.'],
-            $concorrencia ? 409 : 500);
+            $concorrencia ? 409 : 500];
     }
 }
 
@@ -207,18 +253,6 @@ function faturamentoCarregarGateway(): MercadoPagoGateway {
     if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
     require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
     return MercadoPagoGateway::daConfiguracao();
-}
-
-/** Envia agora a operação de cancelamento da Preapproval; falha só fica registrada (o outbox a retoma). */
-function faturamentoProcessarCancelamentoCartao(mysqli $db, int $idOperacao, int $empresa): void {
-    try {
-        $gateway = faturamentoCarregarGateway();
-        if (!MercadoPagoGateway::subscriptionsHabilitado()) return;
-        mpSubOperacaoProcessar($db, $gateway, $idOperacao, $empresa);
-    } catch (Throwable $erro) {
-        if (function_exists('mpWebhookRollback')) mpWebhookRollback($db);
-        error_log('FATURAMENTO_CANCELAMENTO_CARTAO: ' . get_class($erro));
-    }
 }
 
 /**
