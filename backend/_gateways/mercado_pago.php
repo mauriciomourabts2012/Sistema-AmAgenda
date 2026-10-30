@@ -575,12 +575,13 @@ final class MercadoPagoGateway
     }
 
     /**
-     * Referência externa gerada pelo AmAgenda para a Preapproval: "amg_" + 32 hex (pagamentoGatewayReferenciaInterna)
+     * Referência externa gerada pelo AmAgenda para a Preapproval: "amg_" + 32 hex (pagamentoGatewayReferenciaInterna),
+     * opcionalmente a rotação ".r2" a ".r9" (nova tentativa depois de uma criação incerta encerrada pelo suporte, mesma base)
      * e, nos contratos diários de 2 dias, o sufixo ".d2" (ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H).
      * É a única forma aceita na pesquisa por external_reference: o mesmo valor criado precisa ser pesquisável, e nada
-     * além dele (comprimento máximo 39) chega ao provedor.
+     * além dele (comprimento máximo 42) chega ao provedor.
      */
-    public const REFERENCIA_EXTERNA_PADRAO = '/^amg_[0-9a-f]{32}(?:\.d2)?$/D';
+    public const REFERENCIA_EXTERNA_PADRAO = '/^amg_[0-9a-f]{32}(?:\.r[2-9])?(?:\.d2)?$/D';
 
     public static function referenciaExternaValida(mixed $referencia): bool
     {

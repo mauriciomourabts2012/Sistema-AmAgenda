@@ -158,17 +158,18 @@ function cancelamentoRecorrenciaFinalizarLocal(mysqli $db, int $empresa, int $id
 /**
  * Resumo da recorrência por assinatura, para a listagem do Super Admin (só leitura).
  * situacao: ativa | cancelamento_pendente | verificacao (erro com Preapproval) | incerta (criação em aberto);
- * pode_cancelar: a ação "Cancelar pagamento automático" é oferecida (nunca para vínculo já cancelado/encerrado).
+ * pode_cancelar: a ação "Cancelar pagamento automático" é oferecida (nunca para vínculo já cancelado/encerrado);
+ * alerta: código de possível recorrência duplicada no provedor (webhook ou pré-verificação), ou null.
  *
  * @param list<int> $ids
- * @return array<int, array{situacao: string, pode_cancelar: bool, status_vinculo: string}>
+ * @return array<int, array{situacao: string, pode_cancelar: bool, status_vinculo: string, alerta: ?string}>
  */
 function cancelamentoRecorrenciaResumoPorAssinaturas(mysqli $db, array $ids): array
 {
     $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $i): bool => $i > 0)));
     if ($ids === []) return [];
     $linhas = assinaturaServicoConsultaFinanceira($db,
-        "SELECT v.id_assinatura, v.id_assinatura_pagamento, v.status, v.status_externo, v.assinatura_externa_id,
+        "SELECT v.id_assinatura, v.id_assinatura_pagamento, v.status, v.status_externo, v.assinatura_externa_id, v.ultimo_erro_codigo,
                 EXISTS (SELECT 1 FROM operacao_assinatura_gateway o WHERE o.id_assinatura_pagamento = v.id_assinatura_pagamento
                          AND o.status_processamento IN ('pendente','processando','conciliacao')) AS operacao_aberta
            FROM assinatura_pagamento_recorrente v
@@ -179,19 +180,22 @@ function cancelamentoRecorrenciaResumoPorAssinaturas(mysqli $db, array $ids): ar
     $resumo = [];
     foreach ($linhas as $v) {
         $cancelado = in_array((string)($v['status_externo'] ?? ''), ['canceled', 'cancelled'], true);
+        $alerta = in_array((string)($v['ultimo_erro_codigo'] ?? ''), ['PREAPPROVAL_EXTERNA_DUPLICADA', 'PREAPPROVAL_ANTERIOR_ENCONTRADA', 'MULTIPLAS_ASSINATURAS_EXTERNAS'], true)
+            ? (string)$v['ultimo_erro_codigo'] : null;
         if ($v['assinatura_externa_id'] === null) {
-            if ((int)$v['operacao_aberta'] === 1) {
-                $resumo[(int)$v['id_assinatura']] = ['situacao' => 'incerta', 'pode_cancelar' => false, 'status_vinculo' => (string)$v['status']];
+            if ((int)$v['operacao_aberta'] === 1 || $alerta !== null) {
+                $resumo[(int)$v['id_assinatura']] = ['situacao' => (int)$v['operacao_aberta'] === 1 ? 'incerta' : 'verificacao', 'pode_cancelar' => false,
+                    'status_vinculo' => (string)$v['status'], 'alerta' => $alerta];
             }
             continue;
         }
-        if ((string)$v['status'] === 'erro' && $cancelado) continue;
+        if ((string)$v['status'] === 'erro' && $cancelado && $alerta === null) continue;
         $situacao = match ((string)$v['status']) {
             'cancelamento_pendente' => 'cancelamento_pendente',
             'erro' => 'verificacao',
             default => 'ativa',
         };
-        $resumo[(int)$v['id_assinatura']] = ['situacao' => $situacao, 'pode_cancelar' => true, 'status_vinculo' => (string)$v['status']];
+        $resumo[(int)$v['id_assinatura']] = ['situacao' => $situacao, 'pode_cancelar' => true, 'status_vinculo' => (string)$v['status'], 'alerta' => $alerta];
     }
 
     return $resumo;

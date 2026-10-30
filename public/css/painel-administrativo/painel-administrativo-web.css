@@ -96,6 +96,9 @@
 #faturamento .faturamento-cobranca-detalhes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
 #faturamento .faturamento-cobranca-detalhes > div { display:grid; gap:5px; }
 #faturamento .faturamento-cobranca-detalhes strong { color:#263f5d; font-size:14px; }
+#faturamento .faturamento-cobranca-detalhes > .faturamento-pagamento-automatico { grid-column:1 / -1; padding:10px 12px; border-radius:10px; background:#f5f8fc; }
+#faturamento .faturamento-pagamento-automatico small { color:#55677d; font-size:12px; line-height:1.4; }
+#faturamento .faturamento-pagamento-automatico--recusado, #faturamento .faturamento-pagamento-automatico--recusado_retentativa { background:#fff6ec; }
 #faturamento .faturamento-cobranca-rodape { padding-top:13px; border-top:1px solid #edf1f6; color:#64748b; font-size:13px; }
 #faturamento .faturamento-cobranca-rodape > span { white-space:nowrap; }
 #faturamento .faturamento-status, .faturamento-pagamentos-modal .faturamento-status { display:inline-flex; align-items:center; width:max-content; padding:5px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:capitalize; }

@@ -1438,6 +1438,8 @@ function mpSubNormalizarFatura(array $d, string $idEsperado): array|string
         'valor_centavos' => $centavos,
         'debito' => assinaturaServicoPreapprovalDataExterna($d['debit_date'] ?? null),
         'tentativa' => is_int($d['retry_attempt'] ?? null) && $d['retry_attempt'] >= 0 ? $d['retry_attempt'] : 0,
+        // Data da próxima tentativa informada pelo provedor após recusa; null quando ausente (nunca estimada).
+        'proxima_tentativa' => assinaturaServicoPreapprovalDataExterna($d['next_retry_date'] ?? null),
         'referencia' => is_string($d['external_reference'] ?? null) ? $d['external_reference'] : null,
         'pagamento_id' => mpWebhookCampoExterno($pagamento['id'] ?? null, 150),
         'pagamento_status' => mpWebhookCampoExterno($pagamento['status'] ?? null, 50),
@@ -1532,9 +1534,10 @@ function mpSubClassificarFatura(array $fatura, array|string|null $pagamento): ar
         return $r('processando', 'normal', null, $detalhe);
     }
     if ($statusPagamento === 'rejected') {
-        // Em 'recycling' o provedor ainda vai tentar de novo: segue em processamento, mas com o motivo real da recusa
-        // (ex.: cc_rejected_high_risk); 'retry' só quando o provedor não informa status_detail.
-        return $statusFatura === 'recycling'
+        // Em 'recycling' (ou fatura reagendada como 'scheduled' após a recusa, com billing_status 'delayed' na Preapproval)
+        // o provedor ainda vai tentar de novo: segue em processamento, com o motivo real da recusa
+        // (ex.: cc_rejected_insufficient_amount); 'retry' só quando o provedor não informa status_detail.
+        return in_array($statusFatura, ['recycling', 'scheduled'], true)
             ? $r('processando', 'normal', null, $detalhe ?? 'retry')
             : $r('recusada', 'normal', null, $detalhe);
     }
@@ -1565,26 +1568,56 @@ function mpSubVinculoPorPreapproval(mysqli $conexao, string $ambiente, string $p
     return $vinculo;
 }
 
-/** Assinatura externa sem vínculo: se a referência é de uma tentativa local ainda sem vínculo, a notificação deve ser repetida. */
-function mpSubNaoReconhecido(mysqli $conexao, string $ambiente, ?string $referencia): array
+/**
+ * Assinatura externa sem vínculo:
+ * - referência de uma tentativa local ainda sem vínculo: a notificação deve ser repetida (a conciliação vai vinculá-la);
+ * - mesma BASE de referência de um vínculo nosso, mas não a tentativa atual dele (tentativa anterior encerrada pelo
+ *   suporte, ou outra Preapproval do mesmo contrato): possível recorrência duplicada. Nunca é ignorada nem vinculada: o
+ *   vínculo é sinalizado para o Super Admin e a notificação fica em erro (repetida e visível), sem quitar nada;
+ * - qualquer outra: ignorada (não é do AmAgenda).
+ */
+function mpSubNaoReconhecido(mysqli $conexao, string $ambiente, ?string $referencia, ?string $preapprovalId = null): array
 {
-    if ($referencia !== null && preg_match('/^amg_[0-9a-f]{32}(?:\.d2)?$/D', $referencia) === 1) {
-        $pendente = assinaturaServicoConsultaFinanceira(
-            $conexao,
-            "SELECT 1 FROM assinatura_pagamento_recorrente
-              WHERE provedor = ? AND ambiente = ? AND motor_recorrencia = 'preapproval'
-                AND referencia_externa_assinatura = ? AND assinatura_externa_id IS NULL LIMIT 1",
-            'sss',
-            MP_WEBHOOK_PROVEDOR,
-            $ambiente,
-            $referencia
-        ) !== [];
-        if ($pendente) {
-            return mpSubResultado('erro', 'vinculo_pendente');
-        }
+    if ($referencia === null || !MercadoPagoGateway::referenciaExternaValida($referencia)) {
+        return mpSubResultado('ignorado', 'assinatura_externa_nao_reconhecida');
     }
+    $pendente = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT 1 FROM assinatura_pagamento_recorrente
+          WHERE provedor = ? AND ambiente = ? AND motor_recorrencia = 'preapproval'
+            AND referencia_externa_assinatura = ? AND assinatura_externa_id IS NULL LIMIT 1",
+        'sss',
+        MP_WEBHOOK_PROVEDOR,
+        $ambiente,
+        $referencia
+    ) !== [];
+    if ($pendente) {
+        return mpSubResultado('erro', 'vinculo_pendente');
+    }
+    $base = assinaturaServicoPreapprovalReferenciaBase($referencia);
+    $doMesmoContrato = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_assinatura_pagamento, id_empresa FROM assinatura_pagamento_recorrente
+          WHERE provedor = ? AND ambiente = ? AND motor_recorrencia = 'preapproval'
+            AND (referencia_externa_assinatura = ? OR LEFT(referencia_externa_assinatura, ?) = ?)",
+        'sssis',
+        MP_WEBHOOK_PROVEDOR,
+        $ambiente,
+        $base,
+        strlen($base) + 1,
+        $base . '.'
+    );
+    if ($doMesmoContrato === []) {
+        return mpSubResultado('ignorado', 'assinatura_externa_nao_reconhecida');
+    }
+    $id = $preapprovalId !== null ? (mpWebhookCampoExterno($preapprovalId, 64) ?? 'desconhecida') : 'desconhecida';
+    foreach ($doMesmoContrato as $vinculo) {
+        mpSubSinalizarVinculo($conexao, $vinculo, 'PREAPPROVAL_EXTERNA_DUPLICADA',
+            "Assinatura externa {$id} de tentativa anterior deste contrato existe no provedor; conferir e encerrar no Mercado Pago (possível duplicidade).");
+    }
+    error_log('[assinatura_preapproval] preapproval_duplicada vinculos=' . implode(',', array_column($doMesmoContrato, 'id_assinatura_pagamento')));
 
-    return mpSubResultado('ignorado', 'assinatura_externa_nao_reconhecida');
+    return mpSubResultado('erro', 'preapproval_externa_duplicada');
 }
 
 function mpSubEncerrarEvento(mysqli $conexao, ?int $idEvento, string $status, ?string $codigo, ?int $idTransacao = null, ?int $idAssinaturaPagamento = null): void
@@ -1673,7 +1706,7 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
     $vinculo = mpSubVinculoPorPreapproval($conexao, $ambiente, $preapprovalId, $idEmpresa);
     if ($vinculo === null) {
         if ($idEmpresa !== null) return mpSubResultado('erro', 'vinculo_fora_do_escopo');
-        return mpSubNaoReconhecido($conexao, $ambiente, is_string($dados['external_reference'] ?? null) ? $dados['external_reference'] : null);
+        return mpSubNaoReconhecido($conexao, $ambiente, is_string($dados['external_reference'] ?? null) ? $dados['external_reference'] : null, $preapprovalId);
     }
 
     $contrato = assinaturaServicoConsultaFinanceira(
@@ -1830,13 +1863,15 @@ function mpSubSincronizarPreapproval(mysqli $conexao, object $gateway, string $a
                     // sozinho após três faturas recusadas; a última tentativa recusada distingue esse caso.
                     $ultimaTentativa = assinaturaServicoConsultaFinanceira(
                         $conexao,
-                        "SELECT status FROM transacao_pagamento
+                        "SELECT status, erro_codigo FROM transacao_pagamento
                           WHERE id_assinatura_pagamento = ? AND tipo_operacao = 'assinatura_preapproval'
                           ORDER BY id_transacao DESC LIMIT 1",
                         'i',
                         $idAspr
-                    )[0]['status'] ?? null;
-                    $sinal = $ultimaTentativa === 'recusada'
+                    )[0] ?? null;
+                    // Recusa definitiva ou recusa ainda aguardando nova tentativa (processando com o motivo em erro_codigo).
+                    $sinal = ($ultimaTentativa['status'] ?? null) === 'recusada'
+                        || (($ultimaTentativa['status'] ?? null) === 'processando' && ($ultimaTentativa['erro_codigo'] ?? null) !== null)
                         ? 'CANCELAMENTO_EXTERNO_POR_FALTA_DE_PAGAMENTO'
                         : 'CANCELAMENTO_EXTERNO_SEM_SOLICITACAO';
                 }
@@ -2717,6 +2752,20 @@ function mpSubAplicarFatura(mysqli $conexao, string $ambiente, array $vinculo, a
                 $idTransacao,
                 $idEmpresa
             );
+            // Coluna opcional (SQL manual): guarda só a data informada pelo provedor para a nova tentativa após recusa.
+            if (assinaturaServicoColunaExiste($conexao, 'transacao_pagamento', 'proxima_tentativa_em')) {
+                $proximaTentativa = $recusa && $classe['status'] === 'processando' && $fatura['proxima_tentativa'] !== null
+                    ? $fatura['proxima_tentativa']->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s')
+                    : null;
+                assinaturaServicoPreapprovalExec(
+                    $conexao,
+                    "UPDATE transacao_pagamento SET proxima_tentativa_em = ? WHERE id_transacao = ? AND id_empresa = ? AND status <> 'confirmada'",
+                    'sii',
+                    $proximaTentativa,
+                    $idTransacao,
+                    $idEmpresa
+                );
+            }
         }
 
         mpSubEncerrarEvento($conexao, $idEvento, 'processado', null, $idTransacao, $idAspr);
@@ -2782,7 +2831,7 @@ function mpSubProcessarFatura(mysqli $conexao, object $gateway, string $ambiente
     $vinculo = mpSubVinculoPorPreapproval($conexao, $ambiente, (string)$fatura['preapproval_id'], $idEmpresa);
     if ($vinculo === null) {
         if ($idEmpresa !== null) return mpSubResultado('erro', 'vinculo_fora_do_escopo');
-        return mpSubNaoReconhecido($conexao, $ambiente, $fatura['referencia']);
+        return mpSubNaoReconhecido($conexao, $ambiente, $fatura['referencia'], (string)$fatura['preapproval_id']);
     }
     if ($fatura['referencia'] !== null && $fatura['referencia'] !== (string)$vinculo['referencia_externa_assinatura']) {
         mpSubSinalizarVinculo($conexao, $vinculo, 'REFERENCIA_FATURA_DIVERGENTE', 'Fatura com referência externa diferente do vínculo.');

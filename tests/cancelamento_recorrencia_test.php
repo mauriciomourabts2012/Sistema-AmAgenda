@@ -13,7 +13,7 @@ $GLOBALS['pdo'] = new PDO('sqlite::memory:');
 $GLOBALS['pdo']->exec('CREATE TABLE transacao_pagamento (id_transacao INTEGER PRIMARY KEY, id_empresa INT, id_assinatura_pagamento INT,
     tipo_operacao TEXT, status TEXT, erro_codigo TEXT, detalhe_status_externo TEXT, requer_conciliacao INT DEFAULT 0)');
 $GLOBALS['pdo']->exec('CREATE TABLE assinatura_pagamento_recorrente (id_assinatura_pagamento INTEGER PRIMARY KEY, id_empresa INT, id_assinatura INT,
-    motor_recorrencia TEXT, status TEXT, status_externo TEXT, assinatura_externa_id TEXT, ambiente TEXT)');
+    motor_recorrencia TEXT, status TEXT, status_externo TEXT, assinatura_externa_id TEXT, ambiente TEXT, ultimo_erro_codigo TEXT)'); // ATUALIZADO (F37c): coluna real usada pelo alerta de duplicidade.
 $GLOBALS['pdo']->exec('CREATE TABLE assinatura (id_assinatura INTEGER PRIMARY KEY, id_empresa INT)');
 $GLOBALS['pdo']->exec('INSERT INTO assinatura VALUES (9, 5)');
 $GLOBALS['pdo']->exec('CREATE TABLE operacao_assinatura_gateway (id_operacao INTEGER PRIMARY KEY, id_assinatura_pagamento INT, status_processamento TEXT)');
@@ -316,7 +316,7 @@ verificar('SA serviço sem intenção nova: não envia PUT e não declara sucess
 // Elegibilidade na listagem: a ação só aparece quando há recorrência externa elegível.
 $resumo = fn(): array => cancelamentoRecorrenciaResumoPorAssinaturas($bd, [9]);
 semear('ativa');
-verificar('listagem: ativa é elegível', ($resumo()[9] ?? null) === ['situacao' => 'ativa', 'pode_cancelar' => true, 'status_vinculo' => 'ativa']);
+verificar('listagem: ativa é elegível', ($resumo()[9] ?? null) === ['situacao' => 'ativa', 'pode_cancelar' => true, 'status_vinculo' => 'ativa', 'alerta' => null]); // ATUALIZADO (F37c): campo alerta, null sem sinal.
 semear('cancelamento_pendente');
 verificar('listagem: cancelamento_pendente é elegível (retomada)', ($resumo()[9]['situacao'] ?? '') === 'cancelamento_pendente' && $resumo()[9]['pode_cancelar'] === true);
 semear('cancelada', 'PRE-1', 'canceled');
@@ -329,7 +329,13 @@ semear('erro');
 verificar('listagem: erro não confirmado mostra o estado real (verificação)', ($resumo()[9]['situacao'] ?? '') === 'verificacao');
 semear('pendente', null, 'x');
 $GLOBALS['pdo']->exec('INSERT INTO operacao_assinatura_gateway (id_assinatura_pagamento,status_processamento) VALUES (1,"conciliacao")');
-verificar('listagem: criação incerta é sinalizada sem oferecer cancelamento', ($resumo()[9] ?? null) === ['situacao' => 'incerta', 'pode_cancelar' => false, 'status_vinculo' => 'pendente']);
+verificar('listagem: criação incerta é sinalizada sem oferecer cancelamento', ($resumo()[9] ?? null) === ['situacao' => 'incerta', 'pode_cancelar' => false, 'status_vinculo' => 'pendente', 'alerta' => null]); // ATUALIZADO (F37c): campo alerta.
+$GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET ultimo_erro_codigo = 'PREAPPROVAL_ANTERIOR_ENCONTRADA'");
+verificar('F37c listagem: tentativa bloqueada por Preapproval anterior aparece com o alerta de duplicidade (Super Admin)',
+    ($resumo()[9] ?? null) === ['situacao' => 'incerta', 'pode_cancelar' => false, 'status_vinculo' => 'pendente', 'alerta' => 'PREAPPROVAL_ANTERIOR_ENCONTRADA']);
+$GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET ultimo_erro_codigo = 'OUTRO_ERRO'");
+verificar('F37c listagem: outros erros não viram alerta de duplicidade', array_key_exists('alerta', $resumo()[9] ?? []) && $resumo()[9]['alerta'] === null);
+$GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET ultimo_erro_codigo = NULL");
 semear('pendente', null, 'x');
 verificar('listagem: vínculo sem Preapproval nunca bloqueia nem oferece ação', $resumo() === []);
 
@@ -583,8 +589,12 @@ verificar('F3 Super Admin coerente: ação em Ações, bloqueio comercial e dest
 ini_set('error_log', sys_get_temp_dir() . '/amagenda_teste_f37.log');
 require_once __DIR__ . '/../backend/_gateways/mercado_pago.php';
 $extrair('backend/_servicos/assinatura.php', [
-    'assinaturaServicoPreapprovalEstadoBusca', 'assinaturaServicoPreapprovalLocalizar', 'assinaturaServicoDataValida', 'assinaturaServicoPreapprovalInicioTeste',
-], ['ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE', 'ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H']);
+    'assinaturaServicoPreapprovalEstadoBusca', 'assinaturaServicoPreapprovalVarrerStatus', 'assinaturaServicoPreapprovalLocalizar', 'assinaturaServicoDataValida', 'assinaturaServicoPreapprovalInicioTeste',
+    'assinaturaServicoPreapprovalEvidenciaExterna', 'assinaturaServicoPreapprovalAvaliarEvidencia', 'assinaturaServicoNovaContratacaoResultado',
+    'assinaturaServicoPreapprovalReferenciaBase', 'assinaturaServicoPreapprovalReferenciaRotacionada', 'assinaturaServicoPreapprovalAtestadoMotivo', 'assinaturaServicoPreapprovalResumoEvidencia',
+], ['ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE', 'ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H',
+    'ASSINATURA_SERVICO_PREAPPROVAL_STATUS_BUSCA', 'ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_MARGEM_SEGUNDOS', 'ASSINATURA_SERVICO_PREAPPROVAL_ATESTADO_MINIMO',
+    'ASSINATURA_SERVICO_PREAPPROVAL_FONTES_EVIDENCIA', 'ASSINATURA_SERVICO_PREAPPROVAL_FUSO']);
 $extrair('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php', ['pagamentoCartaoEstadoCriacao', 'pagamentoCartaoCriacaoExigeSuporte']);
 $assSrc = str_replace("\r\n", "\n", $ler('backend/_servicos/assinatura.php'));
 $gwSrc = $ler('backend/_gateways/mercado_pago.php');
@@ -607,59 +617,74 @@ verificar('F37 a validação não foi removida: filtros desconhecidos e busca se
     $rota->invoke(null, ['external_reference' => $ref, 'foo' => 'bar']) === null && $rota->invoke(null, ['limit' => 50]) === null && $rota->invoke(null, []) === null);
 verificar('F37 a criação continua exigindo external_reference e a regra tem comprimento máximo 39', str_contains($gwSrc, "!array_key_exists('external_reference', \$corpo)") && strlen($ref . '.d2') === 39);
 
-// Pesquisa pela referência original (Localizar) com gateway simulado.
+// Pesquisa pela referência original (Localizar) com um Mercado Pago simulado: honra o filtro `status`, IGNORA `external_reference`
+// (comportamento real observado) e pagina por limit/offset, devolvendo paging.total.
 final class GatewayBusca
 {
-    public array $respostas = [];
+    /** @var list<array<string, mixed>> */
+    public array $conta = [];
     public array $chamadas = [];
+    public ?array $falha = null;
+    public bool $honraStatus = true;
     public function buscarPreapprovals(array $filtros): array
     {
         $this->chamadas[] = $filtros;
+        if ($this->falha !== null) {
+            return $this->falha;
+        }
+        $norm = fn($s) => $s === 'cancelled' ? 'canceled' : (string)$s;
+        $itens = $this->conta;
+        if ($this->honraStatus && isset($filtros['status'])) {
+            $itens = array_values(array_filter($itens, fn($i) => $norm($i['status'] ?? '') === $norm($filtros['status'])));
+        }
+        $offset = (int)($filtros['offset'] ?? 0);
+        $limite = (int)($filtros['limit'] ?? 50);
 
-        return array_shift($this->respostas) ?? ['sucesso' => false, 'codigo' => 'falha_transporte'];
+        return ['sucesso' => true, 'codigo' => 'ok', 'dados' => ['results' => array_slice($itens, $offset, $limite),
+            'paging' => ['total' => count($itens), 'limit' => $limite, 'offset' => $offset]]];
     }
 }
-$ok = fn(array $itens, ?int $total = null) => ['sucesso' => true, 'codigo' => 'ok', 'dados' => ['results' => $itens] + ($total !== null ? ['paging' => ['total' => $total, 'limit' => 50, 'offset' => 0]] : [])];
-$item = fn(string $id, string $r) => ['id' => $id, 'external_reference' => $r, 'status' => 'pending'];
+$item = fn(string $id, string $r, string $status = 'pending', string $criada = '2026-10-29T15:31:27.000-04:00') => ['id' => $id, 'external_reference' => $r, 'status' => $status, 'date_created' => $criada];
 $outraEmpresa = 'amg_' . str_repeat('cd34', 8) . '.d2';
 $refD2 = $ref . '.d2';
+$conta = function (array $itens, ?array $falha = null) {
+    $g = new GatewayBusca();
+    $g->conta = $itens;
+    $g->falha = $falha;
 
-$g = new GatewayBusca();
-$g->respostas = [$ok([$item('PRE-1', $refD2)])];
-verificar('F37 operação incerta com Preapproval encontrada: id único devolvido, uma consulta, referência .d2 enviada intacta',
-    assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'encontrada', 'id' => 'PRE-1'] && count($g->chamadas) === 1 && $g->chamadas[0]['external_reference'] === $refD2);
-$g = new GatewayBusca();
-$g->respostas = [$ok([$item('PRE-9', $outraEmpresa), $item('PRE-1', $refD2)])];
+    return $g;
+};
+
+$g = $conta([$item('PRE-1', $refD2)]);
+verificar('F37 operação incerta com Preapproval encontrada: id único devolvido; uma consulta por status (pending, authorized, paused), referência .d2 enviada intacta',
+    assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'encontrada', 'id' => 'PRE-1'] && count($g->chamadas) === 3
+    && $g->chamadas[0]['external_reference'] === $refD2 && array_column($g->chamadas, 'status') === ['pending', 'authorized', 'paused']);
+$g = $conta([$item('PRE-9', $outraEmpresa), $item('PRE-1', $refD2)]);
 verificar('F37 isolamento: resultado de outra referência/empresa é ignorado mesmo vindo na mesma página', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'encontrada', 'id' => 'PRE-1']);
-$g = new GatewayBusca();
-$g->respostas = [$ok([$item('PRE-9', $outraEmpresa)])];
+$g = $conta([$item('PRE-9', $outraEmpresa)]);
 verificar('F37 isolamento: só correspondência de outra empresa não vincula nada (não encontrada)', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'nao_encontrada', 'id' => null]);
-$g = new GatewayBusca();
-$g->respostas = [$ok([$item('PRE-1', $refD2), $item('PRE-2', $refD2)])];
-verificar('F37 múltiplas Preapprovals com a mesma referência: bloqueio para análise manual', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'multiplas', 'id' => null]);
-$g = new GatewayBusca();
-$g->respostas = [$ok([$item('PRE-1', $refD2), $item('PRE-1', $refD2)])];
+$g = $conta([$item('PRE-1', $refD2), $item('PRE-2', $refD2, 'authorized')]);
+verificar('F37 múltiplas Preapprovals com a mesma referência (inclusive em status diferentes): bloqueio para análise manual', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'multiplas', 'id' => null]);
+$g = $conta([$item('PRE-1', $refD2), $item('PRE-1', $refD2)]);
 verificar('F37 o mesmo id repetido não é duplicidade', assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'encontrada');
-$g = new GatewayBusca();
-$g->respostas = [$ok([])];
+$g = $conta([]);
 verificar('F37 sem resultado em pesquisa completa: não encontrada (não prova inexistência; nada é criado por isso)', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'nao_encontrada', 'id' => null]);
-$g = new GatewayBusca();
-$g->respostas = [['sucesso' => false, 'codigo' => 'falha_transporte'], ['sucesso' => false, 'codigo' => 'provedor_indisponivel']];
+$g = $conta([], ['sucesso' => false, 'codigo' => 'falha_transporte']);
 verificar('F37 falha de comunicação preserva o estado incerto (indisponível)', assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'indisponivel');
-$g = new GatewayBusca();
-$g->respostas = [['sucesso' => false, 'codigo' => 'resposta_invalida', 'http_status' => 200]];
+$g = $conta([], ['sucesso' => false, 'codigo' => 'resposta_invalida', 'http_status' => 200]);
 verificar('F37 resposta inválida do provedor não prova nada (indisponível)', assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'indisponivel');
 foreach (['operacao_invalida', 'requisicao_invalida', 'provedor_rejeitou'] as $codigoRecusa) {
-    $g = new GatewayBusca();
-    $g->respostas = [['sucesso' => false, 'codigo' => $codigoRecusa, 'http_status' => 400]];
+    $g = $conta([], ['sucesso' => false, 'codigo' => $codigoRecusa, 'http_status' => 400]);
     verificar("F37 recusa ($codigoRecusa) não é mais tratada como indisponibilidade transitória", assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'recusada');
 }
-$g = new GatewayBusca();
-$cheia = array_map(fn($n) => $item('X' . $n, 'amg_' . str_pad((string)$n, 32, '0', STR_PAD_LEFT)), range(1, 50));
-$g->respostas = [$ok($cheia, 900), $ok($cheia, 900), $ok($cheia, 900), $ok($cheia, 900)];
-verificar('F37 pesquisa incompleta (páginas esgotadas sem fim) nunca conclui "não encontrada"', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'indisponivel', 'id' => null] && count($g->chamadas) === 4);
+$cheia = array_map(fn($n) => $item('X' . $n, 'amg_' . str_pad((string)$n, 32, '0', STR_PAD_LEFT)), range(1, 260));
+$g = $conta($cheia);
+verificar('F37 pesquisa incompleta (páginas esgotadas sem fim) nunca conclui "não encontrada"', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'indisponivel', 'id' => null] && count($g->chamadas) === 4 + 1 + 1);
+$g = $conta(array_merge(array_map(fn($n) => $item('Y' . $n, 'amg_' . str_pad((string)$n, 32, '0', STR_PAD_LEFT), 'cancelled'), range(1, 600)), [$item('PRE-1', $refD2)]));
+verificar('F37 conta grande: as Preapprovals canceladas (histórico) não entram na pesquisa por status, então a recuperação não depende do tamanho da conta',
+    assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'encontrada', 'id' => 'PRE-1'] && count($g->chamadas) === 3);
 verificar('F37 classificação da busca: ok, recusada e indisponível',
-    assinaturaServicoPreapprovalEstadoBusca($ok([])) === 'ok' && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => false, 'codigo' => 'operacao_invalida']) === 'recusada'
+    assinaturaServicoPreapprovalEstadoBusca(['sucesso' => true, 'codigo' => 'ok', 'dados' => ['results' => []]]) === 'ok' && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => false, 'codigo' => 'operacao_invalida']) === 'recusada'
     && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => false, 'codigo' => 'falha_transporte']) === 'indisponivel' && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => true, 'dados' => []]) === 'indisponivel');
 
 // Recuperação sem criação duplicada (garantias estruturais do serviço real).
@@ -683,7 +708,7 @@ verificar('F37 a Preapproval encontrada só é vinculada após validar referênc
 verificar('F37 busca incompleta, recusada ou sem resultado mantém a operação em conciliação com código próprio (sem presumir inexistência)',
     str_contains($esc, "'recusada' => ['CONCILIACAO_CONSULTA_RECUSADA'") && str_contains($esc, "'nao_encontrada' => ['EXISTENCIA_NAO_CONFIRMADA'") && str_contains($esc, "'indisponivel' => ['CONCILIACAO_INDISPONIVEL'")
     && str_contains($esc, "'multiplas' => ['MULTIPLAS_ASSINATURAS_EXTERNAS'") && !str_contains($esc, "'erro'") && !str_contains($esc, 'Reservar('));
-verificar('F37 pesquisa recusada deixa rastro (código e HTTP, sem corpo nem referência)', str_contains($loc, "error_log('[assinatura_preapproval] busca_'") && !str_contains($loc, "'referencia'"));
+verificar('F37 pesquisa recusada deixa rastro (código e HTTP, sem corpo nem referência)', str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalVarrerStatus'), "error_log('[assinatura_preapproval] busca_'") && !str_contains($loc, "'referencia'")); // ATUALIZADO: o rastro agora vive na varredura por status.
 
 // Estado da criação (função real) e habilitação das ações.
 $aberta = fn(string $st, ?string $erro, int $idade) => ['status' => $st, 'erro_codigo' => $erro, 'idade_segundos' => $idade];
@@ -986,6 +1011,413 @@ verificar('F37b conciliação externa continua somente leitura (GET) e preserva 
     !preg_match('/DELETE FROM (assinatura_pagamento_recorrente|operacao_assinatura_gateway)/', $assSrc . $po . $wh4) && !str_contains($loc, '->criarPreapproval(') && !str_contains($loc, 'atualizarPreapproval'));
 verificar('F37b teste grátis protegido: nenhuma das mudanças deste complemento grava em assinatura (vigência, modalidade ou datas do teste)',
     !preg_match('/UPDATE assinatura\s/', $corpo($po, 'pagamentoCartaoEstadoCriacao') . $corpo($po, 'pagamentoCartaoCriacaoOperacao') . $corpo($po, 'pagamentoCartaoTesteGratis') . $corpo($po, 'pagamentoCartaoDadosPreapproval')));
+
+// ---------------------------------------------------------------------------------------------------------------
+// Operação incerta (empresa 37): evidência externa somente leitura, pré-verificação antes de criar e resolução administrativa.
+// ---------------------------------------------------------------------------------------------------------------
+$GLOBALS['pdo']->exec('ALTER TABLE operacao_assinatura_gateway ADD COLUMN id_empresa INT');
+$GLOBALS['f5'] = ['esclarecer' => 0, 'marcar' => [], 'encerrar' => [], 'erro' => []];
+function assinaturaServicoPreapprovalEsclarecer(object $conexao, object $gateway, array $reserva, ?string $email): array
+{
+    $GLOBALS['f5']['esclarecer']++;
+
+    return assinaturaServicoNovaContratacaoResultado(true, 'PREAPPROVAL_VINCULADA', 'vinculada', ['estado' => 'vinculada']);
+}
+function assinaturaServicoPreapprovalMarcarConciliacao(object $conexao, array $vinculo, int $idOperacao, string $codigo, string $motivo): void
+{
+    $GLOBALS['f5']['marcar'][] = $codigo;
+}
+function assinaturaServicoPreapprovalEncerrarOperacao(object $conexao, int $idOperacao, string $status, ?string $codigo, ?string $motivo): bool
+{
+    $GLOBALS['f5']['encerrar'][] = [$status, $codigo];
+
+    return true;
+}
+function assinaturaServicoPreapprovalRegistrarErro(object $conexao, array $vinculo, string $codigo, string $motivo, bool $definitivo): void
+{
+    $GLOBALS['f5']['erro'][] = [$codigo, $definitivo];
+}
+$extrair('backend/_servicos/assinatura.php', ['assinaturaServicoPreapprovalConferirAntesDeCriar']);
+
+$tentativa = new DateTimeImmutable('2026-10-29 22:46:28', new DateTimeZone('America/Sao_Paulo'));
+$ctaReal = array_merge(
+    array_map(fn($n) => $item('C' . $n, 'amg_' . str_pad((string)$n, 32, '0', STR_PAD_LEFT), 'cancelled', '2026-10-27T12:00:00.000-04:00'), range(1, 18)),
+    [$item('P1', 'amg_' . str_repeat('1', 32), 'pending', '2026-10-27T19:36:24.000-04:00'), $item('P2', 'amg_' . str_repeat('2', 32), 'pending', '2026-10-27T21:01:19.000-04:00'),
+        $item('P3', 'amg_' . str_repeat('3', 32), 'pending', '2026-10-28T21:01:18.000-04:00'),
+        $item('A1', 'amg_' . str_repeat('4', 32) . '.d2', 'authorized', '2026-10-29T15:31:27.000-04:00'), $item('A2', 'amg_' . str_repeat('5', 32), 'authorized', '2026-10-29T11:35:09.000-04:00')]
+);
+$ev = assinaturaServicoPreapprovalEvidenciaExterna($conta($ctaReal), $refD2, $tentativa);
+verificar('F5 evidência da conta real (23 itens, nenhum com a referência, mais recente ANTES da tentativa): enumeração completa, sem correspondência, sem marca d\'água',
+    $ev['estado'] === 'ok' && $ev['completa'] === true && $ev['itens'] === 23 && $ev['ids'] === [] && $ev['status_honrado'] === true && $ev['marca_dagua'] === false);
+// ATUALIZADO (F37c): a conferência do Super Admin é estruturada (fonte, data/hora, identificação da evidência); texto livre sozinho não vale.
+$agoraF5 = new DateTimeImmutable('2026-10-30 12:00:00', new DateTimeZone('America/Sao_Paulo'));
+$conf = fn(string $descricao = 'Painel MP > Assinaturas, filtro pelo e-mail do pagador: nenhuma da referência.', string $quando = '2026-10-30 09:15', string $fonte = 'painel_mercado_pago')
+    => ['fonte' => $fonte, 'conferido_em' => $quando, 'descricao' => $descricao];
+$avaliar = fn(array $e, ?array $a) => assinaturaServicoPreapprovalAvaliarEvidencia($e, $a, $tentativa, $agoraF5);
+verificar('F5 sem marca d\'água e sem atestado: NÃO libera (resultado vazio de pesquisa não é prova)', $avaliar($ev, null) === ['liberar' => false, 'codigo' => 'ATESTADO_NECESSARIO', 'atestado_necessario' => true, 'atestado_motivo' => 'ATESTADO_AUSENTE']);
+verificar('F5 atestado curto não vale; atestado com a conferência no painel (≥ 20 caracteres) vale e fica registrado',
+    $avaliar($ev, $conf('ok'))['liberar'] === false && $avaliar($ev, $conf('   curto   '))['atestado_motivo'] === 'ATESTADO_DESCRICAO_INVALIDA'
+    && $avaliar($ev, $conf()) === ['liberar' => true, 'codigo' => 'EVIDENCIA_COM_ATESTADO', 'atestado_necessario' => false, 'atestado_motivo' => null]);
+verificar('F37c texto livre de 20+ caracteres, isoladamente, não é prova: sem fonte válida ou sem data/hora da conferência não libera',
+    $avaliar($ev, ['descricao' => 'Conferido no painel do Mercado Pago: nenhuma assinatura.'])['atestado_motivo'] === 'ATESTADO_FONTE_INVALIDA'
+    && $avaliar($ev, $conf(fonte: 'whatsapp'))['atestado_motivo'] === 'ATESTADO_FONTE_INVALIDA'
+    && $avaliar($ev, ['fonte' => 'painel_mercado_pago', 'descricao' => 'Conferido no painel do Mercado Pago: nenhuma assinatura.'])['atestado_motivo'] === 'ATESTADO_DATA_INVALIDA');
+verificar('F37c data da conferência: antes da tentativa, no futuro ou mal formatada não vale; logo depois da tentativa e via suporte vale',
+    $avaliar($ev, $conf(quando: '2026-10-29 20:00'))['atestado_motivo'] === 'ATESTADO_DATA_INVALIDA' && $avaliar($ev, $conf(quando: '2026-10-31 09:00'))['atestado_motivo'] === 'ATESTADO_DATA_INVALIDA'
+    && $avaliar($ev, $conf(quando: '30/10/2026 09:15'))['atestado_motivo'] === 'ATESTADO_DATA_INVALIDA' && $avaliar($ev, $conf(quando: '2026-10-30 25:99'))['atestado_motivo'] === 'ATESTADO_DATA_INVALIDA'
+    && $avaliar($ev, $conf(quando: '2026-10-29 22:50', fonte: 'suporte_mercado_pago'))['liberar'] === true);
+$res37 = assinaturaServicoPreapprovalResumoEvidencia($ev, $avaliar($ev, null), '2026-10-29 22:46:28');
+verificar('F37c resumo separa os quatro estados: consulta completa, referência não localizada, existência externa NÃO CONFIRMADA (nunca "inexistente") e evidência ainda insuficiente',
+    $res37['consulta_completa'] === true && $res37['referencia_localizada'] === false && $res37['existencia_externa'] === 'nao_confirmada' && $res37['evidencia_suficiente'] === false
+    && $res37['itens_varridos'] === 23 && $res37['cobertura_indice'] === false);
+$gTudoLeitura = $conta($ctaReal);
+assinaturaServicoPreapprovalEvidenciaExterna($gTudoLeitura, $refD2, $tentativa);
+verificar('F5 a evidência é SOMENTE LEITURA e independente do filtro de referência: só consultas de busca por status, sem external_reference',
+    count($gTudoLeitura->chamadas) >= 4 && array_unique(array_column($gTudoLeitura->chamadas, 'status')) === ['pending', 'authorized', 'paused', 'cancelled'] && !in_array(true, array_map(fn($c) => isset($c['external_reference']), $gTudoLeitura->chamadas), true));
+$posterior = array_merge($ctaReal, [$item('N1', 'amg_' . str_repeat('9', 32), 'pending', '2026-10-30T09:00:00.000-04:00')]);
+$evMarca = assinaturaServicoPreapprovalEvidenciaExterna($conta($posterior), $refD2, $tentativa);
+// ATUALIZADO (F37c): a marca d'água só indica cobertura do índice; sozinha NUNCA libera (antes liberava sem atestado).
+verificar('F5 existe Preapproval mais recente que a tentativa (margem de 10 min): cobertura do índice registrada, mas sem a conferência continua bloqueado',
+    $evMarca['marca_dagua'] === true && $avaliar($evMarca, null)['codigo'] === 'ATESTADO_NECESSARIO' && $avaliar($evMarca, null)['liberar'] === false
+    && $avaliar($evMarca, $conf())['liberar'] === true && assinaturaServicoPreapprovalResumoEvidencia($evMarca, $avaliar($evMarca, null), '2026-10-29 22:46:28')['cobertura_indice'] === true);
+$logoApos = array_merge($ctaReal, [$item('N2', 'amg_' . str_repeat('8', 32), 'pending', '2026-10-29T21:50:00.000-04:00')]); // 22:50 em SP: 4 min após a tentativa
+verificar('F5 Preapproval só alguns minutos depois da tentativa (dentro da margem) não prova cobertura do índice', assinaturaServicoPreapprovalEvidenciaExterna($conta($logoApos), $refD2, $tentativa)['marca_dagua'] === false);
+foreach (['mesma base com outro sufixo' => 'amg_ba8bcfaaed88d60a4fbfd485a191550f', 'mesma referência' => 'amg_ba8bcfaaed88d60a4fbfd485a191550f.d2'] as $nome => $refExterna) {
+    $com = array_merge($ctaReal, [$item('LATE-1', $refExterna, 'pending', '2026-10-29T21:47:00.000-04:00')]);
+    $evx = assinaturaServicoPreapprovalEvidenciaExterna($conta($com), 'amg_ba8bcfaaed88d60a4fbfd485a191550f.d2', $tentativa);
+    verificar("F5 criação tardia encontrada ($nome): nunca libera nova criação; a recuperação é pela conciliação", $evx['ids'] === ['LATE-1'] && $avaliar($evx, $conf())['codigo'] === 'PREAPPROVAL_EXTERNA_ENCONTRADA');
+}
+$orf = array_merge($ctaReal, [$item('LATE-2', 'amg_ba8bcfaaed88d60a4fbfd485a191550f.d2', 'cancelled', '2026-10-29T21:47:00.000-04:00')]);
+verificar('F5 até uma Preapproval tardia já cancelada é achada e impede a liberação (a tentativa existiu)', $avaliar(assinaturaServicoPreapprovalEvidenciaExterna($conta($orf), 'amg_ba8bcfaaed88d60a4fbfd485a191550f.d2', $tentativa), $conf())['codigo'] === 'PREAPPROVAL_EXTERNA_ENCONTRADA');
+$muitas = array_map(fn($n) => $item('M' . $n, 'amg_' . str_pad((string)$n, 32, '0', STR_PAD_LEFT)), range(1, 1100));
+$evInc = assinaturaServicoPreapprovalEvidenciaExterna($conta($muitas), $refD2, $tentativa);
+verificar('F5 enumeração incompleta (mais itens que o limite de páginas): nunca libera, nem com atestado', $evInc['completa'] === false && $avaliar($evInc, $conf())['codigo'] === 'EVIDENCIA_INCOMPLETA');
+$gSemStatus = $conta($ctaReal);
+$gSemStatus->honraStatus = false;
+verificar('F5 se o provedor deixar de honrar o filtro de status, a varredura não é enumeração: nunca libera', $avaliar(assinaturaServicoPreapprovalEvidenciaExterna($gSemStatus, $refD2, $tentativa), $conf())['codigo'] === 'EVIDENCIA_INCOMPLETA');
+verificar('F5 consulta indisponível ou recusada nunca libera',
+    $avaliar(assinaturaServicoPreapprovalEvidenciaExterna($conta([], ['sucesso' => false, 'codigo' => 'falha_transporte']), $refD2, $tentativa), $conf())['codigo'] === 'EVIDENCIA_INDISPONIVEL'
+    && $avaliar(assinaturaServicoPreapprovalEvidenciaExterna($conta([], ['sucesso' => false, 'codigo' => 'provedor_rejeitou', 'http_status' => 400]), $refD2, $tentativa), $conf())['codigo'] === 'CONSULTA_RECUSADA');
+verificar('F5 conta vazia com filtro honrado é só "pesquisa vazia": exige atestado, jamais libera sozinha', $avaliar(assinaturaServicoPreapprovalEvidenciaExterna($conta([]), $refD2, $tentativa), null)['codigo'] === 'ATESTADO_NECESSARIO');
+
+// Pré-verificação antes de uma nova criação (vínculo com tentativa anterior): nunca cria às cegas.
+$GLOBALS['pdo']->exec("INSERT INTO operacao_assinatura_gateway (id_operacao, id_assinatura_pagamento, status_processamento, id_empresa) VALUES (100, 24, 'cancelada', 37), (101, 24, 'processando', 37), (200, 25, 'processando', 37)");
+$reservaPrev = fn(int $vinc, int $op) => ['vinculo' => ['id_assinatura_pagamento' => $vinc, 'id_empresa' => 37, 'referencia_externa_assinatura' => $refD2], 'operacao' => ['id_operacao' => $op]];
+$zerar = function () { $GLOBALS['f5'] = ['esclarecer' => 0, 'marcar' => [], 'encerrar' => [], 'erro' => []]; };
+$zerar();
+$g = $conta([$item('X', 'amg_' . str_repeat('7', 32))]);
+verificar('F5 primeira criação do vínculo (sem tentativa anterior): sem consulta prévia, segue para o POST', assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaPrev(25, 200), 'a@b.co') === null && $g->chamadas === []);
+$g = $conta([$item('X', 'amg_' . str_repeat('7', 32))]);
+verificar('F5 nova criação após tentativa anterior: pesquisa completa sem correspondência → segue para o POST (única criação)', assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaPrev(24, 101), 'a@b.co') === null && count($g->chamadas) === 3);
+$g = $conta([$item('PRE-9', $refD2)]);
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaPrev(24, 101), 'a@b.co');
+verificar('F5 criação tardia encontrada antes de criar: vincula/recupera (Esclarecer) e NÃO segue para o POST', $r !== null && $r['ok'] === true && $GLOBALS['f5']['esclarecer'] === 1);
+$zerar();
+$g = $conta([$item('PRE-1', $refD2), $item('PRE-2', $refD2, 'authorized')]);
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaPrev(24, 101), 'a@b.co');
+verificar('F5 duplicidade externa comprovada: bloqueia apenas a nova criação, em conciliação, com o motivo', $r !== null && $r['ok'] === false && $r['codigo'] === 'MULTIPLAS_ASSINATURAS_EXTERNAS' && $GLOBALS['f5']['marcar'] === ['MULTIPLAS_ASSINATURAS_EXTERNAS']);
+$zerar();
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $conta([], ['sucesso' => false, 'codigo' => 'falha_transporte']), $reservaPrev(24, 101), 'a@b.co');
+verificar('F5 pesquisa indisponível antes de criar: nada é criado (503), só esta tentativa é encerrada para repetir depois',
+    $r !== null && $r['ok'] === false && $r['codigo'] === 'CONSULTA_PREVIA_INDISPONIVEL' && $r['http_status'] === 503 && $GLOBALS['f5']['encerrar'] === [['erro', 'CONSULTA_PREVIA_INDISPONIVEL']] && $GLOBALS['f5']['erro'] === [['CONSULTA_PREVIA_INDISPONIVEL', false]]);
+$zerar();
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $conta([], ['sucesso' => false, 'codigo' => 'operacao_invalida']), $reservaPrev(24, 101), 'a@b.co');
+verificar('F5 pesquisa recusada antes de criar: nada é criado', $r !== null && $r['codigo'] === 'CONSULTA_PREVIA_RECUSADA' && $GLOBALS['f5']['esclarecer'] === 0);
+$ini5 = $corpo($assSrc, 'assinaturaServicoPreapprovalIniciar');
+verificar('F5 Iniciar: a pré-verificação roda depois da reserva e ANTES do único POST', strpos($ini5, 'assinaturaServicoPreapprovalConferirAntesDeCriar(') !== false
+    && strpos($ini5, 'assinaturaServicoPreapprovalConferirAntesDeCriar(') < strpos($ini5, 'assinaturaServicoPreapprovalEnviar(') && substr_count($assSrc, '->criarPreapproval(') === 1);
+
+// Resolução administrativa: permissões, trava, auditoria e preservação do histórico.
+$res = $corpo($assSrc, 'assinaturaServicoPreapprovalResolverCriacaoIncerta');
+verificar('F5 resolução: duas fases — sem confirmação nada é gravado; a evidência é calculada antes de qualquer transação',
+    strpos($res, "'CONFIRMACAO_OBRIGATORIA'") !== false && strpos($res, "'CONFIRMACAO_OBRIGATORIA'") < strpos($res, 'assinaturaServicoPreapprovalTransacao(')
+    && strpos($res, 'assinaturaServicoPreapprovalAvaliarEvidencia(') < strpos($res, "'CONFIRMACAO_OBRIGATORIA'") && str_contains($res, '$ator === null'));
+verificar('F5 resolução: só opera sobre vínculo sem id externo e operação em conciliação; operação em andamento ou inexistente é recusada',
+    str_contains($res, "\$vinculo['assinatura_externa_id'] !== null") && str_contains($res, "(string)\$operacao['status_processamento'] !== 'conciliacao'") && str_contains($res, 'OPERACAO_EM_ANDAMENTO') && str_contains($res, 'SEM_CRIACAO_INCERTA'));
+verificar('F5 resolução: dentro da transação, relê sob FOR UPDATE e aborta se algo mudou (cron, vínculo criado, nova tentativa) — sem corrida',
+    str_contains($res, 'FOR UPDATE') && str_contains($res, "'ESTADO_ALTERADO'") && str_contains($res, "(int)\$atual['tentativas_processamento'] !== (int)\$operacao['tentativas_processamento']") && str_contains($res, "AND status_processamento = 'conciliacao'"));
+verificar('F5 resolução: preserva a operação histórica (status cancelada, motivo e erro registrados), o vínculo (só o sinal do último erro) e o contrato; nada é apagado',
+    str_contains($res, "SET status_processamento = 'cancelada', erro_codigo = 'ENCERRADA_SEM_PREAPPROVAL_EXTERNA'") && !preg_match('/DELETE\s+FROM/', $res)
+    && !preg_match('/UPDATE assinatura\s/', $res) && !preg_match('/UPDATE assinatura_pagamento_recorrente\s+SET status\b/', $res) && !str_contains($res, 'chave_operacao')
+    // ATUALIZADO (F37c): a referência da PRÓXIMA tentativa é rotacionada (mesma base), só com o vínculo sem id externo e com a
+    // referência antiga ainda gravada; a antiga fica na operação histórica (erro_motivo) e na auditoria (antes/depois).
+    && str_contains($res, "SET referencia_externa_assinatura = ?, ultimo_erro_codigo = 'TENTATIVA_ENCERRADA_PELO_SUPORTE'")
+    && str_contains($res, 'AND assinatura_externa_id IS NULL AND referencia_externa_assinatura = ?') && str_contains($res, "Referência da tentativa: ' . \$referenciaAnterior"));
+verificar('F5 resolução: não cria nem cancela nada no Mercado Pago, não gera cobrança nem pagamento', !str_contains($res, 'criarPreapproval') && !str_contains($res, 'atualizarPreapproval') && !preg_match('/INSERT INTO (cobranca|pagamento|transacao_pagamento)\b/', $res));
+verificar('F5 resolução: auditoria crítica do ator Super Admin, com a evidência e o atestado (contexto), na mesma transação',
+    str_contains($res, "auditoriaRegistrar(\$conexao, 'assinatura.criacao_cartao_encerrada'") && str_contains($res, "'ator' => \$ator")
+    && str_contains($res, "'motivo' => \$conferencia['descricao']") // ATUALIZADO (F37c): descrição da conferência estruturada
+    && strpos($res, 'auditoriaRegistrar(') > strpos($res, 'assinaturaServicoPreapprovalTransacao('));
+verificar('F37c auditoria da resolução registra operador (ator), fonte, data/hora da conferência, evidência automática e as referências antiga e nova',
+    str_contains($res, "'fonte_evidencia' => ['antes' => null, 'depois' => \$conferencia['fonte']]") && str_contains($res, "'conferido_em' => ['antes' => null, 'depois' => \$conferencia['conferido_em']]")
+    && str_contains($res, "'evidencia' => ['antes' => null, 'depois' => \$resumo]") && str_contains($res, "'referencia_externa_assinatura' => ['antes' => \$referenciaAnterior, 'depois' => \$referenciaNova]")
+    && preg_match("/'assinatura\.criacao_cartao_encerrada'.*'referencia_externa_assinatura',\s*'fonte_evidencia', 'conferido_em', 'evidencia'/s", $ler('backend/_regras/catalogo_auditoria.php')) === 1);
+verificar('F37c resolução: libera só com a avaliação aprovada (conferência estruturada); sem rotação disponível recusa; a referência é relida sob FOR UPDATE',
+    strpos($res, "if (!\$avaliacao['liberar'])") < strpos($res, "'CONFIRMACAO_OBRIGATORIA'") && str_contains($res, "'REFERENCIA_ESGOTADA'")
+    && str_contains($res, 'v.referencia_externa_assinatura, o.status_processamento') && str_contains($res, "(string)\$atual['referencia_externa_assinatura'] !== \$referenciaAnterior")
+    && !str_contains($res, 'marca_dagua\'] ?? false) === true) {'));
+$cat = $ler('backend/_regras/catalogo_auditoria.php');
+verificar('F5 o evento de auditoria existe no catálogo, como crítico e com campos permitidos', str_contains($cat, "'assinatura.criacao_cartao_encerrada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica'"));
+$saSrc = str_replace("\r\n", "\n", $ler('backend/super_admin/assinatura/gerenciar_assinatura.php'));
+$saFn = $corpo($saSrc, 'assinaturaResolverCriacaoCartao');
+$saAlt = $corpo($saSrc, 'assinaturaAlterarStatus');
+verificar('F5 permissão: ação exclusiva do Super Admin (rota e guard do painel), com CSRF antes de qualquer ação, ator auditável e trava por empresa',
+    str_contains($saAlt, 'csrfValidarSessao();') && strpos($saAlt, 'csrfValidarSessao();') < strpos($saAlt, "if (\$acao === 'resolver_criacao_cartao')") && str_contains($saSrc, "'cancelar_recorrencia', 'resolver_criacao_cartao'")
+    && str_contains($saFn, 'auditoriaResolverAtorSuperAdmin(') && str_contains($saFn, 'cancelamentoRecorrenciaObterTrava(') && str_contains($saFn, 'cancelamentoRecorrenciaLiberarTrava(') && str_contains($saSrc, 'bloquear.php'));
+verificar('F5 confirmação explícita: o número da empresa digitado e confirmo=1 são exigidos na segunda fase; a assinatura precisa pertencer à empresa',
+    str_contains($saFn, "(\$_POST['confirmo'] ?? '') === '1'") && str_contains($saFn, "assinaturaIdEntrada(\$_POST, 'confirmar_empresa') !== \$idEmpresa") && str_contains($saFn, "(int)\$dono['id_empresa'] !== \$idEmpresa")
+    && str_contains($saFn, 'strlen($atestado) > 300'));
+$consultar5 = $corpo($po, 'pagamentoCartaoPreapprovalConsultar');
+verificar('F5 o proprietário (e as rotas do cartão) nunca resolvem criação incerta: nenhuma chamada à resolução fora do painel do Super Admin',
+    !str_contains($po . $consultar5, 'ResolverCriacaoIncerta') && !str_contains($po, 'resolver_criacao_cartao') && substr_count($saSrc, 'assinaturaServicoPreapprovalResolverCriacaoIncerta(') === 1);
+$jsSa5 = $ler('public/js/super-admin/assinatura/gerenciar-assinatura.js');
+verificar('F5 painel do Super Admin: item de menu só para criação incerta; fase 1 mostra a evidência, fase 2 pede a conferência no painel do Mercado Pago (quando necessária) e o número da empresa',
+    str_contains($jsPo, 'TEXTO_CADASTRO_INCERTO') && str_contains($jsSa5, 'item.recorrencia?.situacao === "incerta"') && str_contains($jsSa5, 'data-acao="resolver_criacao_cartao"')
+    && str_contains($jsSa5, 'erro.codigo === "ATESTADO_NECESSARIO"') && str_contains($jsSa5, 'erro.codigo === "CONFIRMACAO_OBRIGATORIA"') && str_contains($jsSa5, 'digite o número da empresa')
+    && str_contains($jsSa5, '{ confirmo: "1", confirmar_empresa: idEmpresa'));
+verificar('F5 depois da resolução o proprietário volta ao caminho normal e seguro: sem operação aberta o estado é "nao_criada" (Tentar novamente) e a nova criação passa pela pré-verificação',
+    pagamentoCartaoEstadoCriacao($vp, null) === 'nao_criada' && str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalReservar'), "\$acao = 'criar';"));
+// F37c: rotação segura da referência, Preapproval tardia de tentativa anterior e alerta ao Super Admin.
+verificar('F37c rotação: mesma base, sufixo .rN antes do .d2; esgota em .r9; referência inválida não rotaciona',
+    assinaturaServicoPreapprovalReferenciaRotacionada($ref) === $ref . '.r2' && assinaturaServicoPreapprovalReferenciaRotacionada($refD2) === $ref . '.r2.d2'
+    && assinaturaServicoPreapprovalReferenciaRotacionada($ref . '.r2.d2') === $ref . '.r3.d2' && assinaturaServicoPreapprovalReferenciaRotacionada($ref . '.r9') === null
+    && assinaturaServicoPreapprovalReferenciaRotacionada('amg_zz') === null && assinaturaServicoPreapprovalReferenciaBase($ref . '.r3.d2') === $ref && assinaturaServicoPreapprovalReferenciaBase($ref) === $ref);
+$rotacionadas = [$ref . '.r2', $ref . '.r9.d2', $ref . '.r2.d2'];
+$naoRotacoes = [$ref . '.r1', $ref . '.r10', $ref . '.d2.r2', $ref . '.r2.r3', $ref . '.r'];
+verificar('F37c o gateway aceita as referências rotacionadas (até 42 caracteres) e continua recusando sufixos fora da regra',
+    count(array_filter($rotacionadas, [MercadoPagoGateway::class, 'referenciaExternaValida'])) === 3 && array_filter($naoRotacoes, [MercadoPagoGateway::class, 'referenciaExternaValida']) === []
+    && strlen($ref . '.r9.d2') === 42 && $busca($ref . '.r2.d2') !== null);
+$refRot = $ref . '.r2.d2';
+$reservaRot = fn(int $vinc, int $op) => ['vinculo' => ['id_assinatura_pagamento' => $vinc, 'id_empresa' => 37, 'referencia_externa_assinatura' => $refRot], 'operacao' => ['id_operacao' => $op]];
+$zerar();
+$g = $conta([$item('PRE-ANT', $refD2)]);
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaRot(24, 101), 'a@b.co');
+verificar('F37c Preapproval ativa da tentativa ANTERIOR (mesma base) aparece antes de criar: bloqueia o POST em conciliação, sem vincular a antiga',
+    $r !== null && $r['ok'] === false && $r['codigo'] === 'PREAPPROVAL_ANTERIOR_ENCONTRADA' && $GLOBALS['f5']['marcar'] === ['PREAPPROVAL_ANTERIOR_ENCONTRADA']
+    && $GLOBALS['f5']['esclarecer'] === 0 && count($g->chamadas) === 3);
+$zerar();
+$g = $conta([$item('PRE-ANT', $refD2, 'canceled'), $item('X', $outraEmpresa)]);
+verificar('F37c tentativa anterior já cancelada no provedor não cobra e não bloqueia; outra empresa também não',
+    assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaRot(24, 101), 'a@b.co') === null && $GLOBALS['f5']['marcar'] === []);
+$zerar();
+$g = $conta([$item('PRE-NOVA', $refRot)]);
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaRot(24, 101), 'a@b.co');
+verificar('F37c a nova referência encontrada é a própria tentativa (Esclarecer), não duplicidade', $r !== null && $r['ok'] === true && $GLOBALS['f5']['esclarecer'] === 1 && $GLOBALS['f5']['marcar'] === []);
+$zerar();
+$g = $conta([$item('PRE-NOVA', $refRot), $item('PRE-ANT', $refD2, 'authorized')]);
+$r = assinaturaServicoPreapprovalConferirAntesDeCriar(new BancoFalso(), $g, $reservaRot(24, 101), 'a@b.co');
+verificar('F37c nova e antiga ao mesmo tempo: nada é vinculado automaticamente; bloqueio para análise manual', $r !== null && $r['ok'] === false && $GLOBALS['f5']['esclarecer'] === 0 && $GLOBALS['f5']['marcar'] !== []);
+$zerar();
+$whNr = $corpo(str_replace("\r\n", "\n", $wh), 'mpSubNaoReconhecido');
+verificar('F37c webhook: Preapproval/fatura de referência antiga do mesmo contrato não é ignorada; sinaliza duplicidade no vínculo e mantém o evento em erro (sem vincular nem registrar pagamento)',
+    str_contains($whNr, 'assinaturaServicoPreapprovalReferenciaBase($referencia)') && str_contains($whNr, 'LEFT(referencia_externa_assinatura, ?) = ?') && str_contains($whNr, "'PREAPPROVAL_EXTERNA_DUPLICADA'")
+    && str_contains($whNr, "mpSubResultado('erro', 'preapproval_externa_duplicada')") && strpos($whNr, "'vinculo_pendente'") < strpos($whNr, 'PREAPPROVAL_EXTERNA_DUPLICADA')
+    && !preg_match('/INSERT INTO|assinatura_externa_id\s*=|DELETE\s+FROM/', $whNr)
+    && str_contains($wh, "mpSubNaoReconhecido(\$conexao, \$ambiente, \$fatura['referencia'], (string)\$fatura['preapproval_id'])") && str_contains($wh, ', $preapprovalId);'));
+verificar('F37c Super Admin: controlador lê fonte, data/hora e descrição da conferência; o painel coleta as três e exibe o alerta de duplicidade',
+    str_contains($saFn, "\$_POST['fonte_evidencia']") && str_contains($saFn, "\$_POST['conferido_em']") && str_contains($saFn, "'atestado_motivo'")
+    && str_contains($jsSa5, 'async function coletarConferencia(') && str_contains($jsSa5, 'fonte_evidencia: FONTES_EVIDENCIA[') && str_contains($jsSa5, 'ALERTAS_RECORRENCIA[item.recorrencia.alerta]')
+    && str_contains($cat, "'assinatura.criacao_cartao_encerrada'"));
+verificar('F37c a resolução não reinicia nem encurta o teste grátis: não grava em assinatura, cobrança, pagamento ou transação e não apaga histórico',
+    !preg_match('/UPDATE assinatura\s|INSERT INTO|DELETE\s+FROM|data_fim|data_inicio|transacao_pagamento/', $res));
+
+verificar('F5 teste grátis, contrato e histórico financeiro intocados pelo conjunto de mudanças (Localizar, evidência, pré-verificação e resolução não gravam em assinatura, cobrança ou pagamento)',
+    !preg_match('/UPDATE assinatura\s|INSERT INTO (cobranca|pagamento)\b|DELETE\s+FROM/', $corpo($assSrc, 'assinaturaServicoPreapprovalLocalizar') . $corpo($assSrc, 'assinaturaServicoPreapprovalEvidenciaExterna') . $corpo($assSrc, 'assinaturaServicoPreapprovalVarrerStatus') . $corpo($assSrc, 'assinaturaServicoPreapprovalConferirAntesDeCriar') . $res));
+
+// Status das cobranças no cartão recorrente (Preapproval) e bloqueio do PIX concorrente (Proprietário e Super Admin).
+// Banco próprio (SQLite) com as colunas reais usadas pela regra; as duas expressões só do MySQL viram equivalentes neutros.
+final class PdoMysqlCompat extends PDO
+{
+    public function prepare(string $query, array $options = []): PDOStatement|false
+    {
+        return parent::prepare(str_replace(
+            ['TIMESTAMPDIFF(SECOND, ultima_sincronizacao_em, NOW(6))', "DATE_FORMAT(ultima_consulta_em, '%Y-%m-%d %H:%i:%s')",
+                "DATE_FORMAT(proxima_tentativa_em, '%Y-%m-%d %H:%i:%s')"],
+            ['NULL', 'ultima_consulta_em', 'proxima_tentativa_em'],
+            $query
+        ), $options);
+    }
+}
+$pdoAnterior = $GLOBALS['pdo'];
+$GLOBALS['pdo'] = new PdoMysqlCompat('sqlite::memory:');
+$GLOBALS['pdo']->exec('CREATE TABLE cobranca (id_cobranca INTEGER PRIMARY KEY, id_empresa INT, id_assinatura INT, finalidade TEXT, status TEXT, periodo_inicio TEXT, motor_cobranca TEXT)');
+$GLOBALS['pdo']->exec('CREATE TABLE transacao_pagamento (id_transacao INTEGER PRIMARY KEY, id_empresa INT, id_cobranca INT, tipo_operacao TEXT, metodo TEXT, status TEXT,
+    status_externo TEXT, detalhe_status_externo TEXT, erro_codigo TEXT, requer_conciliacao INT DEFAULT 0, numero_tentativa INT, ultima_consulta_em TEXT,
+    proxima_tentativa_em TEXT)'); // ATUALIZADO (validação final): erro_codigo real e a coluna opcional da próxima tentativa.
+// Coluna opcional (SQL manual): os testes alternam entre banco sem e com a coluna.
+$GLOBALS['coluna_proxima'] = false;
+function assinaturaServicoColunaExiste(object $conexao, string $tabela, string $coluna): bool
+{
+    return $tabela === 'transacao_pagamento' && $coluna === 'proxima_tentativa_em' && $GLOBALS['coluna_proxima'];
+}
+$GLOBALS['pdo']->exec('CREATE TABLE assinatura (id_assinatura INTEGER PRIMARY KEY, id_empresa INT, status TEXT, motivo_suspensao TEXT)');
+$GLOBALS['pdo']->exec('CREATE TABLE assinatura_pagamento_recorrente (id_assinatura_pagamento INTEGER PRIMARY KEY, id_empresa INT, id_assinatura INT, motor_recorrencia TEXT,
+    assinatura_externa_id TEXT, slot_ativo INT, status TEXT, status_externo TEXT, cobrar_a_partir_de TEXT, ultima_sincronizacao_em TEXT)');
+$extrair('backend/_servicos/assinatura.php', ['assinaturaServicoPreapprovalBloqueioPix', 'assinaturaServicoPreapprovalMotivoRecusa',
+    'assinaturaServicoPreapprovalSituacaoPagamento', 'assinaturaServicoPreapprovalSituacoesCobrancas'],
+    ['ASSINATURA_SERVICO_PREAPPROVAL_FALLBACK_PIX_AUTORIZADO', 'ASSINATURA_SERVICO_PREAPPROVAL_SINCRONIA_MAX_SEGUNDOS', 'ASSINATURA_SERVICO_PREAPPROVAL_MOTIVOS_RECUSA',
+        'ASSINATURA_SERVICO_PREAPPROVAL_DETALHES_NAO_MOTIVO', 'ASSINATURA_SERVICO_PREAPPROVAL_SITUACOES_PAGAMENTO']);
+// ATUALIZADO (validação final): cenário real da empresa 35 — pagamento rejeitado (cc_rejected_insufficient_amount) e a fatura
+// REAGENDADA como 'scheduled' (billing_status 'delayed' na Preapproval), não em 'recycling'.
+$f35 = mpSubClassificarFatura($fat('scheduled', 'P1'), $pg('rejected', 'cc_rejected_insufficient_amount'));
+verificar('COB empresa 35: fatura scheduled com pagamento rejeitado é nova tentativa (processando, motivo real), não recusa definitiva nem confirmação',
+    $f35['status'] === 'processando' && $f35['classe'] === 'normal' && $f35['detalhe'] === 'cc_rejected_insufficient_amount'
+    && mpSubClassificarFatura($fat('scheduled', 'P1'), $pg('rejected', null))['detalhe'] === 'retry'
+    && mpSubClassificarFatura($fat('processed', 'P1'), $pg('rejected', 'cc_rejected_insufficient_amount'))['status'] === 'recusada'
+    && mpSubClassificarFatura($fat('cancelled', 'P1'), $pg('rejected', 'cc_rejected_insufficient_amount'))['status'] === 'recusada');
+$GLOBALS['pdo']->exec("INSERT INTO assinatura VALUES (50, 35, 'ativa', NULL)");
+$GLOBALS['pdo']->exec("INSERT INTO assinatura_pagamento_recorrente VALUES (30, 35, 50, 'preapproval', 'PRE-35', 1, 'ativa', 'authorized', '2026-10-31', NULL)");
+$GLOBALS['pdo']->exec("INSERT INTO cobranca VALUES (700, 35, 50, 'regular', 'pendente', '2026-10-31', 'preapproval')");
+// Exatamente o que mpSubAplicarFatura grava para esse resultado: processando, motivo em erro_codigo, status externo 'scheduled'.
+$GLOBALS['pdo']->exec("INSERT INTO transacao_pagamento (id_transacao, id_empresa, id_cobranca, tipo_operacao, metodo, status, status_externo, detalhe_status_externo,
+    erro_codigo, requer_conciliacao, numero_tentativa, ultima_consulta_em, proxima_tentativa_em)
+    VALUES (900, 35, 700, 'assinatura_preapproval', 'cartao_recorrente', 'processando', 'scheduled', 'cc_rejected_insufficient_amount',
+    'cc_rejected_insufficient_amount', 0, 1, '2026-10-30 16:40:00', '2026-11-01 16:31:00')");
+$cob35 = ['id_cobranca' => 700, 'id_empresa' => 35, 'id_assinatura' => 50, 'status' => 'pendente'];
+$sit = fn() => assinaturaServicoPreapprovalSituacoesCobrancas(new BancoFalso(), [$cob35])[700];
+$s = $sit();
+verificar('COB empresa 35: cc_rejected_insufficient_amount com fatura scheduled = recusado com nova tentativa programada (sem exigir recycling), em aberto e motivo amigável',
+    $s['situacao'] === 'recusado_retentativa' && $s['motivo_codigo'] === 'cc_rejected_insufficient_amount'
+    && $s['motivo'] === 'Pagamento recusado pelo banco. O cartão pode estar sem saldo ou limite disponível suficiente.' && str_contains($s['mensagem'], 'continua em aberto'));
+verificar('COB próxima tentativa: sem a coluna opcional nada é exibido nem estimado; com ela, a data informada pelo provedor aparece',
+    $s['proxima_tentativa_em'] === null
+    && (function () use ($sit) { $GLOBALS['coluna_proxima'] = true; $d = $sit()['proxima_tentativa_em']; $GLOBALS['coluna_proxima'] = false; return $d === '2026-11-01 16:31:00'; })());
+verificar('COB empresa 35: PIX concorrente bloqueado no backend durante a retentativa, com orientação de cancelar o pagamento automático ou aguardar a próxima tentativa',
+    $s['pix_bloqueado'] === true && $s['pix_codigo'] === 'COBRANCA_PREAPPROVAL_EM_ANDAMENTO'
+    && assinaturaServicoPreapprovalBloqueioPix(new BancoFalso(), 35, 700)['codigo'] === 'COBRANCA_PREAPPROVAL_EM_ANDAMENTO'
+    && str_contains($s['pix_mensagem'], 'cancele o pagamento automático') && str_contains($s['pix_mensagem'], 'próxima tentativa'));
+verificar('COB isolamento: a mesma cobrança vista por outra empresa não traz situação nem bloqueio de terceiros',
+    assinaturaServicoPreapprovalSituacoesCobrancas(new BancoFalso(), [['id_cobranca' => 700, 'id_empresa' => 99, 'id_assinatura' => 50, 'status' => 'pendente']])[700] === null);
+// Recusa seguida de retentativa aprovada (mesma fatura): a classificação autoritativa muda a transação para confirmada.
+$fRec = mpSubClassificarFatura($fat('recycling', 'P1'), $pg('rejected', 'cc_rejected_insufficient_amount'));
+$fAprov = mpSubClassificarFatura($fat('processed', 'P2'), $pg('approved', 'accredited'));
+verificar('COB recusa em recycling segue em processamento com o motivo real; a retentativa aprovada e creditada é a única confirmação',
+    $fRec['status'] === 'processando' && $fRec['detalhe'] === 'cc_rejected_insufficient_amount' && $fAprov['classe'] === 'confirmada');
+$GLOBALS['pdo']->exec("UPDATE transacao_pagamento SET status = 'confirmada', status_externo = 'processed', detalhe_status_externo = 'accredited', erro_codigo = NULL, numero_tentativa = 2 WHERE id_transacao = 900");
+$GLOBALS['pdo']->exec("UPDATE cobranca SET status = 'paga' WHERE id_cobranca = 700");
+$s = assinaturaServicoPreapprovalSituacoesCobrancas(new BancoFalso(), [['status' => 'paga'] + $cob35])[700];
+verificar('COB retentativa aprovada: pagamento aprovado e confirmado, sem motivo de recusa residual, tentativa 2, sem bloqueio exibido',
+    $s['situacao'] === 'aprovado' && $s['motivo_codigo'] === null && $s['motivo'] === null && $s['tentativa'] === 2 && $s['pix_bloqueado'] === false);
+// Tentativas encerradas sem aprovação, com a Preapproval ainda ativa: recusa final, PIX segue bloqueado (risco de débito).
+$GLOBALS['pdo']->exec("UPDATE cobranca SET status = 'pendente' WHERE id_cobranca = 700");
+$GLOBALS['pdo']->exec("UPDATE transacao_pagamento SET status = 'recusada', status_externo = 'processed', detalhe_status_externo = 'cc_rejected_insufficient_amount', erro_codigo = 'cc_rejected_insufficient_amount' WHERE id_transacao = 900");
+$s = $sit();
+verificar('COB tentativas encerradas com Preapproval ativa: recusado (não aprovado, mesmo com a Preapproval authorized) e PIX ainda bloqueado',
+    $s['situacao'] === 'recusado' && $s['motivo_codigo'] === 'cc_rejected_insufficient_amount' && $s['pix_bloqueado'] === true && $s['pix_codigo'] === 'COBRANCA_GOVERNADA_PREAPPROVAL');
+$GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET status = 'cancelamento_pendente' WHERE id_assinatura_pagamento = 30");
+$s = $sit();
+verificar('COB cancelamento solicitado e ainda não confirmado: PIX continua bloqueado e o aviso de cancelamento pendente aparece', $s['pix_bloqueado'] === true && $s['cancelamento_pendente'] === true);
+// Cancelamento externo confirmado (vínculo cancelado, slot liberado) e nenhuma cobrança no cartão em andamento: PIX liberável.
+$GLOBALS['pdo']->exec("UPDATE assinatura_pagamento_recorrente SET status = 'cancelada', slot_ativo = NULL, status_externo = 'cancelled' WHERE id_assinatura_pagamento = 30");
+$GLOBALS['pdo']->exec("UPDATE transacao_pagamento SET status = 'processando', status_externo = 'recycling' WHERE id_transacao = 900");
+verificar('COB cancelamento confirmado, mas a fatura em retentativa ainda não foi conciliada: PIX segue bloqueado (sem cobrança concorrente)',
+    assinaturaServicoPreapprovalBloqueioPix(new BancoFalso(), 35, 700)['codigo'] === 'COBRANCA_PREAPPROVAL_EM_ANDAMENTO');
+$GLOBALS['pdo']->exec("UPDATE transacao_pagamento SET status = 'cancelada', status_externo = 'cancelled' WHERE id_transacao = 900");
+$s = $sit();
+verificar('COB cancelamento confirmado e fatura encerrada pela conciliação: recorrência cancelada e PIX liberável no backend',
+    assinaturaServicoPreapprovalBloqueioPix(new BancoFalso(), 35, 700) === null && $s['situacao'] === 'recorrencia_cancelada' && $s['pix_bloqueado'] === false);
+// Função pura: motivo desconhecido, divergência externa x local, conferência e cobrança sem cartão.
+$tx = fn(array $o = []) => $o + ['status' => 'recusada', 'status_externo' => 'processed', 'detalhe_status_externo' => 'cc_rejected_motivo_novo', 'erro_codigo' => null, 'requer_conciliacao' => 0, 'numero_tentativa' => 1, 'ultima_consulta_em' => null];
+verificar('COB retentativa identificada pela recusa registrada, qualquer que seja o status externo e mesmo com código fora de cc_rejected_* (sem mensagem inventada)',
+    assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'scheduled', 'detalhe_status_externo' => 'rejected_by_bank', 'erro_codigo' => 'rejected_by_bank']), ['status' => 'ativa', 'status_externo' => 'authorized'], null)
+        === array_replace(assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'scheduled', 'detalhe_status_externo' => 'rejected_by_bank', 'erro_codigo' => 'rejected_by_bank']), ['status' => 'ativa', 'status_externo' => 'authorized'], null), ['situacao' => 'recusado_retentativa', 'motivo_codigo' => 'rejected_by_bank', 'motivo' => null])
+    && assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'scheduled', 'detalhe_status_externo' => 'rejected_by_bank', 'erro_codigo' => 'rejected_by_bank']), ['status' => 'ativa', 'status_externo' => 'authorized'], null)['situacao'] === 'recusado_retentativa'
+    && assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'recycling', 'detalhe_status_externo' => 'pending_contingency']), ['status' => 'ativa', 'status_externo' => 'authorized'], null)['situacao'] === 'processando');
+$vAtiva = ['status' => 'ativa', 'status_externo' => 'authorized'];
+$s = assinaturaServicoPreapprovalSituacaoPagamento($tx(), $vAtiva, null);
+verificar('COB recusa com motivo desconhecido: não inventa motivo (mensagem nula), mas preserva o código técnico para diagnóstico',
+    $s['situacao'] === 'recusado' && $s['motivo'] === null && $s['motivo_codigo'] === 'cc_rejected_motivo_novo');
+verificar('COB recusa sem status_detail: nenhum motivo nem código inventado', assinaturaServicoPreapprovalSituacaoPagamento($tx(['detalhe_status_externo' => null]), $vAtiva, null)['motivo_codigo'] === null
+    && assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'recycling', 'detalhe_status_externo' => 'retry']), $vAtiva, null)['situacao'] === 'recusado_retentativa'
+    && assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'recycling', 'detalhe_status_externo' => 'retry']), $vAtiva, null)['motivo_codigo'] === null);
+verificar('COB status externo divergente do local: Preapproval authorized nunca vira pagamento aprovado; só a transação confirmada local',
+    assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'processando', 'status_externo' => 'scheduled', 'detalhe_status_externo' => 'pending_contingency']), $vAtiva, null)['situacao'] === 'processando'
+    && assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'aguardando', 'status_externo' => 'scheduled', 'detalhe_status_externo' => null]), $vAtiva, null)['situacao'] === 'aguardando_processamento'
+    && assinaturaServicoPreapprovalSituacaoPagamento(null, $vAtiva, null) === null);
+verificar('COB pagamento divergente em conferência (requer_conciliacao) nunca aparece como aprovado',
+    assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'confirmada', 'detalhe_status_externo' => 'accredited', 'requer_conciliacao' => 1]), $vAtiva, null)['situacao'] === 'conciliacao'
+    && assinaturaServicoPreapprovalSituacaoPagamento($tx(['status' => 'conciliacao']), $vAtiva, null)['situacao'] === 'conciliacao');
+verificar('COB competência governada sem fatura ainda: aguardando processamento e PIX bloqueado',
+    assinaturaServicoPreapprovalSituacaoPagamento(null, $vAtiva, ['codigo' => 'COBRANCA_GOVERNADA_PREAPPROVAL', 'mensagem' => 'x'])['situacao'] === 'aguardando_processamento');
+$assCob = str_replace("\r\n", "\n", $ler('backend/_servicos/assinatura.php'));
+$situacoesSrc = $corpo($assCob, 'assinaturaServicoPreapprovalSituacoesCobrancas') . $corpo($assCob, 'assinaturaServicoPreapprovalSituacaoPagamento');
+verificar('COB a situação é somente leitura: não grava, não quita e não altera A receber, Recebido ou Vencido',
+    !preg_match('/INSERT\s+INTO|UPDATE\s|DELETE\s+FROM|FOR UPDATE/', $situacoesSrc) && !str_contains($situacoesSrc, 'proxima_cobranca_em'));
+$sincSrc = $corpo(str_replace("\r\n", "\n", $wh), 'mpSubSincronizarPreapproval');
+verificar('COB a mudança de next_payment_date (sincronização da Preapproval) nunca registra pagamento nem confirma cobrança',
+    $sincSrc !== '' && !preg_match('/INSERT INTO pagamento|status\s*=\s*\'confirmada\'|UPDATE cobranca SET status/', $sincSrc));
+$aplSrc = $corpo(str_replace("\r\n", "\n", $wh), 'mpSubAplicarFatura');
+verificar('COB webhook repetido: a fatura reutiliza a transação pelo id externo e o pagamento pelo Payment ID (sem duplicar pagamento nem transação)',
+    str_contains($aplSrc, 'WHERE provedor = ? AND ambiente = ? AND fatura_externa_id = ? LIMIT 1') && str_contains($aplSrc, 'FROM pagamento WHERE provedor = ? AND referencia_externa = ? FOR UPDATE')
+    && str_contains($aplSrc, "if (\$existentePag !== null) {") && str_contains($aplSrc, "'Payment ID já associado a outra transação local.'"));
+$faturamentoSrc = str_replace("\r\n", "\n", $ler('backend/painel_administrativo/faturamento/gerenciar_faturamento.php'));
+$cobrancaSaSrc = str_replace("\r\n", "\n", $ler('backend/super_admin/cobranca/gerenciar_cobranca.php'));
+$pixOnlineSrc = str_replace("\r\n", "\n", $ler('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php'));
+verificar('COB Proprietário e Super Admin: as duas listagens (e os detalhes do Super Admin) usam a mesma situação; PIX do Proprietário e baixa do Super Admin usam o mesmo bloqueio no backend',
+    str_contains($corpo($faturamentoSrc, 'faturamentoCobrancas'), 'assinaturaServicoPreapprovalSituacoesCobrancas(') && substr_count($cobrancaSaSrc, 'assinaturaServicoPreapprovalSituacoesCobrancas(') === 2
+    && str_contains($pixOnlineSrc, '$governada = assinaturaServicoPreapprovalBloqueioPix($db, $empresa, $cobranca);')
+    && str_contains($corpo($cobrancaSaSrc, 'pagamentoBloqueioOnline'), 'assinaturaServicoPreapprovalBloqueioPix($conexao, $idEmpresa, $idCobranca)'));
+$jsFat = $ler('public/js/painel-administrativo/faturamento/gerenciar-faturamento.js');
+$jsCob = $ler('public/js/super-admin/cobranca/gerenciar-cobranca.js');
+verificar('COB painéis: o Proprietário não recebe o botão de PIX quando bloqueado e vê o motivo amigável (ou "não informou"); o Super Admin vê também o código técnico',
+    str_contains($jsFat, '&& !pixBloqueado') && str_contains($jsFat, 'O Mercado Pago não informou o motivo detalhado da recusa.') && !str_contains($jsFat, 'motivo_codigo')
+    && str_contains($jsCob, '<code>${esc(pa.motivo_codigo)}</code>') && str_contains($jsCob, 'item.pagamento_automatico?.pix_bloqueado !== true'));
+$whFinal = str_replace("\r\n", "\n", $wh);
+$aplFinal = $corpo($whFinal, 'mpSubAplicarFatura');
+verificar('COB próxima tentativa: next_retry_date normalizado da fatura e gravado só com a coluna opcional, só para recusa em nova tentativa (nunca estimado de next_payment_date)',
+    str_contains($corpo($whFinal, 'mpSubNormalizarFatura'), "'proxima_tentativa' => assinaturaServicoPreapprovalDataExterna(\$d['next_retry_date'] ?? null)")
+    && str_contains($aplFinal, "if (assinaturaServicoColunaExiste(\$conexao, 'transacao_pagamento', 'proxima_tentativa_em')) {")
+    && str_contains($aplFinal, "\$recusa && \$classe['status'] === 'processando' && \$fatura['proxima_tentativa'] !== null")
+    && !str_contains($aplFinal, 'proxima_tentativa_em = proxima_cobranca_em'));
+verificar('COB cancelamento externo por falta de pagamento reconhece também a recusa que aguardava nova tentativa',
+    str_contains($whFinal, "SELECT status, erro_codigo FROM transacao_pagamento") && str_contains($whFinal, "=== 'processando' && (\$ultimaTentativa['erro_codigo'] ?? null) !== null"));
+// Nenhuma rota cria PIX ou registra pagamento manual sem passar pelo mesmo bloqueio do cartão recorrente.
+$todos = '';
+foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__ . '/../backend', FilesystemIterator::SKIP_DOTS)) as $arq) {
+    if ($arq->getExtension() === 'php') $todos .= str_replace("\r\n", "\n", (string)file_get_contents($arq->getPathname()));
+}
+$iniciar = $pixOnlineSrc;
+$posBloqueio = strpos($iniciar, '$governada = assinaturaServicoPreapprovalBloqueioPix($db, $empresa, $cobranca);');
+$posPix = strpos($iniciar, "VALUES (?,?,'mercado_pago',?,'pix','pix',?,'BRL','criada',?,?)");
+$registrar = $corpo($cobrancaSaSrc, 'registrarPagamento');
+verificar('COB rotas: o único INSERT de transação PIX do sistema vem depois do bloqueio; a única baixa manual (Super Admin) passa pelo bloqueio online antes do INSERT',
+    substr_count($todos, "'pix','pix'") === 1 && $posBloqueio !== false && $posPix !== false && $posBloqueio < $posPix
+    && strpos($registrar, 'pagamentoBloqueioOnline(') !== false && strpos($registrar, 'pagamentoBloqueioOnline(') < strpos($registrar, 'INSERT INTO pagamento')
+    && preg_match_all("/INSERT INTO pagamento\b/", $todos) === 3
+    && !str_contains($ler('backend/processos/processar_cobrancas_recorrentes.php'), "'pix'"));
+// Compatibilidade sem o SQL manual: banco sem a coluna proxima_tentativa_em.
+$GLOBALS['pdo']->exec('ALTER TABLE transacao_pagamento DROP COLUMN proxima_tentativa_em');
+$GLOBALS['coluna_proxima'] = false;
+$semColuna = (function () use ($sit) { try { return $sit(); } catch (Throwable $e) { return $e; } })();
+$guarda = strpos($aplFinal, "if (assinaturaServicoColunaExiste(\$conexao, 'transacao_pagamento', 'proxima_tentativa_em')) {");
+verificar('COB sem a coluna opcional: a listagem funciona (nenhuma consulta à coluna), o webhook só a grava dentro da verificação e as telas aceitam a data ausente',
+    is_array($semColuna) && $semColuna['proxima_tentativa_em'] === null
+    // (operacao_assinatura_gateway tem coluna homônima própria, já existente; aqui só importa transacao_pagamento)
+    && substr_count($aplFinal, 'proxima_tentativa_em') === 2 && substr_count($whFinal, 'UPDATE transacao_pagamento SET proxima_tentativa_em') === 1
+    && $guarda !== false && strpos($aplFinal, 'SET proxima_tentativa_em = ?') > $guarda
+    && !str_contains($faturamentoSrc . $cobrancaSaSrc . $pixOnlineSrc, 'proxima_tentativa_em')
+    && str_contains($jsFat, 'pa.proxima_tentativa_em ?') && str_contains($jsCob, 'pa.proxima_tentativa_em ?'));
+// Regra dos 5 dias: carência entre o vencimento e a suspensão automática, independente do estado do pagamento no cartão.
+$fnCarencia = ['assinaturaServicoPendenciaFinanceira', 'assinaturaServicoListarCandidatasInadimplencia', 'assinaturaServicoListarCandidatasRegularizacao',
+    'assinaturaServicoSuspenderPorInadimplencia', 'assinaturaServicoRegularizarInadimplencia', 'assinaturaServicoBloqueioReativacao'];
+$srcCarencia = implode("\n", array_map(fn($f) => $corpo($assCob, $f), $fnCarencia));
+$pend = $corpo($assCob, 'assinaturaServicoPendenciaFinanceira');
+$susp = $corpo($assCob, 'assinaturaServicoSuspenderPorInadimplencia');
+verificar('5 DIAS: carência de 5 dias corridos (D+1..D+5; D+6 é o primeiro dia de suspensão), sem alterar vencimento nem status da cobrança',
+    preg_match('/^const ASSINATURA_SERVICO_CARENCIA_INADIMPLENCIA_DIAS = 5;$/m', $assCob) === 1 && str_contains($assCob, 'Vencimento em D: D+1..D+5 são a carência; D+6 é o primeiro dia elegível.')
+    && substr_count($assCob, '= ASSINATURA_SERVICO_CARENCIA_INADIMPLENCIA_DIAS;') === 2 && substr_count($assCob, ', ASSINATURA_SERVICO_CARENCIA_INADIMPLENCIA_DIAS)') === 2);
+verificar('5 DIAS: candidatas à suspensão e à regularização usam a mesma carência sobre cobrança pendente vencida',
+    substr_count($corpo($assCob, 'assinaturaServicoListarCandidatasInadimplencia') . $corpo($assCob, 'assinaturaServicoListarCandidatasRegularizacao'),
+        "c.data_vencimento < DATE_SUB(CURDATE(), INTERVAL {\$carencia} DAY)") === 2
+    && str_contains($susp, 'assinaturaServicoPendenciaFinanceira($conexao, $idEmpresa, false, ASSINATURA_SERVICO_CARENCIA_INADIMPLENCIA_DIAS)'));
+verificar('5 DIAS: suspensão só por dívida comprovada (vencida além da carência e com saldo); pagamento em andamento, recusa ou retentativa não suspendem antes nem adiam depois',
+    strpos($susp, "if (\$pendencia['tipo'] !== 'divida') {") !== false && strpos($susp, "return \$resultado('pagamento_incerto');") < strpos($susp, "UPDATE assinatura SET status = 'suspensa'")
+    && strpos($pend, "'tipo' => 'divida'") < strpos($pend, 'FROM transacao_pagamento t')
+    && !preg_match('/recusada|recycling|scheduled|proxima_tentativa|status_externo|detalhe_status_externo/', $srcCarencia));
+verificar('5 DIAS: reativação após pagamento segue a mesma regra (dívida ou pagamento ainda em andamento bloqueiam; quitação confirmada libera)',
+    str_contains($corpo($assCob, 'assinaturaServicoBloqueioReativacao'), 'assinaturaServicoPendenciaFinanceira(')
+    && str_contains($pend, "t.status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')"));
+$GLOBALS['pdo'] = $pdoAnterior;
 
 echo "\n{$total} verificações, {$falhas} falha(s).\n";
 exit($falhas === 0 ? 0 : 1);

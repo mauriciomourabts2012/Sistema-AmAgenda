@@ -109,50 +109,45 @@ if (str_starts_with($acaoLogin, 'recuperacao_')) {
             }
         }
 
-        $configOtp = smsOtpConfig();
-        $modoOtp = mb_strtolower(trim((string)($configOtp['mode'] ?? 'programmable_sms')), 'UTF-8');
         $expiresIn = 300;
-        $otpHash = password_hash((string)random_int(100000, 999999), PASSWORD_DEFAULT);
-        $referencia = '';
-        $envioAceito = false;
 
-        if ($usuarioRecuperacao !== null && is_string($otpHash) && $otpHash !== '') {
-            if ($modoOtp === 'programmable_sms') {
-                $resultadoEnvio = smsOtpEnviar(
-                    (string)$usuarioRecuperacao['telefone'],
-                    'AmAgenda: código de recuperação de acesso.'
-                );
-                $envioAceito = is_array($resultadoEnvio) && ($resultadoEnvio['sucesso'] ?? false) === true;
-                $referencia = (string)($resultadoEnvio['dados']['sid'] ?? '');
+        // Telefone de referência do desafio fictício: determinístico por e-mail, nunca enviado.
+        $telefoneReferencia = $usuarioRecuperacao !== null
+            ? (string)$usuarioRecuperacao['telefone']
+            : '+5500' . str_pad((string)(crc32($emailRecuperacao) % 1000000000), 9, '0', STR_PAD_LEFT);
 
-                // OTP temporário para ambiente de teste da integração SMS.
-                $otpTesteAtivo = ($configOtp['dev_fixed_otp_enabled'] ?? false) === true
-                    && preg_match('/^\d{6}$/', (string)($configOtp['dev_fixed_otp_code'] ?? '')) === 1;
-                if ($otpTesteAtivo) {
-                    $envioAceito = true;
-                }
-            } elseif ($modoOtp === 'verify') {
-                $resultadoEnvio = smsOtpEnviar((string)$usuarioRecuperacao['telefone']);
-                $envioAceito = is_array($resultadoEnvio) && ($resultadoEnvio['sucesso'] ?? false) === true;
-                $referencia = (string)($resultadoEnvio['dados']['referencia'] ?? $resultadoEnvio['dados']['sid'] ?? '');
-            }
+        $resultadoOtp = smsOtpSolicitar($conexao, [
+            'principal_tipo' => $usuarioRecuperacao !== null ? 'usuario' : 'ficticio',
+            'finalidade' => 'recuperacao_usuario',
+            'id_empresa' => 0,
+            'id_cliente' => 0,
+            'id_usuario' => $usuarioRecuperacao !== null ? (int)$usuarioRecuperacao['id_usuario'] : 0,
+            'telefone' => $telefoneReferencia,
+            'ip' => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
+            'enviar' => $usuarioRecuperacao !== null,
+        ]);
+
+        if (in_array((string)($resultadoOtp['codigo'] ?? ''), ['SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE'], true)) {
+            out([
+                'ok' => false,
+                'code' => 'PASSWORD_RECOVERY_RESEND_LIMIT',
+                'user_msg' => 'Aguarde alguns segundos antes de solicitar outro código.',
+                'data' => ['retry_after' => (int)($resultadoOtp['dados']['retry_after'] ?? 30)],
+            ], 429);
         }
 
-        /* Desafios fictícios mantêm resposta, expiração e tentativas idênticas
-           sem permitir que a API confirme a existência de uma conta. */
-        $desafioReal = $usuarioRecuperacao !== null && $envioAceito;
+        /* Falha de envio ou de persistência mantém a mesma resposta pública: a sessão
+           recebe um desafio sem usuário (id_usuario 0), que nunca valida. */
+        $desafioReal = $usuarioRecuperacao !== null
+            && ($resultadoOtp['sucesso'] ?? false) === true;
         $_SESSION['usuario_recuperacao_senha'] = [
             'id_usuario' => $desafioReal ? (int)$usuarioRecuperacao['id_usuario'] : 0,
-            'telefone' => $desafioReal ? (string)$usuarioRecuperacao['telefone'] : '',
-            'modo' => $desafioReal ? $modoOtp : 'decoy',
-            'referencia' => $desafioReal ? $referencia : '',
-            'otp_hash' => $otpHash,
+            'telefone' => $telefoneReferencia,
+            'id_otp_desafio' => (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
             'etapa' => 'otp',
             'criado_em' => $agora,
             'enviado_em' => $agora,
             'expira_em' => $agora + $expiresIn,
-            'tentativas' => 0,
-            'max_tentativas' => 5,
         ];
 
         loginMultiempresaLimparContexto();
@@ -186,46 +181,36 @@ if (str_starts_with($acaoLogin, 'recuperacao_')) {
             out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_INVALID', 'user_msg' => 'Código inválido ou expirado.'], 422);
         }
 
-        $tentativas = (int)($desafio['tentativas'] ?? 0);
-        $maxTentativas = (int)($desafio['max_tentativas'] ?? 5);
-        if ($tentativas >= $maxTentativas) {
-            unset($_SESSION['usuario_recuperacao_senha']);
-            out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_ATTEMPTS_EXCEEDED', 'user_msg' => 'Código inválido ou expirado.'], 429);
-        }
-
         $codigo = preg_replace('/\D+/', '', (string)($_POST['codigo'] ?? '')) ?? '';
-        $_SESSION['usuario_recuperacao_senha']['tentativas'] = $tentativas + 1;
-        $otpAprovado = false;
+        $idUsuarioDesafio = (int)($desafio['id_usuario'] ?? 0);
 
-        if (strlen($codigo) === 6 && (int)($desafio['id_usuario'] ?? 0) > 0) {
-            if (($desafio['modo'] ?? '') === 'programmable_sms') {
-                $otpAprovado = password_verify($codigo, (string)($desafio['otp_hash'] ?? ''));
-                $configOtp = smsOtpConfig();
-                $codigoTeste = preg_replace('/\D+/', '', (string)($configOtp['dev_fixed_otp_code'] ?? '')) ?? '';
-                if (($configOtp['dev_fixed_otp_enabled'] ?? false) === true && strlen($codigoTeste) === 6) {
-                    $otpAprovado = $otpAprovado || hash_equals($codigoTeste, $codigo);
-                }
-            } elseif (($desafio['modo'] ?? '') === 'verify') {
-                $resultadoValidacao = smsOtpValidar(
-                    (string)($desafio['telefone'] ?? ''),
-                    $codigo,
-                    (string)($desafio['referencia'] ?? '') ?: null
-                );
-                $otpAprovado = is_array($resultadoValidacao) && ($resultadoValidacao['sucesso'] ?? false) === true;
-            }
+        $otpAprovado = false;
+        $validacaoOtp = ['codigo' => ''];
+        if (strlen($codigo) === 6 && (int)($desafio['id_otp_desafio'] ?? 0) > 0) {
+            // O desafio fictício também passa pela validação persistente (tentativas e expiração iguais).
+            $validacaoOtp = smsOtpValidar($conexao, [
+                'principal_tipo' => $idUsuarioDesafio > 0 ? 'usuario' : 'ficticio',
+                'finalidade' => 'recuperacao_usuario',
+                'id_empresa' => 0,
+                'id_cliente' => 0,
+                'id_usuario' => $idUsuarioDesafio,
+                'telefone' => (string)($desafio['telefone'] ?? ''),
+                'id_otp_desafio' => (int)$desafio['id_otp_desafio'],
+                'codigo' => $codigo,
+            ]);
+            $otpAprovado = ($validacaoOtp['sucesso'] ?? false) === true && $idUsuarioDesafio > 0;
         }
 
         if (!$otpAprovado) {
-            if (($tentativas + 1) >= $maxTentativas) {
+            if (($validacaoOtp['codigo'] ?? '') === 'SMS_OTP_TENTATIVAS') {
                 unset($_SESSION['usuario_recuperacao_senha']);
+                out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_ATTEMPTS_EXCEEDED', 'user_msg' => 'Código inválido ou expirado.'], 429);
             }
             out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_CODE_INVALID', 'user_msg' => 'Código inválido ou expirado.'], 422);
         }
 
         session_regenerate_id(true);
         $_SESSION['usuario_recuperacao_senha']['etapa'] = 'senha';
-        $_SESSION['usuario_recuperacao_senha']['otp_hash'] = null;
-        $_SESSION['usuario_recuperacao_senha']['referencia'] = '';
         $_SESSION['usuario_recuperacao_senha']['autorizado_em'] = $agora;
         $_SESSION['usuario_recuperacao_senha']['expira_em'] = $agora + 600;
         unset($_SESSION['csrf_token']);

@@ -13,6 +13,12 @@
   const LISTAR = `${API}?path=superadmin/assinatura/listar`;
   const PREVIA_CANCELAMENTO = `${LISTAR}&previa_cancelamento=1`;
   const ALTERAR_STATUS = `${API}?path=superadmin/assinatura/status`;
+  // Sinais de possível recorrência duplicada no Mercado Pago (vêm do servidor; a conferência é manual, no painel do provedor).
+  const ALERTAS_RECORRENCIA = {
+    PREAPPROVAL_EXTERNA_DUPLICADA: "Uma assinatura de tentativa anterior deste contrato apareceu no Mercado Pago. Confira e encerre a antiga no painel do Mercado Pago.",
+    PREAPPROVAL_ANTERIOR_ENCONTRADA: "A nova criação foi bloqueada porque existe uma assinatura de tentativa anterior no Mercado Pago. Encerre a antiga antes.",
+    MULTIPLAS_ASSINATURAS_EXTERNAS: "Mais de uma assinatura externa usa a mesma referência. Análise manual necessária."
+  };
   const EMPRESAS = `${API}?path=superadmin/empresa/listar&status=todos&ordem=nome_asc&limit=100`;
   const menuCtrl = C.createFloatingMenuController({ rootSelector: "#assinaturas" });
 
@@ -59,9 +65,11 @@
 
   function buildMenuAcoes(item, status) {
     const podeCancelarRecorrencia = item.recorrencia?.pode_cancelar === true;
+    // Cadastro de cartão com criação enviada e resultado incerto: só o Super Admin pode encerrá-lo, com evidência externa.
+    const podeResolverCriacao = item.recorrencia?.situacao === "incerta";
     const ehAtiva = ['ativa', 'suspensa'].includes(status);
     // Sem contrato vigente e sem recorrência a cancelar, não há ações.
-    if (!ehAtiva && !podeCancelarRecorrencia) return "";
+    if (!ehAtiva && !podeCancelarRecorrencia && !podeResolverCriacao) return "";
 
     const dados = `data-id-assinatura="${esc(item.id_assinatura)}" data-id-empresa="${esc(item.id_empresa)}"`;
     const pendente = item.recorrencia?.situacao === "cancelamento_pendente";
@@ -71,6 +79,12 @@
           title="${pendente ? "Cancelamento já solicitado: confirmar com o Mercado Pago" : "Cancelar só a cobrança automática no cartão"}">
           <i class="fa-regular fa-credit-card" aria-hidden="true"></i>
           Cancelar pagamento automático
+        </button>` : "";
+    const itemResolver = podeResolverCriacao ? `
+        <button class="agenda-menu-item" type="button" role="menuitem" data-acao="resolver_criacao_cartao" ${dados}
+          title="Verificar no Mercado Pago e, com evidência suficiente, liberar um novo cadastro de cartão">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          Resolver cadastro de cartão incerto
         </button>` : "";
     const vigente = ehAtiva && !item.data_fim;
     const acaoPrincipal = status === "ativa" ? "suspender" : "reativar";
@@ -84,7 +98,7 @@
           <i class="fa-solid ${iconePrincipal}" aria-hidden="true"></i>
           ${textoPrincipal}
         </button>` : ""}
-        ${itemRecorrencia}
+        ${itemRecorrencia}${itemResolver}
         ${vigente ? `<div class="assinatura-menu-separador" role="separator"></div>
         <button class="agenda-menu-item danger" type="button" role="menuitem"
           data-acao="cancelar" ${dados}>
@@ -128,6 +142,7 @@
           <div class="assinatura-detalhe"><span>Plano</span><strong>${esc(item.plano_nome || "Não identificado")}</strong></div>
           <div class="assinatura-detalhe assinatura-detalhe--valor"><span>Valor</span><strong>${moeda(item.valor_contratado)}</strong></div>
           <div class="assinatura-detalhe"><span>Periodicidade</span><strong>${esc(item.periodicidade)}</strong></div>
+          ${item.recorrencia?.alerta ? `<div class="assinatura-detalhe"><span>Pagamento automático</span><strong title="${esc(ALERTAS_RECORRENCIA[item.recorrencia.alerta] || item.recorrencia.alerta)}">⚠ Possível recorrência duplicada no Mercado Pago</strong></div>` : ""}
           <div class="assinatura-detalhe"><span>Vencimento</span><strong>Dia ${esc(item.dia_vencimento)}</strong></div>
           <div class="assinatura-detalhe"><span>Início</span><strong>${dataBr(item.data_inicio)}</strong></div>
           <div class="assinatura-detalhe"><span>Fim</span><strong>${dataBr(item.data_fim)}</strong></div>
@@ -324,7 +339,7 @@
     await carregarPreviaCancelamento();
   }
 
-  async function enviarStatus(idAssinatura, idEmpresa, acao, motivo = "", modalidadeCancelamento = "") {
+  async function enviarStatus(idAssinatura, idEmpresa, acao, motivo = "", modalidadeCancelamento = "", extras = {}) {
     const csrf = String(window.__AUTH__?.csrf_token || "");
     if (!csrf) throw new Error("Token de segurança indisponível. Atualize a página.");
     const corpo = new FormData();
@@ -333,6 +348,7 @@
     corpo.append("acao", acao);
     if (motivo) corpo.append("motivo", motivo);
     if (modalidadeCancelamento) corpo.append("modalidade_cancelamento", modalidadeCancelamento);
+    Object.entries(extras).forEach(([chave, valor]) => corpo.append(chave, String(valor)));
     const resposta = await fetch(ALTERAR_STATUS, {
       method: "POST",
       body: corpo,
@@ -347,6 +363,7 @@
       erro.status = resposta.status;
       erro.codigo = String(json.code || "");
       erro.bloqueioRecorrencia = json.data?.bloqueio_recorrencia === true;
+      erro.dados = json.data || {};
       throw erro;
     }
     return json;
@@ -409,6 +426,77 @@
       else avisar("aviso", resultado.user_msg || "O cancelamento foi solicitado. Aguarde a confirmação do Mercado Pago.");
     } catch (erro) {
       avisar("erro", erro.message || "Não foi possível cancelar o pagamento automático. Atualize a situação ou tente novamente.");
+    } finally {
+      await carregarAssinaturas();
+    }
+  }
+
+  // Duas fases no servidor: a primeira só devolve a evidência externa (somente leitura); a segunda exige confirmação
+  // explícita (número da empresa digitado). A liberação sempre exige a conferência independente do Super Admin no
+  // Mercado Pago (fonte, data e hora, identificação da evidência); a varredura vazia ou a marca d'água nunca bastam.
+  // Nada é criado nem cancelado no provedor; contrato e teste grátis não mudam.
+  const FONTES_EVIDENCIA = { "1": "painel_mercado_pago", "2": "suporte_mercado_pago" };
+  const MOTIVOS_ATESTADO = {
+    ATESTADO_FONTE_INVALIDA: "Fonte da conferência inválida.",
+    ATESTADO_DATA_INVALIDA: "Data/hora da conferência inválida (deve ser depois da tentativa e não no futuro).",
+    ATESTADO_DESCRICAO_INVALIDA: "Identifique a evidência consultada com 20 a 300 caracteres."
+  };
+  // Converte "DD/MM/AAAA HH:MM" no formato enviado ao servidor (AAAA-MM-DD HH:MM, horário de Brasília); o servidor valida.
+  const dataHoraServidor = valor => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/.exec(String(valor || "").trim());
+    return m ? `${m[3]}-${m[2]}-${m[1]} ${m[4]}:${m[5]}` : "";
+  };
+  async function coletarConferencia(mensagem) {
+    const fonte = window.prompt(`${mensagem}\n\nOnde a conferência foi feita? Digite 1 para o painel do Mercado Pago ou 2 para o suporte do Mercado Pago:`, "1");
+    if (fonte === null) return null;
+    if (!FONTES_EVIDENCIA[fonte.trim()]) { avisar("aviso", "Informe 1 (painel) ou 2 (suporte do Mercado Pago)."); return null; }
+    const quando = window.prompt("Data e hora da conferência (DD/MM/AAAA HH:MM, horário de Brasília):", "");
+    if (quando === null) return null;
+    const conferidoEm = dataHoraServidor(quando);
+    if (!conferidoEm) { avisar("aviso", "Use o formato DD/MM/AAAA HH:MM."); return null; }
+    const descricao = window.prompt("Identifique a evidência consultada (filtros usados, e-mail do pagador conferido, protocolo do suporte). Mínimo de 20 caracteres:", "");
+    if (descricao === null) return null;
+    if (descricao.trim().length < 20) { avisar("aviso", "Descreva a evidência com pelo menos 20 caracteres."); return null; }
+    return { fonte_evidencia: FONTES_EVIDENCIA[fonte.trim()], conferido_em: conferidoEm, atestado: descricao.trim() };
+  }
+
+  async function resolverCriacaoCartao(botao) {
+    const idAssinatura = String(botao.dataset.idAssinatura || "");
+    const idEmpresa = String(botao.dataset.idEmpresa || "");
+    let conferencia = null;
+    try {
+      for (let rodada = 0; rodada < 3; rodada += 1) {
+        try {
+          const resultado = await enviarStatus(idAssinatura, idEmpresa, "resolver_criacao_cartao", "", "", conferencia || {});
+          avisar("sucesso", resultado.user_msg);
+          return;
+        } catch (erro) {
+          if (erro.codigo === "ATESTADO_NECESSARIO") {
+            const e = erro.dados?.evidencia || {};
+            const motivo = conferencia ? `${MOTIVOS_ATESTADO[erro.dados?.atestado_motivo] || "A conferência registrada não foi aceita."}\n\n` : "";
+            const resumo = `${motivo}${erro.message}\n\nConsulta completa: ${e.consulta_completa ? "sim" : "não"}. Referência localizada: ${e.referencia_localizada ? "sim" : "não"}. `
+              + `Existência externa: ${e.existencia_externa === "confirmada" ? "confirmada" : "não confirmada"}. Assinaturas varridas: ${e.itens_varridos ?? "?"}.`;
+            conferencia = await coletarConferencia(resumo);
+            if (!conferencia) return;
+            continue;
+          }
+          if (erro.codigo === "CONFIRMACAO_OBRIGATORIA") {
+            const e = erro.dados?.evidencia || {};
+            const resumo = `${erro.message}\n\nAssinaturas varridas no Mercado Pago: ${e.itens_varridos ?? "?"}. Nenhuma corresponde a esta tentativa (existência externa não confirmada, não comprovadamente inexistente).`;
+            const confirmou = await confirmar(resumo, { titulo: "Encerrar a tentativa anterior?", textoCancelar: "Voltar", textoConfirmar: "Continuar" });
+            if (!confirmou) return;
+            const digitado = window.prompt(`Para confirmar, digite o número da empresa (${idEmpresa}):`, "");
+            if (digitado === null) return;
+            if (digitado.trim() !== idEmpresa) { avisar("aviso", "O número informado não confere com a empresa."); return; }
+            const final = await enviarStatus(idAssinatura, idEmpresa, "resolver_criacao_cartao", "", "", { confirmo: "1", confirmar_empresa: idEmpresa, ...(conferencia || {}) });
+            avisar("sucesso", final.user_msg);
+            return;
+          }
+          throw erro;
+        }
+      }
+    } catch (erro) {
+      avisar("erro", erro.message || "Não foi possível concluir a verificação agora. Nada foi alterado.");
     } finally {
       await carregarAssinaturas();
     }
@@ -487,6 +575,7 @@
       menuCtrl.fechar();
       if (botao.dataset.acao === "cancelar") void abrirCancelamento(botao);
       else if (botao.dataset.acao === "cancelar_recorrencia") void cancelarRecorrencia(botao);
+      else if (botao.dataset.acao === "resolver_criacao_cartao") void resolverCriacaoCartao(botao);
       else alterarStatus(botao);
     });
     document.getElementById("formCancelarAssinatura")?.addEventListener("submit", cancelar);

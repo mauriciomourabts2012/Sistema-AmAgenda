@@ -104,7 +104,13 @@ function faturamentoCobrancas(mysqli $db, int $empresa): void {
     $stmt=$db->prepare($sql); if (!$stmt) throw new RuntimeException('Falha ao preparar cobranças.'); $vals[]=$limit; $vals[]=$offset; faturamentoBind($stmt,$types.'ii',$vals); $stmt->execute(); $res=$stmt->get_result(); $items=[]; $hoje=date('Y-m-d');
     while ($r=$res->fetch_assoc()) { $valor=faturamentoDecimal($r['valor']); $pago=faturamentoDecimal($r['total_pago']); // vencida é situação calculada, nunca persistida.
         $items[]=['id_cobranca'=>(int)$r['id_cobranca'],'id_assinatura'=>(int)$r['id_assinatura'],'plano'=>$r['plano']===null?null:(string)$r['plano'],'periodo_inicio'=>(string)$r['periodo_inicio'],'periodo_fim'=>(string)$r['periodo_fim'],'data_vencimento'=>(string)$r['data_vencimento'],'valor'=>$valor,'status'=>(string)$r['status'],'finalidade'=>(string)$r['finalidade'],'situacao'=>$r['status']==='pendente' && (string)$r['data_vencimento']<$hoje?'vencida':(string)$r['status'],'total_pago_confirmado'=>$pago,'saldo_restante'=>max(0,round($valor-$pago,2)),'criado_em'=>$r['criado_em']===null?null:(string)$r['criado_em']]; }
-    $stmt->close(); out(['ok'=>true,'code'=>'COBRANCAS_LISTADAS','user_msg'=>'Cobranças listadas com sucesso.','data'=>['items'=>$items,'page'=>$page,'limit'=>$limit,'total'=>$total,'total_pages'=>$total===0?0:(int)ceil($total/$limit)]]);
+    $stmt->close();
+    // Situação real do pagamento automático no cartão (recusa, nova tentativa, conferência) e o mesmo bloqueio de PIX do backend.
+    require_once __DIR__ . '/../../_servicos/assinatura.php';
+    $situacoes = assinaturaServicoPreapprovalSituacoesCobrancas($db, array_map(fn($i) => ['id_cobranca'=>$i['id_cobranca'],'id_empresa'=>$empresa,'id_assinatura'=>$i['id_assinatura'],'status'=>$i['status']], $items));
+    foreach ($items as &$item) $item['pagamento_automatico'] = $situacoes[$item['id_cobranca']] ?? null;
+    unset($item);
+    out(['ok'=>true,'code'=>'COBRANCAS_LISTADAS','user_msg'=>'Cobranças listadas com sucesso.','data'=>['items'=>$items,'page'=>$page,'limit'=>$limit,'total'=>$total,'total_pages'=>$total===0?0:(int)ceil($total/$limit)]]);
 }
 
 function faturamentoPagamentos(mysqli $db, int $empresa): void {

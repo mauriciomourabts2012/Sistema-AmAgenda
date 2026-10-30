@@ -86,6 +86,10 @@ $routes = [
     'webhooks/mercado-pago' => [
         'POST' => __DIR__ . '/../../backend/webhooks/webhook_mercado_pago.php',
     ],
+    // Webhook público de relatórios de entrega de SMS (Infobip), autenticado por token por mensagem + callbackData HMAC
+    'webhooks/infobip' => [
+        'POST' => __DIR__ . '/../../backend/webhooks/webhook_infobip.php',
+    ],
 
     // Documentos legais e manifestações obrigatórias
     'documentos-legais/publico' => [
@@ -671,6 +675,7 @@ $rotasPublicasSemBloqueioJuridico = [
     '_auth/cliente-login',
     'cadastro-publico/empresa',
     'webhooks/mercado-pago',
+    'webhooks/infobip',
     'documentos-legais/publico',
     'empresa/identidade-visual/publica',
 ];
@@ -875,6 +880,7 @@ $rotasPermitidasComSenhaTemporariaVencida = [
     '_auth/cliente-login',
     'cadastro-publico/empresa',
     'webhooks/mercado-pago',
+    'webhooks/infobip',
     '_auth/session',
     '_auth/logout',
     'perfil/alterar-senha',
@@ -1007,6 +1013,7 @@ if (isset($permissoesPorRota[$rota])) {
 | Exceções exatas e justificadas:
 | - _auth/login, _auth/cliente-login e cadastro-publico/empresa: entrada pública;
 | - webhooks/mercado-pago: servidor a servidor, autenticado por assinatura HMAC;
+| - webhooks/infobip: servidor a servidor, autenticado por token por mensagem e callbackData HMAC;
 | - cliente/agendamento/confirmar: token próprio (cliente_agendamento_csrf).
 */
 $rotasExcecaoCsrfCentral = [
@@ -1014,6 +1021,7 @@ $rotasExcecaoCsrfCentral = [
     '_auth/cliente-login',
     'cadastro-publico/empresa',
     'webhooks/mercado-pago',
+    'webhooks/infobip',
     'cliente/agendamento/confirmar',
 ];
 

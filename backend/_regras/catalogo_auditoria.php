@@ -88,6 +88,10 @@ function auditoriaCatalogo(): array
             'id_empresa', 'id_assinatura', 'id_cobranca', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo',
             'motivo_suspensao', 'suspensa_em', 'depois',
         ]),
+        'assinatura.criacao_cartao_encerrada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Encerrou uma tentativa incerta de cadastro de cartão.', [
+            'id_empresa', 'id_assinatura', 'id_operacao', 'status', 'erro_codigo', 'itens_varridos', 'marca_dagua', 'referencia_externa_assinatura',
+            'fonte_evidencia', 'conferido_em', 'evidencia', 'depois',
+        ]),
         'assinatura.cancelada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'critica', 'Cancelou uma assinatura.', [
             'id_empresa', 'id_assinatura', 'id_plano', 'status', 'modalidade', 'status_anterior', 'status_novo', 'data_fim', 'depois',
         ]),

@@ -110,15 +110,30 @@
     const de = document.getElementById("filtroVencimentoDe")?.value; const ate = document.getElementById("filtroVencimentoAte")?.value;
     if (q) p.set("q", q); if (situacao) p.set("situacao", situacao); if (de) p.set("vencimento_de", de); if (ate) p.set("vencimento_ate", ate); return p;
   }
+  // Situação real da cobrança no cartão recorrente (Mercado Pago): recusa com o motivo informado, nova tentativa, conferência.
+  function htmlPagamentoAutomatico(pa, emAberto) {
+    if (!pa) return "";
+    const tentativa = pa.tentativa > 1 ? ` · tentativa ${esc(pa.tentativa)}` : "";
+    const recusa = ["recusado", "recusado_retentativa"].includes(pa.situacao)
+      ? `<small>${esc(pa.motivo || "O Mercado Pago não informou o motivo detalhado da recusa.")}</small>` : "";
+    const cancelamento = pa.cancelamento_pendente ? "<small>Cancelamento do pagamento automático aguardando confirmação do Mercado Pago.</small>" : "";
+    // Só a data informada pelo Mercado Pago; sem ela, nenhuma previsão é exibida.
+    const proxima = pa.proxima_tentativa_em ? `<small>Próxima tentativa prevista pelo Mercado Pago: ${br(pa.proxima_tentativa_em)} ${esc(String(pa.proxima_tentativa_em).slice(11, 16))}</small>` : "";
+    const pix = emAberto && pa.pix_bloqueado ? `<small>${esc(pa.pix_mensagem || "")}</small>` : "";
+    return `<div class="faturamento-pagamento-automatico faturamento-pagamento-automatico--${esc(pa.situacao)}"><span>Pagamento automático</span><strong>${esc(pa.titulo)}${tentativa}</strong><small>${esc(pa.mensagem)}</small>${recusa}${proxima}${cancelamento}${pix}</div>`;
+  }
   function renderCobrancas(data) {
     const lista = document.getElementById("listaCobrancasFaturamento"); if (!lista) return;
     const items = data.items || [];
     const mudarPagina = destino => { estado.pagina = destino; carregarCobrancas(); };
     if (!items.length) { lista.innerHTML = `<div class="faturamento-estado faturamento-estado--lista"><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid fa-file-invoice"></i></span><div><strong>Nenhuma cobrança encontrada.</strong><p>Suas cobranças aparecerão aqui quando estiverem disponíveis.</p></div></div>`; renderPaginacao(data, "paginacaoFaturamento", mudarPagina); return; }
     lista.innerHTML = items.map(item => {
-      const elegivel = podePagar() && item.status === "pendente" && Number(item.saldo_restante) > 0;
+      const pa = item.pagamento_automatico || null;
+      // O PIX concorrente com o cartão recorrente é recusado no backend; aqui só se evita oferecer o botão.
+      const pixBloqueado = pa?.pix_bloqueado === true;
+      const elegivel = podePagar() && item.status === "pendente" && Number(item.saldo_restante) > 0 && !pixBloqueado;
       const acao = elegivel ? `<button class="botao-geral destaque faturamento-pagar-agora" type="button" data-pagar-cobranca="${esc(item.id_cobranca)}" data-pagar-valor="${esc(item.saldo_restante)}"><i class="fa-brands fa-pix" aria-hidden="true"></i>Pagar agora</button>` : "";
-      return `<article class="agenda-card faturamento-cobranca-card"><div class="faturamento-cobranca-topo"><strong>${esc(item.plano || "Plano não identificado")}</strong><span class="${statusClasse(item.situacao)}">${esc(texto(item.situacao))}</span></div><div class="faturamento-cobranca-detalhes"><div><span>Valor</span><strong>${moeda(item.valor)}</strong></div><div><span>Período</span><strong>${br(item.periodo_inicio)} a ${br(item.periodo_fim)}</strong></div><div><span>Vencimento</span><strong>${br(item.data_vencimento)}</strong></div></div><div class="faturamento-cobranca-rodape"><div class="faturamento-cobranca-valores"><span>Pago: <strong>${moeda(item.total_pago_confirmado)}</strong></span><span>Saldo: <strong>${moeda(item.saldo_restante)}</strong></span></div>${acao}</div></article>`;
+      return `<article class="agenda-card faturamento-cobranca-card"><div class="faturamento-cobranca-topo"><strong>${esc(item.plano || "Plano não identificado")}</strong><span class="${statusClasse(item.situacao)}">${esc(texto(item.situacao))}</span></div><div class="faturamento-cobranca-detalhes"><div><span>Valor</span><strong>${moeda(item.valor)}</strong></div><div><span>Período</span><strong>${br(item.periodo_inicio)} a ${br(item.periodo_fim)}</strong></div><div><span>Vencimento</span><strong>${br(item.data_vencimento)}</strong></div>${htmlPagamentoAutomatico(pa, item.status === "pendente")}</div><div class="faturamento-cobranca-rodape"><div class="faturamento-cobranca-valores"><span>Pago: <strong>${moeda(item.total_pago_confirmado)}</strong></span><span>Saldo: <strong>${moeda(item.saldo_restante)}</strong></span></div>${acao}</div></article>`;
     }).join("");
     renderPaginacao(data, "paginacaoFaturamento", mudarPagina);
   }

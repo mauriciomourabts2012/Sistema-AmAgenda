@@ -227,6 +227,51 @@ function assinaturaCancelarRecorrencia(mysqli $conexao, int $idEmpresa, int $idA
         'data' => ['id_assinatura' => $idAssinatura, 'id_empresa' => $idEmpresa, 'desfecho' => $r['desfecho']]], $r['http']);
 }
 
+/**
+ * Resolução administrativa de um cadastro de cartão com criação incerta (Super Admin autenticado, fora do modo suporte;
+ * CSRF validado por quem chama). Fase 1 (sem `confirmo`): devolve a evidência externa somente leitura. A liberação exige
+ * sempre a conferência independente do Super Admin: `fonte_evidencia`, `conferido_em` (AAAA-MM-DD HH:MM, horário de
+ * Brasília) e `atestado` (identificação da evidência consultada). Fase 2: `confirmo=1` e `confirmar_empresa` igual ao id
+ * da empresa. Trava por empresa; nada é criado nem cancelado no Mercado Pago; contrato e teste grátis não mudam.
+ */
+function assinaturaResolverCriacaoCartao(mysqli $conexao, int $idEmpresa, int $idAssinatura): void
+{
+    $dono = assinaturaServicoConsultaFinanceira($conexao, 'SELECT id_empresa FROM assinatura WHERE id_assinatura = ? LIMIT 1', 'i', $idAssinatura)[0] ?? null;
+    if ($dono === null || (int)$dono['id_empresa'] !== $idEmpresa) {
+        out(['ok' => false, 'code' => 'ASSINATURA_NAO_ENCONTRADA', 'user_msg' => 'Assinatura não encontrada para esta empresa.'], 404);
+    }
+    $confirmo = ($_POST['confirmo'] ?? '') === '1';
+    if ($confirmo && assinaturaIdEntrada($_POST, 'confirmar_empresa') !== $idEmpresa) {
+        out(['ok' => false, 'code' => 'CONFIRMACAO_EMPRESA_INVALIDA', 'user_msg' => 'Informe o número da empresa para confirmar.'], 422);
+    }
+    $atestado = is_scalar($_POST['atestado'] ?? null) ? trim((string)$_POST['atestado']) : '';
+    if (strlen($atestado) > 300) {
+        out(['ok' => false, 'code' => 'ATESTADO_INVALIDO', 'user_msg' => 'O registro da evidência deve ter até 300 caracteres.'], 422);
+    }
+    $fonte = is_scalar($_POST['fonte_evidencia'] ?? null) ? trim((string)$_POST['fonte_evidencia']) : '';
+    // Aceita o formato do campo datetime-local (AAAA-MM-DDTHH:MM); o serviço valida a data contra a tentativa e o agora.
+    $conferidoEm = is_scalar($_POST['conferido_em'] ?? null) ? str_replace('T', ' ', trim((string)$_POST['conferido_em'])) : '';
+    $conferencia = ($atestado === '' && $fonte === '' && $conferidoEm === '')
+        ? null : ['fonte' => $fonte, 'conferido_em' => $conferidoEm, 'descricao' => $atestado];
+    require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
+    // Mesma trava por empresa de troca de cartão, cancelamento e demais operações do pagamento automático.
+    if (!cancelamentoRecorrenciaObterTrava($conexao, $idEmpresa)) {
+        out(['ok' => false, 'code' => 'OPERACAO_CARTAO_EM_ANDAMENTO', 'user_msg' => 'Já existe uma operação no pagamento automático em andamento. Aguarde a conclusão.'], 409);
+    }
+    register_shutdown_function(static fn() => cancelamentoRecorrenciaLiberarTrava($conexao, $idEmpresa));
+    try {
+        $ator = auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa);
+        $gateway = cancelamentoRecorrenciaCarregarGateway();
+        $r = assinaturaServicoPreapprovalResolverCriacaoIncerta($conexao, $gateway, $idEmpresa, $idAssinatura, $ator, $confirmo, $conferencia);
+    } catch (Throwable $erro) {
+        error_log('GESTAO_ASSINATURA_RESOLVER_CRIACAO_CARTAO: ' . get_class($erro));
+        out(['ok' => false, 'code' => 'RESOLVER_CRIACAO_ERRO', 'user_msg' => 'Não foi possível concluir a verificação agora. Nada foi alterado.'], 503);
+    }
+    $dados = ['id_assinatura' => $idAssinatura, 'id_empresa' => $idEmpresa, 'evidencia' => $r['evidencia'] ?? null,
+        'atestado_necessario' => ($r['atestado_necessario'] ?? false) === true, 'atestado_motivo' => $r['atestado_motivo'] ?? null];
+    out(['ok' => $r['ok'] === true, 'code' => (string)$r['codigo'], 'user_msg' => (string)$r['mensagem'], 'data' => $dados], $r['ok'] === true ? 200 : (int)($r['http_status'] ?? 409));
+}
+
 function assinaturaAlterarStatus(mysqli $conexao): void
 {
     require_once __DIR__ . '/../../_auth/csrf.php';
@@ -239,11 +284,15 @@ function assinaturaAlterarStatus(mysqli $conexao): void
     $modalidadeCancelamento = is_scalar($_POST['modalidade_cancelamento'] ?? null)
         ? trim((string)$_POST['modalidade_cancelamento']) : '';
 
-    if ($idAssinatura === null || $idEmpresaInformada === null || !in_array($acao, ['suspender', 'reativar', 'cancelar', 'cancelar_recorrencia'], true)) {
+    if ($idAssinatura === null || $idEmpresaInformada === null || !in_array($acao, ['suspender', 'reativar', 'cancelar', 'cancelar_recorrencia', 'resolver_criacao_cartao'], true)) {
         out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Dados da assinatura inválidos.'], 422);
     }
     if ($acao === 'cancelar_recorrencia') {
         assinaturaCancelarRecorrencia($conexao, $idEmpresaInformada, $idAssinatura);
+        return;
+    }
+    if ($acao === 'resolver_criacao_cartao') {
+        assinaturaResolverCriacaoCartao($conexao, $idEmpresaInformada, $idAssinatura);
         return;
     }
 

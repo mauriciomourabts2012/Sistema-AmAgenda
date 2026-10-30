@@ -11,6 +11,7 @@
 /backend/_config/conexao.php
 /backend/_config/conexao.local.php
 /backend/_config/twilio.php
+/backend/_config/infobip.php
 /backend/_config/mercado_pago.php
 
 # 2. Logs e arquivos de diagnostico

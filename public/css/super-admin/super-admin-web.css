@@ -350,6 +350,9 @@
   border-top: 0;
 }
 #cobrancas .cobranca-data-item, #cobrancas .cobranca-valor { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
+.cobranca-pagamento-automatico { display: grid !important; gap: 3px; flex-basis: 100%; width: 100%; }
+.cobranca-pagamento-automatico small { color: #55677d; font-size: 12px; line-height: 1.4; }
+.cobranca-pagamento-automatico code { font-size: 11px; color: #7a8699; }
 #cobrancas .cobranca-data-item .cobranca-meta-label i { color: #52709c; }
 #cobrancas .cobranca-data-item strong {
   overflow-wrap: anywhere;

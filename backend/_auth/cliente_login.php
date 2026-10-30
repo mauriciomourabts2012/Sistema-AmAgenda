@@ -15,18 +15,13 @@ declare(strict_types=1);
 | - coordenar cliente_auth_desafio;
 | - criar cliente_auth após validação.
 |
-| Modos suportados:
+| OTP:
+| - gerado, persistido (somente hash), enviado por SMS (Infobip) e validado
+|   por backend/_servicos/sms_otp.php, na tabela otp_desafio;
+| - expiração, tentativas, reenvio e consumo único são persistentes;
+| - não existe código fixo nem bypass de homologação.
 |
-| programmable_sms
-|   DEV:
-|   - AmAgenda gera e valida OTP;
-|   - pode aceitar OTP fixo de homologação quando habilitado
-|     explicitamente em backend/_config/twilio.php.
-|
-| verify
-|   PRODUÇÃO/FUTURO: provedor gera e valida OTP.
-|
-| Este arquivo NÃO armazena credenciais da Twilio.
+| Este arquivo NÃO armazena credenciais do provedor de SMS.
 |
 */
 
@@ -227,24 +222,6 @@ if (
 | HELPERS
 |--------------------------------------------------------------------------
 */
-
-
-/**
- * Retorna modo configurado para OTP.
- */
-function clienteLoginModoOtp(): string
-{
-    $config = smsOtpConfig();
-
-    return strtolower(
-        trim(
-            (string)(
-                $config['mode']
-                ?? 'programmable_sms'
-            )
-        )
-    );
-}
 
 
 /**
@@ -767,7 +744,9 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         ], 503);
     }
 
-    if (is_array($clienteOtp) && !clienteLoginClienteAtivo($clienteOtp)) {
+    // Recuperação de senha nunca revela se a conta existe: o caso indisponível segue adiante
+    // como desafio fictício (sem SMS) e com a mesma resposta pública.
+    if ($acao !== 'iniciar_recuperacao' && is_array($clienteOtp) && !clienteLoginClienteAtivo($clienteOtp)) {
         out([
             'ok' => false,
             'code' => 'CLIENT_NOT_AVAILABLE',
@@ -783,14 +762,11 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         ? 'recuperacao_senha'
         : 'acesso';
 
+    $recuperacaoFicticia = false;
+
     if ($finalidadeOtp === 'recuperacao_senha') {
-        if (!clienteLoginClienteAtivo($clienteOtp) || $hashClienteOtp === '') {
-            out([
-                'ok' => false,
-                'code' => 'CLIENT_PASSWORD_RECOVERY_UNAVAILABLE',
-                'user_msg' => 'Não foi possível iniciar a recuperação.',
-            ], 422);
-        }
+        // Conta inexistente, inativa ou sem senha: nenhum SMS e resposta genérica.
+        $recuperacaoFicticia = !clienteLoginClienteAtivo($clienteOtp) || $hashClienteOtp === '';
     } elseif ($hashClienteOtp !== '') {
         out([
             'ok' => false,
@@ -802,298 +778,78 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
 
     /*
     |--------------------------------------------------------------------------
-    | CONTROLE DE REENVIO
+    | DESAFIO PERSISTENTE E ENVIO
     |--------------------------------------------------------------------------
+    |
+    | Reenvio (30 s), limites por telefone/IP, invalidação do desafio anterior
+    | e vínculo à sessão são aplicados em smsOtpSolicitar() (otp_desafio).
+    | Telefone sem cadastro usa principal 'ficticio' com envio real, pois o
+    | primeiro acesso precisa confirmar o telefone antes do cadastro.
+    |
     */
+    $clienteOtpAtivo = is_array($clienteOtp)
+        && clienteLoginClienteAtivo($clienteOtp)
+        && !$recuperacaoFicticia;
 
-    $desafioAnterior =
-        $_SESSION[
-            'cliente_auth_desafio'
-        ] ?? null;
+    $resultadoOtp = smsOtpSolicitar($conexao, [
+        'principal_tipo' => $clienteOtpAtivo ? 'cliente' : 'ficticio',
+        'finalidade' => $finalidadeOtp === 'recuperacao_senha'
+            ? 'recuperacao_cliente'
+            : 'acesso_cliente',
+        'id_empresa' => $idEmpresa,
+        'id_cliente' => $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : 0,
+        'id_usuario' => 0,
+        'telefone' => $telefoneE164,
+        'ip' => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
+        'enviar' => !$recuperacaoFicticia,
+    ]);
 
-    if (
-        is_array($desafioAnterior)
-        &&
-        (int)(
-            $desafioAnterior[
-                'id_empresa'
-            ] ?? 0
-        ) === $idEmpresa
-    ) {
-        $ultimoEnvio =
-            (int)(
-                $desafioAnterior[
-                    'enviado_em'
-                ] ?? 0
-            );
+    if (($resultadoOtp['sucesso'] ?? false) !== true) {
+        $codigoOtp = (string)($resultadoOtp['codigo'] ?? '');
 
-        $tempoDesdeEnvio =
-            time() - $ultimoEnvio;
-
-        /*
-         * 30 segundos entre envios.
-         */
-        if (
-            $ultimoEnvio > 0
-            &&
-            $tempoDesdeEnvio < 30
-        ) {
-            $retryAfter =
-                30 - $tempoDesdeEnvio;
-
+        if (in_array($codigoOtp, ['SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE'], true)) {
             out([
                 'ok' => false,
-                'code' =>
-                    'CLIENT_OTP_RESEND_LIMIT',
-
+                'code' => 'CLIENT_OTP_RESEND_LIMIT',
                 'user_msg' =>
                     'Aguarde alguns segundos antes de solicitar outro código.',
-
                 'data' => [
                     'retry_after' =>
-                        $retryAfter
+                        (int)($resultadoOtp['dados']['retry_after'] ?? 30)
                 ]
             ], 429);
         }
-    }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | MODO OTP
-    |--------------------------------------------------------------------------
-    */
-
-    $modoOtp =
-        clienteLoginModoOtp();
-
-    $expiresIn = 300;
-
-    $referencia = '';
-
-    $otpHash = null;
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | DEV - PROGRAMMABLE SMS
-    |--------------------------------------------------------------------------
-    |
-    | Neste modo o AmAgenda continua gerando seu OTP aleatório.
-    |
-    | O código em texto puro NÃO é salvo na sessão.
-    |
-    | Enquanto a Twilio Trial não entregar conteúdo personalizado,
-    | sms_otp.php utiliza o template permitido pelo Trial.
-    |
-    */
-
-    if ($modoOtp === 'programmable_sms') {
-
-        try {
-            $codigoOtp =
-                (string)random_int(
-                    100000,
-                    999999
-                );
-        } catch (Throwable $e) {
+        // Na recuperação, falha de envio não distingue conta real de inexistente.
+        if ($finalidadeOtp !== 'recuperacao_senha') {
             out([
                 'ok' => false,
-                'code' =>
-                    'CLIENT_OTP_GENERATION_ERROR',
-
+                'code' => 'CLIENT_OTP_UNAVAILABLE',
                 'user_msg' =>
                     'Não foi possível enviar o código agora. Tente novamente.'
-            ], 500);
+            ], 503);
         }
 
-        $otpHash =
-            password_hash(
-                $codigoOtp,
-                PASSWORD_DEFAULT
-            );
-
-        if (
-            !is_string($otpHash)
-            ||
-            $otpHash === ''
-        ) {
-            out([
-                'ok' => false,
-                'code' =>
-                    'CLIENT_OTP_GENERATION_ERROR',
-
-                'user_msg' =>
-                    'Não foi possível enviar o código agora. Tente novamente.'
-            ], 500);
-        }
-
-        /*
-         * A mensagem personalizada continua sendo montada
-         * para compatibilidade com o fluxo futuro.
-         *
-         * No Trial atual, sms_otp.php ignora este conteúdo e
-         * utiliza dev_message_body da configuração privada.
-         */
-        $mensagem =
-            'AmAgenda: seu código de acesso é ' .
-            $codigoOtp .
-            '. Ele expira em 5 minutos.';
-
-        $resultadoOtp =
-            smsOtpEnviar(
-                $telefoneE164,
-                $mensagem
-            );
+        $clienteOtpAtivo = false;
     }
 
+    $expiresIn = (int)($resultadoOtp['dados']['expires_in'] ?? 300);
 
-    /*
-    |--------------------------------------------------------------------------
-    | TWILIO VERIFY
-    |--------------------------------------------------------------------------
-    */
-
-    elseif ($modoOtp === 'verify') {
-
-        $resultadoOtp =
-            smsOtpEnviar(
-                $telefoneE164
-            );
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | MODO INVÁLIDO
-    |--------------------------------------------------------------------------
-    */
-
-    else {
-        out([
-            'ok' => false,
-            'code' =>
-                'CLIENT_OTP_MODE_INVALID',
-
-            'user_msg' =>
-                'Serviço de verificação temporariamente indisponível.'
-        ], 503);
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | RESULTADO DO ENVIO
-    |--------------------------------------------------------------------------
-    */
-
-    if (
-        !is_array($resultadoOtp)
-        ||
-        (
-            $resultadoOtp['sucesso']
-            ?? false
-        ) !== true
-    ) {
-        out([
-            'ok' => false,
-            'code' =>
-                'CLIENT_OTP_UNAVAILABLE',
-
-            'user_msg' =>
-                'Não foi possível enviar o código agora. Tente novamente.'
-        ], 503);
-    }
-
-
-    $expiresProvider =
-        (int)(
-            $resultadoOtp[
-                'dados'
-            ]['expires_in']
-            ?? 0
-        );
-
-    if (
-        $expiresProvider > 0
-        &&
-        $expiresProvider <= 900
-    ) {
-        $expiresIn =
-            $expiresProvider;
-    }
-
-
-    $referencia =
-        (string)(
-            $resultadoOtp[
-                'dados'
-            ]['referencia']
-            ??
-            $resultadoOtp[
-                'dados'
-            ]['sid']
-            ??
-            ''
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | DESAFIO
-    |--------------------------------------------------------------------------
-    |
-    | Somente agora, após envio aceito pelo provedor,
-    | o desafio é criado.
-    |
-    */
-
+    // Somente identificadores: o código nunca é guardado na sessão.
     $_SESSION[
         'cliente_auth_desafio'
     ] = [
-        'id_empresa' =>
-            $idEmpresa,
-
-        'telefone' =>
-            $telefoneE164,
-
-        'finalidade' =>
-            $finalidadeOtp,
-
-        'id_cliente' =>
-            is_array($clienteOtp)
-                ? (int)$clienteOtp['id_cliente']
-                : null,
-
-        'modo' =>
-            $modoOtp,
-
-        'referencia' =>
-            $referencia,
-
-        /*
-         * Somente DEV programmable_sms.
-         * Nunca armazenar código em texto puro.
-         */
-        'otp_hash' =>
-            $otpHash,
-
-        'criado_em' =>
-            time(),
-
-        'enviado_em' =>
-            time(),
-
-        'expira_em' =>
-            time() + $expiresIn,
-
-        'tentativas' =>
-            0,
-
-        'max_tentativas' =>
-            5
+        'id_empresa' => $idEmpresa,
+        'telefone' => $telefoneE164,
+        'finalidade' => $finalidadeOtp,
+        'id_cliente' => $clienteOtpAtivo
+            ? (int)$clienteOtp['id_cliente']
+            : null,
+        'id_otp_desafio' =>
+            (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
+        'enviado_em' => time(),
+        'expira_em' => time() + $expiresIn,
     ];
-
 
     clienteLoginRespostaEnvioGenerica(
         $expiresIn
@@ -1112,7 +868,6 @@ $desafio =
         'cliente_auth_desafio'
     ] ?? null;
 
-
 if (!is_array($desafio)) {
     out([
         'ok' => false,
@@ -1124,78 +879,20 @@ if (!is_array($desafio)) {
     ], 422);
 }
 
-
-$desafioEmpresa =
-    (int)(
-        $desafio[
-            'id_empresa'
-        ] ?? 0
-    );
-
-$desafioTelefone =
-    (string)(
-        $desafio[
-            'telefone'
-        ] ?? ''
-    );
-
-$desafioFinalidade =
-    (string)(
-        $desafio[
-            'finalidade'
-        ] ?? 'acesso'
-    );
-
+$desafioEmpresa = (int)($desafio['id_empresa'] ?? 0);
+$desafioTelefone = (string)($desafio['telefone'] ?? '');
+$desafioFinalidade = (string)($desafio['finalidade'] ?? 'acesso');
 $desafioIdCliente = isset($desafio['id_cliente'])
     ? (int)$desafio['id_cliente']
     : null;
-
-$desafioModo =
-    (string)(
-        $desafio[
-            'modo'
-        ] ?? ''
-    );
-
-$desafioReferencia =
-    (string)(
-        $desafio[
-            'referencia'
-        ] ?? ''
-    );
-
-$expiraEm =
-    (int)(
-        $desafio[
-            'expira_em'
-        ] ?? 0
-    );
-
-$tentativas =
-    (int)(
-        $desafio[
-            'tentativas'
-        ] ?? 0
-    );
-
-$maxTentativas =
-    (int)(
-        $desafio[
-            'max_tentativas'
-        ] ?? 5
-    );
-
-
-/*
-|--------------------------------------------------------------------------
-| VALIDAÇÃO DO DESAFIO
-|--------------------------------------------------------------------------
-*/
+$desafioIdOtp = (int)($desafio['id_otp_desafio'] ?? 0);
 
 if (
     $desafioEmpresa !== $idEmpresa
     ||
     $desafioTelefone === ''
+    ||
+    $desafioIdOtp <= 0
     ||
     !in_array(
         $desafioFinalidade,
@@ -1203,11 +900,7 @@ if (
         true
     )
 ) {
-    unset(
-        $_SESSION[
-            'cliente_auth_desafio'
-        ]
-    );
+    unset($_SESSION['cliente_auth_desafio']);
 
     out([
         'ok' => false,
@@ -1219,53 +912,6 @@ if (
     ], 422);
 }
 
-
-if ($expiraEm <= time()) {
-
-    unset(
-        $_SESSION[
-            'cliente_auth_desafio'
-        ]
-    );
-
-    out([
-        'ok' => false,
-        'code' =>
-            'CLIENT_OTP_EXPIRED',
-
-        'user_msg' =>
-            'O código expirou. Solicite um novo.'
-    ], 422);
-}
-
-
-if (
-    $tentativas >=
-    $maxTentativas
-) {
-    unset(
-        $_SESSION[
-            'cliente_auth_desafio'
-        ]
-    );
-
-    out([
-        'ok' => false,
-        'code' =>
-            'CLIENT_OTP_ATTEMPTS_EXCEEDED',
-
-        'user_msg' =>
-            'Solicite um novo código para continuar.'
-    ], 429);
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| CÓDIGO
-|--------------------------------------------------------------------------
-*/
-
 $codigo =
     preg_replace(
         '/\D+/',
@@ -1274,7 +920,6 @@ $codigo =
             $_POST['codigo'] ?? ''
         )
     ) ?? '';
-
 
 if (strlen($codigo) !== 6) {
     out([
@@ -1287,202 +932,52 @@ if (strlen($codigo) !== 6) {
     ], 422);
 }
 
-
 /*
- * Incrementa tentativa antes de validar.
- *
- * O OTP fixo de DEV continua respeitando exatamente
- * o mesmo limite de tentativas do OTP normal.
+ * Expiração, tentativas (persistentes), vínculo com a sessão, empresa real
+ * do cliente e consumo único são decididos em smsOtpValidar().
  */
-$_SESSION[
-    'cliente_auth_desafio'
-]['tentativas'] =
-    $tentativas + 1;
+$validacaoOtp = smsOtpValidar($conexao, [
+    'principal_tipo' => ($desafioIdCliente ?? 0) > 0 ? 'cliente' : 'ficticio',
+    'finalidade' => $desafioFinalidade === 'recuperacao_senha'
+        ? 'recuperacao_cliente'
+        : 'acesso_cliente',
+    'id_empresa' => $idEmpresa,
+    'id_cliente' => $desafioIdCliente ?? 0,
+    'id_usuario' => 0,
+    'telefone' => $desafioTelefone,
+    'id_otp_desafio' => $desafioIdOtp,
+    'codigo' => $codigo,
+]);
 
+if (($validacaoOtp['sucesso'] ?? false) !== true) {
+    $codigoValidacao = (string)($validacaoOtp['codigo'] ?? '');
 
-/*
-|--------------------------------------------------------------------------
-| DEV - VALIDAÇÃO LOCAL
-|--------------------------------------------------------------------------
-|
-| No modo programmable_sms existem duas possibilidades:
-|
-| 1. OTP aleatório normalmente gerado pelo AmAgenda;
-| 2. OTP fixo de homologação, SOMENTE quando habilitado
-|    explicitamente no twilio.php.
-|
-| Expiração e limite de tentativas continuam sendo aplicados
-| antes de chegar neste ponto.
-|
-*/
+    if (in_array($codigoValidacao, ['SMS_OTP_INDISPONIVEL', 'SMS_CONFIG_INVALIDA'], true)) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_OTP_UNAVAILABLE',
+            'user_msg' => 'Não foi possível validar o código agora.'
+        ], 503);
+    }
 
-if (
-    $desafioModo ===
-    'programmable_sms'
-) {
-    $otpHash =
-        (string)(
-            $desafio[
-                'otp_hash'
-            ] ?? ''
-        );
+    if ($codigoValidacao === 'SMS_OTP_EXPIRADO') {
+        unset($_SESSION['cliente_auth_desafio']);
 
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_OTP_EXPIRED',
+            'user_msg' => 'O código expirou. Solicite um novo.'
+        ], 422);
+    }
 
-    /*
-    |--------------------------------------------------------------------------
-    | OTP ALEATÓRIO NORMAL
-    |--------------------------------------------------------------------------
-    */
+    if ($codigoValidacao === 'SMS_OTP_TENTATIVAS') {
+        unset($_SESSION['cliente_auth_desafio']);
 
-    $otpNormalAprovado =
-        $otpHash !== ''
-        &&
-        password_verify(
-            $codigo,
-            $otpHash
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | OTP FIXO - SOMENTE DEV
-    |--------------------------------------------------------------------------
-    |
-    | A configuração fica exclusivamente em:
-    |
-    | backend/_config/twilio.php
-    |
-    | Exemplo:
-    |
-    | 'dev_fixed_otp_enabled' => true,
-    | 'dev_fixed_otp_code' => '135794',
-    |
-    | Ao desabilitar dev_fixed_otp_enabled, o código fixo deixa
-    | imediatamente de ser aceito.
-    |
-    */
-
-    $configOtp =
-        smsOtpConfig();
-
-    $devFixedOtpEnabled =
-        (
-            $configOtp[
-                'dev_fixed_otp_enabled'
-            ] ?? false
-        ) === true;
-
-    $devFixedOtpCode =
-        preg_replace(
-            '/\D+/',
-            '',
-            (string)(
-                $configOtp[
-                    'dev_fixed_otp_code'
-                ] ?? ''
-            )
-        ) ?? '';
-
-
-    /*
-     * Só considera a configuração válida quando
-     * houver exatamente 6 dígitos.
-     */
-    $devFixedOtpValido =
-        $devFixedOtpEnabled
-        &&
-        strlen(
-            $devFixedOtpCode
-        ) === 6;
-
-
-    $otpFixoAprovado =
-        $devFixedOtpValido
-        &&
-        hash_equals(
-            $devFixedOtpCode,
-            $codigo
-        );
-
-
-    /*
-     * Mantém o OTP normal funcionando.
-     *
-     * O OTP fixo é apenas uma alternativa temporária
-     * para homologação no ambiente DEV.
-     */
-    $otpAprovado =
-        $otpNormalAprovado
-        ||
-        $otpFixoAprovado;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| TWILIO VERIFY
-|--------------------------------------------------------------------------
-*/
-
-elseif (
-    $desafioModo === 'verify'
-) {
-    $resultadoOtp =
-        smsOtpValidar(
-            $desafioTelefone,
-            $codigo,
-            $desafioReferencia !== ''
-                ? $desafioReferencia
-                : null
-        );
-
-    $otpAprovado =
-        is_array($resultadoOtp)
-        &&
-        (
-            $resultadoOtp[
-                'sucesso'
-            ] ?? false
-        ) === true;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| MODO INVÁLIDO
-|--------------------------------------------------------------------------
-*/
-
-else {
-    $otpAprovado = false;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| OTP NÃO APROVADO
-|--------------------------------------------------------------------------
-*/
-
-if (!$otpAprovado) {
-
-    $tentativasAtuais =
-        (int)(
-            $_SESSION[
-                'cliente_auth_desafio'
-            ]['tentativas']
-            ?? 0
-        );
-
-    if (
-        $tentativasAtuais >=
-        $maxTentativas
-    ) {
-        unset(
-            $_SESSION[
-                'cliente_auth_desafio'
-            ]
-        );
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_OTP_ATTEMPTS_EXCEEDED',
+            'user_msg' => 'Solicite um novo código para continuar.'
+        ], 429);
     }
 
     out([
@@ -1494,7 +989,6 @@ if (!$otpAprovado) {
             'Código inválido ou expirado.'
     ], 422);
 }
-
 
 /*
 |--------------------------------------------------------------------------

@@ -284,11 +284,13 @@ function listarPagamentos(mysqli $conexao): void
             ];
         }
         $stmt->close();
+        $resumoCobranca = pagamentoRespostaResumo($cobranca, $totalCentavos);
+        $resumoCobranca['pagamento_automatico'] = assinaturaServicoPreapprovalSituacoesCobrancas($conexao, [$cobranca])[$idCobranca] ?? null;
         out([
             'ok' => true,
             'code' => 'PAGAMENTOS_LISTADOS',
             'user_msg' => 'Pagamentos listados com sucesso.',
-            'data' => ['cobranca' => pagamentoRespostaResumo($cobranca, $totalCentavos), 'items' => $items],
+            'data' => ['cobranca' => $resumoCobranca, 'items' => $items],
         ]);
     } catch (Throwable $e) {
         error_log('LISTA_PAGAMENTO_EXCEPTION: ' . $e->getMessage());
@@ -962,6 +964,12 @@ if ($metodo === 'GET') {
             ];
         }
         $stmt->close();
+        // Mesma situação do pagamento automático exibida ao Proprietário, com o código técnico da recusa para diagnóstico.
+        $situacoes = assinaturaServicoPreapprovalSituacoesCobrancas($conexao, $items);
+        foreach ($items as &$item) {
+            $item['pagamento_automatico'] = $situacoes[$item['id_cobranca']] ?? null;
+        }
+        unset($item);
         out(['ok' => true, 'code' => 'COBRANCAS_LISTADAS', 'user_msg' => 'Cobranças listadas com sucesso.', 'data' => [
             'items' => $items,
             'limit' => $limit,

@@ -132,9 +132,21 @@
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.25a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Zm0 6.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Zm0 6.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z"/></svg>`;
   }
 
+  // Situação do pagamento automático no cartão (Mercado Pago), com o código técnico da recusa para diagnóstico.
+  function htmlPagamentoAutomatico(pa) {
+    if (!pa) return "";
+    const tentativa = pa.tentativa > 1 ? ` · tentativa ${esc(pa.tentativa)}` : "";
+    const motivo = pa.motivo_codigo ? `<small>${esc(pa.motivo || "Motivo não detalhado pelo Mercado Pago.")} <code>${esc(pa.motivo_codigo)}</code></small>` : "";
+    const cancelamento = pa.cancelamento_pendente ? "<small>Cancelamento do pagamento automático aguardando confirmação do Mercado Pago.</small>" : "";
+    const proxima = pa.proxima_tentativa_em ? `<small>Próxima tentativa prevista pelo Mercado Pago: ${dataBr(pa.proxima_tentativa_em)} ${esc(String(pa.proxima_tentativa_em).slice(11, 16))}</small>` : "";
+    const pix = pa.pix_bloqueado ? `<small>${esc(pa.pix_mensagem || "")} <code>${esc(pa.pix_codigo || "")}</code></small>` : "";
+    return `<div class="cobranca-data-item cobranca-pagamento-automatico cobranca-pagamento-automatico--${esc(pa.situacao)}"><span class="cobranca-meta-label">Pagamento automático</span><strong>${esc(pa.titulo)}${tentativa}</strong><small>${esc(pa.mensagem)}</small>${motivo}${proxima}${cancelamento}${pix}</div>`;
+  }
+
   function menuAcoesCobranca(item) {
     const cancelada = item.status === "cancelada";
-    const podeRegistrar = !cancelada && Number(item.saldo_restante || 0) > 0;
+    // Com o cartão recorrente podendo cobrar, o backend recusa a baixa manual (mesma regra do PIX do Proprietário).
+    const podeRegistrar = !cancelada && Number(item.saldo_restante || 0) > 0 && item.pagamento_automatico?.pix_bloqueado !== true;
     const podeCancelar = item.status === "pendente";
     return `<div class="agenda-menu cobranca-menu" role="menu">
       <button class="agenda-menu-item" type="button" role="menuitem" data-acao="pagamentos" data-id-cobranca="${esc(item.id_cobranca)}">
@@ -177,6 +189,7 @@
           <div class="cobranca-valor"><span class="cobranca-meta-label">Valor</span><strong>${moeda(item.valor)}</strong></div>
           <div class="cobranca-data-item"><span class="cobranca-meta-label">Período</span><strong>${dataBr(item.periodo_inicio)} a ${dataBr(item.periodo_fim)}</strong></div>
           <div class="cobranca-data-item"><span class="cobranca-meta-label">Vencimento</span><strong>${dataBr(item.data_vencimento)}</strong></div>
+          ${htmlPagamentoAutomatico(item.pagamento_automatico)}
         </div>
       </article>`).join("");
   }
@@ -313,7 +326,8 @@
     return `<div><span>Valor da cobrança</span><strong>${moeda(cobranca.valor)}</strong></div>
       <div><span>Confirmado</span><strong>${moeda(cobranca.total_pago_confirmado)}</strong></div>
       <div><span>Saldo restante</span><strong>${moeda(cobranca.saldo_restante)}</strong></div>
-      <div><span>Vencimento</span><strong>${dataBr(cobranca.data_vencimento)}</strong></div>`;
+      <div><span>Vencimento</span><strong>${dataBr(cobranca.data_vencimento)}</strong></div>
+      ${htmlPagamentoAutomatico(cobranca.pagamento_automatico)}`;
   }
 
   function renderizarPagamentos(items) {
