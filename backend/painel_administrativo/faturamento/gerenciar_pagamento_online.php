@@ -631,7 +631,9 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
  * - 'em_andamento': operação aberta iniciada há pouco;
  * - 'incerta': operação aberta antiga ou em conciliação — a criação pode ter chegado ao provedor e só a conciliação
  *   (pesquisa pela referência original) esclarece; nunca autoriza nova criação;
- * - 'nao_criada': nenhuma operação aberta (tentativa encerrada com falha comprovada ou ainda não iniciada).
+ * - 'nao_criada': nenhuma operação aberta (tentativa encerrada com falha comprovada ou ainda não iniciada) ou operação
+ *   interrompida ANTES de marcar o envio (processando, sem ENVIO_INICIADO, além do prazo): o POST certamente não saiu e o
+ *   serviço a encerra como TENTATIVA_NAO_ENVIADA na próxima tentativa. É a única "prova" admitida sem consulta externa.
  *
  * @param array<string, mixed>|null $vinculo
  * @param array{status: string, erro_codigo: ?string, idade_segundos: int}|null $operacao
@@ -646,8 +648,15 @@ function pagamentoCartaoEstadoCriacao(?array $vinculo, ?array $operacao): string
         return 'nao_criada';
     }
 
-    return in_array((string)$operacao['status'], ['pendente', 'processando'], true) && (int)$operacao['idade_segundos'] <= 180
-        ? 'em_andamento' : 'incerta';
+    if (in_array((string)$operacao['status'], ['pendente', 'processando'], true) && (int)$operacao['idade_segundos'] <= 180) {
+        return 'em_andamento';
+    }
+    // Sem a marca de envio nada foi enviado (mesma regra de Reservar); com a marca, só a conciliação esclarece.
+    if ((string)$operacao['status'] === 'processando' && $operacao['erro_codigo'] === null) {
+        return 'nao_criada';
+    }
+
+    return 'incerta';
 }
 
 /** Conciliação que exige o suporte: mais de uma correspondência externa ou consulta recusada. */
@@ -732,7 +741,10 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
         'primeira_cobranca_prevista' => $prevista,
         'situacao' => $situacao,
         // Criação incerta não pode ser "removida": só a conciliação diz se há algo a cancelar no provedor.
-        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && !in_array($situacao, ['processando', 'cadastro_incerto'], true),
+        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && !in_array($situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true),
+        // Autorização confirmada pelo Mercado Pago (authorized). O vínculo local "pendente" ou um checkout aberto (pending)
+        // nunca são cartão cadastrado.
+        'autorizacao_confirmada' => $externa && ($v['status_externo'] ?? null) === 'authorized',
         'criacao_exige_suporte' => $situacao === 'cadastro_incerto' && pagamentoCartaoCriacaoExigeSuporte($criacao),
         // Depois do teste, sem cartão capaz de cobrar, a primeira mensalidade segue pela regularização por PIX.
         'pode_pagar_pix' => !$emTeste && !$viva,
@@ -813,6 +825,10 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     return [
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
         'autorizacao_criada' => $criada,
+        // Três coisas distintas: tentativa de criação (criacao_estado), checkout aberto sem cartão autorizado e cartão
+        // efetivamente autorizado pelo Mercado Pago.
+        'checkout_aberto' => $criada && ($v['status_externo'] ?? null) === 'pending',
+        'autorizacao_confirmada' => $criada && ($v['status_externo'] ?? null) === 'authorized',
         'configurado' => $configurado,
         'pode_trocar_cartao' => $chavePublica !== null,
         // Cancelar só o pagamento automático: contrato pago com a autorização confirmada (o servidor revalida na rota).

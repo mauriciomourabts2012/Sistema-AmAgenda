@@ -5166,7 +5166,9 @@ function assinaturaServicoPreapprovalCadastroCartaoMotivo(mysqli $conexao, int $
         "SELECT v.id_assinatura, v.status, v.slot_ativo, v.assinatura_externa_id,
                 EXISTS (SELECT 1 FROM operacao_assinatura_gateway o
                          WHERE o.id_assinatura_pagamento = v.id_assinatura_pagamento
-                           AND o.status_processamento IN ('pendente', 'processando', 'conciliacao')) AS operacao_aberta
+                           AND o.status_processamento IN ('pendente', 'processando', 'conciliacao')
+                           AND NOT (o.status_processamento = 'processando' AND o.erro_codigo IS NULL
+                                    AND TIMESTAMPDIFF(SECOND, COALESCE(o.ultima_tentativa_em, o.criado_em), NOW(6)) > " . ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS . ")) AS operacao_aberta
            FROM assinatura_pagamento_recorrente v
           WHERE v.id_empresa = ?",
         'i',

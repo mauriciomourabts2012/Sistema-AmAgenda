@@ -265,7 +265,8 @@
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${pix}${trocar}${botaoVerificar}</div>`;
   }
 
-  const TEXTO_CADASTRO_INCERTO = "Estamos conferindo com o Mercado Pago se o cadastro do cartão chegou a ser aberto. Use \"Atualizar situação\". Enquanto a conferência não terminar, nenhum novo cadastro é criado; se ela demorar, fale com o suporte. Seus dias grátis e o contrato não são afetados.";
+  const TEXTO_CONTATO_SUPORTE = " Para falar com o suporte: suporteamagenda@gmail.com ou WhatsApp (38) 99896-9407.";
+  const TEXTO_CADASTRO_INCERTO = "A tentativa anterior de cadastrar o cartão está sendo verificada no Mercado Pago, que ainda não confirmou se o cadastro chegou a ser aberto. Use \"Atualizar situação\". Enquanto a verificação não terminar, nenhum novo cadastro é criado; se ela demorar, fale com o suporte. Seus dias grátis e o contrato não são afetados." + TEXTO_CONTATO_SUPORTE;
   const TEXTO_SUPORTE_CADASTRO = " Esta conferência precisa de análise: fale com o suporte e informe o seu cadastro.";
 
   // Teste grátis (só contratos em modalidade teste; o servidor envia teste_gratis apenas para eles): cadastro de cartão
@@ -321,15 +322,18 @@
     if (t.situacao === "cadastro_incerto" && t.criacao_exige_suporte) texto += TEXTO_SUPORTE_CADASTRO;
     const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : (t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão");
     const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(rotuloAutorizar) : "";
+    const rotuloRemover = t.em_teste ? (t.autorizacao_confirmada === true ? "Cancelar cartão autorizado" : "Desistir do cadastro do cartão") : "Pagar com PIX em vez do cartão";
     const remover = t.pode_remover_cartao
-      ? `<button class="botao-geral" type="button" data-usar-pix><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${t.em_teste ? "Cancelar cartão autorizado" : "Pagar com PIX em vez do cartão"}</button>` : "";
+      ? `<button class="botao-geral" type="button" data-usar-pix><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${rotuloRemover}</button>` : "";
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${autorizar}${trocar}${remover}${botaoVerificar}</div>`;
   }
 
   async function usarPix() {
     const teste = cartao.configuracao?.teste_gratis;
     if (cartao.redirecionando || !(cartao.configuracao?.primeira_cobranca?.pode_trocar_para_pix || teste?.pode_remover_cartao)) return;
-    const [tituloConfirmacao, mensagem] = teste && teste.em_teste
+    const [tituloConfirmacao, mensagem] = teste && teste.em_teste && teste.autorizacao_confirmada !== true
+      ? ["Desistir do cadastro do cartão", "O cadastro do cartão ainda não foi concluído no Mercado Pago (não há cartão autorizado). Ele será encerrado e nenhuma mensalidade será cobrada. Seu teste grátis continua até o fim. Deseja continuar?"]
+      : teste && teste.em_teste
       ? ["Cancelar cartão autorizado", "A autorização do cartão será cancelada no Mercado Pago e nenhuma mensalidade será cobrada nele. Seu teste grátis continua até o fim. Deseja continuar?"]
       : ["Pagar com PIX em vez do cartão", "O pagamento no cartão desta contratação será cancelado no Mercado Pago e não poderá ser retomado para este contrato. Depois da confirmação, a primeira mensalidade poderá ser paga com PIX. Deseja continuar?"];
     const confirmado = window.MensagemSistema?.confirmar
@@ -426,7 +430,7 @@
       const texto = criada
         ? "A autorização só vale depois da confirmação do Mercado Pago."
         : (incerta
-          ? "Estamos conferindo com o Mercado Pago se o cadastro do cartão chegou a ser aberto. Use \"Atualizar situação\". Enquanto a conferência não terminar, nenhum novo cadastro é criado; se ela demorar, fale com o suporte." + (atual.criacao_exige_suporte ? TEXTO_SUPORTE_CADASTRO : "")
+          ? "A tentativa anterior de cadastrar o cartão está sendo verificada no Mercado Pago, que ainda não confirmou se o cadastro chegou a ser aberto. Use \"Atualizar situação\". Enquanto a verificação não terminar, nenhum novo cadastro é criado; se ela demorar, fale com o suporte." + (atual.criacao_exige_suporte ? TEXTO_SUPORTE_CADASTRO : "") + TEXTO_CONTATO_SUPORTE
           : "A autorização ainda não foi criada no Mercado Pago. Clique para tentar novamente; a tentativa anterior é conferida antes de qualquer nova criação.");
       const semAcao = !atual.pode_configurar && !atual.pode_verificar
         ? (atual.subscriptions_habilitado === false ? "O pagamento automático por este meio ainda não está disponível." : "Atualize a página ou fale com o suporte caso a situação persista.")

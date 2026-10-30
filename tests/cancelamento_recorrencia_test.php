@@ -713,7 +713,7 @@ verificar('F37 Atualizar situação sem id externo usa a conciliação (sem cria
 $tg = $corpo($po, 'pagamentoCartaoTesteGratis');
 verificar('F37 teste grátis: sem Preapproval criada nunca vira "aguardando_autorizacao" (cadastro_incerto/cadastro_nao_criado vêm antes)',
     strpos($tg, "=> 'cadastro_incerto'") !== false && strpos($tg, "=> 'cadastro_incerto'") < strpos($tg, "=> 'aguardando_autorizacao'") && strpos($tg, "=> 'cadastro_nao_criado'") < strpos($tg, "=> 'aguardando_autorizacao'")
-    && str_contains($tg, "!in_array(\$situacao, ['processando', 'cadastro_incerto'], true)"));
+    && str_contains($tg, "!in_array(\$situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true)")); // ATUALIZADO: sem remover também em cadastro não criado.
 
 // Frontend (leitura do código; a validação visual é do responsável).
 verificar('F37 UI: estado incerto explica, oferece Atualizar situação e orienta o suporte; nenhum botão de nova criação',
@@ -737,7 +737,7 @@ verificar('F37 desistir com criação incerta: nada é cancelado nem excluído; 
     str_contains($desiste, "'CRIACAO_EM_CONCILIACAO'") && str_contains($desiste, 'Sua assinatura e o teste grátis não são afetados')
     && strpos($desiste, 'CRIACAO_EM_CONCILIACAO') < strpos($desiste, 'assinaturaServicoPreapprovalSolicitarCancelamento(') && !str_contains($desiste, 'DELETE ') && !str_contains($desiste, 'UPDATE assinatura '));
 verificar('F37 o botão de remover cartão não aparece com criação incerta (decisão do servidor)',
-    str_contains($tg, "'pode_remover_cartao' => \$viva && \$status !== 'cancelamento_pendente' && !in_array(\$situacao, ['processando', 'cadastro_incerto'], true)"));
+    str_contains($tg, "'pode_remover_cartao' => \$viva && \$status !== 'cancelamento_pendente' && !in_array(\$situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true)")); // ATUALIZADO: inclui cadastro_nao_criado.
 verificar('F37 Preapproval existente segue pelo tratamento próprio do outbox (cancelamento externo confirmado), sem tratar pending como authorized',
     str_contains($desiste, 'assinaturaServicoPreapprovalCancelarPrimeiraExterna(') && !str_contains($desiste, 'cancelamentoRecorrenciaCancelarPreapproval('));
 
@@ -924,6 +924,68 @@ verificar('F4 correção da empresa 37 preservada: referência .d2 pesquisável,
     && substr_count($assSrc, '->criarPreapproval(') === 1 && str_contains($jsPo, 'TEXTO_CADASTRO_INCERTO'));
 verificar('F4 compatibilidade 37 × 34/35: o resolvedor de busca e a política de antecipação são independentes (sem tocar no outbox)',
     !str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalAntecipacaoDias'), 'operacao_assinatura_gateway') && !str_contains($corpo($wh4, 'mpSubExataQuitadaCedeAAntecipacao'), 'operacao_assinatura_gateway'));
+
+// ---------------------------------------------------------------------------------------------------------------
+// Complemento da recuperação do cadastro de cartão: tentativa, checkout aberto e cartão autorizado são coisas distintas.
+// ---------------------------------------------------------------------------------------------------------------
+$op = fn(string $st, ?string $erro, int $idade) => ['status' => $st, 'erro_codigo' => $erro, 'idade_segundos' => $idade];
+verificar('F37b falha ANTES do envio: operação interrompida sem a marca ENVIO_INICIADO prova que o POST não saiu → nao_criada (Tentar novamente seguro)',
+    pagamentoCartaoEstadoCriacao($vp, $op('processando', null, 4000)) === 'nao_criada');
+verificar('F37b falha comprovada e já encerrada (sem operação aberta) → nao_criada', pagamentoCartaoEstadoCriacao($vp, null) === 'nao_criada');
+verificar('F37b operação RECENTE sem marca ainda é "em andamento": nada é liberado enquanto ela pode estar em execução', pagamentoCartaoEstadoCriacao($vp, $op('processando', null, 30)) === 'em_andamento');
+verificar('F37b criação ENVIADA com resultado incerto (marca ENVIO_INICIADO ou conciliação): nunca libera nova criação',
+    pagamentoCartaoEstadoCriacao($vp, $op('processando', 'ENVIO_INICIADO', 4000)) === 'incerta' && pagamentoCartaoEstadoCriacao($vp, $op('conciliacao', 'RESULTADO_INCERTO', 4000)) === 'incerta'
+    && pagamentoCartaoEstadoCriacao($vp, $op('conciliacao', 'EXISTENCIA_NAO_CONFIRMADA', 90000)) === 'incerta' && pagamentoCartaoEstadoCriacao($vp, $op('conciliacao', 'CONCILIACAO_INDISPONIVEL', 400)) === 'incerta');
+verificar('F37b buscas vazias ou tempo decorrido não são prova: EXISTENCIA_NAO_CONFIRMADA após dias continua incerta (resultados tardios continuam sendo procurados pelo cron)',
+    pagamentoCartaoEstadoCriacao($vp, $op('conciliacao', 'EXISTENCIA_NAO_CONFIRMADA', 86400 * 30)) === 'incerta'
+    && str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalEncerrarOperacao'), 'WHEN tentativas_processamento <= 15 THEN 720') && str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalEncerrarOperacao'), 'ELSE 1440 END MINUTE'));
+$motivoSql = $corpo($assSrc, 'assinaturaServicoPreapprovalCadastroCartaoMotivo');
+verificar('F37b o servidor libera a nova tentativa pela mesma regra: operação interrompida antes do envio não conta como "operação externa pendente"',
+    str_contains($motivoSql, "AND NOT (o.status_processamento = 'processando' AND o.erro_codigo IS NULL")
+    && str_contains($motivoSql, 'ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS') && str_contains($assSrc, 'const ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS = 180;'));
+verificar('F37b o estado do servidor e a reserva usam o mesmo prazo (180 s) e a mesma regra de "não enviada"',
+    str_contains($resv, "\$aberta['erro_codigo'] === null") && str_contains($resv, "'TENTATIVA_NAO_ENVIADA'") && str_contains($resv, '> ASSINATURA_SERVICO_PREAPPROVAL_OPERACAO_INTERROMPIDA_SEGUNDOS')
+    && str_contains($corpo($po, 'pagamentoCartaoEstadoCriacao'), '<= 180'));
+verificar('F37b a nova tentativa depois de falha antes do envio reaproveita o vínculo e a referência (sem segundo vínculo) e só então faz um único POST',
+    str_contains($resv, "\$acao = 'criar';") && substr_count($assSrc, '->criarPreapproval(') === 1 && str_contains($env, 'ENVIO_INICIADO')
+    && str_contains($consultar, 'assinaturaServicoPreapprovalConciliar(') && !str_contains($consultar, '->criarPreapproval('));
+
+// Autorização confirmada x checkout aberto x tentativa.
+verificar('F37b payload distingue checkout aberto (pending) de cartão autorizado (authorized); vínculo "pendente" sozinho não é cartão',
+    str_contains($dpNovo, "'checkout_aberto' => \$criada && (\$v['status_externo'] ?? null) === 'pending'") && str_contains($dpNovo, "'autorizacao_confirmada' => \$criada && (\$v['status_externo'] ?? null) === 'authorized'")
+    && str_contains($tg, "'autorizacao_confirmada' => \$externa && (\$v['status_externo'] ?? null) === 'authorized'"));
+verificar('F37b "Cancelar cartão autorizado" só aparece com autorização confirmada; sem ela o botão é "Desistir do cadastro do cartão"',
+    str_contains($jsPo, 't.autorizacao_confirmada === true ? "Cancelar cartão autorizado" : "Desistir do cadastro do cartão"')
+    && substr_count($jsPo, '"Cancelar cartão autorizado"') === 2 && str_contains($jsPo, 'teste.em_teste && teste.autorizacao_confirmada !== true'));
+verificar('F37b o diálogo de desistir informa que não há cartão autorizado e que o teste grátis continua',
+    str_contains($jsPo, 'não há cartão autorizado') && str_contains($jsPo, 'Seu teste grátis continua até o fim'));
+verificar('F37b checkout recuperável: pending encontrado vira "Continuar no Mercado Pago" com a mesma Preapproval (sem novo POST); authorized sincroniza',
+    str_contains($jsPo, 'criada ? "Continuar no Mercado Pago"') && str_contains($vinc, 'assinaturaServicoPreapprovalValidarExterna(') && str_contains($po, "\$statusExterno !== '' && \$statusExterno !== 'pending'")
+    && str_contains($po, 'JA_VINCULADA') === str_contains($po, 'JA_VINCULADA') && str_contains($assSrc, "'JA_VINCULADA'"));
+
+// Interface: sem ações enganosas quando a recuperação não é segura.
+$tentRender = substr($jsPo, (int)strpos($jsPo, 'cadastro_incerto: ['), 600);
+verificar('F37b interface incerta: explica que a tentativa anterior está sendo verificada e informa como falar com o suporte',
+    str_contains($jsPo, 'A tentativa anterior de cadastrar o cartão está sendo verificada no Mercado Pago') && str_contains($jsPo, 'suporteamagenda@gmail.com') && str_contains($jsPo, '(38) 99896-9407')
+    && str_contains($tentRender, 'TEXTO_CADASTRO_INCERTO'));
+verificar('F37b interface incerta: só Atualizar situação (pode_configurar e pode_remover_cartao são decididos pelo servidor e ficam falsos)',
+    str_contains($dpNovo, "'pode_verificar' => \$habilitado && (\$criada || in_array(\$estadoCriacao, ['em_andamento', 'incerta'], true))")
+    && str_contains($tg, "!in_array(\$situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true)") && str_contains($assSrc, "return ['motivo' => 'OPERACAO_EXTERNA_PENDENTE'"));
+verificar('F37b "Tentar novamente" só em cadastro_nao_criado/pendente sem Preapproval (servidor libera pode_configurar)',
+    str_contains($jsPo, '(t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão")') && substr_count($jsPo, '"Tentar novamente"') === 2);
+
+// Recuperação administrativa: não existe reset forçado; permissões das rotas existentes.
+$api4 = (string)file_get_contents(__DIR__ . '/../public/api/api_central.php');
+verificar('F37b não existe rota de liberação/reset de operação externa incerta (nenhum reset forçado foi introduzido)',
+    !preg_match("/'[^']*(cartao|pagamento|assinatura|operacao|mercado)[^']*(liberar|resetar|forcar|descartar|encerrar|reabrir)[^']*'\s*=>/i", $api4)
+    && preg_match("/'superadmin\/integracoes\/mercado-pago' => \[\s*'GET' =>/", $api4) === 1);
+verificar('F37b o diagnóstico do Super Admin é somente leitura (apenas GET) e as rotas do cartão do proprietário exigem permissão e CSRF',
+    !preg_match("/'superadmin\/integracoes\/mercado-pago' => \[[^\]]*'POST'/s", $api4)
+    && str_contains(str_replace("\r\n", "\n", $po), "if (\$rota === 'painel/faturamento/pagamento/cartao/autorizar' && \$metodo === 'POST') {\n        exigirPermissao(\$conexao, 'faturamento.pagar', \$contexto);\n        csrfValidarSessao();"));
+verificar('F37b conciliação externa continua somente leitura (GET) e preserva vínculo e operação histórica (nenhum DELETE de vínculo/operação)',
+    !preg_match('/DELETE FROM (assinatura_pagamento_recorrente|operacao_assinatura_gateway)/', $assSrc . $po . $wh4) && !str_contains($loc, '->criarPreapproval(') && !str_contains($loc, 'atualizarPreapproval'));
+verificar('F37b teste grátis protegido: nenhuma das mudanças deste complemento grava em assinatura (vigência, modalidade ou datas do teste)',
+    !preg_match('/UPDATE assinatura\s/', $corpo($po, 'pagamentoCartaoEstadoCriacao') . $corpo($po, 'pagamentoCartaoCriacaoOperacao') . $corpo($po, 'pagamentoCartaoTesteGratis') . $corpo($po, 'pagamentoCartaoDadosPreapproval')));
 
 echo "\n{$total} verificações, {$falhas} falha(s).\n";
 exit($falhas === 0 ? 0 : 1);
