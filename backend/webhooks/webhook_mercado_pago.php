@@ -1635,14 +1635,14 @@ function mpSubCobrancaAntecipadaNaAtivacao(mysqli $conexao, array $vinculo, arra
 {
     if ((string)$assinatura['modalidade'] === 'teste') {
         // Teste grátis: nenhuma parcela antes do fim do teste.
-        return assinaturaServicoPreapprovalConferirInicioExterno($dados, assinaturaServicoPreapprovalInicioTeste((string)$assinatura['teste_expira_em']));
+        return assinaturaServicoPreapprovalConferirInicioExterno($dados, assinaturaServicoPreapprovalInicioTeste((string)$assinatura['teste_expira_em']), false, 0, true);
     }
     $fimPago = assinaturaServicoFimPeriodoPago($conexao, (int)$vinculo['id_empresa'], (int)$vinculo['id_assinatura']);
     if ($fimPago === null) {
         return null;
     }
 
-    // Antecipação controlada (diária): a cobrança externa até 1 dia civil antes do primeiro dia não pago autoriza o
+    // Antecipação controlada (todas as periodicidades): a cobrança externa até 1 dia civil antes do primeiro dia não pago autoriza o
     // vínculo; a fatura e o pagamento continuam dependendo do débito e do pagamento autoritativos (mpSubResolverCobranca).
     return assinaturaServicoPreapprovalConferirInicioExterno(
         $dados,
@@ -1927,6 +1927,20 @@ function mpSubVinculoComCompetenciaDiaria(mysqli $conexao, int $idAssinaturaPaga
 }
 
 /**
+ * Ciclo diário legado (1 dia): o dia do débito antecipado é o único dia da competência anterior, já QUITADA; essa competência
+ * "exata" não pode receber outro pagamento, e a fatura segue para a próxima competência (candidata da antecipação, que
+ * continua exigindo estar pendente, sem PIX e sem quitação). Em qualquer outra periodicidade ou ciclo, uma competência exata
+ * jamais cede: o débito no início de um período quitado vai à conciliação (risco de pagamento em duplicidade).
+ *
+ * @param array<string, mixed> $exata
+ */
+function mpSubExataQuitadaCedeAAntecipacao(array $exata, string $periodicidade, int $diasCiclo, int $antecipacaoDias): bool
+{
+    return $antecipacaoDias > 0 && assinaturaServicoPeriodicidadeDiaria($periodicidade) && $diasCiclo === 1
+        && (string)($exata['status'] ?? '') === 'paga';
+}
+
+/**
  * Cobranças regulares (não canceladas) que COMEÇAM depois do dia do débito e até o limite da antecipação controlada.
  * Função pura, sem banco.
  *
@@ -2060,19 +2074,17 @@ function mpSubResolverCobranca(mysqli $conexao, array $assinatura, ?DateTimeImmu
         // periodicidade; a frequência externa precisa ser conciliada antes de qualquer aplicação financeira.
         return 'RECORRENCIA_PERIODICIDADE_DIVERGENTE';
     }
+    $diasCiclo = assinaturaServicoDiasCicloContrato($conexao, $idEmpresa, (int)$assinatura['id_assinatura'], $periodicidade);
+    $antecipacaoDias = assinaturaServicoPreapprovalAntecipacaoDias($periodicidade, $diasCiclo);
     if (count($exatas) > 1) {
         return 'COMPETENCIA_AMBIGUA';
     }
-    if (count($exatas) === 1) {
+    if (count($exatas) === 1 && !mpSubExataQuitadaCedeAAntecipacao($exatas[0], $periodicidade, $diasCiclo, $antecipacaoDias)) {
         return ['cobranca' => $exatas[0], 'criada' => false];
     }
-    // Débito de véspera (antecipação controlada, só periodicidade diária): a fatura é da competência que COMEÇA nos
-    // dias seguintes (dentro da janela) e ainda não foi quitada, sem alterar seu início nem seu fim. Débito sem competência
+    // Débito de véspera (antecipação controlada de 1 dia, todas as periodicidades): a fatura é da competência que COMEÇA no
+    // dia seguinte (dentro da janela) e ainda não foi quitada, sem alterar seu início nem seu fim. Débito sem competência
     // elegível nunca é atribuído por suposição: cai em conciliação com o código do impedimento.
-    $antecipacaoDias = assinaturaServicoPreapprovalAntecipacaoDias(
-        $periodicidade,
-        assinaturaServicoDiasCicloContrato($conexao, $idEmpresa, (int)$assinatura['id_assinatura'], $periodicidade)
-    );
     if ($antecipacaoDias > 0) {
         $antecipadas = mpSubCompetenciasAntecipaveis($todas, $diaSql, $dia->modify('+' . $antecipacaoDias . ' days')->format('Y-m-d'));
         if (count($antecipadas) > 1) {

@@ -626,6 +626,62 @@ function pagamentoCartaoPrimeiraCobranca(mysqli $db, int $empresa, ?array $assin
 }
 
 /**
+ * Estado da CRIAÇÃO da Preapproval de um vínculo ainda sem identificador externo. Função pura (testável sem banco).
+ * - 'nao_aplica': há identificador externo (ou o vínculo não é pendente/erro);
+ * - 'em_andamento': operação aberta iniciada há pouco;
+ * - 'incerta': operação aberta antiga ou em conciliação — a criação pode ter chegado ao provedor e só a conciliação
+ *   (pesquisa pela referência original) esclarece; nunca autoriza nova criação;
+ * - 'nao_criada': nenhuma operação aberta (tentativa encerrada com falha comprovada ou ainda não iniciada).
+ *
+ * @param array<string, mixed>|null $vinculo
+ * @param array{status: string, erro_codigo: ?string, idade_segundos: int}|null $operacao
+ */
+function pagamentoCartaoEstadoCriacao(?array $vinculo, ?array $operacao): string
+{
+    if ($vinculo === null || ($vinculo['assinatura_externa_id'] ?? null) !== null
+        || !in_array((string)($vinculo['status'] ?? ''), ['pendente', 'erro'], true)) {
+        return 'nao_aplica';
+    }
+    if ($operacao === null) {
+        return 'nao_criada';
+    }
+
+    return in_array((string)$operacao['status'], ['pendente', 'processando'], true) && (int)$operacao['idade_segundos'] <= 180
+        ? 'em_andamento' : 'incerta';
+}
+
+/** Conciliação que exige o suporte: mais de uma correspondência externa ou consulta recusada. */
+function pagamentoCartaoCriacaoExigeSuporte(?array $operacao): bool
+{
+    return $operacao !== null && in_array((string)($operacao['erro_codigo'] ?? ''), ['MULTIPLAS_ASSINATURAS_EXTERNAS', 'CONCILIACAO_CONSULTA_RECUSADA'], true);
+}
+
+/**
+ * Operação de criação aberta do vínculo (tipo 'conciliar'). Somente leitura.
+ *
+ * @param array<string, mixed>|null $vinculo
+ * @return array{status: string, erro_codigo: ?string, idade_segundos: int}|null
+ */
+function pagamentoCartaoCriacaoOperacao(mysqli $db, ?array $vinculo): ?array
+{
+    if ($vinculo === null || ($vinculo['assinatura_externa_id'] ?? null) !== null) {
+        return null;
+    }
+    $linha = pagamentoOnlineConsulta($db,
+        "SELECT status_processamento, erro_codigo, TIMESTAMPDIFF(SECOND, COALESCE(ultima_tentativa_em, criado_em), NOW(6)) AS idade
+           FROM operacao_assinatura_gateway
+          WHERE id_assinatura_pagamento=? AND id_empresa=? AND tipo_operacao='conciliar'
+            AND status_processamento IN ('pendente','processando','conciliacao') ORDER BY id_operacao DESC LIMIT 1",
+        'ii', (int)$vinculo['id_assinatura_pagamento'], (int)$vinculo['id_empresa'])->fetch_assoc() ?: null;
+    if ($linha === null) {
+        return null;
+    }
+
+    return ['status' => (string)$linha['status_processamento'], 'erro_codigo' => $linha['erro_codigo'] !== null ? (string)$linha['erro_codigo'] : null,
+        'idade_segundos' => max(0, (int)$linha['idade'])];
+}
+
+/**
  * Teste grátis (em curso ou expirado aguardando a primeira mensalidade): estado público do cartão autorizado para a
  * primeira mensalidade, cobrada no fim do teste. Somente leitura; as decisões são refeitas pelo serviço sob lock.
  */
@@ -644,9 +700,15 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
           WHERE t.id_empresa=? AND c.id_assinatura=? AND c.finalidade='conversao_trial' AND c.status<>'cancelada'
             AND t.tipo_operacao='assinatura_preapproval' ORDER BY t.id_transacao DESC LIMIT 1",
         'ii', $empresa, $idAssinatura)->fetch_assoc() ?: null;
+    $criacao = $v !== null && !$externa ? pagamentoCartaoCriacaoOperacao($db, $v) : null;
+    $estadoCriacao = pagamentoCartaoEstadoCriacao($v, $criacao);
     $situacao = match (true) {
         $v === null, $status === 'erro' && !$externa => 'escolha',
         in_array($status, ['cancelada', 'encerrada'], true) => 'cartao_cancelado',
+        // Sem Preapproval criada nunca se afirma "aguardando sua autorização": ou a criação é incerta (conferência em
+        // curso) ou a tentativa anterior foi encerrada e uma nova pode ser feita (o serviço confere antes de criar).
+        $estadoCriacao === 'em_andamento' || $estadoCriacao === 'incerta' => 'cadastro_incerto',
+        $estadoCriacao === 'nao_criada' && $status === 'pendente' => 'cadastro_nao_criado',
         $status === 'cancelamento_pendente' => 'cancelando_cartao',
         $tentativa !== null && ((int)$tentativa['requer_conciliacao'] === 1 || in_array($tentativa['status'], ['conciliacao', 'confirmada'], true)) => 'em_verificacao',
         $tentativa !== null && ($tentativa['status'] === 'recusada'
@@ -669,7 +731,9 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
         'em_teste' => $emTeste,
         'primeira_cobranca_prevista' => $prevista,
         'situacao' => $situacao,
-        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && $situacao !== 'processando',
+        // Criação incerta não pode ser "removida": só a conciliação diz se há algo a cancelar no provedor.
+        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && !in_array($situacao, ['processando', 'cadastro_incerto'], true),
+        'criacao_exige_suporte' => $situacao === 'cadastro_incerto' && pagamentoCartaoCriacaoExigeSuporte($criacao),
         // Depois do teste, sem cartão capaz de cobrar, a primeira mensalidade segue pela regularização por PIX.
         'pode_pagar_pix' => !$emTeste && !$viva,
     ];
@@ -717,6 +781,8 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
     $novoVinculoPermitido = !$encerradoAtual || ($db !== null && assinaturaServicoPreapprovalNovoVinculoPermitido($db));
     $novo = $vinculo === null || (in_array((string)$vinculo['status'], ['cancelada', 'encerrada'], true) && $novoVinculoPermitido);
     $criada = $v !== null && $v['assinatura_externa_id'] !== null;
+    $operacaoCriacao = $v !== null && !$criada && $db !== null ? pagamentoCartaoCriacaoOperacao($db, $v) : null;
+    $estadoCriacao = pagamentoCartaoEstadoCriacao($v, $operacaoCriacao);
     // Autorização retomável: (a) já criada e ainda pendente no provedor (o serviço devolve o mesmo link, sem novo POST);
     // (b) vínculo pendente ou em erro SEM Preapproval criada (tentativa anterior falhou ou ficou incerta): o serviço
     // concilia pela mesma referência e só recria quando está provado que nada foi criado. Estados externos
@@ -762,7 +828,11 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         'cadastro_cartao' => $cadastro,
         // A primeira mensalidade não cria outra autorização no cartão (Fase 5B.2): a troca de checkout fica desativada.
         'pode_tentar_outro_cartao' => false,
-        'pode_verificar' => $habilitado && $criada,
+        // Também sem identificador externo, mas com criação em andamento/incerta: a verificação só concilia (pesquisa pela
+        // referência original) e nunca cria outra Preapproval.
+        'pode_verificar' => $habilitado && ($criada || in_array($estadoCriacao, ['em_andamento', 'incerta'], true)),
+        'criacao_estado' => $estadoCriacao,
+        'criacao_exige_suporte' => pagamentoCartaoCriacaoExigeSuporte($operacaoCriacao),
         'status' => $status, 'status_externo' => $v['status_externo'] ?? null,
         'valor_referencia' => $assinatura['valor_contratado'] ?? null,
         'cobrar_a_partir_de' => $v['cobrar_a_partir_de'] ?? null,
@@ -912,6 +982,11 @@ function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $e
         return pagamentoCartaoDadosPreapproval($v, $contratoAtual, true, $db, $empresa);
     }
     if ($v['assinatura_externa_id'] === null) {
+        $operacaoCriacao = pagamentoCartaoCriacaoOperacao($db, $v);
+        if ($operacaoCriacao !== null && $operacaoCriacao['idade_segundos'] < 15) {
+            // Consulta recente (ou em curso): devolve o estado atual sem nova pesquisa no provedor.
+            return pagamentoCartaoDadosPreapproval($v, $contratoAtual, true, $db, $empresa);
+        }
         $r = assinaturaServicoPreapprovalConciliar($db, $gateway, $empresa, $email);
         if (($r['ok'] ?? false) !== true) {
             pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));

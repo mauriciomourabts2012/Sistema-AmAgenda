@@ -443,9 +443,10 @@ $extrair('backend/_servicos/assinatura.php', [
     'assinaturaServicoPeriodicidadeDiaria', 'assinaturaServicoPreapprovalDataExterna', 'assinaturaServicoPreapprovalDataNaoAntecipada',
     'assinaturaServicoPreapprovalDataDentroAntecipacao', 'assinaturaServicoPreapprovalAntecipacaoDias',
     'assinaturaServicoPreapprovalAntecipacaoDiasContrato', 'assinaturaServicoPreapprovalConferirInicioExterno',
-], ['ASSINATURA_SERVICO_PREAPPROVAL_FUSO', 'ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_DIARIA']);
+], ['ASSINATURA_SERVICO_PREAPPROVAL_FUSO', 'ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_MAXIMO', 'ASSINATURA_SERVICO_PERIODICIDADES']);
 $extrair('backend/webhooks/webhook_mercado_pago.php', [
     'mpSubClassificarFatura', 'mpSubCompetenciasAntecipaveis', 'mpSubDebitoAntecipaProximaCompetencia', 'mpSubCompetenciaAntecipadaElegivel',
+    'mpSubExataQuitadaCedeAAntecipacao',
 ]);
 
 // Cenário lógico da empresa 35: competência paga 29/10–30/10; próxima 31/10–01/11; start_date 31/10 00:00; next_payment_date 30/10 16:31.
@@ -464,17 +465,19 @@ verificar('F2 só vale para Preapproval authorized (pending usa o start_date)', 
 verificar('F2 UTC equivalente ao dia civil de São Paulo (30/10 19:31Z) é aceito; 31/10 00:30Z (30/10 21:30 SP) também', assinaturaServicoPreapprovalConferirInicioExterno($preap(['next_payment_date' => '2026-10-30T19:31:00.000Z']), $inicioProx, false, 1) === null
     && assinaturaServicoPreapprovalConferirInicioExterno($preap(['next_payment_date' => '2026-10-31T00:30:00.000Z']), $inicioProx, false, 1) === null);
 verificar('F2 cobrança no dia da competência (31/10) ou depois nunca é antecipada', assinaturaServicoPreapprovalConferirInicioExterno($preap(['next_payment_date' => '2026-10-31T09:00:00.000-03:00']), $inicioProx) === null);
-verificar('F2 janela por periodicidade e ciclo: diária de 2 dias = 1; diária legada de 1 dia, mensal, trimestral, semestral e anual = 0',
-    assinaturaServicoPreapprovalAntecipacaoDias('diaria', 2) === 1 && assinaturaServicoPreapprovalAntecipacaoDias('diaria', 1) === 0
-    && assinaturaServicoPreapprovalAntecipacaoDias('diaria') === 0
-    && array_sum(array_map(fn($p) => assinaturaServicoPreapprovalAntecipacaoDias($p, 2), ['mensal', 'trimestral', 'semestral', 'anual'])) === 0);
-verificar('F2 mensal (empresa 34) continua sem antecipação', assinaturaServicoPreapprovalConferirInicioExterno($preap(['next_payment_date' => '2026-10-30T16:31:00.000-03:00']), $inicioProx, false, assinaturaServicoPreapprovalAntecipacaoDias('mensal', 1)) === 'COBRANCA_EXTERNA_ANTECIPADA');
+// ATUALIZADO na Fase 4 (política universal): a janela de 1 dia vale para todas as periodicidades, não só a diária de 2 dias.
+verificar('F2/F4 janela por periodicidade: diária (1 e 2 dias), mensal, trimestral, semestral e anual = 1 dia; desconhecida = 0',
+    assinaturaServicoPreapprovalAntecipacaoDias('diaria', 2) === 1 && assinaturaServicoPreapprovalAntecipacaoDias('diaria', 1) === 1
+    && assinaturaServicoPreapprovalAntecipacaoDias('diaria') === 1
+    && array_sum(array_map(fn($p) => assinaturaServicoPreapprovalAntecipacaoDias($p, 1), ['mensal', 'trimestral', 'semestral', 'anual'])) === 4
+    && assinaturaServicoPreapprovalAntecipacaoDias('quinzenal') === 0 && assinaturaServicoPreapprovalAntecipacaoDias('') === 0);
+verificar('F2/F4 mensal com a janela de 1 dia aceita a cobrança na véspera do início (cenário da empresa 34, agora coberto)', assinaturaServicoPreapprovalConferirInicioExterno($preap(['next_payment_date' => '2026-10-30T16:31:00.000-03:00']), $inicioProx, false, assinaturaServicoPreapprovalAntecipacaoDias('mensal', 1)) === null);
 verificar('F2 primeira cobrança e teste grátis não herdam a janela',
     assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 2, 'primeira_cobranca' => ['id_cobranca' => 1], 'teste' => null]) === 0
     && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 2, 'primeira_cobranca' => null, 'teste' => ['expira_em' => 'x']]) === 0
     && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 2, 'primeira_cobranca' => null, 'teste' => null]) === 1
-    && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 1, 'primeira_cobranca' => null, 'teste' => null]) === 0
-    && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'mensal', 'frequencia_tipo' => 'months', 'frequencia_meses' => 1, 'primeira_cobranca' => null, 'teste' => null]) === 0);
+    && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 1, 'primeira_cobranca' => null, 'teste' => null]) === 1
+    && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'mensal', 'frequencia_tipo' => 'months', 'frequencia_meses' => 1, 'primeira_cobranca' => null, 'teste' => null]) === 1);
 
 // Competência do débito (função pura do webhook).
 $cob = fn(int $id, string $ini, string $fim, string $st = 'pendente', string $fin = 'regular') => ['id_cobranca' => $id, 'id_empresa' => 5, 'periodo_inicio' => $ini, 'periodo_fim' => $fim, 'status' => $st, 'finalidade' => $fin];
@@ -573,6 +576,354 @@ verificar('F3 Cancelar assinatura: mensagem aprovada e bloqueio sem enviar cance
     && !str_contains($cancelFat, 'mpSubOperacaoProcessar') && str_contains($js, 'document.dispatchEvent(new CustomEvent("amagenda:destacar-cancelar-automatico"))'));
 verificar('F3 destaque de 6 s do botão do proprietário', str_contains($jsPo, '"botao-destacado-temporario"), 6000)') && str_contains($jsPo, 'botao-destacado-temporario'));
 verificar('F3 Super Admin coerente: ação em Ações, bloqueio comercial e destaque de 6 s', str_contains($jsSa, 'data-acao="cancelar_recorrencia"') && str_contains($jsSa, '}, 6000);') && str_contains($sa, "'CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO'"));
+
+// ---------------------------------------------------------------------------------------------------------------
+// Cadastro de cartão interrompido (empresa 37): referência pesquisável, conciliação, estados e proteção do teste grátis.
+// ---------------------------------------------------------------------------------------------------------------
+ini_set('error_log', sys_get_temp_dir() . '/amagenda_teste_f37.log');
+require_once __DIR__ . '/../backend/_gateways/mercado_pago.php';
+$extrair('backend/_servicos/assinatura.php', [
+    'assinaturaServicoPreapprovalEstadoBusca', 'assinaturaServicoPreapprovalLocalizar', 'assinaturaServicoDataValida', 'assinaturaServicoPreapprovalInicioTeste',
+], ['ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE', 'ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H']);
+$extrair('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php', ['pagamentoCartaoEstadoCriacao', 'pagamentoCartaoCriacaoExigeSuporte']);
+$assSrc = str_replace("\r\n", "\n", $ler('backend/_servicos/assinatura.php'));
+$gwSrc = $ler('backend/_gateways/mercado_pago.php');
+
+$ref = 'amg_' . str_repeat('ab12', 8);
+$rota = new ReflectionMethod(MercadoPagoGateway::class, 'rotaBuscaPreapprovals');
+$busca = fn(mixed $r) => $rota->invoke(null, ['external_reference' => $r, 'limit' => 50, 'offset' => 0]);
+verificar('F37 referência tradicional (amg_ + 32 hex) é pesquisável', $busca($ref) !== null && str_contains($busca($ref)[1], 'external_reference=' . $ref . '&'));
+verificar('F37 referência terminada em .d2 é pesquisável (mesma gerada na criação diária de 2 dias)', $busca($ref . '.d2') !== null && str_contains($busca($ref . '.d2')[1], 'external_reference=' . $ref . '.d2&'));
+verificar('F37 a referência realmente gerada (mensal e diária) passa na regra única do gateway',
+    MercadoPagoGateway::referenciaExternaValida(pagamentoGatewayReferenciaInterna())
+    && MercadoPagoGateway::referenciaExternaValida(pagamentoGatewayReferenciaInterna() . ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H));
+$invalidas = ['', 'amg_', 'amg_zz', $ref . '.d3', $ref . '.d2x', $ref . '.', $ref . '..d2', $ref . '.d2.d2', 'AMG_' . str_repeat('ab12', 8), 'amg_' . strtoupper(str_repeat('ab12', 8)),
+    'amg_' . str_repeat('ab12', 9), $ref . ' ', ' ' . $ref, $ref . "\n", $ref . ';', '../' . $ref, 'x' . $ref, $ref . '&status=authorized', 'DEV-SIMULADO'];
+$aceitas = 0;
+foreach ($invalidas as $i) { if ($busca($i) !== null || MercadoPagoGateway::referenciaExternaValida($i)) $aceitas++; }
+verificar('F37 referências inválidas (formato, sufixo, tamanho, espaço, quebra, injeção de parâmetro) são rejeitadas antes de qualquer rede', $aceitas === 0
+    && !MercadoPagoGateway::referenciaExternaValida(null) && !MercadoPagoGateway::referenciaExternaValida(123) && $busca(null) === null);
+verificar('F37 a validação não foi removida: filtros desconhecidos e busca sem filtro continuam recusados',
+    $rota->invoke(null, ['external_reference' => $ref, 'foo' => 'bar']) === null && $rota->invoke(null, ['limit' => 50]) === null && $rota->invoke(null, []) === null);
+verificar('F37 a criação continua exigindo external_reference e a regra tem comprimento máximo 39', str_contains($gwSrc, "!array_key_exists('external_reference', \$corpo)") && strlen($ref . '.d2') === 39);
+
+// Pesquisa pela referência original (Localizar) com gateway simulado.
+final class GatewayBusca
+{
+    public array $respostas = [];
+    public array $chamadas = [];
+    public function buscarPreapprovals(array $filtros): array
+    {
+        $this->chamadas[] = $filtros;
+
+        return array_shift($this->respostas) ?? ['sucesso' => false, 'codigo' => 'falha_transporte'];
+    }
+}
+$ok = fn(array $itens, ?int $total = null) => ['sucesso' => true, 'codigo' => 'ok', 'dados' => ['results' => $itens] + ($total !== null ? ['paging' => ['total' => $total, 'limit' => 50, 'offset' => 0]] : [])];
+$item = fn(string $id, string $r) => ['id' => $id, 'external_reference' => $r, 'status' => 'pending'];
+$outraEmpresa = 'amg_' . str_repeat('cd34', 8) . '.d2';
+$refD2 = $ref . '.d2';
+
+$g = new GatewayBusca();
+$g->respostas = [$ok([$item('PRE-1', $refD2)])];
+verificar('F37 operação incerta com Preapproval encontrada: id único devolvido, uma consulta, referência .d2 enviada intacta',
+    assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'encontrada', 'id' => 'PRE-1'] && count($g->chamadas) === 1 && $g->chamadas[0]['external_reference'] === $refD2);
+$g = new GatewayBusca();
+$g->respostas = [$ok([$item('PRE-9', $outraEmpresa), $item('PRE-1', $refD2)])];
+verificar('F37 isolamento: resultado de outra referência/empresa é ignorado mesmo vindo na mesma página', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'encontrada', 'id' => 'PRE-1']);
+$g = new GatewayBusca();
+$g->respostas = [$ok([$item('PRE-9', $outraEmpresa)])];
+verificar('F37 isolamento: só correspondência de outra empresa não vincula nada (não encontrada)', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'nao_encontrada', 'id' => null]);
+$g = new GatewayBusca();
+$g->respostas = [$ok([$item('PRE-1', $refD2), $item('PRE-2', $refD2)])];
+verificar('F37 múltiplas Preapprovals com a mesma referência: bloqueio para análise manual', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'multiplas', 'id' => null]);
+$g = new GatewayBusca();
+$g->respostas = [$ok([$item('PRE-1', $refD2), $item('PRE-1', $refD2)])];
+verificar('F37 o mesmo id repetido não é duplicidade', assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'encontrada');
+$g = new GatewayBusca();
+$g->respostas = [$ok([])];
+verificar('F37 sem resultado em pesquisa completa: não encontrada (não prova inexistência; nada é criado por isso)', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'nao_encontrada', 'id' => null]);
+$g = new GatewayBusca();
+$g->respostas = [['sucesso' => false, 'codigo' => 'falha_transporte'], ['sucesso' => false, 'codigo' => 'provedor_indisponivel']];
+verificar('F37 falha de comunicação preserva o estado incerto (indisponível)', assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'indisponivel');
+$g = new GatewayBusca();
+$g->respostas = [['sucesso' => false, 'codigo' => 'resposta_invalida', 'http_status' => 200]];
+verificar('F37 resposta inválida do provedor não prova nada (indisponível)', assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'indisponivel');
+foreach (['operacao_invalida', 'requisicao_invalida', 'provedor_rejeitou'] as $codigoRecusa) {
+    $g = new GatewayBusca();
+    $g->respostas = [['sucesso' => false, 'codigo' => $codigoRecusa, 'http_status' => 400]];
+    verificar("F37 recusa ($codigoRecusa) não é mais tratada como indisponibilidade transitória", assinaturaServicoPreapprovalLocalizar($g, $refD2)['estado'] === 'recusada');
+}
+$g = new GatewayBusca();
+$cheia = array_map(fn($n) => $item('X' . $n, 'amg_' . str_pad((string)$n, 32, '0', STR_PAD_LEFT)), range(1, 50));
+$g->respostas = [$ok($cheia, 900), $ok($cheia, 900), $ok($cheia, 900), $ok($cheia, 900)];
+verificar('F37 pesquisa incompleta (páginas esgotadas sem fim) nunca conclui "não encontrada"', assinaturaServicoPreapprovalLocalizar($g, $refD2) === ['estado' => 'indisponivel', 'id' => null] && count($g->chamadas) === 4);
+verificar('F37 classificação da busca: ok, recusada e indisponível',
+    assinaturaServicoPreapprovalEstadoBusca($ok([])) === 'ok' && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => false, 'codigo' => 'operacao_invalida']) === 'recusada'
+    && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => false, 'codigo' => 'falha_transporte']) === 'indisponivel' && assinaturaServicoPreapprovalEstadoBusca(['sucesso' => true, 'dados' => []]) === 'indisponivel');
+
+// Recuperação sem criação duplicada (garantias estruturais do serviço real).
+$esc = $corpo($assSrc, 'assinaturaServicoPreapprovalEsclarecer');
+$conc = $corpo($assSrc, 'assinaturaServicoPreapprovalConciliar');
+$loc = $corpo($assSrc, 'assinaturaServicoPreapprovalLocalizar');
+$vinc = $corpo($assSrc, 'assinaturaServicoPreapprovalVincularConfirmada');
+$resv = $corpo($assSrc, 'assinaturaServicoPreapprovalReservar');
+$env = $corpo($assSrc, 'assinaturaServicoPreapprovalEnviar');
+verificar('F37 recuperação nunca cria: criarPreapproval existe uma única vez no serviço, dentro de Enviar, e nunca em Esclarecer, Conciliar, Localizar ou Vincular',
+    substr_count($assSrc, '->criarPreapproval(') === 1 && str_contains($env, '->criarPreapproval(') && !str_contains($esc . $conc . $loc . $vinc, 'criarPreapproval'));
+verificar('F37 conciliação reserva com $permiteCriar=false: sem operação aberta devolve SEM_CONCILIACAO_PENDENTE, nunca POST',
+    str_contains($conc, 'assinaturaServicoPreapprovalReservar($conexao, $gateway->ambiente(), $idEmpresa, null, null, false)') && str_contains($conc, "'sem_pendencia' =>"));
+verificar('F37 operação incerta com envio marcado só concilia (jamais novo POST); só a interrompida antes do envio é reencerrada',
+    str_contains($resv, 'Pendente, interrompida após o envio ou em conciliação: só conciliação, jamais novo POST.') && str_contains($resv, 'TENTATIVA_NAO_ENVIADA'));
+verificar('F37 concorrência: a reserva bloqueia a operação (FOR UPDATE) e a segunda solicitação recebe OPERACAO_EM_ANDAMENTO',
+    str_contains($resv, 'FOR UPDATE') && str_contains($resv, "'em_andamento'") && str_contains($env, 'erro_codigo IS NULL') && str_contains($env, 'OPERACAO_EM_ANDAMENTO'));
+verificar('F37 a Preapproval encontrada só é vinculada após validar referência, ambiente, valor, periodicidade e início, com unicidade do id',
+    str_contains($vinc, 'assinaturaServicoPreapprovalValidarExterna(') && str_contains($vinc, "'referencia' => (string)\$vinculo['referencia_externa_assinatura']")
+    && str_contains($vinc, "'ambiente' => (string)\$vinculo['ambiente']") && str_contains($assSrc, "return 'conflito'; // assinatura_externa_id já pertence a outro vínculo."));
+verificar('F37 busca incompleta, recusada ou sem resultado mantém a operação em conciliação com código próprio (sem presumir inexistência)',
+    str_contains($esc, "'recusada' => ['CONCILIACAO_CONSULTA_RECUSADA'") && str_contains($esc, "'nao_encontrada' => ['EXISTENCIA_NAO_CONFIRMADA'") && str_contains($esc, "'indisponivel' => ['CONCILIACAO_INDISPONIVEL'")
+    && str_contains($esc, "'multiplas' => ['MULTIPLAS_ASSINATURAS_EXTERNAS'") && !str_contains($esc, "'erro'") && !str_contains($esc, 'Reservar('));
+verificar('F37 pesquisa recusada deixa rastro (código e HTTP, sem corpo nem referência)', str_contains($loc, "error_log('[assinatura_preapproval] busca_'") && !str_contains($loc, "'referencia'"));
+
+// Estado da criação (função real) e habilitação das ações.
+$aberta = fn(string $st, ?string $erro, int $idade) => ['status' => $st, 'erro_codigo' => $erro, 'idade_segundos' => $idade];
+$vp = ['assinatura_externa_id' => null, 'status' => 'pendente'];
+verificar('F37 sem operação externa iniciada (vínculo novo ou falha comprovada): nao_criada → Cadastrar/Tentar novamente seguro',
+    pagamentoCartaoEstadoCriacao($vp, null) === 'nao_criada' && pagamentoCartaoEstadoCriacao(['assinatura_externa_id' => null, 'status' => 'erro'], null) === 'nao_criada');
+verificar('F37 operação em processamento recente: em_andamento', pagamentoCartaoEstadoCriacao($vp, $aberta('processando', 'ENVIO_INICIADO', 20)) === 'em_andamento' && pagamentoCartaoEstadoCriacao($vp, $aberta('pendente', null, 3)) === 'em_andamento');
+verificar('F37 operação em conciliação ou interrompida: incerta (não oferece nova criação)',
+    pagamentoCartaoEstadoCriacao($vp, $aberta('conciliacao', 'CONCILIACAO_INDISPONIVEL', 5)) === 'incerta' && pagamentoCartaoEstadoCriacao($vp, $aberta('processando', 'ENVIO_INICIADO', 4000)) === 'incerta');
+verificar('F37 com id externo, ativa ou sem vínculo: não se aplica',
+    pagamentoCartaoEstadoCriacao(['assinatura_externa_id' => 'PRE-1', 'status' => 'pendente'], null) === 'nao_aplica' && pagamentoCartaoEstadoCriacao(['assinatura_externa_id' => null, 'status' => 'ativa'], null) === 'nao_aplica'
+    && pagamentoCartaoEstadoCriacao(null, null) === 'nao_aplica');
+verificar('F37 suporte exigido só para múltiplas correspondências ou consulta recusada',
+    pagamentoCartaoCriacaoExigeSuporte($aberta('conciliacao', 'MULTIPLAS_ASSINATURAS_EXTERNAS', 1)) && pagamentoCartaoCriacaoExigeSuporte($aberta('conciliacao', 'CONCILIACAO_CONSULTA_RECUSADA', 1))
+    && !pagamentoCartaoCriacaoExigeSuporte($aberta('conciliacao', 'CONCILIACAO_INDISPONIVEL', 1)) && !pagamentoCartaoCriacaoExigeSuporte(null));
+$dpNovo = $corpo($po, 'pagamentoCartaoDadosPreapproval');
+verificar('F37 Atualizar situação habilitado pelo servidor sem preapproval_id quando há criação em andamento/incerta; Cadastrar cartão nunca nesses estados',
+    str_contains($dpNovo, "'pode_verificar' => \$habilitado && (\$criada || in_array(\$estadoCriacao, ['em_andamento', 'incerta'], true))")
+    && str_contains($dpNovo, "'criacao_estado' => \$estadoCriacao") && str_contains($dpNovo, '$podeConfigurar = $habilitado && $elegivel && ($novo || $retomavel) && !$configurado;')
+    && str_contains($assSrc, "return ['motivo' => 'OPERACAO_EXTERNA_PENDENTE'"));
+verificar('F37 Tentar novamente só sem operação aberta: elegibilidade vem de RECORRENCIA_EXISTENTE, calculada no servidor e revalidada na rota',
+    str_contains($dpNovo, "(\$status === 'pendente' && (!\$criada || (\$v['status_externo'] ?? '') === 'pending'))") && str_contains($dpNovo, "(\$status === 'erro' && !\$criada)")
+    && str_contains($po, "if (!\$cadastroCartao['elegivel'] && \$cadastroCartao['motivo'] !== 'RECORRENCIA_EXISTENTE')"));
+$consultar = $corpo($po, 'pagamentoCartaoPreapprovalConsultar');
+verificar('F37 Atualizar situação sem id externo usa a conciliação (sem criar) e não consulta o provedor em rajada',
+    str_contains($consultar, 'assinaturaServicoPreapprovalConciliar(') && str_contains($consultar, "\$operacaoCriacao['idade_segundos'] < 15") && !str_contains($consultar, 'Iniciar('));
+$tg = $corpo($po, 'pagamentoCartaoTesteGratis');
+verificar('F37 teste grátis: sem Preapproval criada nunca vira "aguardando_autorizacao" (cadastro_incerto/cadastro_nao_criado vêm antes)',
+    strpos($tg, "=> 'cadastro_incerto'") !== false && strpos($tg, "=> 'cadastro_incerto'") < strpos($tg, "=> 'aguardando_autorizacao'") && strpos($tg, "=> 'cadastro_nao_criado'") < strpos($tg, "=> 'aguardando_autorizacao'")
+    && str_contains($tg, "!in_array(\$situacao, ['processando', 'cadastro_incerto'], true)"));
+
+// Frontend (leitura do código; a validação visual é do responsável).
+verificar('F37 UI: estado incerto explica, oferece Atualizar situação e orienta o suporte; nenhum botão de nova criação',
+    str_contains($jsPo, 'cadastro_incerto: ["fa-solid fa-triangle-exclamation", "Não foi possível confirmar a abertura do cadastro do cartão", TEXTO_CADASTRO_INCERTO]')
+    && str_contains($jsPo, 'fale com o suporte') && str_contains($jsPo, 'TEXTO_SUPORTE_CADASTRO') && str_contains($jsPo, '${autorizar}${trocar}${remover}${botaoVerificar}'));
+verificar('F37 UI: "Tentar novamente" só onde o servidor liberou pode_configurar e a Preapproval não foi criada',
+    substr_count($jsPo, '"Tentar novamente"') === 2 && str_contains($jsPo, '(t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão")')
+    && str_contains($jsPo, 'atual.pode_configurar ? botaoAutorizar(criada ? "Continuar no Mercado Pago" : "Tentar novamente")'));
+$ini = $corpo($jsPo, 'iniciarAutorizacaoAssinatura');
+verificar('F37 clique: estado de processamento, sem clique duplicado, URL validada, sem window.open e sem sucesso por inferência',
+    str_contains($ini, 'cartao.redirecionando') && str_contains($ini, 'Abrindo o Mercado Pago') && str_contains($ini, 'aria-busy') && str_contains($ini, 'if (initPointValido(dados.init_point))')
+    && str_contains($ini, 'window.location.assign(dados.init_point)') && !str_contains($ini, 'window.open') && strpos($ini, 'initPointValido') < strpos($ini, 'window.location.assign'));
+verificar('F37 clique: erro do servidor não vira "Aguardando sua autorização" — a tela é recarregada com o estado real',
+    str_contains($ini, 'recarregar = true') && str_contains($ini, 'if (recarregar) await carregarConfiguracaoCartao();') && str_contains($ini, 'avisar("erro", erro.message)'));
+verificar('F37 UI usa só o link validado (https, host Mercado Pago, /subscriptions/checkout, parâmetros conhecidos)',
+    str_contains($jsPo, 'u.pathname !== "/subscriptions/checkout"') && str_contains($jsPo, '["www.mercadopago.com.br", "mercadopago.com.br"]'));
+
+// Cancelamento/desistência da tentativa.
+$desiste = $corpo($assSrc, 'assinaturaServicoPreapprovalDesistirPrimeiraCobranca');
+verificar('F37 desistir com criação incerta: nada é cancelado nem excluído; a mensagem orienta Atualizar situação e preserva o contrato',
+    str_contains($desiste, "'CRIACAO_EM_CONCILIACAO'") && str_contains($desiste, 'Sua assinatura e o teste grátis não são afetados')
+    && strpos($desiste, 'CRIACAO_EM_CONCILIACAO') < strpos($desiste, 'assinaturaServicoPreapprovalSolicitarCancelamento(') && !str_contains($desiste, 'DELETE ') && !str_contains($desiste, 'UPDATE assinatura '));
+verificar('F37 o botão de remover cartão não aparece com criação incerta (decisão do servidor)',
+    str_contains($tg, "'pode_remover_cartao' => \$viva && \$status !== 'cancelamento_pendente' && !in_array(\$situacao, ['processando', 'cadastro_incerto'], true)"));
+verificar('F37 Preapproval existente segue pelo tratamento próprio do outbox (cancelamento externo confirmado), sem tratar pending como authorized',
+    str_contains($desiste, 'assinaturaServicoPreapprovalCancelarPrimeiraExterna(') && !str_contains($desiste, 'cancelamentoRecorrenciaCancelarPreapproval('));
+
+// Proteção dos 30 dias gratuitos.
+$semEscrita = $esc . $conc . $loc . $vinc;
+verificar('F37 teste grátis: recuperação/vinculação não altera assinatura (modalidade, teste_expira_em, status), cobrança nem pagamento',
+    !preg_match('/UPDATE assinatura\s/', $semEscrita) && !preg_match('/INSERT INTO (cobranca|pagamento|transacao_pagamento)\b/', $semEscrita)
+    && !preg_match("/teste_expira_em\s*=|modalidade\s*=\s*'paga'|data_inicio\s*=/", $semEscrita));
+$fimTeste = '2026-11-28 22:44:34';
+$inicioTeste = assinaturaServicoPreapprovalInicioTeste($fimTeste);
+verificar('F37 início da cobrança recorrente = fim real do teste (arredondado ao minuto seguinte, nunca antes)',
+    $inicioTeste->format('Y-m-d H:i') === '2026-11-28 22:45' && $inicioTeste >= new DateTimeImmutable($fimTeste, new DateTimeZone(date_default_timezone_get())));
+$preTeste = fn(string $proxima) => ['status' => 'authorized', 'next_payment_date' => $proxima, 'auto_recurring' => ['start_date' => '2026-11-28T22:45:00.000-03:00', 'frequency' => 2, 'frequency_type' => 'days']];
+verificar('F37 teste grátis: cobrança externa antes do fim do teste é barrada (sem janela de antecipação); no fim do teste é aceita',
+    assinaturaServicoPreapprovalConferirInicioExterno($preTeste('2026-11-20T10:00:00.000-03:00'), $inicioTeste, false, 0) === 'COBRANCA_EXTERNA_ANTECIPADA'
+    && assinaturaServicoPreapprovalConferirInicioExterno($preTeste('2026-11-28T22:45:00.000-03:00'), $inicioTeste, false, 0) === null
+    && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 2, 'primeira_cobranca' => null, 'teste' => ['expira_em' => $fimTeste]]) === 0);
+verificar('F37 competência de 2 dias e demais periodicidades preservadas (sufixo .d2 só no ciclo diário de 2 dias)',
+    str_contains($assSrc, "if (\$diasDiaria === 2) {\n            \$referencia .= ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H;") && assinaturaServicoPreapprovalAntecipacaoDias('diaria', 2) === 1
+    && array_sum(array_map(fn($p) => assinaturaServicoPreapprovalAntecipacaoDias($p, 2), ['mensal', 'trimestral', 'semestral', 'anual'])) === 4); // ATUALIZADO na Fase 4: janela universal de 1 dia.
+verificar('F37 cartão autorizado não quita nada: nenhuma gravação de pagamento na recuperação; só o webhook autoritativo de fatura quita',
+    !str_contains($semEscrita, 'INSERT INTO pagamento') && str_contains($ler('backend/webhooks/webhook_mercado_pago.php'), 'mpSubClassificarFatura'));
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fase 4: política universal de antecipação de 1 dia civil (todas as periodicidades), sem exceção por empresa.
+// ---------------------------------------------------------------------------------------------------------------
+$extrair('backend/_servicos/assinatura.php', ['assinaturaServicoPreapprovalInicioCobranca', 'assinaturaServicoPreapprovalValidarExterna']);
+$wh4 = str_replace("\r\n", "\n", $ler('backend/webhooks/webhook_mercado_pago.php'));
+
+/** Cenário genérico: período pago até $fimPago (Y-m-d); Preapproval authorized com start_date = primeiro dia não pago. */
+$cenario = function (string $fimPago, string $proximaCobranca, ?string $startDate = null, string $status = 'authorized') {
+    $inicio = assinaturaServicoPreapprovalInicioCobranca($fimPago);
+
+    return [$inicio, ['status' => $status, 'next_payment_date' => $proximaCobranca,
+        'auto_recurring' => ['start_date' => $startDate ?? $inicio->format('Y-m-d\T00:00:00.000P'), 'frequency' => 1, 'frequency_type' => 'months']]];
+};
+$confere = function (string $periodicidade, string $fimPago, string $proxima, ?string $start = null, int $ciclo = 1) use ($cenario) {
+    [$inicio, $dados] = $cenario($fimPago, $proxima, $start);
+
+    return assinaturaServicoPreapprovalConferirInicioExterno($dados, $inicio, false, assinaturaServicoPreapprovalAntecipacaoDias($periodicidade, $ciclo));
+};
+
+// 1-6) Cada periodicidade aceita a cobrança na véspera do primeiro dia não pago (1 dia) e recusa 2 dias.
+$casos = [
+    'mensal' => ['2026-11-28', '2026-11-28T12:35:09.000-03:00', '2026-11-26T09:00:00.000-03:00'],
+    'trimestral' => ['2027-01-28', '2027-01-28T08:00:00.000-03:00', '2027-01-26T08:00:00.000-03:00'],
+    'semestral' => ['2027-04-28', '2027-04-28T23:59:00.000-03:00', '2027-04-26T00:00:00.000-03:00'],
+    'anual' => ['2027-10-28', '2027-10-28T00:00:00.000-03:00', '2027-10-27T10:00:00.000-03:00'],
+];
+foreach ($casos as $periodicidade => [$fimPago, $vespera, $doisDias]) {
+    verificar("F4 {$periodicidade}: cobrança na véspera do primeiro dia não pago é reconhecida (1 dia civil)", $confere($periodicidade, $fimPago, $vespera) === null);
+    verificar("F4 {$periodicidade}: antecipação de 2 dias é recusada", $confere($periodicidade, $fimPago, $doisDias) === 'COBRANCA_EXTERNA_ANTECIPADA');
+    verificar("F4 {$periodicidade}: cobrança no primeiro dia não pago (ou depois) segue aceita", $confere($periodicidade, $fimPago, (new DateTimeImmutable($fimPago, $fusoSp))->modify('+1 day')->format('Y-m-d\T10:00:00.000P')) === null);
+}
+verificar('F4 diário legado (1 dia): a véspera é reconhecida, 2 dias recusados', $confere('diaria', '2026-10-30', '2026-10-30T16:31:00.000-03:00', null, 1) === null
+    && $confere('diaria', '2026-10-30', '2026-10-29T10:00:00.000-03:00', null, 1) === 'COBRANCA_EXTERNA_ANTECIPADA');
+verificar('F4 diário de 2 dias preservado (empresa 35): 30/10 16:31 reconhecida, 29/10 recusada',
+    $confere('diaria', '2026-10-30', '2026-10-30T16:31:00.000-03:00', null, 2) === null && $confere('diaria', '2026-10-30', '2026-10-29T10:00:00.000-03:00', null, 2) === 'COBRANCA_EXTERNA_ANTECIPADA');
+verificar('F4 a política é única: mesmo máximo (1) para todas as periodicidades e nenhuma referência a empresa na decisão',
+    ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_MAXIMO === 1 && !preg_match('/id_empresa\s*[=!]==?\s*\d+/', $corpo($assSrc, 'assinaturaServicoPreapprovalAntecipacaoDias') . $corpo($assSrc, 'assinaturaServicoPreapprovalConferirInicioExterno')));
+
+// 21) Cenário real da empresa 34 (mensal, vínculo 22): next_payment_date 28/11 12:35:09, start_date 29/11, Preapproval authorized.
+$inicio34 = assinaturaServicoPreapprovalInicioCobranca('2026-11-28');
+$dados34 = ['id' => 'f7179e6914b74304824c3e6f58c3bb41', 'external_reference' => 'amg_9165c25f55b59a5443e5a6fe4dadf55e', 'status' => 'authorized', 'live_mode' => true,
+    'next_payment_date' => '2026-11-28T12:35:09.000-03:00',
+    'auto_recurring' => ['currency_id' => 'BRL', 'transaction_amount' => 4.99, 'frequency' => 1, 'frequency_type' => 'months', 'start_date' => '2026-11-29T00:00:00.000-03:00']];
+$esp34 = ['id' => 'f7179e6914b74304824c3e6f58c3bb41', 'referencia' => 'amg_9165c25f55b59a5443e5a6fe4dadf55e', 'ambiente' => 'producao', 'valor_centavos' => 499,
+    'frequencia_meses' => 1, 'frequencia_tipo' => 'months', 'inicio' => $inicio34, 'antecipacao_dias' => assinaturaServicoPreapprovalAntecipacaoDias('mensal', 1), 'status_permitidos' => ['pending', 'authorized']];
+verificar('F4 empresa 34: sem a política (comportamento de 1.9.6) a Preapproval ficava pendente com COBRANCA_EXTERNA_ANTECIPADA', assinaturaServicoPreapprovalValidarExterna($dados34, ['antecipacao_dias' => 0] + $esp34) === 'COBRANCA_EXTERNA_ANTECIPADA');
+verificar('F4 empresa 34: com a política, a conferência contratual completa devolve null (vínculo pode ir a "ativa" = autorização válida, não pagamento)', assinaturaServicoPreapprovalValidarExterna($dados34, $esp34) === null);
+
+// Demais validações preservadas mesmo com a antecipação.
+$mut = fn(array $troca, array $espTroca = []) => assinaturaServicoPreapprovalValidarExterna(array_replace_recursive($dados34, $troca), $espTroca + $esp34);
+verificar('F4 validações preservadas: valor, moeda, frequência, referência, id, ambiente e status continuam divergindo',
+    $mut(['auto_recurring' => ['transaction_amount' => 5.99]]) === 'VALOR_EXTERNO_DIVERGENTE' && $mut(['auto_recurring' => ['currency_id' => 'USD']]) === 'MOEDA_EXTERNA_DIVERGENTE'
+    && $mut(['auto_recurring' => ['frequency' => 2]]) === 'PERIODICIDADE_EXTERNA_DIVERGENTE' && $mut(['auto_recurring' => ['frequency_type' => 'days']]) === 'PERIODICIDADE_EXTERNA_DIVERGENTE'
+    && $mut(['external_reference' => 'amg_outraempresa']) === 'REFERENCIA_EXTERNA_DIVERGENTE' && $mut(['id' => 'OUTRO-ID']) === 'ID_EXTERNO_DIVERGENTE'
+    && $mut(['live_mode' => false]) === 'AMBIENTE_EXTERNO_DIVERGENTE' && $mut(['status' => 'cancelled']) === 'STATUS_EXTERNO_INESPERADO');
+verificar('F4 período pago preservado: start_date dentro do período já pago continua barrado mesmo com a véspera',
+    $mut(['auto_recurring' => ['start_date' => '2026-11-28T00:00:00.000-03:00']]) === 'COBRANCA_EXTERNA_ANTECIPADA'
+    && $mut(['next_payment_date' => '2026-11-27T12:00:00.000-03:00']) === 'COBRANCA_EXTERNA_ANTECIPADA');
+verificar('F4 a ativação não exige pagamento: nenhuma gravação de pagamento/cobrança em mpSubCobrancaAntecipadaNaAtivacao',
+    !preg_match('/INSERT|UPDATE/', $corpo($wh4, 'mpSubCobrancaAntecipadaNaAtivacao')) && str_contains($corpo($wh4, 'mpSubCobrancaAntecipadaNaAtivacao'), 'assinaturaServicoPreapprovalAntecipacaoDias('));
+
+// 9-10) Teste grátis: autorização pode ocorrer, primeira cobrança nunca antes do fim real do teste.
+$fimTeste4 = assinaturaServicoPreapprovalInicioTeste('2026-11-28 22:44:34'); // 22:45 em SP
+$dadosTeste = fn(string $proxima, string $status = 'authorized') => ['status' => $status, 'next_payment_date' => $proxima,
+    'auto_recurring' => ['start_date' => '2026-11-28T22:45:00.000-03:00', 'frequency' => 1, 'frequency_type' => 'months']];
+verificar('F4 teste: contrato em teste nunca recebe janela de antecipação (autorizar cartão ≠ antecipar cobrança)',
+    assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'mensal', 'frequencia_tipo' => 'months', 'frequencia_meses' => 1, 'primeira_cobranca' => null, 'teste' => ['expira_em' => '2026-11-28 22:44:34']]) === 0
+    && assinaturaServicoPreapprovalAntecipacaoDiasContrato(['periodicidade' => 'diaria', 'frequencia_tipo' => 'days', 'frequencia_meses' => 2, 'primeira_cobranca' => null, 'teste' => ['expira_em' => '2026-11-28 22:44:34']]) === 0);
+verificar('F4 teste: next_payment_date na véspera do fim do teste (dentro da gratuidade) → diagnóstico específico, nunca aceito',
+    assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-27T10:00:00.000-03:00'), $fimTeste4, false, 0, true) === 'COBRANCA_EXTERNA_DENTRO_DO_TESTE');
+verificar('F4 teste: mesmo no dia civil do fim, horário anterior ao fim real da gratuidade é diagnosticado (12:35 < 22:45)',
+    assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-28T12:35:09.000-03:00'), $fimTeste4, false, 0, true) === 'COBRANCA_EXTERNA_DENTRO_DO_TESTE');
+verificar('F4 teste: a janela de 1 dia, se fosse passada, não neutraliza o diagnóstico do teste',
+    assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-27T23:59:00.000-03:00'), $fimTeste4, false, 1, true) === 'COBRANCA_EXTERNA_DENTRO_DO_TESTE');
+verificar('F4 teste: primeira cobrança no instante do fim do teste (ou depois) é aceita; Preapproval pending não usa o diagnóstico',
+    assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-28T22:45:00.000-03:00'), $fimTeste4, false, 0, true) === null
+    && assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-29T00:00:00.000-03:00'), $fimTeste4, false, 0, true) === null
+    && assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-20T00:00:00.000-03:00', 'pending'), $fimTeste4, false, 0, true) !== 'COBRANCA_EXTERNA_DENTRO_DO_TESTE');
+verificar('F4 teste: sem o contexto de teste o comportamento anterior (por dia civil) é preservado para contratos pagos',
+    assinaturaServicoPreapprovalConferirInicioExterno($dadosTeste('2026-11-28T12:35:09.000-03:00'), $fimTeste4, false, 0) === null);
+verificar('F4 teste: ativação e validações por contrato repassam o contexto de teste; nada é convertido nem corrigido (sem PUT, sem UPDATE de assinatura)',
+    str_contains($wh4, "assinaturaServicoPreapprovalInicioTeste((string)\$assinatura['teste_expira_em']), false, 0, true)")
+    && str_contains($assSrc, "'em_teste' => (\$c['teste'] ?? null) !== null") && str_contains($assSrc, "'em_teste' => (\$contrato['teste'] ?? null) !== null")
+    && !preg_match("/modalidade\s*=\s*'paga'|atualizarPreapproval/", $corpo($wh4, 'mpSubCobrancaAntecipadaNaAtivacao')));
+verificar('F4 primeira cobrança após o teste: débito antes do dia do fim do teste não vira competência (COBRANCA_EXTERNA_ANTECIPADA); nunca cobrança regular no teste',
+    str_contains($corpo($wh4, 'mpSubResolverCobrancaConversaoTeste'), "if (\$atraso < 0) {\n        return 'COBRANCA_EXTERNA_ANTECIPADA';")
+    && str_contains($corpo($wh4, 'mpSubResolverCobrancaConversaoTeste'), "Contrato em teste não tem cobrança regular.")
+    && str_contains($corpo($wh4, 'mpSubResolverCobranca'), "return mpSubResolverCobrancaConversaoTeste("));
+
+// 8, 11) Competência correta: o débito de véspera só vai à competência que COMEÇA no dia seguinte.
+$mensalPaga = $cob(10, '2026-10-29', '2026-11-28', 'paga');
+$mensalProx = $cob(11, '2026-11-29', '2026-12-28');
+verificar('F4 mensal: débito de 28/11 → candidata é a competência que começa em 29/11; a anterior (paga, 29/10–28/11) nunca é candidata',
+    array_column(mpSubCompetenciasAntecipaveis([$mensalPaga, $mensalProx], '2026-11-28', '2026-11-29'), 'id_cobranca') === [11]);
+verificar('F4 mensal: competência anterior quitada (paga) não recebe outro pagamento e a seguinte já paga também não',
+    mpSubCompetenciaAntecipadaElegivel($bd, $cob(10, '2026-10-29', '2026-11-28', 'paga')) === 'COMPETENCIA_ANTECIPADA_NAO_PENDENTE'
+    && mpSubCompetenciaAntecipadaElegivel($bd, $cob(11, '2026-11-29', '2026-12-28', 'paga')) === 'COMPETENCIA_ANTECIPADA_NAO_PENDENTE');
+verificar('F4 antecipação fora da competência correta recusada: débito 2 dias antes não alcança a competência seguinte e não cria competência',
+    mpSubCompetenciasAntecipaveis([$mensalPaga, $mensalProx], '2026-11-27', '2026-11-28') === [] && !mpSubDebitoAntecipaProximaCompetencia(2, true, 1)
+    && mpSubDebitoAntecipaProximaCompetencia(1, true, 1) && !mpSubDebitoAntecipaProximaCompetencia(1, false, 1));
+verificar('F4 competência inexistente (mensal) é criada com as datas normais da sequência, nunca deslocadas para o dia do débito',
+    str_contains($corpo($wh4, 'mpSubResolverCobranca'), "\$esperado->format('Y-m-d'),\n            \$fim->format('Y-m-d'),") && str_contains($corpo($wh4, 'mpSubResolverCobranca'), '$antecipada = mpSubDebitoAntecipaProximaCompetencia('));
+
+// Ciclo diário legado: a competência "exata" quitada cede à próxima; nas demais periodicidades/ciclos jamais cede.
+$dia1 = $cob(20, '2026-10-30', '2026-10-30', 'paga');
+verificar('F4 diário legado: o débito no único dia da competência quitada segue para a próxima; mensal, trimestral e diário de 2 dias nunca cedem',
+    mpSubExataQuitadaCedeAAntecipacao($dia1, 'diaria', 1, 1) === true && mpSubExataQuitadaCedeAAntecipacao($dia1, 'diaria', 2, 1) === false
+    && mpSubExataQuitadaCedeAAntecipacao($dia1, 'mensal', 1, 1) === false && mpSubExataQuitadaCedeAAntecipacao($dia1, 'anual', 1, 1) === false
+    && mpSubExataQuitadaCedeAAntecipacao($cob(21, '2026-10-30', '2026-10-30', 'pendente'), 'diaria', 1, 1) === false
+    && mpSubExataQuitadaCedeAAntecipacao($dia1, 'diaria', 1, 0) === false);
+
+// 12-13, 19) PIX aprovado/em andamento e isolamento entre empresas (competência mensal seguinte).
+$limpar();
+verificar('F4 mensal: competência seguinte livre é elegível', mpSubCompetenciaAntecipadaElegivel($bd, $mensalProx) === ['cobranca' => $mensalProx, 'criada' => false]);
+$GLOBALS['pdo']->exec("INSERT INTO transacao_pagamento (id_empresa, id_cobranca, metodo, status) VALUES (5, 11, 'pix', 'confirmada')");
+verificar('F4 PIX já aprovado na competência seguinte bloqueia o débito do cartão (conciliação, sem quitar duas vezes)', mpSubCompetenciaAntecipadaElegivel($bd, $mensalProx) === 'COMPETENCIA_ANTECIPADA_COM_PIX');
+$limpar();
+$GLOBALS['pdo']->exec("INSERT INTO transacao_pagamento (id_empresa, id_cobranca, metodo, status) VALUES (5, 11, 'pix', 'aguardando')");
+verificar('F4 PIX em andamento na competência seguinte bloqueia o débito do cartão', mpSubCompetenciaAntecipadaElegivel($bd, $mensalProx) === 'COMPETENCIA_ANTECIPADA_COM_PIX');
+$limpar();
+$GLOBALS['pdo']->exec("INSERT INTO transacao_pagamento (id_empresa, id_cobranca, metodo, status) VALUES (6, 11, 'pix', 'confirmada')");
+$GLOBALS['pdo']->exec("INSERT INTO pagamento (id_empresa, id_cobranca, status) VALUES (6, 11, 'confirmado')");
+verificar('F4 isolamento entre empresas: PIX e pagamento de outra empresa não interferem na competência desta', mpSubCompetenciaAntecipadaElegivel($bd, $mensalProx) === ['cobranca' => $mensalProx, 'criada' => false]);
+$limpar();
+verificar('F4 consultas do resolvedor sempre escopadas por empresa (assinatura + empresa; transação e pagamento por id_empresa)',
+    str_contains($corpo($wh4, 'mpSubResolverCobranca'), 'WHERE id_assinatura = ? AND id_empresa = ? ORDER BY periodo_inicio')
+    && str_contains($corpo($wh4, 'mpSubCompetenciaAntecipadaElegivel'), 'WHERE id_empresa = ? AND id_cobranca = ?'));
+
+// 14-18) Estados da fatura e do pagamento (nada é quitado sem fatura processada + pagamento approved/accredited).
+$f4 = fn(string $status, ?string $pag = null) => ['status' => $status, 'pagamento_id' => $pag];
+$p4 = fn(string $status, ?string $det = null) => ['status' => $status, 'detalhe' => $det, 'valor_centavos' => 499, 'reembolsado_centavos' => 0];
+verificar('F4 pagamento do cartão recusado: recusada, nada quitado', mpSubClassificarFatura($f4('processed', 'P1'), $p4('rejected', 'cc_rejected_insufficient_amount'))['status'] === 'recusada'
+    && mpSubClassificarFatura($f4('processed', 'P1'), $p4('rejected', 'cc_rejected_insufficient_amount'))['classe'] !== 'confirmada');
+verificar('F4 pagamento aprovado porém não acreditado: conciliação, nada quitado', mpSubClassificarFatura($f4('processed', 'P1'), $p4('approved', 'pending_contingency'))['classe'] === 'conciliacao');
+verificar('F4 fatura em processamento (scheduled, sem pagamento): aguardando, nada quitado', mpSubClassificarFatura($f4('scheduled'), null)['classe'] === 'normal' && mpSubClassificarFatura($f4('scheduled'), null)['status'] === 'aguardando');
+verificar('F4 retentativa recycling: continua processando sem quitar e sem nova competência', (function () use ($f4, $p4) {
+    $c = mpSubClassificarFatura($f4('recycling', 'P1'), $p4('rejected', 'cc_rejected_high_risk'));
+    return $c['status'] === 'processando' && $c['classe'] === 'normal';
+})());
+verificar('F4 única confirmação: processed + approved + accredited', mpSubClassificarFatura($f4('processed', 'P1'), $p4('approved', 'accredited'))['classe'] === 'confirmada');
+$aplicar4 = $corpo($wh4, 'mpSubAplicarFatura');
+verificar('F4 webhook duplicado: fatura já conhecida usa a transação existente (fatura_externa_id) e o resolvedor só roda para fatura nova; nenhum pagamento artificial é criado na ativação',
+    str_contains($aplicar4, 'fatura_externa_id = ?') && str_contains($aplicar4, '$existente !== null') && str_contains($aplicar4, 'mpSubResolverCobranca($conexao, $assinatura, $fatura[\'debito\'], $idAspr)')
+    && !preg_match('/INSERT INTO pagamento/', $corpo($wh4, 'mpSubCobrancaAntecipadaNaAtivacao')));
+verificar('F4 débito identificado pelo debit_date da fatura autoritativa, nunca por next_payment_date',
+    !str_contains($corpo($wh4, 'mpSubResolverCobranca'), 'next_payment_date') && str_contains($corpo($wh4, 'mpSubNormalizarFatura'), "'debito' => assinaturaServicoPreapprovalDataExterna(\$d['debit_date']"));
+
+// 22) Cancelamento automático: serviço compartilhado preservado e elegibilidade do novo estado "ativa".
+$cr4 = $ler('backend/_servicos/cancelamento_recorrencia.php');
+$btn4 = $corpo($po, 'pagamentoCartaoCancelarAutomatico');
+verificar('F4 cancelamento: proteções e mensagens do serviço compartilhado preservadas (nenhuma alteração nesta fase)',
+    CANCELAMENTO_RECORRENCIA_MSG_PRIMEIRO === 'Para cancelar esta assinatura, primeiro cancele o pagamento automático.' && str_contains($cr4, 'cancelamentoRecorrenciaVerificarBloqueio(')
+    && str_contains($cr4, 'cancelamentoRecorrenciaCancelarPreapproval(') && str_contains($cr4, 'cancelamentoRecorrenciaParcelaEmAndamento('));
+verificar('F4 cancelamento: o vínculo "ativa"+authorized+slot 1 passa a ser elegível pelo caminho já existente (configurado), sem relaxar as regras do serviço',
+    str_contains($dp, "\$configurado = \$atual && \$status === 'ativa' && (\$v['status_externo'] ?? '') === 'authorized' && (int)(\$v['slot_ativo'] ?? 0) === 1;")
+    && str_contains($btn4, 'cancelamentoRecorrenciaCancelarPreapproval(') && !str_contains($btn4, 'cancelamentoRecorrenciaVerificarBloqueio'));
+
+// 23) Correção da empresa 37 preservada e compatível.
+verificar('F4 correção da empresa 37 preservada: referência .d2 pesquisável, estados da criação incerta e recuperação sem criar',
+    MercadoPagoGateway::referenciaExternaValida($ref . '.d2') && function_exists('pagamentoCartaoEstadoCriacao') && function_exists('assinaturaServicoPreapprovalEstadoBusca')
+    && substr_count($assSrc, '->criarPreapproval(') === 1 && str_contains($jsPo, 'TEXTO_CADASTRO_INCERTO'));
+verificar('F4 compatibilidade 37 × 34/35: o resolvedor de busca e a política de antecipação são independentes (sem tocar no outbox)',
+    !str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalAntecipacaoDias'), 'operacao_assinatura_gateway') && !str_contains($corpo($wh4, 'mpSubExataQuitadaCedeAAntecipacao'), 'operacao_assinatura_gateway'));
 
 echo "\n{$total} verificações, {$falhas} falha(s).\n";
 exit($falhas === 0 ? 0 : 1);

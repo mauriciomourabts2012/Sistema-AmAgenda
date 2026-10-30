@@ -574,6 +574,19 @@ final class MercadoPagoGateway
         return ['GET', '/authorized_payments/search?' . http_build_query($consulta, '', '&', PHP_QUERY_RFC3986), null];
     }
 
+    /**
+     * Referência externa gerada pelo AmAgenda para a Preapproval: "amg_" + 32 hex (pagamentoGatewayReferenciaInterna)
+     * e, nos contratos diários de 2 dias, o sufixo ".d2" (ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H).
+     * É a única forma aceita na pesquisa por external_reference: o mesmo valor criado precisa ser pesquisável, e nada
+     * além dele (comprimento máximo 39) chega ao provedor.
+     */
+    public const REFERENCIA_EXTERNA_PADRAO = '/^amg_[0-9a-f]{32}(?:\.d2)?$/D';
+
+    public static function referenciaExternaValida(mixed $referencia): bool
+    {
+        return is_string($referencia) && preg_match(self::REFERENCIA_EXTERNA_PADRAO, $referencia) === 1;
+    }
+
     /** @return array{0:string,1:string,2:?string}|null somente filtros conhecidos e válidos, em ordem fixa */
     private static function rotaBuscaPreapprovals(array $filtros): ?array
     {
@@ -585,7 +598,7 @@ final class MercadoPagoGateway
         $consulta = [];
         if (array_key_exists('external_reference', $filtros)) {
             $ref = $filtros['external_reference'];
-            if (!is_string($ref) || !preg_match('/^[A-Za-z0-9_-]{1,64}$/D', $ref)) return null;
+            if (!self::referenciaExternaValida($ref)) return null;
             $consulta['external_reference'] = $ref;
         }
         if (array_key_exists('status', $filtros)) {

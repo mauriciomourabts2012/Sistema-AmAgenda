@@ -4525,7 +4525,8 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
             $dados,
             $esperado['inicio'],
             ($esperado['inicio_pendente_opcional'] ?? false) === true,
-            (int)($esperado['antecipacao_dias'] ?? 0)
+            (int)($esperado['antecipacao_dias'] ?? 0),
+            ($esperado['em_teste'] ?? false) === true
         );
         if ($codigoData !== null) {
             return $codigoData;
@@ -4550,8 +4551,14 @@ function assinaturaServicoPreapprovalValidarExterna(array $dados, array $esperad
  * `next_payment_date` de uma Preapproval já autorizada, vale o dia civil (fuso do negócio) de até `$diasAntecipacao` dia(s)
  * antes do primeiro dia não pago, desde que o `start_date` contratual respeite o período pago. A antecipação apenas
  * autoriza o vínculo: nenhuma fatura é criada nem quitada por esta data (isso é do débito e do pagamento autoritativos).
+ *
+ * Teste grátis (`$emTeste`): `$inicio` é o instante em que a gratuidade termina. A autorização do cartão pode acontecer
+ * durante o teste, mas a primeira cobrança nunca pode ser programada antes do fim real dele: uma `next_payment_date`
+ * de Preapproval autorizada anterior a esse instante (ainda que no mesmo dia civil) devolve
+ * COBRANCA_EXTERNA_DENTRO_DO_TESTE, diagnóstico próprio que mantém o vínculo pendente. Nenhuma antecipação vale no teste e
+ * nada é corrigido automaticamente (nem datas do contrato nem agenda do provedor).
  */
-function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio, bool $permitirAusentePendente = false, int $diasAntecipacao = 0): ?string
+function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTimeImmutable $inicio, bool $permitirAusentePendente = false, int $diasAntecipacao = 0, bool $emTeste = false): ?string
 {
     $recorrencia = is_array($dados['auto_recurring'] ?? null) ? $dados['auto_recurring'] : [];
     $inicioExterno = assinaturaServicoPreapprovalDataExterna($recorrencia['start_date'] ?? null);
@@ -4564,6 +4571,10 @@ function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTim
         : ($proximaExterna ?? $inicioExterno);
     if ($data === null) {
         return 'INICIO_EXTERNO_INDETERMINADO';
+    }
+    if ($emTeste && ($dados['status'] ?? null) === 'authorized' && $proximaExterna !== null
+        && $proximaExterna->getTimestamp() < $inicio->getTimestamp() - 60) {
+        return 'COBRANCA_EXTERNA_DENTRO_DO_TESTE';
     }
     if (assinaturaServicoPreapprovalDataNaoAntecipada($data, $inicio)) {
         return null;
@@ -4578,17 +4589,22 @@ function assinaturaServicoPreapprovalConferirInicioExterno(array $dados, DateTim
 }
 
 /**
- * Janela de antecipação CONTROLADA da cobrança externa, em dias civis antes do primeiro dia não pago. É uma política local
- * de segurança, não uma janela oficial do Mercado Pago: só a periodicidade diária no ciclo de 2 dias (homologação), em
- * que o provedor foi observado programando a cobrança no dia da autorização, tem 1 dia. O ciclo diário legado de 1 dia
- * e as demais periodicidades não antecipam nada.
+ * Política UNIVERSAL de antecipação CONTROLADA da cobrança externa: no máximo 1 dia civil antes do primeiro dia não pago,
+ * igual para todas as periodicidades suportadas (diária de 1 ou 2 dias, mensal, trimestral, semestral e anual) e sem
+ * exceção por empresa. É uma política local de segurança, não uma janela oficial do Mercado Pago: o provedor foi observado
+ * programando a tentativa na véspera do `start_date` (diária de 2 dias na empresa 35; mensal na empresa 34). Mais de um dia
+ * exige regra formal adicional e continua recusado (COBRANCA_EXTERNA_ANTECIPADA).
+ *
+ * Só autoriza o reconhecimento da Preapproval `authorized`; nunca cria fatura, competência ou pagamento (isso é do débito
+ * e do pagamento autoritativos). Não vale para teste grátis nem para primeira cobrança (ver ...AntecipacaoDiasContrato).
  */
-const ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_DIARIA = 1;
+const ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_MAXIMO = 1;
 
+/** `$diasCiclo` é mantido por compatibilidade das chamadas: a política não depende dele. */
 function assinaturaServicoPreapprovalAntecipacaoDias(string $periodicidade, int $diasCiclo = 1): int
 {
-    return assinaturaServicoPeriodicidadeDiaria($periodicidade) && $diasCiclo >= 2
-        ? ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_DIARIA : 0;
+    return in_array($periodicidade, ASSINATURA_SERVICO_PERIODICIDADES, true)
+        ? ASSINATURA_SERVICO_PREAPPROVAL_ANTECIPACAO_DIAS_MAXIMO : 0;
 }
 
 /**
@@ -4786,6 +4802,7 @@ function assinaturaServicoPreapprovalAutorizacaoExistente(object $gateway, array
         'frequencia_meses' => $c['frequencia_meses'], 'frequencia_tipo' => $c['frequencia_tipo'], 'inicio' => $reserva['inicio'],
         'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($c, $reserva['inicio']),
         'antecipacao_dias' => assinaturaServicoPreapprovalAntecipacaoDiasContrato($c),
+        'em_teste' => ($c['teste'] ?? null) !== null,
         'status_permitidos' => ['pending', 'authorized', 'paused', 'canceled'],
     ]);
     if ($erro !== null) {
@@ -5716,9 +5733,25 @@ function assinaturaServicoPreapprovalMarcarConciliacao(mysqli $conexao, array $v
 }
 
 /**
+ * Classifica a resposta da pesquisa: 'ok', 'recusada' (requisição inválida ou rejeitada: não é queda do provedor e se
+ * repetiria para sempre) ou 'indisponivel' (falha transitória ou resposta que não prova nada).
+ *
+ * @param array<string, mixed> $resposta
+ */
+function assinaturaServicoPreapprovalEstadoBusca(array $resposta): string
+{
+    if (($resposta['sucesso'] ?? false) === true && is_array($resposta['dados']['results'] ?? null)) {
+        return 'ok';
+    }
+
+    return in_array((string)($resposta['codigo'] ?? ''), ['operacao_invalida', 'requisicao_invalida', 'provedor_rejeitou'], true)
+        ? 'recusada' : 'indisponivel';
+}
+
+/**
  * Procura a Preapproval pela referência, conferindo cada resultado (a pesquisa não garante filtro exato).
  *
- * @return array{estado: string, id: ?string} estado: 'encontrada' | 'nao_encontrada' | 'multiplas' | 'indisponivel'
+ * @return array{estado: string, id: ?string} estado: 'encontrada' | 'nao_encontrada' | 'multiplas' | 'recusada' | 'indisponivel'
  */
 function assinaturaServicoPreapprovalLocalizar(object $gateway, string $referencia): array
 {
@@ -5731,8 +5764,13 @@ function assinaturaServicoPreapprovalLocalizar(object $gateway, string $referenc
             'limit' => ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE,
             'offset' => $offset,
         ]);
-        if (($resposta['sucesso'] ?? false) !== true || !is_array($resposta['dados']['results'] ?? null)) {
-            return ['estado' => 'indisponivel', 'id' => null];
+        $estadoBusca = assinaturaServicoPreapprovalEstadoBusca($resposta);
+        if ($estadoBusca !== 'ok') {
+            // Só código e HTTP, sem corpo do provedor nem referência.
+            error_log('[assinatura_preapproval] busca_' . $estadoBusca . ' codigo=' . preg_replace('/[^a-z_]/', '', (string)($resposta['codigo'] ?? ''))
+                . ' http=' . (int)($resposta['http_status'] ?? 0));
+
+            return ['estado' => $estadoBusca, 'id' => null];
         }
         $resultados = $resposta['dados']['results'];
         foreach ($resultados as $item) {
@@ -5783,13 +5821,20 @@ function assinaturaServicoPreapprovalEsclarecer(mysqli $conexao, object $gateway
         if ($local['estado'] !== 'encontrada') {
             $mapa = [
                 'multiplas' => ['MULTIPLAS_ASSINATURAS_EXTERNAS', 'Mais de uma assinatura externa usa a mesma referência; é necessária análise manual.'],
-                'nao_encontrada' => ['EXISTENCIA_NAO_CONFIRMADA', 'Não foi possível confirmar se a assinatura externa foi criada.'],
+                'nao_encontrada' => ['EXISTENCIA_NAO_CONFIRMADA', 'A busca não encontrou a assinatura externa, o que ainda não prova que ela não foi criada.'],
+                'recusada' => ['CONCILIACAO_CONSULTA_RECUSADA', 'A consulta ao provedor foi recusada; é necessária análise do suporte.'],
                 'indisponivel' => ['CONCILIACAO_INDISPONIVEL', 'Não foi possível consultar o provedor agora.'],
             ];
             [$codigo, $motivo] = $mapa[$local['estado']];
             assinaturaServicoPreapprovalMarcarConciliacao($conexao, $vinculo, $idOperacao, $codigo, $motivo);
 
-            return $resultado(false, $codigo, 'Não foi possível confirmar a assinatura recorrente. Nenhuma nova tentativa será feita até a conciliação.', ['estado' => 'conciliacao']);
+            $publicas = [
+                'multiplas' => 'Encontramos mais de uma autorização para este cadastro. Por segurança, nenhuma nova será criada; fale com o suporte.',
+                'nao_encontrada' => 'Ainda não localizamos o cadastro do cartão no Mercado Pago, e isso não prova que ele não foi aberto. Nenhuma nova tentativa será feita automaticamente; atualize a situação mais tarde ou fale com o suporte.',
+                'recusada' => 'A consulta ao Mercado Pago foi recusada. Nenhuma nova tentativa será feita; fale com o suporte.',
+            ];
+
+            return $resultado(false, $codigo, $publicas[$local['estado']] ?? 'Não foi possível confirmar a assinatura recorrente. Nenhuma nova tentativa será feita até a conciliação.', ['estado' => 'conciliacao']);
         }
 
         $consulta = $gateway->consultarPreapproval((string)$local['id']);
@@ -5829,6 +5874,7 @@ function assinaturaServicoPreapprovalVincularConfirmada(mysqli $conexao, array $
         'inicio' => $inicio,
         'inicio_pendente_opcional' => assinaturaServicoPreapprovalPrimeiraImediata($contrato, $inicio),
         'antecipacao_dias' => assinaturaServicoPreapprovalAntecipacaoDiasContrato($contrato),
+        'em_teste' => ($contrato['teste'] ?? null) !== null,
     ]);
     if ($divergencia !== null) {
         assinaturaServicoPreapprovalMarcarConciliacao($conexao, $vinculo, $idOperacao, $divergencia, 'Assinatura externa divergente do contrato interno.');
@@ -6437,7 +6483,7 @@ function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(mysqli $conexao, i
     if ($vinculo['assinatura_externa_id'] === null) {
         if ($operacaoAberta !== null) {
             // A criação pode ter chegado ao provedor: só a conciliação diz se há algo a cancelar.
-            return assinaturaServicoNovaContratacaoResultado(false, 'CRIACAO_EM_CONCILIACAO', 'A autorização no cartão ainda está sendo confirmada com o Mercado Pago. Tente novamente em instantes.', ['http_status' => 409]);
+            return assinaturaServicoNovaContratacaoResultado(false, 'CRIACAO_EM_CONCILIACAO', 'Ainda estamos confirmando se o cadastro do cartão chegou a ser aberto no Mercado Pago. Use "Atualizar situação" ou fale com o suporte. Sua assinatura e o teste grátis não são afetados.', ['http_status' => 409]);
         }
         $r = assinaturaServicoPreapprovalSolicitarCancelamento($conexao, $idEmpresa, $idAssinatura, $ator);
 

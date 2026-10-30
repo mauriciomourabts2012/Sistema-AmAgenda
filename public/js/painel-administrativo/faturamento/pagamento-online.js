@@ -265,6 +265,9 @@
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${pix}${trocar}${botaoVerificar}</div>`;
   }
 
+  const TEXTO_CADASTRO_INCERTO = "Estamos conferindo com o Mercado Pago se o cadastro do cartão chegou a ser aberto. Use \"Atualizar situação\". Enquanto a conferência não terminar, nenhum novo cadastro é criado; se ela demorar, fale com o suporte. Seus dias grátis e o contrato não são afetados.";
+  const TEXTO_SUPORTE_CADASTRO = " Esta conferência precisa de análise: fale com o suporte e informe o seu cadastro.";
+
   // Teste grátis (só contratos em modalidade teste; o servidor envia teste_gratis apenas para eles): cadastro de cartão
   // opcional, com a primeira mensalidade programada para depois do teste e sujeita à confirmação do Mercado Pago.
   const SITUACOES_TESTE = {
@@ -276,7 +279,11 @@
     pagamento_recusado: ["fa-solid fa-triangle-exclamation", "Pagamento recusado", "O cartão recusou a primeira mensalidade. O Mercado Pago pode tentar novamente; se preferir, pague com PIX em vez do cartão."],
     em_verificacao: ["fa-solid fa-triangle-exclamation", "Pagamento em verificação", "O pagamento precisa de conferência. Atualize a situação mais tarde ou fale com o suporte."],
     cancelando_cartao: ["fa-solid fa-hourglass-half", "Cancelando o cartão", "Aguardando a confirmação do Mercado Pago. Nenhuma mensalidade será cobrada no cartão depois dela."],
-    cartao_cancelado: ["fa-regular fa-credit-card", "Cartão cancelado", "Nenhuma mensalidade será cobrada neste cartão."]
+    cartao_cancelado: ["fa-regular fa-credit-card", "Cartão cancelado", "Nenhuma mensalidade será cobrada neste cartão."],
+    // Sem Preapproval criada nunca se afirma "aguardando sua autorização": a criação é incerta (conferência em curso) ou
+    // a tentativa anterior foi encerrada. Em ambos os casos o teste grátis e o contrato não são afetados.
+    cadastro_incerto: ["fa-solid fa-triangle-exclamation", "Não foi possível confirmar a abertura do cadastro do cartão", TEXTO_CADASTRO_INCERTO],
+    cadastro_nao_criado: ["fa-regular fa-credit-card", "Cadastro do cartão não aberto", "O cadastro do cartão não foi aberto no Mercado Pago. Seus dias grátis continuam valendo. Você pode tentar novamente; a tentativa anterior é conferida antes de qualquer nova criação."]
   };
 
   function renderizarTeste(alvo, atual, botaoVerificar) {
@@ -311,7 +318,9 @@
     // os dois nunca aparecem juntos, mesmo que o servidor sinalize ambos.
     const trocar = atual.pode_trocar_cartao
       ? '<button class="botao-geral" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
-    const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(criada ? "Continuar no Mercado Pago" : "Cadastrar cartão") : "";
+    if (t.situacao === "cadastro_incerto" && t.criacao_exige_suporte) texto += TEXTO_SUPORTE_CADASTRO;
+    const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : (t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão");
+    const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(rotuloAutorizar) : "";
     const remover = t.pode_remover_cartao
       ? `<button class="botao-geral" type="button" data-usar-pix><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${t.em_teste ? "Cancelar cartão autorizado" : "Pagar com PIX em vez do cartão"}</button>` : "";
     alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${autorizar}${trocar}${remover}${botaoVerificar}</div>`;
@@ -412,14 +421,17 @@
         alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Pagamento automático", "Autorização em conferência", "O Mercado Pago registrou a autorização do cartão. O pagamento automático só é ativado depois de confirmada a próxima cobrança fora do período já pago. Atualize a situação ou entre em contato com o suporte.")}<div class="faturamento-acoes">${cancelarAutomaticoPendente}${botaoVerificar}</div>`;
         return;
       }
-      const titulo = criada ? "Aguardando sua autorização" : "Autorização ainda não criada";
+      const incerta = !criada && ["em_andamento", "incerta"].includes(String(atual.criacao_estado || ""));
+      const titulo = criada ? "Aguardando sua autorização" : (incerta ? "Não foi possível confirmar a abertura do cadastro do cartão" : "Autorização ainda não criada");
       const texto = criada
         ? "A autorização só vale depois da confirmação do Mercado Pago."
-        : "A autorização ainda não foi criada no Mercado Pago. Clique para tentar novamente; a tentativa anterior é conferida antes de qualquer nova criação.";
+        : (incerta
+          ? "Estamos conferindo com o Mercado Pago se o cadastro do cartão chegou a ser aberto. Use \"Atualizar situação\". Enquanto a conferência não terminar, nenhum novo cadastro é criado; se ela demorar, fale com o suporte." + (atual.criacao_exige_suporte ? TEXTO_SUPORTE_CADASTRO : "")
+          : "A autorização ainda não foi criada no Mercado Pago. Clique para tentar novamente; a tentativa anterior é conferida antes de qualquer nova criação.");
       const semAcao = !atual.pode_configurar && !atual.pode_verificar
         ? (atual.subscriptions_habilitado === false ? "O pagamento automático por este meio ainda não está disponível." : "Atualize a página ou fale com o suporte caso a situação persista.")
         : (!atual.pode_configurar && criada ? "O Mercado Pago já registrou outra situação para esta autorização. Atualize para conferir." : "");
-      alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Autorização pendente", titulo, semAcao || texto)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar(criada ? "Continuar no Mercado Pago" : "Cadastrar cartão") : ""}${botaoVerificar}</div>`;
+      alvo.innerHTML = `${cabecalho("fa-solid fa-hourglass-half", "Autorização pendente", titulo, semAcao || texto)}<div class="faturamento-acoes">${atual.pode_configurar ? botaoAutorizar(criada ? "Continuar no Mercado Pago" : "Tentar novamente") : ""}${botaoVerificar}</div>`;
       return;
     }
     // Autorização cancelada (confirmada no provedor) segue para o cadastro abaixo; os demais estados reais são exibidos.
@@ -477,7 +489,16 @@
     }
     cartao.redirecionando = true;
     const botoes = document.querySelectorAll("[data-autorizar-assinatura],[data-outro-cartao]");
-    botoes.forEach(b => { b.disabled = true; });
+    const rotulosOriginais = new Map();
+    botoes.forEach(b => {
+      b.disabled = true;
+      b.setAttribute("aria-busy", "true");
+      if (b.hasAttribute("data-autorizar-assinatura")) {
+        rotulosOriginais.set(b, b.innerHTML);
+        b.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>Abrindo o Mercado Pago…';
+      }
+    });
+    let recarregar = false;
     try {
       // Sem corpo contratual: empresa, valor e contrato são sempre os do servidor.
       const corpo = new FormData();
@@ -494,9 +515,16 @@
       avisar("info", retorno.user_msg || "Situação do pagamento automático atualizada.");
     } catch (erro) {
       avisar("erro", erro.message);
+      // O erro não é trocado por "Aguardando sua autorização": a tela é recarregada com o estado real do servidor.
+      recarregar = true;
     }
     cartao.redirecionando = false;
-    botoes.forEach(b => { b.disabled = false; });
+    botoes.forEach(b => {
+      b.disabled = false;
+      b.removeAttribute("aria-busy");
+      if (rotulosOriginais.has(b) && b.isConnected) b.innerHTML = rotulosOriginais.get(b);
+    });
+    if (recarregar) await carregarConfiguracaoCartao();
   }
 
   // Retorno do Mercado Pago: a URL não prova nada. O servidor consulta o provedor (POST com CSRF) e devolve o estado real.
