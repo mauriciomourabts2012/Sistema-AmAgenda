@@ -17,6 +17,7 @@ Arquivos controlados (lista em `rvArquivosPadrao()`):
 | `public/views/login-cliente.php` | todos os `.js`/`.css` locais |
 | `public/views/cliente-agendamento.html` | todos os `.js`/`.css` locais |
 | `public/views/cliente-perfil.html` | todos os `.js`/`.css` locais |
+| `public/views/super-admin/painel-super-admin.html` | todos os `.js`/`.css` locais |
 
 ## 2–4. Nova versão
 

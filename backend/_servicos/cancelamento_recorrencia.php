@@ -19,7 +19,7 @@ const CANCELAMENTO_RECORRENCIA_MSG_AGUARDANDO = 'O cancelamento do pagamento aut
 const CANCELAMENTO_RECORRENCIA_MSG_OK_ADMIN = 'Pagamento automático cancelado com sucesso. A assinatura continua ativa.';
 const CANCELAMENTO_RECORRENCIA_MSG_PENDENTE_ADMIN = 'O cancelamento foi solicitado. Aguarde a confirmação do Mercado Pago.';
 const CANCELAMENTO_RECORRENCIA_MSG_FALHA_ADMIN = 'Não foi possível cancelar o pagamento automático. Atualize a situação ou tente novamente.';
-const CANCELAMENTO_RECORRENCIA_MSG_INCERTA = 'O pagamento automático ainda está sendo confirmado com o Mercado Pago. Tente novamente em instantes.';
+const CANCELAMENTO_RECORRENCIA_MSG_INCERTA = 'O cadastro do cartão iniciado anteriormente ainda não foi confirmado pelo Mercado Pago. Para cancelar com segurança, essa verificação precisa ser concluída antes: use "Atualizar situação" no pagamento automático e, se a pendência continuar, fale com o suporte.';
 
 /** Nome da trava por empresa, compartilhada com a troca de cartão e com "Cancelar pagamento automático". */
 function cancelamentoRecorrenciaNomeTrava(int $empresa): string

@@ -29,6 +29,8 @@ const RV_BOM = "\xEF\xBB\xBF";
  *  - "pwa": somente assets em /PWA/ (escopo restrito mantido para uso pontual).
  * Login do cliente, Agenda Online e Área do Cliente usam "todos": todos os seus
  * assets locais seguem a versão central (invalidação previsível de cache/PWA).
+ * O painel do Super Admin também: sem ele, JS/CSS alterados numa versão continuavam
+ * com a mesma URL e o navegador podia seguir usando a cópia antiga.
  */
 function rvArquivosPadrao(): array
 {
@@ -39,6 +41,7 @@ function rvArquivosPadrao(): array
         'public/views/login-cliente.php' => 'todos',
         'public/views/cliente-agendamento.html' => 'todos',
         'public/views/cliente-perfil.html' => 'todos',
+        'public/views/super-admin/painel-super-admin.html' => 'todos',
     ];
 }
 

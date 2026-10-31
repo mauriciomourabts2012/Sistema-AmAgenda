@@ -659,17 +659,32 @@ function pagamentoCartaoEstadoCriacao(?array $vinculo, ?array $operacao): string
     return 'incerta';
 }
 
-/** Conciliação que exige o suporte: mais de uma correspondência externa ou consulta recusada. */
+/**
+ * Tempo, desde a criação da tentativa, a partir do qual "existência não confirmada" deixa de ser atraso do índice do
+ * Mercado Pago e passa a exigir a resolução administrativa do Super Admin (o proprietário não resolve sozinho).
+ */
+const PAGAMENTO_CARTAO_INCERTO_SUPORTE_SEGUNDOS = 3600;
+
+/**
+ * Conciliação que exige o suporte: mais de uma correspondência externa, consulta recusada ou existência não confirmada há
+ * mais de PAGAMENTO_CARTAO_INCERTO_SUPORTE_SEGUNDOS (novas consultas do proprietário não mudam mais o resultado).
+ */
 function pagamentoCartaoCriacaoExigeSuporte(?array $operacao): bool
 {
-    return $operacao !== null && in_array((string)($operacao['erro_codigo'] ?? ''), ['MULTIPLAS_ASSINATURAS_EXTERNAS', 'CONCILIACAO_CONSULTA_RECUSADA'], true);
+    if ($operacao === null) {
+        return false;
+    }
+    $codigo = (string)($operacao['erro_codigo'] ?? '');
+
+    return in_array($codigo, ['MULTIPLAS_ASSINATURAS_EXTERNAS', 'CONCILIACAO_CONSULTA_RECUSADA'], true)
+        || ($codigo === 'EXISTENCIA_NAO_CONFIRMADA' && (int)($operacao['idade_criacao_segundos'] ?? 0) >= PAGAMENTO_CARTAO_INCERTO_SUPORTE_SEGUNDOS);
 }
 
 /**
  * Operação de criação aberta do vínculo (tipo 'conciliar'). Somente leitura.
  *
  * @param array<string, mixed>|null $vinculo
- * @return array{status: string, erro_codigo: ?string, idade_segundos: int}|null
+ * @return array{status: string, erro_codigo: ?string, idade_segundos: int, idade_criacao_segundos: int}|null
  */
 function pagamentoCartaoCriacaoOperacao(mysqli $db, ?array $vinculo): ?array
 {
@@ -677,7 +692,8 @@ function pagamentoCartaoCriacaoOperacao(mysqli $db, ?array $vinculo): ?array
         return null;
     }
     $linha = pagamentoOnlineConsulta($db,
-        "SELECT status_processamento, erro_codigo, TIMESTAMPDIFF(SECOND, COALESCE(ultima_tentativa_em, criado_em), NOW(6)) AS idade
+        "SELECT status_processamento, erro_codigo, TIMESTAMPDIFF(SECOND, COALESCE(ultima_tentativa_em, criado_em), NOW(6)) AS idade,
+                TIMESTAMPDIFF(SECOND, criado_em, NOW(6)) AS idade_criacao
            FROM operacao_assinatura_gateway
           WHERE id_assinatura_pagamento=? AND id_empresa=? AND tipo_operacao='conciliar'
             AND status_processamento IN ('pendente','processando','conciliacao') ORDER BY id_operacao DESC LIMIT 1",
@@ -687,7 +703,7 @@ function pagamentoCartaoCriacaoOperacao(mysqli $db, ?array $vinculo): ?array
     }
 
     return ['status' => (string)$linha['status_processamento'], 'erro_codigo' => $linha['erro_codigo'] !== null ? (string)$linha['erro_codigo'] : null,
-        'idade_segundos' => max(0, (int)$linha['idade'])];
+        'idade_segundos' => max(0, (int)$linha['idade']), 'idade_criacao_segundos' => max(0, (int)$linha['idade_criacao'])];
 }
 
 /**

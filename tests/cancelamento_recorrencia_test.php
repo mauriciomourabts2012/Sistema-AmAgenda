@@ -183,6 +183,9 @@ verificar('erro sem Preapproval externa: libera', $r['ok'] === true);
 // Estado externo incerto.
 $c = new Cenario('pendente', null, null); $c->operacaoAberta = true;
 verificar('criação incerta (operação aberta sem id externo): bloqueia', $bloqueado(rodar($c), 'CANCELAMENTO_RECORRENCIA_INCERTA'));
+verificar('EMPRESA 37 cancelamento comercial: com a criação incerta aberta segue bloqueado, com orientação (não "tente em instantes"); encerrada a operação pela resolução administrativa (vínculo pendente, sem id externo, sem operação aberta), libera sem apagar nada',
+    rodar($c)['msg'] === CANCELAMENTO_RECORRENCIA_MSG_INCERTA && !str_contains(CANCELAMENTO_RECORRENCIA_MSG_INCERTA, 'em instantes') && str_contains(CANCELAMENTO_RECORRENCIA_MSG_INCERTA, 'suporte')
+    && rodar(new Cenario('pendente', null, null)) === ['ok' => true, 'recorrencia' => false]);
 verificar('erro com Preapproval externa não confirmada: bloqueia', $bloqueado(rodar(new Cenario('erro')), 'CANCELAR_PAGAMENTO_AUTOMATICO_PRIMEIRO'));
 verificar('erro com estado externo canceled: libera', rodar(new Cenario('erro', 'PRE-1', 'canceled'))['ok'] === true);
 
@@ -595,7 +598,8 @@ $extrair('backend/_servicos/assinatura.php', [
 ], ['ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE', 'ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H',
     'ASSINATURA_SERVICO_PREAPPROVAL_STATUS_BUSCA', 'ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_MARGEM_SEGUNDOS', 'ASSINATURA_SERVICO_PREAPPROVAL_ATESTADO_MINIMO',
     'ASSINATURA_SERVICO_PREAPPROVAL_FONTES_EVIDENCIA', 'ASSINATURA_SERVICO_PREAPPROVAL_FUSO']);
-$extrair('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php', ['pagamentoCartaoEstadoCriacao', 'pagamentoCartaoCriacaoExigeSuporte']);
+$extrair('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php', ['pagamentoCartaoEstadoCriacao', 'pagamentoCartaoCriacaoExigeSuporte'],
+    ['PAGAMENTO_CARTAO_INCERTO_SUPORTE_SEGUNDOS']); // ATUALIZADO (empresa 37): limite de tempo da existência não confirmada.
 $assSrc = str_replace("\r\n", "\n", $ler('backend/_servicos/assinatura.php'));
 $gwSrc = $ler('backend/_gateways/mercado_pago.php');
 
@@ -724,6 +728,12 @@ verificar('F37 com id externo, ativa ou sem vínculo: não se aplica',
 verificar('F37 suporte exigido só para múltiplas correspondências ou consulta recusada',
     pagamentoCartaoCriacaoExigeSuporte($aberta('conciliacao', 'MULTIPLAS_ASSINATURAS_EXTERNAS', 1)) && pagamentoCartaoCriacaoExigeSuporte($aberta('conciliacao', 'CONCILIACAO_CONSULTA_RECUSADA', 1))
     && !pagamentoCartaoCriacaoExigeSuporte($aberta('conciliacao', 'CONCILIACAO_INDISPONIVEL', 1)) && !pagamentoCartaoCriacaoExigeSuporte(null));
+verificar('EMPRESA 37 existência não confirmada: na primeira hora segue "Atualizar situação"; depois (idade desde a CRIAÇÃO, não do último clique) o proprietário é orientado ao suporte, sem liberar nova criação',
+    !pagamentoCartaoCriacaoExigeSuporte(['idade_criacao_segundos' => 3599] + $aberta('conciliacao', 'EXISTENCIA_NAO_CONFIRMADA', 5))
+    && pagamentoCartaoCriacaoExigeSuporte(['idade_criacao_segundos' => 3600] + $aberta('conciliacao', 'EXISTENCIA_NAO_CONFIRMADA', 5))
+    && !pagamentoCartaoCriacaoExigeSuporte(['idade_criacao_segundos' => 90000] + $aberta('conciliacao', 'CONCILIACAO_INDISPONIVEL', 5))
+    && pagamentoCartaoEstadoCriacao($vp, ['idade_criacao_segundos' => 90000] + $aberta('conciliacao', 'EXISTENCIA_NAO_CONFIRMADA', 5)) === 'incerta'
+    && str_contains($corpo($po, 'pagamentoCartaoCriacaoOperacao'), "TIMESTAMPDIFF(SECOND, criado_em, NOW(6)) AS idade_criacao"));
 $dpNovo = $corpo($po, 'pagamentoCartaoDadosPreapproval');
 verificar('F37 Atualizar situação habilitado pelo servidor sem preapproval_id quando há criação em andamento/incerta; Cadastrar cartão nunca nesses estados',
     str_contains($dpNovo, "'pode_verificar' => \$habilitado && (\$criada || in_array(\$estadoCriacao, ['em_andamento', 'incerta'], true))")
@@ -1054,6 +1064,28 @@ $agoraF5 = new DateTimeImmutable('2026-10-30 12:00:00', new DateTimeZone('Americ
 $conf = fn(string $descricao = 'Painel MP > Assinaturas, filtro pelo e-mail do pagador: nenhuma da referência.', string $quando = '2026-10-30 09:15', string $fonte = 'painel_mercado_pago')
     => ['fonte' => $fonte, 'conferido_em' => $quando, 'descricao' => $descricao];
 $avaliar = fn(array $e, ?array $a) => assinaturaServicoPreapprovalAvaliarEvidencia($e, $a, $tentativa, $agoraF5);
+// Empresa 37 (operação 30, EXISTENCIA_NAO_CONFIRMADA): a conta real sem correspondência e a conferência do responsável no
+// painel do Mercado Pago bastam para a resolução administrativa; sem a conferência, ou com qualquer correspondência, não.
+$evCancelada = assinaturaServicoPreapprovalEvidenciaExterna($conta(array_merge($ctaReal, [$item('C37', $refD2, 'cancelled')])), $refD2, $tentativa);
+verificar('EMPRESA 37 conclusões: conta sem correspondência + conferência no painel = aprovada; sem conferência = indica a evidência faltante; Preapproval da tentativa (mesmo cancelada) = impedida; provedor fora = preservada',
+    $avaliar($ev, $conf())['codigo'] === 'EVIDENCIA_COM_ATESTADO' && $avaliar($ev, $conf())['liberar'] === true
+    && $avaliar($ev, null) === ['liberar' => false, 'codigo' => 'ATESTADO_NECESSARIO', 'atestado_necessario' => true, 'atestado_motivo' => 'ATESTADO_AUSENTE']
+    && $evCancelada['ids'] === ['C37'] && $avaliar($evCancelada, $conf())['codigo'] === 'PREAPPROVAL_EXTERNA_ENCONTRADA'
+    && $avaliar(assinaturaServicoPreapprovalEvidenciaExterna($conta([], ['sucesso' => false, 'codigo' => 'falha_transporte']), $refD2, $tentativa), $conf())['codigo'] === 'EVIDENCIA_INDISPONIVEL'
+    && assinaturaServicoPreapprovalReferenciaRotacionada($refD2) === $ref . '.r2.d2');
+verificar('EMPRESA 37 a operação incerta criada pelo cadastro (tipo conciliar) é exatamente a que a resolução encerra; a nova tentativa reaproveita a referência rotacionada do vínculo',
+    (function () use ($corpo, $assSrc): bool {
+        $reservar = $corpo($assSrc, 'assinaturaServicoPreapprovalReservar');
+        $resolver = $corpo($assSrc, 'assinaturaServicoPreapprovalResolverCriacaoIncerta');
+        $novo = strpos($reservar, 'if ($intencaoNova) {');
+        $inserir = strpos($reservar, 'assinaturaServicoPreapprovalInserirIntencao(');
+
+        return str_contains($reservar, "VALUES (?, ?, 'conciliar', ?, 'processando', 1, NOW(6))")
+            && str_contains($resolver, "tipo_operacao = 'conciliar'") && str_contains($resolver, "status_processamento IN ('pendente', 'processando', 'conciliacao') LIMIT 1")
+            // Só um vínculo novo ganha referência nova; o vínculo existente (resolvido) segue com a referência rotacionada.
+            && substr_count($reservar, 'assinaturaServicoPreapprovalInserirIntencao(') === 1 && $novo !== false && $inserir > $novo
+            && $inserir < strpos($reservar, '} else {', $novo);
+    })());
 verificar('F5 sem marca d\'água e sem atestado: NÃO libera (resultado vazio de pesquisa não é prova)', $avaliar($ev, null) === ['liberar' => false, 'codigo' => 'ATESTADO_NECESSARIO', 'atestado_necessario' => true, 'atestado_motivo' => 'ATESTADO_AUSENTE']);
 verificar('F5 atestado curto não vale; atestado com a conferência no painel (≥ 20 caracteres) vale e fica registrado',
     $avaliar($ev, $conf('ok'))['liberar'] === false && $avaliar($ev, $conf('   curto   '))['atestado_motivo'] === 'ATESTADO_DESCRICAO_INVALIDA'
