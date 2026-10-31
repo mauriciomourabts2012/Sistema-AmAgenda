@@ -253,6 +253,11 @@ function assinaturaResolverCriacaoCartao(mysqli $conexao, int $idEmpresa, int $i
     $conferidoEm = is_scalar($_POST['conferido_em'] ?? null) ? str_replace('T', ' ', trim((string)$_POST['conferido_em'])) : '';
     $conferencia = ($atestado === '' && $fonte === '' && $conferidoEm === '')
         ? null : ['fonte' => $fonte, 'conferido_em' => $conferidoEm, 'descricao' => $atestado];
+    // Evidência coletada pelo servidor no diagnóstico, guardada na sessão deste Super Admin; o navegador só conhece o token.
+    // O serviço só a aceita para a mesma empresa, assinatura, operação e referência, e por tempo limitado.
+    $token = is_scalar($_POST['evidencia_token'] ?? null) ? (string)$_POST['evidencia_token'] : '';
+    $guardadas = is_array($_SESSION['resolver_cartao_evidencia'] ?? null) ? $_SESSION['resolver_cartao_evidencia'] : [];
+    $evidenciaAnterior = preg_match('/^[0-9a-f]{32}$/D', $token) === 1 && is_array($guardadas[$token] ?? null) ? $guardadas[$token] : null;
     require_once __DIR__ . '/../../_servicos/cancelamento_recorrencia.php';
     // Mesma trava por empresa de troca de cartão, cancelamento e demais operações do pagamento automático.
     if (!cancelamentoRecorrenciaObterTrava($conexao, $idEmpresa)) {
@@ -262,12 +267,28 @@ function assinaturaResolverCriacaoCartao(mysqli $conexao, int $idEmpresa, int $i
     try {
         $ator = auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa);
         $gateway = cancelamentoRecorrenciaCarregarGateway();
-        $r = assinaturaServicoPreapprovalResolverCriacaoIncerta($conexao, $gateway, $idEmpresa, $idAssinatura, $ator, $confirmo, $conferencia);
+        $r = assinaturaServicoPreapprovalResolverCriacaoIncerta($conexao, $gateway, $idEmpresa, $idAssinatura, $ator, $confirmo, $conferencia, $evidenciaAnterior);
     } catch (Throwable $erro) {
-        error_log('GESTAO_ASSINATURA_RESOLVER_CRIACAO_CARTAO: ' . get_class($erro));
+        // Causa técnica no log (classe, código e mensagem curta, sem dados do provedor) para o suporte; o usuário vê a neutra.
+        error_log('GESTAO_ASSINATURA_RESOLVER_CRIACAO_CARTAO: ' . get_class($erro) . ' codigo=' . (int)$erro->getCode()
+            . ' ' . mb_substr(preg_replace('/\s+/', ' ', $erro->getMessage()) ?? '', 0, 200));
         out(['ok' => false, 'code' => 'RESOLVER_CRIACAO_ERRO', 'user_msg' => 'Não foi possível concluir a verificação agora. Nada foi alterado.'], 503);
     }
-    $dados = ['id_assinatura' => $idAssinatura, 'id_empresa' => $idEmpresa, 'evidencia' => $r['evidencia'] ?? null,
+    // Guarda só a evidência conclusiva mais recente desta empresa; concluída a resolução, ela é descartada.
+    foreach ($guardadas as $chave => $item) {
+        if (!is_array($item) || (int)($item['id_empresa'] ?? 0) === $idEmpresa
+            || time() - (int)($item['coletada_em'] ?? 0) > ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_REUSO_SEGUNDOS) {
+            unset($guardadas[$chave]);
+        }
+    }
+    $tokenNovo = null;
+    if ($r['ok'] !== true && is_array($r['evidencia_registro'] ?? null)) {
+        $tokenNovo = $evidenciaAnterior !== null && $r['evidencia_registro'] === $evidenciaAnterior ? $token : bin2hex(random_bytes(16));
+        $guardadas[$tokenNovo] = $r['evidencia_registro'];
+    }
+    $_SESSION['resolver_cartao_evidencia'] = $guardadas;
+    $dados = ['id_assinatura' => $idAssinatura, 'id_empresa' => $idEmpresa, 'evidencia' => $r['evidencia'] ?? null, 'contexto' => $r['contexto'] ?? null,
+        'evidencia_token' => $tokenNovo, 'referencia_nova' => $r['referencia_nova'] ?? null,
         'atestado_necessario' => ($r['atestado_necessario'] ?? false) === true, 'atestado_motivo' => $r['atestado_motivo'] ?? null];
     out(['ok' => $r['ok'] === true, 'code' => (string)$r['codigo'], 'user_msg' => (string)$r['mensagem'], 'data' => $dados], $r['ok'] === true ? 200 : (int)($r['http_status'] ?? 409));
 }

@@ -595,7 +595,8 @@ $extrair('backend/_servicos/assinatura.php', [
     'assinaturaServicoPreapprovalEstadoBusca', 'assinaturaServicoPreapprovalVarrerStatus', 'assinaturaServicoPreapprovalLocalizar', 'assinaturaServicoDataValida', 'assinaturaServicoPreapprovalInicioTeste',
     'assinaturaServicoPreapprovalEvidenciaExterna', 'assinaturaServicoPreapprovalAvaliarEvidencia', 'assinaturaServicoNovaContratacaoResultado',
     'assinaturaServicoPreapprovalReferenciaBase', 'assinaturaServicoPreapprovalReferenciaRotacionada', 'assinaturaServicoPreapprovalAtestadoMotivo', 'assinaturaServicoPreapprovalResumoEvidencia',
-], ['ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE', 'ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H',
+    'assinaturaServicoPreapprovalEvidenciaReutilizavel', // ATUALIZADO (empresa 37): reaproveitamento da evidência na confirmação.
+], ['ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_REUSO_SEGUNDOS', 'ASSINATURA_SERVICO_PREAPPROVAL_CONCILIACAO_SEM_ACHADO','ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_LIMITE', 'ASSINATURA_SERVICO_PREAPPROVAL_BUSCA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_REFERENCIA_DIARIA_48H',
     'ASSINATURA_SERVICO_PREAPPROVAL_STATUS_BUSCA', 'ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_PAGINAS', 'ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_MARGEM_SEGUNDOS', 'ASSINATURA_SERVICO_PREAPPROVAL_ATESTADO_MINIMO',
     'ASSINATURA_SERVICO_PREAPPROVAL_FONTES_EVIDENCIA', 'ASSINATURA_SERVICO_PREAPPROVAL_FUSO']);
 $extrair('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php', ['pagamentoCartaoEstadoCriacao', 'pagamentoCartaoCriacaoExigeSuporte'],
@@ -754,8 +755,11 @@ verificar('F37 teste grátis: sem Preapproval criada nunca vira "aguardando_auto
 verificar('F37 UI: estado incerto explica, oferece Atualizar situação e orienta o suporte; nenhum botão de nova criação',
     str_contains($jsPo, 'cadastro_incerto: ["fa-solid fa-triangle-exclamation", "Não foi possível confirmar a abertura do cadastro do cartão", TEXTO_CADASTRO_INCERTO]')
     && str_contains($jsPo, 'fale com o suporte') && str_contains($jsPo, 'TEXTO_SUPORTE_CADASTRO') && str_contains($jsPo, '${autorizar}${trocar}${remover}${botaoVerificar}'));
-verificar('F37 UI: "Tentar novamente" só onde o servidor liberou pode_configurar e a Preapproval não foi criada',
-    substr_count($jsPo, '"Tentar novamente"') === 2 && str_contains($jsPo, '(t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão")')
+// ATUALIZADO (empresa 37): no teste grátis, a tentativa encerrada mostra "Cartão não cadastrado" com "Cadastrar cartão".
+verificar('F37 UI: novo cadastro só onde o servidor liberou pode_configurar e a Preapproval não foi criada',
+    substr_count($jsPo, '"Tentar novamente"') === 1 && str_contains($jsPo, 'const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : "Cadastrar cartão";')
+    && str_contains($jsPo, 'cadastro_nao_criado: ["fa-regular fa-credit-card", "Cartão não cadastrado",')
+    && str_contains($jsPo, 'const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(rotuloAutorizar) : "";')
     && str_contains($jsPo, 'atual.pode_configurar ? botaoAutorizar(criada ? "Continuar no Mercado Pago" : "Tentar novamente")'));
 $ini = $corpo($jsPo, 'iniciarAutorizacaoAssinatura');
 verificar('F37 clique: estado de processamento, sem clique duplicado, URL validada, sem window.open e sem sucesso por inferência',
@@ -1006,8 +1010,9 @@ verificar('F37b interface incerta: explica que a tentativa anterior está sendo 
 verificar('F37b interface incerta: só Atualizar situação (pode_configurar e pode_remover_cartao são decididos pelo servidor e ficam falsos)',
     str_contains($dpNovo, "'pode_verificar' => \$habilitado && (\$criada || in_array(\$estadoCriacao, ['em_andamento', 'incerta'], true))")
     && str_contains($tg, "!in_array(\$situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true)") && str_contains($assSrc, "return ['motivo' => 'OPERACAO_EXTERNA_PENDENTE'"));
-verificar('F37b "Tentar novamente" só em cadastro_nao_criado/pendente sem Preapproval (servidor libera pode_configurar)',
-    str_contains($jsPo, '(t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão")') && substr_count($jsPo, '"Tentar novamente"') === 2);
+// ATUALIZADO (empresa 37): no teste grátis o rótulo é "Cadastrar cartão" (inclusive em cadastro_nao_criado).
+verificar('F37b novo cadastro em cadastro_nao_criado/pendente sem Preapproval só com pode_configurar do servidor',
+    str_contains($jsPo, 'const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : "Cadastrar cartão";') && substr_count($jsPo, '"Tentar novamente"') === 1);
 
 // Recuperação administrativa: não existe reset forçado; permissões das rotas existentes.
 $api4 = (string)file_get_contents(__DIR__ . '/../public/api/api_central.php');
@@ -1102,6 +1107,33 @@ $res37 = assinaturaServicoPreapprovalResumoEvidencia($ev, $avaliar($ev, null), '
 verificar('F37c resumo separa os quatro estados: consulta completa, referência não localizada, existência externa NÃO CONFIRMADA (nunca "inexistente") e evidência ainda insuficiente',
     $res37['consulta_completa'] === true && $res37['referencia_localizada'] === false && $res37['existencia_externa'] === 'nao_confirmada' && $res37['evidencia_suficiente'] === false
     && $res37['itens_varridos'] === 23 && $res37['cobertura_indice'] === false);
+// Empresa 37: a confirmação reaproveita a evidência conclusiva do diagnóstico (sem nova varredura que falharia por
+// instabilidade do provedor) e o resumo diferencia encontrada / não localizada após consulta completa / inconclusiva.
+$reg37 = ['id_empresa' => 37, 'id_assinatura' => 45, 'id_operacao' => 30, 'referencia' => $refD2, 'coletada_em' => 1_000_000, 'evidencia' => $ev];
+$reuso = assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 37, 45, 30, $refD2, 1_000_000 + 600);
+verificar('EMPRESA 37 reaproveitamento: evidência conclusiva da mesma empresa, assinatura, operação e referência, dentro de 15 minutos, é usada na confirmação (marcada como reaproveitada)',
+    $reuso !== null && $reuso['reaproveitada'] === true && $reuso['ids'] === [] && $reuso['completa'] === true
+    && assinaturaServicoPreapprovalAvaliarEvidencia($reuso, $conf(), $tentativa, $agoraF5)['codigo'] === 'EVIDENCIA_COM_ATESTADO');
+verificar('EMPRESA 37 reaproveitamento negado: expirada, outra empresa/assinatura/operação/referência, inconclusiva, com correspondência ou ausente — volta a varrer',
+    assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 37, 45, 30, $refD2, 1_000_000 + 901) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 36, 45, 30, $refD2, 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 37, 44, 30, $refD2, 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 37, 45, 31, $refD2, 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 37, 45, 30, $ref . '.r2.d2', 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel(['evidencia' => ['completa' => false] + $ev] + $reg37, 37, 45, 30, $refD2, 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel(['evidencia' => ['ids' => ['PRE-X']] + $ev] + $reg37, 37, 45, 30, $refD2, 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel(['evidencia' => ['status_honrado' => false] + $ev] + $reg37, 37, 45, 30, $refD2, 1_000_100) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel($reg37, 37, 45, 30, $refD2, 999_000) === null
+    && assinaturaServicoPreapprovalEvidenciaReutilizavel(null, 37, 45, 30, $refD2) === null);
+$aval = fn(array $e) => assinaturaServicoPreapprovalAvaliarEvidencia($e, null, $tentativa, $agoraF5);
+$evIndisp = assinaturaServicoPreapprovalEvidenciaExterna($conta([], ['sucesso' => false, 'codigo' => 'falha_transporte']), $refD2, $tentativa);
+$evAchada = assinaturaServicoPreapprovalEvidenciaExterna($conta(array_merge($ctaReal, [$item('X37', $refD2, 'pending')])), $refD2, $tentativa);
+verificar('EMPRESA 37 resultado da busca: não localizada após consulta completa (com canceladas e limitações explicadas), encontrada (bloqueia) e inconclusiva',
+    $res37['resultado_busca'] === 'nao_localizada' && $res37['canceladas_consultadas'] === true && count($res37['limitacoes']) === 2
+    && assinaturaServicoPreapprovalResumoEvidencia($evAchada, $aval($evAchada), '2026-10-29 22:46:28')['resultado_busca'] === 'encontrada'
+    && $aval($evAchada)['codigo'] === 'PREAPPROVAL_EXTERNA_ENCONTRADA'
+    && assinaturaServicoPreapprovalResumoEvidencia($evIndisp, $aval($evIndisp), '2026-10-29 22:46:28')['resultado_busca'] === 'inconclusiva'
+    && count(assinaturaServicoPreapprovalResumoEvidencia($evIndisp, $aval($evIndisp), '2026-10-29 22:46:28')['limitacoes']) === 4);
 $gTudoLeitura = $conta($ctaReal);
 assinaturaServicoPreapprovalEvidenciaExterna($gTudoLeitura, $refD2, $tentativa);
 verificar('F5 a evidência é SOMENTE LEITURA e independente do filtro de referência: só consultas de busca por status, sem external_reference',
@@ -1166,8 +1198,13 @@ verificar('F5 resolução: duas fases — sem confirmação nada é gravado; a e
     && strpos($res, 'assinaturaServicoPreapprovalAvaliarEvidencia(') < strpos($res, "'CONFIRMACAO_OBRIGATORIA'") && str_contains($res, '$ator === null'));
 verificar('F5 resolução: só opera sobre vínculo sem id externo e operação em conciliação; operação em andamento ou inexistente é recusada',
     str_contains($res, "\$vinculo['assinatura_externa_id'] !== null") && str_contains($res, "(string)\$operacao['status_processamento'] !== 'conciliacao'") && str_contains($res, 'OPERACAO_EM_ANDAMENTO') && str_contains($res, 'SEM_CRIACAO_INCERTA'));
-verificar('F5 resolução: dentro da transação, relê sob FOR UPDATE e aborta se algo mudou (cron, vínculo criado, nova tentativa) — sem corrida',
-    str_contains($res, 'FOR UPDATE') && str_contains($res, "'ESTADO_ALTERADO'") && str_contains($res, "(int)\$atual['tentativas_processamento'] !== (int)\$operacao['tentativas_processamento']") && str_contains($res, "AND status_processamento = 'conciliacao'"));
+// ATUALIZADO (empresa 37): conciliação concorrente que terminou SEM achado (proprietário em "Atualizar situação" ou rotina)
+// não derruba mais a resolução; vínculo criado, outra referência, operação em andamento ou achado continuam abortando.
+verificar('F5 resolução: dentro da transação, relê sob FOR UPDATE e aborta se algo relevante mudou (vínculo criado, referência, operação em andamento ou com achado) — sem corrida',
+    str_contains($res, 'FOR UPDATE') && str_contains($res, "'ESTADO_ALTERADO'") && str_contains($res, "(int)\$atual['tentativas_processamento'] === (int)\$operacao['tentativas_processamento']")
+    && str_contains($res, "(!\$semMudanca && !in_array((string)\$atual['erro_codigo'], ASSINATURA_SERVICO_PREAPPROVAL_CONCILIACAO_SEM_ACHADO, true))")
+    && str_contains($res, "\$atual['assinatura_externa_id'] !== null || (string)\$atual['status_processamento'] !== 'conciliacao'")
+    && str_contains($res, "AND status_processamento = 'conciliacao'"));
 verificar('F5 resolução: preserva a operação histórica (status cancelada, motivo e erro registrados), o vínculo (só o sinal do último erro) e o contrato; nada é apagado',
     str_contains($res, "SET status_processamento = 'cancelada', erro_codigo = 'ENCERRADA_SEM_PREAPPROVAL_EXTERNA'") && !preg_match('/DELETE\s+FROM/', $res)
     && !preg_match('/UPDATE assinatura\s/', $res) && !preg_match('/UPDATE assinatura_pagamento_recorrente\s+SET status\b/', $res) && !str_contains($res, 'chave_operacao')
@@ -1205,8 +1242,9 @@ verificar('F5 o proprietário (e as rotas do cartão) nunca resolvem criação i
 $jsSa5 = $ler('public/js/super-admin/assinatura/gerenciar-assinatura.js');
 verificar('F5 painel do Super Admin: item de menu só para criação incerta; fase 1 mostra a evidência, fase 2 pede a conferência no painel do Mercado Pago (quando necessária) e o número da empresa',
     str_contains($jsPo, 'TEXTO_CADASTRO_INCERTO') && str_contains($jsSa5, 'item.recorrencia?.situacao === "incerta"') && str_contains($jsSa5, 'data-acao="resolver_criacao_cartao"')
-    && str_contains($jsSa5, 'erro.codigo === "ATESTADO_NECESSARIO"') && str_contains($jsSa5, 'erro.codigo === "CONFIRMACAO_OBRIGATORIA"') && str_contains($jsSa5, 'digite o número da empresa')
-    && str_contains($jsSa5, '{ confirmo: "1", confirmar_empresa: idEmpresa'));
+    // ATUALIZADO (empresa 37): o fluxo passou para o modal universal; mesmas fases, mesmo número da empresa digitado.
+    && str_contains($jsSa5, 'erro.codigo === "ATESTADO_NECESSARIO"') && str_contains($jsSa5, 'erro.codigo === "CONFIRMACAO_OBRIGATORIA"') && str_contains($jsSa5, 'Digite o número da empresa (${idEmpresa}) para confirmar')
+    && str_contains($jsSa5, 'confirmo: "1", confirmar_empresa: idEmpresa,') && str_contains($jsSa5, 'if (digitado !== idEmpresa) return falhar('));
 verificar('F5 depois da resolução o proprietário volta ao caminho normal e seguro: sem operação aberta o estado é "nao_criada" (Tentar novamente) e a nova criação passa pela pré-verificação',
     pagamentoCartaoEstadoCriacao($vp, null) === 'nao_criada' && str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalReservar'), "\$acao = 'criar';"));
 // F37c: rotação segura da referência, Preapproval tardia de tentativa anterior e alerta ao Super Admin.
@@ -1248,8 +1286,51 @@ verificar('F37c webhook: Preapproval/fatura de referência antiga do mesmo contr
     && str_contains($wh, "mpSubNaoReconhecido(\$conexao, \$ambiente, \$fatura['referencia'], (string)\$fatura['preapproval_id'])") && str_contains($wh, ', $preapprovalId);'));
 verificar('F37c Super Admin: controlador lê fonte, data/hora e descrição da conferência; o painel coleta as três e exibe o alerta de duplicidade',
     str_contains($saFn, "\$_POST['fonte_evidencia']") && str_contains($saFn, "\$_POST['conferido_em']") && str_contains($saFn, "'atestado_motivo'")
-    && str_contains($jsSa5, 'async function coletarConferencia(') && str_contains($jsSa5, 'fonte_evidencia: FONTES_EVIDENCIA[') && str_contains($jsSa5, 'ALERTAS_RECORRENCIA[item.recorrencia.alerta]')
+    // ATUALIZADO (empresa 37): a conferência é coletada no formulário do modal universal (não mais por prompt()).
+    && str_contains($jsSa5, 'async function confirmarResolucao(') && str_contains($jsSa5, 'fonte_evidencia: fonte, conferido_em: conferidoEm, atestado,')
+    && str_contains($jsSa5, 'ALERTAS_RECORRENCIA[item.recorrencia.alerta]')
     && str_contains($cat, "'assinatura.criacao_cartao_encerrada'"));
+// Empresa 37: confirmação sem varredura redundante, sem corrida com conciliações sem achado e com causa técnica no log.
+$posReuso = strpos($res, 'assinaturaServicoPreapprovalEvidenciaReutilizavel($evidenciaAnterior');
+verificar('EMPRESA 37 resolução: tenta a evidência guardada ANTES de varrer; só guarda para reuso a evidência conclusiva; contexto (assinatura, vínculo, operação, histórico) em todas as respostas',
+    $posReuso !== false && $posReuso < strpos($res, 'assinaturaServicoPreapprovalEvidenciaExterna($gateway')
+    && str_contains($res, "&& (\$evidencia['ids'] ?? null) === []") && str_contains($res, "\$extra = ['evidencia' => \$resumo, 'contexto' => \$contexto, 'evidencia_registro' => \$registro];")
+    && substr_count($res, '$extra') >= 4 && str_contains($res, "'referencia_nova' => \$referenciaNova, 'contexto' => \$contexto]"));
+verificar('EMPRESA 37 resolução: a coluna precisa comportar a nova referência ANTES de confirmar e de gravar (falha precisa, não 503 genérico)',
+    strpos($res, "assinaturaServicoColunaAceita(\$conexao, 'assinatura_pagamento_recorrente', 'referencia_externa_assinatura', \$referenciaNova)")
+        < strpos($res, "'CONFIRMACAO_OBRIGATORIA'") && str_contains($res, "'REFERENCIA_NAO_SUPORTADA'")
+    && strpos($res, "'REFERENCIA_NAO_SUPORTADA'") < strpos($res, 'assinaturaServicoPreapprovalTransacao('));
+$ctxFn = $corpo($assSrc, 'assinaturaServicoPreapprovalContextoResolucao');
+verificar('EMPRESA 37 contexto é somente leitura e sem dados do pagador/provedor (histórico limitado às operações do vínculo)',
+    $ctxFn !== '' && !preg_match('/UPDATE |INSERT |DELETE |email|payer|cartao_externo|cliente_externo/', $ctxFn) && str_contains($ctxFn, 'ORDER BY id_operacao DESC LIMIT 10'));
+verificar('EMPRESA 37 controlador: evidência guardada só na sessão do Super Admin (navegador recebe token aleatório), descartada após a resolução; causa técnica no log',
+    str_contains($saFn, "preg_match('/^[0-9a-f]{32}\$/D', \$token)") && str_contains($saFn, "\$_SESSION['resolver_cartao_evidencia'] = \$guardadas;")
+    && str_contains($saFn, "if (\$r['ok'] !== true && is_array(\$r['evidencia_registro'] ?? null)) {") && str_contains($saFn, 'bin2hex(random_bytes(16))')
+    && str_contains($saFn, "(int)(\$item['id_empresa'] ?? 0) === \$idEmpresa") && str_contains($saFn, "' codigo=' . (int)\$erro->getCode()")
+    && str_contains($saFn, '$confirmo, $conferencia, $evidenciaAnterior)') && !str_contains($saFn, "'evidencia_registro' =>"));
+$htmlSa = $ler('public/views/super-admin/painel-super-admin.html');
+verificar('EMPRESA 37 modal universal: um único modal-geral com diagnóstico, fonte, data/hora, evidência e número da empresa; nenhum prompt/confirm/alert no fluxo',
+    str_contains($htmlSa, 'id="modalResolverCartao" class="modal-geral"') && str_contains($htmlSa, 'id="resolverCartaoDiagnostico"')
+    && str_contains($htmlSa, 'value="painel_mercado_pago"') && str_contains($htmlSa, 'value="suporte_mercado_pago"') && str_contains($htmlSa, 'type="datetime-local"')
+    && str_contains($htmlSa, 'minlength="20" maxlength="300"') && str_contains($htmlSa, 'id="resolverCartaoConfirmarEmpresa"') && str_contains($htmlSa, 'name="evidencia_token"')
+    && !preg_match('/window\.prompt|window\.confirm|[^.\w]alert\(/', $jsSa5) && str_contains($jsSa5, 'window.abrirModal?.("modalResolverCartao")')
+    && str_contains($jsSa5, 'evidencia_token: document.getElementById("resolverCartaoToken").value')
+    && str_contains($jsSa5, 'addEventListener("submit", confirmarResolucao)'));
+verificar('EMPRESA 37 modal: cada desfecho diz o que falta; falha temporária (provedor, servidor, corrida, verificação em curso) nunca vira bloqueio — "Consultar novamente" no próprio modal, preservando a conferência digitada',
+    str_contains($jsSa5, 'O que falta: ${esc(PROXIMO_PASSO[codigo])}') && str_contains($jsSa5, 'data-resolver-repetir')
+    && str_contains($jsSa5, '"EVIDENCIA_INDISPONIVEL", "EVIDENCIA_INCOMPLETA", "OPERACAO_EM_ANDAMENTO", "ESTADO_ALTERADO"')
+    && str_contains($jsSa5, 'const RESOLUCAO_REPETIVEL = ["", ') && str_contains($jsSa5, 'if (!botao.hasAttribute("data-resolver-repetir")) document.getElementById("formResolverCartao")?.reset();')
+    && str_contains($jsSa5, 'evento.target.closest("[data-resolver-repetir]")')
+    && count(array_filter(['ATESTADO_NECESSARIO', 'PREAPPROVAL_EXTERNA_ENCONTRADA', 'EVIDENCIA_INCOMPLETA', 'EVIDENCIA_INDISPONIVEL', 'CONSULTA_RECUSADA', 'OPERACAO_EM_ANDAMENTO',
+        'ESTADO_ALTERADO', 'REFERENCIA_NAO_SUPORTADA', 'REFERENCIA_ESGOTADA', 'RESOLVER_CRIACAO_ERRO', 'SEM_CRIACAO_INCERTA'], fn($c) => str_contains($jsSa5, "    {$c}: \""))) === 11);
+verificar('EMPRESA 37 depois da resolução o proprietário vê "Cartão não cadastrado" e "Cadastrar cartão"; a nova criação passa pela pré-verificação, e consulta inconclusiva nela não cria nada nem bloqueia para sempre',
+    str_contains($jsPo, '"Cartão não cadastrado", "Nenhum cartão está cadastrado: a tentativa anterior não foi concluída e foi encerrada sem cobrança.')
+    && str_contains($assSrc, "'CONSULTA_PREVIA_INDISPONIVEL'") && str_contains($assSrc, "'CONSULTA_PREVIA_RECUSADA'")
+    && str_contains($assSrc, 'Nada foi criado; tente novamente em instantes.'));
+verificar('EMPRESA 37 modal: Preapproval encontrada, consulta inconclusiva, referência esgotada/não suportada nunca reabrem o formulário; estado alterado permite repetir',
+    str_contains($jsSa5, '"PREAPPROVAL_EXTERNA_ENCONTRADA", "EVIDENCIA_INCOMPLETA", "EVIDENCIA_INDISPONIVEL", "CONSULTA_RECUSADA"')
+    && str_contains($jsSa5, '"REFERENCIA_ESGOTADA", "REFERENCIA_NAO_SUPORTADA"') && str_contains($jsSa5, '{ formulario: !bloqueada, erro: bloqueada ? "" : mensagem, codigo: erro.codigo || "" }')
+    && str_contains($jsSa5, 'const liberavel = erro.codigo === "ATESTADO_NECESSARIO" || erro.codigo === "CONFIRMACAO_OBRIGATORIA";'));
 verificar('F37c a resolução não reinicia nem encurta o teste grátis: não grava em assinatura, cobrança, pagamento ou transação e não apaga histórico',
     !preg_match('/UPDATE assinatura\s|INSERT INTO|DELETE\s+FROM|data_fim|data_inicio|transacao_pagamento/', $res));
 

@@ -6276,6 +6276,17 @@ const ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_PAGINAS = 20;
  */
 const ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_MARGEM_SEGUNDOS = 600;
 const ASSINATURA_SERVICO_PREAPPROVAL_ATESTADO_MINIMO = 20;
+/**
+ * Evidência coletada pelo próprio servidor na etapa de diagnóstico pode ser reaproveitada na confirmação por este tempo
+ * (mesma empresa, assinatura, operação e referência). Evita uma segunda varredura completa que só falharia por
+ * instabilidade do provedor; a pré-verificação antes de qualquer novo POST e o webhook continuam valendo.
+ */
+const ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_REUSO_SEGUNDOS = 900;
+/**
+ * Resultados de conciliação que NÃO indicam existência externa: uma conciliação concorrente que termina com um deles
+ * (proprietário em "Atualizar situação" ou rotina automática) não invalida a resolução administrativa.
+ */
+const ASSINATURA_SERVICO_PREAPPROVAL_CONCILIACAO_SEM_ACHADO = ['EXISTENCIA_NAO_CONFIRMADA', 'CONCILIACAO_INDISPONIVEL', 'CONCILIACAO_FALHOU'];
 /** Fontes aceitas para a conferência independente registrada pelo Super Admin. */
 const ASSINATURA_SERVICO_PREAPPROVAL_FONTES_EVIDENCIA = ['painel_mercado_pago', 'suporte_mercado_pago'];
 
@@ -6290,7 +6301,8 @@ function assinaturaServicoPreapprovalEvidenciaExterna(object $gateway, string $r
 {
     $base = assinaturaServicoPreapprovalReferenciaBase($referencia);
     $casa = static fn (string $externa): bool => $externa === $base || str_starts_with($externa, $base . '.');
-    $ev = ['estado' => 'ok', 'completa' => true, 'ids' => [], 'itens' => 0, 'status_honrado' => true, 'mais_recente' => null, 'marca_dagua' => false];
+    $ev = ['estado' => 'ok', 'completa' => true, 'ids' => [], 'itens' => 0, 'status_honrado' => true, 'mais_recente' => null, 'marca_dagua' => false,
+        'canceladas_consultadas' => false];
     $maisRecente = null;
     foreach (['pending', 'authorized', 'paused', 'cancelled'] as $status) {
         $informativa = $status === 'cancelled';
@@ -6305,6 +6317,8 @@ function assinaturaServicoPreapprovalEvidenciaExterna(object $gateway, string $r
         if (!$informativa) {
             $ev['completa'] = $ev['completa'] && $v['completa'];
             $ev['status_honrado'] = $ev['status_honrado'] && $v['status_honrado'];
+        } else {
+            $ev['canceladas_consultadas'] = $v['completa'];
         }
         $ev['itens'] += $v['itens'];
         foreach (array_keys($v['ids']) as $id) {
@@ -6401,8 +6415,23 @@ function assinaturaServicoPreapprovalAvaliarEvidencia(array $ev, ?array $atestad
 function assinaturaServicoPreapprovalResumoEvidencia(array $ev, array $avaliacao, string $tentativaEm): array
 {
     $localizada = ($ev['ids'] ?? []) !== [];
+    $completa = ($ev['estado'] ?? '') === 'ok' && ($ev['completa'] ?? false) === true && ($ev['status_honrado'] ?? false) === true;
+    $limitacoes = ['O Mercado Pago não aplica o filtro pela referência: a conta foi percorrida status a status e cada assinatura conferida aqui.',
+        'Não localizar na consulta não prova que a assinatura não existe; por isso a conferência no painel ou no suporte é obrigatória.'];
+    if (!$completa) {
+        $limitacoes[] = 'A consulta não percorreu todas as assinaturas ou o Mercado Pago não respondeu: o resultado é inconclusivo.';
+    }
+    if (($ev['canceladas_consultadas'] ?? false) !== true) {
+        $limitacoes[] = 'As assinaturas canceladas não puderam ser consultadas por completo.';
+    }
 
     return [
+        // 'encontrada' (bloqueia), 'nao_localizada' (consulta completa sem correspondência) ou 'inconclusiva'.
+        'resultado_busca' => $localizada ? 'encontrada' : ($completa ? 'nao_localizada' : 'inconclusiva'),
+        'canceladas_consultadas' => ($ev['canceladas_consultadas'] ?? false) === true,
+        'limitacoes' => $limitacoes,
+        'evidencia_reaproveitada' => ($ev['reaproveitada'] ?? false) === true,
+        'coletada_em' => $ev['coletada_em'] ?? null,
         'consulta_completa' => ($ev['estado'] ?? '') === 'ok' && ($ev['completa'] ?? false) === true && ($ev['status_honrado'] ?? false) === true,
         'referencia_localizada' => $localizada,
         'existencia_externa' => $localizada ? 'confirmada' : 'nao_confirmada',
@@ -6417,19 +6446,94 @@ function assinaturaServicoPreapprovalResumoEvidencia(array $ev, array $avaliacao
 }
 
 /**
+ * Evidência coletada pelo servidor (etapa de diagnóstico do Super Admin) que ainda pode ser usada na confirmação: mesma
+ * empresa, assinatura, operação e referência, coletada há no máximo ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_REUSO_SEGUNDOS
+ * e conclusiva (enumeração completa, filtro de status honrado, nenhuma correspondência). Qualquer outra situação devolve
+ * null e a confirmação refaz a varredura. Função pura.
+ *
+ * @param array<string, mixed>|null $registro guardado na sessão do Super Admin
+ * @return array<string, mixed>|null a evidência marcada como reaproveitada
+ */
+function assinaturaServicoPreapprovalEvidenciaReutilizavel(?array $registro, int $idEmpresa, int $idAssinatura, int $idOperacao, string $referencia, ?int $agora = null): ?array
+{
+    if ($registro === null || !is_array($registro['evidencia'] ?? null) || !is_int($registro['coletada_em'] ?? null)) {
+        return null;
+    }
+    $agora ??= time();
+    $ev = $registro['evidencia'];
+    $idade = $agora - $registro['coletada_em'];
+    if (($registro['id_empresa'] ?? null) !== $idEmpresa || ($registro['id_assinatura'] ?? null) !== $idAssinatura
+        || ($registro['id_operacao'] ?? null) !== $idOperacao || ($registro['referencia'] ?? null) !== $referencia
+        || $idade < 0 || $idade > ASSINATURA_SERVICO_PREAPPROVAL_EVIDENCIA_REUSO_SEGUNDOS
+        || ($ev['estado'] ?? '') !== 'ok' || ($ev['completa'] ?? false) !== true || ($ev['status_honrado'] ?? false) !== true || ($ev['ids'] ?? null) !== []) {
+        return null;
+    }
+
+    return ['reaproveitada' => true, 'coletada_em' => date('Y-m-d H:i:s', $registro['coletada_em'])] + $ev;
+}
+
+/**
+ * Contexto somente leitura exibido ao Super Admin: assinatura comercial, vínculo, operação incerta, referência e o histórico
+ * de operações do vínculo (sem dados do pagador nem do provedor).
+ *
+ * @param array<string, mixed> $vinculo
+ * @param array<string, mixed> $operacao
+ * @return array<string, mixed>
+ */
+function assinaturaServicoPreapprovalContextoResolucao(mysqli $conexao, int $idEmpresa, int $idAssinatura, array $vinculo, array $operacao): array
+{
+    $assinatura = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT status, modalidade, DATE_FORMAT(teste_expira_em, '%Y-%m-%d %H:%i:%s') AS teste_expira_em, DATE_FORMAT(data_fim, '%Y-%m-%d') AS data_fim
+           FROM assinatura WHERE id_assinatura = ? AND id_empresa = ? LIMIT 1",
+        'ii',
+        $idAssinatura,
+        $idEmpresa
+    )[0] ?? null;
+    $historico = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_operacao, tipo_operacao, status_processamento, erro_codigo, tentativas_processamento,
+                DATE_FORMAT(criado_em, '%Y-%m-%d %H:%i:%s') AS criado_em, DATE_FORMAT(atualizado_em, '%Y-%m-%d %H:%i:%s') AS atualizado_em
+           FROM operacao_assinatura_gateway
+          WHERE id_assinatura_pagamento = ? AND id_empresa = ?
+          ORDER BY id_operacao DESC LIMIT 10",
+        'ii',
+        (int)$vinculo['id_assinatura_pagamento'],
+        $idEmpresa
+    );
+
+    return [
+        'assinatura' => ['id' => $idAssinatura] + ($assinatura ?? []),
+        'vinculo' => ['id' => (int)$vinculo['id_assinatura_pagamento'], 'status' => (string)$vinculo['status'],
+            'status_externo' => $vinculo['status_externo'] ?? null, 'referencia' => (string)$vinculo['referencia_externa_assinatura']],
+        'operacao' => ['id' => (int)$operacao['id_operacao'], 'status' => (string)$operacao['status_processamento'],
+            'erro_codigo' => $operacao['erro_codigo'] ?? null, 'criado_em' => (string)$operacao['criado_em'],
+            'tentativas' => (int)$operacao['tentativas_processamento']],
+        'historico' => array_map(static fn (array $h): array => [
+            'id' => (int)$h['id_operacao'], 'tipo' => (string)$h['tipo_operacao'], 'status' => (string)$h['status_processamento'],
+            'erro_codigo' => $h['erro_codigo'], 'tentativas' => (int)$h['tentativas_processamento'],
+            'criado_em' => (string)$h['criado_em'], 'atualizado_em' => (string)$h['atualizado_em'],
+        ], $historico),
+    ];
+}
+
+/**
  * Resolução ADMINISTRATIVA controlada de uma criação enviada com resultado incerto (Super Admin; trava por empresa e
  * auditoria a cargo do chamador/serviço). Não é um reset: a operação histórica é preservada (status 'cancelada', motivo
  * com a referência usada), nada é criado nem cancelado no provedor e o contrato não muda. Só libera com a enumeração
  * externa completa sem correspondência E a conferência independente completa do Super Admin (fonte, data/hora e
  * identificação da evidência). A nova tentativa recebe uma referência rotacionada (mesma base): a antiga continua
  * identificável e uma Preapproval tardia dela é detectada antes de criar e no webhook, sem ser confundida com a nova.
- * Duas fases: sem `$confirmado` apenas devolve a evidência (nada é gravado).
+ * Duas fases: sem `$confirmado` apenas devolve a evidência (nada é gravado). A confirmação reaproveita a evidência
+ * conclusiva coletada pelo servidor no diagnóstico ($evidenciaAnterior, guardada na sessão do Super Admin), se recente e
+ * da mesma operação e referência; o resultado devolve `evidencia_registro` para o chamador guardar.
  *
  * @param array<string, mixed>|null $ator
  * @param array{fonte?: mixed, conferido_em?: mixed, descricao?: mixed}|null $atestado
+ * @param array<string, mixed>|null $evidenciaAnterior
  * @return array<string, mixed>
  */
-function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, object $gateway, int $idEmpresa, int $idAssinatura, ?array $ator, bool $confirmado, ?array $atestado): array
+function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, object $gateway, int $idEmpresa, int $idAssinatura, ?array $ator, bool $confirmado, ?array $atestado, ?array $evidenciaAnterior = null): array
 {
     $falha = static fn (string $codigo, string $mensagem, int $http = 409, array $extra = []): array => assinaturaServicoNovaContratacaoResultado(false, $codigo, $mensagem, ['http_status' => $http] + $extra);
     if ($idEmpresa <= 0 || $idAssinatura <= 0 || $ator === null) {
@@ -6456,19 +6560,35 @@ function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, obj
     )[0] ?? null;
     if ($operacao === null || (string)$operacao['status_processamento'] !== 'conciliacao') {
         return $falha($operacao === null ? 'SEM_CRIACAO_INCERTA' : 'OPERACAO_EM_ANDAMENTO', $operacao === null
-            ? 'Não há criação incerta de cartão para esta assinatura.' : 'A operação ainda está em andamento. Aguarde a conclusão.');
+            ? 'Não há criação incerta de cartão para esta assinatura.'
+            : 'Uma verificação automática deste cadastro está em andamento agora. Aguarde alguns instantes e tente de novo; nada foi alterado.');
     }
+    $contexto = assinaturaServicoPreapprovalContextoResolucao($conexao, $idEmpresa, $idAssinatura, $vinculo, $operacao);
+    $referenciaAnterior = (string)$vinculo['referencia_externa_assinatura'];
 
     $tentativaEm = new DateTimeImmutable((string)$operacao['criado_em'], new DateTimeZone(date_default_timezone_get()));
-    try {
-        $evidencia = assinaturaServicoPreapprovalEvidenciaExterna($gateway, (string)$vinculo['referencia_externa_assinatura'], $tentativaEm);
-    } catch (Throwable $e) {
-        $evidencia = ['estado' => 'indisponivel', 'completa' => false, 'ids' => []];
+    // Evidência recente coletada pelo próprio servidor (diagnóstico): não refaz a varredura só para confirmar.
+    $evidencia = assinaturaServicoPreapprovalEvidenciaReutilizavel($evidenciaAnterior, $idEmpresa, $idAssinatura, (int)$operacao['id_operacao'], $referenciaAnterior);
+    $registro = $evidencia === null ? null : $evidenciaAnterior;
+    if ($evidencia === null) {
+        try {
+            $evidencia = assinaturaServicoPreapprovalEvidenciaExterna($gateway, $referenciaAnterior, $tentativaEm);
+        } catch (Throwable $e) {
+            $evidencia = ['estado' => 'indisponivel', 'completa' => false, 'ids' => []];
+        }
+        $coletadaEm = time();
+        $evidencia['coletada_em'] = date('Y-m-d H:i:s', $coletadaEm);
+        // Só evidência conclusiva (completa, sem correspondência) pode ser reaproveitada depois.
+        $registro = ($evidencia['estado'] ?? '') === 'ok' && ($evidencia['completa'] ?? false) === true
+            && ($evidencia['status_honrado'] ?? false) === true && ($evidencia['ids'] ?? null) === []
+            ? ['id_empresa' => $idEmpresa, 'id_assinatura' => $idAssinatura, 'id_operacao' => (int)$operacao['id_operacao'],
+                'referencia' => $referenciaAnterior, 'coletada_em' => $coletadaEm, 'evidencia' => $evidencia]
+            : null;
     }
     $avaliacao = assinaturaServicoPreapprovalAvaliarEvidencia($evidencia, $atestado, $tentativaEm);
     $resumo = assinaturaServicoPreapprovalResumoEvidencia($evidencia, $avaliacao, (string)$operacao['criado_em']);
-    $referenciaAnterior = (string)$vinculo['referencia_externa_assinatura'];
     $referenciaNova = assinaturaServicoPreapprovalReferenciaRotacionada($referenciaAnterior);
+    $extra = ['evidencia' => $resumo, 'contexto' => $contexto, 'evidencia_registro' => $registro];
     $mensagens = [
         'PREAPPROVAL_EXTERNA_ENCONTRADA' => ['Existe uma assinatura externa correspondente a esta tentativa (ou a uma anterior do mesmo contrato). Ela deve ser recuperada pela conciliação ("Atualizar situação") ou encerrada no Mercado Pago; nunca descartada.', 409],
         'EVIDENCIA_INCOMPLETA' => ['A consulta ao Mercado Pago não percorreu todas as assinaturas. Tente novamente mais tarde; nada foi alterado.', 409],
@@ -6479,15 +6599,19 @@ function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, obj
     if (!$avaliacao['liberar']) {
         [$mensagem, $http] = $mensagens[$avaliacao['codigo']] ?? ['Não foi possível liberar uma nova tentativa.', 409];
 
-        return $falha($avaliacao['codigo'], $mensagem, $http, ['evidencia' => $resumo, 'atestado_necessario' => $avaliacao['atestado_necessario'],
+        return $falha($avaliacao['codigo'], $mensagem, $http, $extra + ['atestado_necessario' => $avaliacao['atestado_necessario'],
             'atestado_motivo' => $avaliacao['atestado_motivo']]);
     }
     if ($referenciaNova === null) {
-        return $falha('REFERENCIA_ESGOTADA', 'Este contrato já teve tentativas demais de cadastro do cartão. Nada foi alterado; é necessária análise técnica.', 409, ['evidencia' => $resumo]);
+        return $falha('REFERENCIA_ESGOTADA', 'Este contrato já teve tentativas demais de cadastro do cartão. Nada foi alterado; é necessária análise técnica.', 409, $extra);
+    }
+    // A coluna precisa comportar a referência rotacionada (até 42 caracteres); sem isso a gravação falharia no banco.
+    if (!assinaturaServicoColunaAceita($conexao, 'assinatura_pagamento_recorrente', 'referencia_externa_assinatura', $referenciaNova)) {
+        return $falha('REFERENCIA_NAO_SUPORTADA', 'O banco ainda não comporta a nova referência do cadastro do cartão (' . strlen($referenciaNova) . ' caracteres). Nada foi alterado; é necessário ajuste estrutural manual.', 409, $extra);
     }
     if (!$confirmado) {
         return $falha('CONFIRMACAO_OBRIGATORIA', 'A evidência externa e a conferência registrada permitem encerrar a tentativa anterior. Confirme para liberar um novo cadastro de cartão com nova referência. O contrato e o teste grátis não serão alterados.', 409,
-            ['evidencia' => $resumo, 'atestado_necessario' => false]);
+            $extra + ['atestado_necessario' => false]);
     }
 
     $conferencia = [
@@ -6497,11 +6621,11 @@ function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, obj
     ];
     $resultado = assinaturaServicoPreapprovalTransacao(
         $conexao,
-        static function () use ($conexao, $vinculo, $operacao, $idEmpresa, $idAssinatura, $ator, $avaliacao, $resumo, $conferencia, $referenciaAnterior, $referenciaNova, $falha): array {
+        static function () use ($conexao, $vinculo, $operacao, $idEmpresa, $idAssinatura, $ator, $avaliacao, $resumo, $conferencia, $referenciaAnterior, $referenciaNova, $falha, $contexto): array {
             $atual = assinaturaServicoConsultaFinanceira(
                 $conexao,
                 "SELECT v.status, v.assinatura_externa_id, v.referencia_externa_assinatura, o.status_processamento, o.tentativas_processamento,
-                        DATE_FORMAT(o.atualizado_em, '%Y-%m-%d %H:%i:%s.%f') AS atualizado_em
+                        o.erro_codigo, DATE_FORMAT(o.atualizado_em, '%Y-%m-%d %H:%i:%s.%f') AS atualizado_em
                    FROM assinatura_pagamento_recorrente v
                    JOIN operacao_assinatura_gateway o ON o.id_assinatura_pagamento = v.id_assinatura_pagamento
                   WHERE v.id_assinatura_pagamento = ? AND v.id_empresa = ? AND o.id_operacao = ?
@@ -6511,11 +6635,14 @@ function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, obj
                 $idEmpresa,
                 (int)$operacao['id_operacao']
             )[0] ?? null;
-            // Qualquer mudança desde a leitura (conciliação do cron, vínculo criado, nova tentativa) cancela a resolução.
+            // Revalidação sob lock: vínculo ainda sem assinatura externa, mesma referência e operação de novo em conciliação.
+            // Uma conciliação concorrente (proprietário em "Atualizar situação" ou rotina automática) só é aceita se terminou
+            // sem achar nada; qualquer outro desfecho (vinculada, múltiplas, divergente, em andamento) cancela a resolução.
+            $semMudanca = $atual !== null && (int)$atual['tentativas_processamento'] === (int)$operacao['tentativas_processamento']
+                && (string)$atual['atualizado_em'] === (string)$operacao['atualizado_em'];
             if ($atual === null || $atual['assinatura_externa_id'] !== null || (string)$atual['status_processamento'] !== 'conciliacao'
-                || (int)$atual['tentativas_processamento'] !== (int)$operacao['tentativas_processamento']
-                || (string)$atual['atualizado_em'] !== (string)$operacao['atualizado_em']
-                || (string)$atual['referencia_externa_assinatura'] !== $referenciaAnterior) {
+                || (string)$atual['referencia_externa_assinatura'] !== $referenciaAnterior
+                || (!$semMudanca && !in_array((string)$atual['erro_codigo'], ASSINATURA_SERVICO_PREAPPROVAL_CONCILIACAO_SEM_ACHADO, true))) {
                 return $falha('ESTADO_ALTERADO', 'O estado do cadastro mudou durante a verificação. Nada foi alterado; consulte novamente.');
             }
             // A referência usada pela tentativa encerrada fica gravada na própria operação histórica.
@@ -6574,7 +6701,7 @@ function assinaturaServicoPreapprovalResolverCriacaoIncerta(mysqli $conexao, obj
 
             return assinaturaServicoNovaContratacaoResultado(true, 'CRIACAO_INCERTA_ENCERRADA',
                 'A tentativa anterior foi encerrada com segurança. O cliente já pode cadastrar o cartão novamente (nova referência). O contrato e o teste grátis não foram alterados.',
-                ['id_operacao' => (int)$operacao['id_operacao'], 'evidencia' => $resumo, 'referencia_nova' => $referenciaNova]);
+                ['id_operacao' => (int)$operacao['id_operacao'], 'evidencia' => $resumo, 'referencia_nova' => $referenciaNova, 'contexto' => $contexto]);
         }
     );
 

@@ -1402,14 +1402,14 @@
    MODAL CANCELAR ASSINATURA — cartões de modalidade
    (isolado de .modal-campo e de seus labels flutuantes)
 ========================= */
-#modalCancelarAssinatura .cancelamento-modalidades {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-modalidades {
   display: block;
   min-width: 0;
   margin: 18px 0 0;
   padding: 0;
   border: 0;
 }
-#modalCancelarAssinatura .cancelamento-modalidades legend {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-modalidades legend {
   width: 100%;
   margin: 0 0 12px;
   padding: 0;
@@ -1418,12 +1418,12 @@
   font-weight: 800;
   line-height: 1.3;
 }
-#modalCancelarAssinatura .cancelamento-opcoes {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-opcoes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
-#modalCancelarAssinatura label.cancelamento-opcao {
+:is(#modalCancelarAssinatura, #modalResolverCartao) label.cancelamento-opcao {
   position: static;
   display: flex;
   align-items: flex-start;
@@ -1439,20 +1439,20 @@
   cursor: pointer;
   transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
 }
-#modalCancelarAssinatura label.cancelamento-opcao:hover {
+:is(#modalCancelarAssinatura, #modalResolverCartao) label.cancelamento-opcao:hover {
   border-color: #8db8ec;
   background: #f8fbff;
 }
-#modalCancelarAssinatura label.cancelamento-opcao:has(input:checked) {
+:is(#modalCancelarAssinatura, #modalResolverCartao) label.cancelamento-opcao:has(input:checked) {
   border-color: #1976d2;
   background: #eef6ff;
   box-shadow: 0 0 0 3px rgba(25, 118, 210, .12);
 }
-#modalCancelarAssinatura label.cancelamento-opcao:has(input:disabled) {
+:is(#modalCancelarAssinatura, #modalResolverCartao) label.cancelamento-opcao:has(input:disabled) {
   cursor: not-allowed;
   opacity: .68;
 }
-#modalCancelarAssinatura .cancelamento-opcao input[type="radio"] {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-opcao input[type="radio"] {
   position: static;
   flex: 0 0 20px;
   width: 20px;
@@ -1463,7 +1463,7 @@
   accent-color: #1976d2;
   cursor: inherit;
 }
-#modalCancelarAssinatura .cancelamento-opcao-conteudo {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-opcao-conteudo {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1473,15 +1473,15 @@
   font-weight: 400;
   line-height: 1.45;
 }
-#modalCancelarAssinatura .cancelamento-opcao-conteudo strong {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-opcao-conteudo strong {
   color: #0f172a;
   font-size: 15px;
   font-weight: 800;
 }
-#modalCancelarAssinatura .cancelamento-opcao-conteudo > span {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-opcao-conteudo > span {
   overflow-wrap: anywhere;
 }
-#modalCancelarAssinatura .cancelamento-previa {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-previa {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -1493,12 +1493,52 @@
   font-weight: 700;
   line-height: 1.35;
 }
-#modalCancelarAssinatura .cancelamento-previa[hidden] {
+:is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-previa[hidden] {
   display: none;
 }
 @media (max-width: 639px) {
-  #modalCancelarAssinatura .cancelamento-opcoes { grid-template-columns: 1fr; }
-  #modalCancelarAssinatura label.cancelamento-opcao { min-height: 0; padding: 14px; }
+  :is(#modalCancelarAssinatura, #modalResolverCartao) .cancelamento-opcoes { grid-template-columns: 1fr; }
+  :is(#modalCancelarAssinatura, #modalResolverCartao) label.cancelamento-opcao { min-height: 0; padding: 14px; }
+}
+
+/* =========================
+   MODAL RESOLVER CADASTRO DE CARTÃO INCERTO — seções, dados técnicos, campos com rótulo acima e rodapé fixo.
+   Reaproveita a estrutura universal (.modal-geral/.modal-topo/.modal-corpo/.modal-acoes), os cartões de opção do
+   cancelamento e os avisos .atraso-feedback/.atraso-alertas.
+========================= */
+#modalResolverCartao .modal-conteudo { width: min(760px, calc(100vw - 40px)); }
+#modalResolverCartao label.cancelamento-opcao { min-height: 0; }
+#modalResolverCartao .cancelamento-modalidades { margin-top: 4px; }
+#modalResolverCartao .cancelamento-modalidades legend { margin-bottom: 10px; font-size: 14px; font-weight: 700; }
+#modalResolverCartao .resolver-secao { margin: 16px 0 0; padding: 16px 18px; border: 1px solid #e6ebf2; border-radius: 14px; background: #fff; }
+#modalResolverCartao .resolver-secao-titulo { margin: 0 0 12px; color: #14213d; font-size: 16px; font-weight: 800; line-height: 1.3; }
+#modalResolverCartao .resolver-dados { display: grid; grid-template-columns: minmax(150px, 32%) minmax(0, 1fr); gap: 10px 16px; margin: 0; }
+#modalResolverCartao .resolver-dados dt { color: #315279; font-size: 12px; font-weight: 800; line-height: 1.5; }
+#modalResolverCartao .resolver-dados dd { min-width: 0; margin: 0; color: #1e293b; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+#modalResolverCartao .resolver-referencia { display: block; padding: 6px 8px; border-radius: 8px; background: #f1f5f9; color: #1e293b; font-size: 12.5px; word-break: break-all; }
+#modalResolverCartao .atraso-feedback { margin: 0; font-weight: 500; line-height: 1.45; }
+#modalResolverCartao .atraso-alertas { margin-top: 12px; line-height: 1.45; }
+#modalResolverCartao .resolver-historico summary { color: #1d4e89; font-size: 14px; font-weight: 700; cursor: pointer; }
+#modalResolverCartao .resolver-historico ul { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+#modalResolverCartao .resolver-historico li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid #e6ebf2; border-radius: 10px; background: #f8fafc; font-size: 13px; }
+#modalResolverCartao .resolver-historico li strong { color: #14213d; }
+#modalResolverCartao .resolver-historico li span { color: #64748b; overflow-wrap: anywhere; }
+#modalResolverCartao .resolver-repetir { margin-top: 12px; }
+#modalResolverCartao .resolver-campo { display: grid; gap: 6px; margin-top: 16px; }
+#modalResolverCartao .resolver-campo label { color: #14213d; font-size: 14px; font-weight: 700; }
+#modalResolverCartao .resolver-campo :is(input, textarea) { width: 100%; padding: 12px; border: 1px solid #d9e2ec; border-radius: 10px; background: #f8fafc; color: #1e293b; font: inherit; font-size: 14px; }
+#modalResolverCartao .resolver-campo textarea { min-height: 88px; resize: vertical; }
+#modalResolverCartao .resolver-campo :is(input, textarea):focus { border-color: #1976d2; background: #fff; outline: none; box-shadow: 0 0 0 3px rgba(25, 118, 210, .12); }
+#modalResolverCartao .resolver-campo small { color: #64748b; font-size: 12px; line-height: 1.4; }
+#modalResolverCartao #resolverCartaoErro { margin-top: 14px; }
+/* Rodapé fora do corpo com rolagem: permanece visível com o cabeçalho. */
+#modalResolverCartao .resolver-rodape { flex: 0 0 auto; margin: 0; padding: 14px 24px; background: #fff; }
+@media (max-width: 639px) {
+  #modalResolverCartao .modal-conteudo { width: 100%; }
+  #modalResolverCartao .resolver-secao { padding: 14px; }
+  #modalResolverCartao .resolver-dados { grid-template-columns: 1fr; gap: 2px; }
+  #modalResolverCartao .resolver-dados dd + dt { margin-top: 10px; }
+  #modalResolverCartao .resolver-rodape { padding: 12px; }
 }
 
 /* =========================

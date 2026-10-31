@@ -284,7 +284,8 @@
     // Sem Preapproval criada nunca se afirma "aguardando sua autorização": a criação é incerta (conferência em curso) ou
     // a tentativa anterior foi encerrada. Em ambos os casos o teste grátis e o contrato não são afetados.
     cadastro_incerto: ["fa-solid fa-triangle-exclamation", "Não foi possível confirmar a abertura do cadastro do cartão", TEXTO_CADASTRO_INCERTO],
-    cadastro_nao_criado: ["fa-regular fa-credit-card", "Cadastro do cartão não aberto", "O cadastro do cartão não foi aberto no Mercado Pago. Seus dias grátis continuam valendo. Você pode tentar novamente; a tentativa anterior é conferida antes de qualquer nova criação."]
+    // Também é o estado depois da resolução administrativa de uma tentativa incerta (operação encerrada pelo suporte).
+    cadastro_nao_criado: ["fa-regular fa-credit-card", "Cartão não cadastrado", "Nenhum cartão está cadastrado: a tentativa anterior não foi concluída e foi encerrada sem cobrança. Seus dias grátis continuam valendo. Você pode cadastrar um cartão; antes de abrir um novo cadastro, o AmAgenda confere no Mercado Pago que não existe outro."]
   };
 
   function renderizarTeste(alvo, atual, botaoVerificar) {
@@ -320,7 +321,7 @@
     const trocar = atual.pode_trocar_cartao
       ? '<button class="botao-geral" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
     if (t.situacao === "cadastro_incerto" && t.criacao_exige_suporte) texto += TEXTO_SUPORTE_CADASTRO;
-    const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : (t.situacao === "cadastro_nao_criado" ? "Tentar novamente" : "Cadastrar cartão");
+    const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : "Cadastrar cartão";
     const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(rotuloAutorizar) : "";
     const rotuloRemover = t.em_teste ? (t.autorizacao_confirmada === true ? "Cancelar cartão autorizado" : "Desistir do cadastro do cartão") : "Pagar com PIX em vez do cartão";
     const remover = t.pode_remover_cartao

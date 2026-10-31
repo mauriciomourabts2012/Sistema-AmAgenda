@@ -6,32 +6,32 @@
     <title>AmAgenda • Painel SuperAdim</title>
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
     <link rel="manifest" href="/manifest.json">
-    <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.12.0">
+    <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.13.0">
     
     <!--CSS WEB-->
-    <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.12.0"/>
-    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/perfil.css?v=1.12.0">
-    <link rel="stylesheet" href="../../css/documentos-legais/documentos-legais.css?v=1.12.0">
+    <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.13.0"/>
+    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/perfil.css?v=1.13.0">
+    <link rel="stylesheet" href="../../css/documentos-legais/documentos-legais.css?v=1.13.0">
 
     <!--CSS MOBILE-->
-    <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.12.0"/>
-    <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css?v=1.12.0"/>
+    <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.13.0"/>
+    <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css?v=1.13.0"/>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
 
   <!--Verifica se usuario esta logado se nã oredireciona para tela de login-->
-  <script src="/public/_auth/sessao.js?v=1.12.0"></script>
-  <script src="/public/js/mensagem-universal.js?v=1.12.0"></script>
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.12.0"></script>
+  <script src="/public/_auth/sessao.js?v=1.13.0"></script>
+  <script src="/public/js/mensagem-universal.js?v=1.13.0"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.13.0"></script>
   </head>
 
   <body data-menu-contexto="super-admin">
@@ -1027,6 +1027,62 @@
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Resolução administrativa de cadastro de cartão incerto (diagnóstico, conferência e resultado) -->
+      <div id="modalResolverCartao" class="modal-geral" aria-hidden="true">
+        <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloModalResolverCartao">
+          <div class="modal-topo">
+            <h2 id="tituloModalResolverCartao">Resolver cadastro de cartão incerto</h2>
+            <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
+          </div>
+          <div class="modal-corpo">
+            <!-- Resumo da assinatura, verificação do Mercado Pago e histórico: preenchidos pelo JS a partir do diagnóstico. -->
+            <div id="resolverCartaoDiagnostico" aria-live="polite"></div>
+            <form id="formResolverCartao" class="resolver-secao" autocomplete="off" hidden>
+              <h3 class="resolver-secao-titulo">Confirmação administrativa</h3>
+              <input type="hidden" id="resolverCartaoAssinatura" name="id_assinatura" value="">
+              <input type="hidden" id="resolverCartaoEmpresa" name="id_empresa" value="">
+              <input type="hidden" id="resolverCartaoToken" name="evidencia_token" value="">
+              <fieldset class="cancelamento-modalidades">
+                <legend>Onde a conferência foi feita</legend>
+                <div class="cancelamento-opcoes">
+                  <label class="cancelamento-opcao" for="resolverCartaoFontePainel">
+                    <input type="radio" id="resolverCartaoFontePainel" name="fonte_evidencia" value="painel_mercado_pago" required>
+                    <span class="cancelamento-opcao-conteudo"><strong>Painel do Mercado Pago</strong><span>Consulta feita por você na conta do AmAgenda.</span></span>
+                  </label>
+                  <label class="cancelamento-opcao" for="resolverCartaoFonteSuporte">
+                    <input type="radio" id="resolverCartaoFonteSuporte" name="fonte_evidencia" value="suporte_mercado_pago">
+                    <span class="cancelamento-opcao-conteudo"><strong>Suporte do Mercado Pago</strong><span>Confirmação recebida do atendimento, com protocolo.</span></span>
+                  </label>
+                </div>
+              </fieldset>
+              <div class="resolver-campo">
+                <label for="resolverCartaoConferidoEm">Data e hora da conferência</label>
+                <input id="resolverCartaoConferidoEm" name="conferido_em" type="datetime-local" required>
+                <small>Horário de Brasília. Depois da tentativa e não no futuro.</small>
+              </div>
+              <div class="resolver-campo">
+                <label for="resolverCartaoAtestado">Evidência consultada</label>
+                <textarea id="resolverCartaoAtestado" name="atestado" rows="3" minlength="20" maxlength="300" required></textarea>
+                <small>Filtros usados, e-mail do pagador conferido ou protocolo do suporte (20 a 300 caracteres).</small>
+              </div>
+              <div class="resolver-campo">
+                <label id="resolverCartaoConfirmarRotulo" for="resolverCartaoConfirmarEmpresa">Digite o número da empresa para confirmar</label>
+                <input id="resolverCartaoConfirmarEmpresa" name="confirmar_empresa" type="text" inputmode="numeric" autocomplete="off" required>
+              </div>
+              <p id="resolverCartaoErro" class="atraso-feedback atraso-feedback--erro" role="alert" hidden></p>
+            </form>
+          </div>
+          <!-- Rodapé fora da área com rolagem: cabeçalho e ações sempre visíveis. -->
+          <div class="modal-acoes resolver-rodape">
+            <button id="resolverCartaoCancelar" class="botao-geral" data-fechar-modal type="button">Cancelar</button>
+            <button id="resolverCartaoEnviar" class="botao-geral destaque" type="submit" form="formResolverCartao" hidden>
+              <i class="fa-solid fa-unlock" aria-hidden="true"></i>
+              Encerrar tentativa e liberar novo cadastro
+            </button>
           </div>
         </div>
       </div>
@@ -2300,56 +2356,56 @@
     </div><!-- /.agenda-app-shell -->
 
     <!--lista Core-->
-    <script src="../../js/core/lista-core.js?v=1.12.0" ></script>
-    <script src="../../js/menu-lateral/menu-lateral.js?v=1.12.0"></script>
-    <script src="../../js/notificacoes/notificacoes.js?v=1.12.0"></script>
+    <script src="../../js/core/lista-core.js?v=1.13.0" ></script>
+    <script src="../../js/menu-lateral/menu-lateral.js?v=1.13.0"></script>
+    <script src="../../js/notificacoes/notificacoes.js?v=1.13.0"></script>
 
 
     <!--Modal Perfil-->
-    <script src="/public/_auth/deslogar.js?v=1.12.0" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-    <script src="../../js/componentes/processador-imagem.js?v=1.12.0" ></script> <!--Processador compartilhado de imagens (carregar antes de alterar_perfil_foto.js)-->
-    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.12.0" ></script> <!--Alterar Foto de perfil do modal perfil-->
-    <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.12.0" ></script> <!--Buscar Foto de perfil do usuario logado-->
-    <script src="/public/js/componentes/indicador-senha.js?v=1.12.0"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
-    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.12.0" ></script> <!--Alterar senha perfil-->
+    <script src="/public/_auth/deslogar.js?v=1.13.0" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+    <script src="../../js/componentes/processador-imagem.js?v=1.13.0" ></script> <!--Processador compartilhado de imagens (carregar antes de alterar_perfil_foto.js)-->
+    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.13.0" ></script> <!--Alterar Foto de perfil do modal perfil-->
+    <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.13.0" ></script> <!--Buscar Foto de perfil do usuario logado-->
+    <script src="/public/js/componentes/indicador-senha.js?v=1.13.0"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
+    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.13.0" ></script> <!--Alterar senha perfil-->
 
 
     <!--ABA EMPRESAS-->
-    <script src="../../js/super-admin/empresa/lista-empresa.js?v=1.12.0"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
-    <script src="../../js/super-admin/empresa/cadastrar_empresa.js?v=1.12.0" ></script> <!--Cadastrar novas empresas-->
-    <script src="../../js/super-admin/empresa/editar_empresa.js?v=1.12.0" ></script> <!--Editar dados de cadastro da empresa -->
-    <script src="../../js/super-admin/cobranca/gerenciar-cobranca.js?v=1.12.0" ></script> <!--Listar e gerar cobranças -->
-    <script src="../../js/super-admin/assinatura/gerenciar-assinatura.js?v=1.12.0" ></script> <!--Gerenciar contratos e histórico de assinaturas -->
+    <script src="../../js/super-admin/empresa/lista-empresa.js?v=1.13.0"></script>  <!-- Lista as empresas e preeche o modal Editar com dados necessarios para edição-->
+    <script src="../../js/super-admin/empresa/cadastrar_empresa.js?v=1.13.0" ></script> <!--Cadastrar novas empresas-->
+    <script src="../../js/super-admin/empresa/editar_empresa.js?v=1.13.0" ></script> <!--Editar dados de cadastro da empresa -->
+    <script src="../../js/super-admin/cobranca/gerenciar-cobranca.js?v=1.13.0" ></script> <!--Listar e gerar cobranças -->
+    <script src="../../js/super-admin/assinatura/gerenciar-assinatura.js?v=1.13.0" ></script> <!--Gerenciar contratos e histórico de assinaturas -->
 
     
     <!--ABA USUARIOS-->
-    <script src="../../js/super-admin/usuario/lista-usuario.js?v=1.12.0"></script> <!--Lista de Usuarios e preeche o modal Editar com dados necessarios para edição.-->
-    <script src="../../js/super-admin/usuario/cadastrar-usuario.js?v=1.12.0" ></script> <!--Cadastrar Usuarios-->
-    <script src="../../js/super-admin/usuario/editar_usuario.js?v=1.12.0" ></script> <!--Editar usuario comum-->
+    <script src="../../js/super-admin/usuario/lista-usuario.js?v=1.13.0"></script> <!--Lista de Usuarios e preeche o modal Editar com dados necessarios para edição.-->
+    <script src="../../js/super-admin/usuario/cadastrar-usuario.js?v=1.13.0" ></script> <!--Cadastrar Usuarios-->
+    <script src="../../js/super-admin/usuario/editar_usuario.js?v=1.13.0" ></script> <!--Editar usuario comum-->
 
     <!--ABA USUARIOS SUPER-->
-    <script src="../../js/super-admin/usuario-super/lista-usuario-super.js?v=1.12.0" ></script> <!--Listas de usuarios super-->
-    <script src="../../js/super-admin/usuario-super/cadastrar-usuario-super.js?v=1.12.0" ></script><!--cadastrar usuarios super administrador-->
-    <script src="../../js/super-admin/usuario-super/editar_usuario_super.js?v=1.12.0" ></script>
+    <script src="../../js/super-admin/usuario-super/lista-usuario-super.js?v=1.13.0" ></script> <!--Listas de usuarios super-->
+    <script src="../../js/super-admin/usuario-super/cadastrar-usuario-super.js?v=1.13.0" ></script><!--cadastrar usuarios super administrador-->
+    <script src="../../js/super-admin/usuario-super/editar_usuario_super.js?v=1.13.0" ></script>
 
     <!--ABA PLANOS-->
-    <script src="../../js/super-admin/plano/lista-plano.js?v=1.12.0" ></script>
-    <script src="../../js/super-admin/plano/cadastrar-plano.js?v=1.12.0" ></script> <!--Cadastrar Planos-->
-    <script src="../../js/super-admin/plano/editar_plano.js?v=1.12.0" ></script> <!--Editar dados do modal-->
+    <script src="../../js/super-admin/plano/lista-plano.js?v=1.13.0" ></script>
+    <script src="../../js/super-admin/plano/cadastrar-plano.js?v=1.13.0" ></script> <!--Cadastrar Planos-->
+    <script src="../../js/super-admin/plano/editar_plano.js?v=1.13.0" ></script> <!--Editar dados do modal-->
 
     <!--ABA AUDITORIA-->
-    <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=1.12.0"></script>
+    <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=1.13.0"></script>
 
     <!--ABA DOCUMENTOS LEGAIS-->
-    <script src="../../js/documentos-legais/preview.js?v=1.12.0"></script>
+    <script src="../../js/documentos-legais/preview.js?v=1.13.0"></script>
 
     <!--ABA INTEGRAÇÕES-->
-    <script src="../../js/super-admin/integracao/mercado-pago.js?v=1.12.0"></script>
+    <script src="../../js/super-admin/integracao/mercado-pago.js?v=1.13.0"></script>
 
 
     <!--Universal-->
-    <script src="../../js/select-lista-universal.js?v=1.12.0" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
-    <script src="../../js/altear_status_universal.js?v=1.12.0" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+    <script src="../../js/select-lista-universal.js?v=1.13.0" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+    <script src="../../js/altear_status_universal.js?v=1.13.0" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
 
 
     <script> //Script abre e fechar todos os modals (MODAL EDITAR NÃO AEBRE E NEM FECHAR POR AQUI DIRETO NOS JS DE LISTAS)
