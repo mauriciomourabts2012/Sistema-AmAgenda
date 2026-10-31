@@ -998,6 +998,60 @@ function pagamentoCartaoPreapprovalOutroCartao(mysqli $db, object $gateway, int 
 }
 
 /** O retorno só sincroniza a autorização. Faturas/pagamentos permanecem no webhook e na conciliação financeira. */
+/**
+ * "Desistir do cadastro do cartão" / "Pagar com PIX em vez do cartão": registra a intenção (transação curta, sem rede) e
+ * tenta o cancelamento externo agora, pelo outbox. Se o provedor RECUSAR (o Mercado Pago não encerra um checkout aberto
+ * e não concluído), nada fica preso em 'cancelamento_pendente': o vínculo volta ao estado anterior, a Preapproval continua
+ * vinculada (nunca ignorada nem recriada) e o cadastro aberto pode ser concluído. Resultado incerto ou provedor fora do
+ * ar mantêm 'cancelamento_pendente' com a operação aberta (conciliável; nunca dado como cancelado).
+ *
+ * @return array{resultado: array<string, mixed>, processamento: ?array<string, mixed>, nao_aplicada: bool}
+ */
+function pagamentoCartaoDesistirCadastro(mysqli $db, object $gateway, int $empresa): array
+{
+    if (!$db->begin_transaction()) throw new RuntimeException('Falha ao iniciar a troca para PIX.');
+    try {
+        $r = assinaturaServicoPreapprovalDesistirPrimeiraCobranca($db, $empresa);
+        if (($r['ok'] ?? false) !== true) {
+            $db->rollback();
+            pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
+        }
+        if (!$db->commit()) throw new RuntimeException('Falha ao confirmar a troca para PIX.');
+    } catch (PagamentoOnlineErro $e) {
+        throw $e;
+    } catch (Throwable $e) {
+        try { $db->rollback(); } catch (Throwable) {}
+        throw $e;
+    }
+    $processamento = null;
+    $naoAplicada = false;
+    if (($r['id_operacao'] ?? null) !== null) {
+        if (!function_exists('mpSubOperacaoProcessar')) {
+            if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
+            if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
+            require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
+        }
+        try {
+            $processamento = mpSubOperacaoProcessar($db, $gateway, (int)$r['id_operacao'], $empresa);
+        } catch (Throwable $e) {
+            mpWebhookRollback($db);
+            error_log('PAGAMENTO_CARTAO_USAR_PIX: ' . get_class($e));
+        }
+        if (($processamento['resultado'] ?? '') === 'erro' && ($processamento['codigo'] ?? '') === 'PROVEDOR_REJEITOU') {
+            // Estado externo atual antes de decidir (se já estiver cancelado, a sincronização encerra o vínculo).
+            try {
+                mpSubSincronizarPreapproval($db, $gateway, $gateway->ambiente(), (string)($r['preapproval_id'] ?? ''), null, $empresa);
+            } catch (Throwable $e) {
+                mpWebhookRollback($db);
+                error_log('PAGAMENTO_CARTAO_USAR_PIX_SYNC: ' . get_class($e));
+            }
+            $naoAplicada = assinaturaServicoPreapprovalRecuperarDesistenciaRecusada($db, $empresa);
+        }
+    }
+
+    return ['resultado' => $r, 'processamento' => $processamento, 'nao_aplicada' => $naoAplicada];
+}
+
 function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $empresa, string $email, bool $forcar = false): array
 {
     if (!$gateway::subscriptionsHabilitado()) {
@@ -1035,6 +1089,9 @@ function pagamentoCartaoPreapprovalConsultar(mysqli $db, object $gateway, int $e
     if ($r['resultado'] !== 'processado') {
         pagamentoOnlineFalhar('AUTORIZACAO_VERIFICACAO_PENDENTE', 'Não foi possível confirmar a autorização. Atualize a situação novamente mais tarde.', 503);
     }
+    // Desistência anterior recusada pelo provedor com o checkout ainda `pending` (estado sincronizado agora): destrava sem
+    // depender do suporte, devolvendo o cadastro aberto ao estado anterior.
+    assinaturaServicoPreapprovalRecuperarDesistenciaRecusada($db, $empresa);
     $sincronizado = pagamentoCartaoVinculoAtual($db, $empresa, $gateway->ambiente());
     if (assinaturaServicoPreapprovalContratacaoPendente($contratoAtual) || assinaturaServicoPreapprovalTesteApto($contratoAtual)
         || ($sincronizado !== null && (in_array((string)$sincronizado['status'], ['cancelada', 'encerrada'], true)
@@ -1680,34 +1737,17 @@ try {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);
         csrfValidarSessao();
         $gatewayCartao = pagamentoCartaoGatewayAtivo();
-        if (!$conexao->begin_transaction()) throw new RuntimeException('Falha ao iniciar a troca para PIX.');
-        try {
-            $r = assinaturaServicoPreapprovalDesistirPrimeiraCobranca($conexao, $empresa);
-            if (($r['ok'] ?? false) !== true) {
-                $conexao->rollback();
-                pagamentoOnlineFalhar((string)$r['codigo'], (string)$r['mensagem'], (int)($r['http_status'] ?? 409));
-            }
-            if (!$conexao->commit()) throw new RuntimeException('Falha ao confirmar a troca para PIX.');
-        } catch (PagamentoOnlineErro $e) {
-            throw $e;
-        } catch (Throwable $e) {
-            try { $conexao->rollback(); } catch (Throwable) {}
-            throw $e;
-        }
-        if (($r['id_operacao'] ?? null) !== null) {
-            if (!defined('MP_WEBHOOK_BIBLIOTECA')) define('MP_WEBHOOK_BIBLIOTECA', true);
-            if (MP_WEBHOOK_BIBLIOTECA !== true) throw new RuntimeException('Processamento indisponível.');
-            require_once __DIR__ . '/../../webhooks/webhook_mercado_pago.php';
-            try {
-                mpSubOperacaoProcessar($conexao, $gatewayCartao, (int)$r['id_operacao'], $empresa);
-            } catch (Throwable $e) {
-                mpWebhookRollback($conexao);
-                error_log('PAGAMENTO_CARTAO_USAR_PIX: ' . get_class($e));
-            }
-        }
+        $desistencia = pagamentoCartaoDesistirCadastro($conexao, $gatewayCartao, $empresa);
+        $r = $desistencia['resultado'];
         $dados = pagamentoCartaoConfiguracao($conexao, $gatewayCartao, $empresa);
         $liberado = ($dados['primeira_cobranca']['pode_pagar_pix'] ?? false) === true
             || ($dados['teste_gratis']['pode_pagar_pix'] ?? false) === true;
+        if ($desistencia['nao_aplicada']) {
+            out(['ok'=>true,'code'=>'DESISTENCIA_NAO_APLICADA','user_msg'=>($r['teste'] ?? false) === true
+                ? 'O Mercado Pago não permitiu encerrar o cadastro do cartão que ficou aberto. Nada é cobrado sem que você conclua a autorização no Mercado Pago, e seus dias grátis continuam valendo. Você pode concluir o cadastro em "Continuar no Mercado Pago" quando quiser.'
+                : 'O Mercado Pago não permitiu encerrar a autorização do cartão que ficou aberta. Nada é cobrado sem que você a conclua; para pagar com PIX agora, fale com o suporte.',
+                'data'=>$dados]);
+        }
         out(['ok'=>true,'code'=>$liberado ? 'PIX_LIBERADO' : 'CANCELAMENTO_CARTAO_SOLICITADO',
             'user_msg'=>$liberado ? 'Pagamento no cartão cancelado. Você já pode pagar com PIX.' : (string)$r['mensagem'],
             'data'=>$dados]);

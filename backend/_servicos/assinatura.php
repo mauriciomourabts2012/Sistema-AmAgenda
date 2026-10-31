@@ -7188,13 +7188,14 @@ function assinaturaServicoPreapprovalSolicitarCancelamento(mysqli $conexao, int 
  * estava ANTES do pedido, informado por quem registrou a intenção (`$statusOrigem`); nada fica cancelado apenas no banco.
  * - 'ativa': volta a 'ativa' (a Preapproval segue autorizada e cobrando). Exige contrato vigente sem fim programado (o
  *   cancelamento do contrato não é desfeito aqui).
- * - 'pendente' (autorizada no provedor, ainda não ativada aqui): volta a 'pendente', sem slot e sem data de cobrança, como
- *   a sincronização a grava; nunca vira 'ativa' por causa de uma recusa. O sinal (ex.: COBRANCA_EXTERNA_ANTECIPADA) é
- *   recalculado pela sincronização que o chamador executa em seguida.
+ * - 'pendente' (autorizada no provedor, ainda não ativada aqui; ou checkout aberto e não concluído, `pending`, na
+ *   desistência do cadastro): volta a 'pendente', sem slot e sem data de cobrança, como a sincronização a grava; nunca
+ *   vira 'ativa' por causa de uma recusa. O sinal (ex.: COBRANCA_EXTERNA_ANTECIPADA) é recalculado pela sincronização
+ *   que o chamador executa em seguida.
  * - Qualquer outra origem (inclusive 'cancelamento_pendente' retomado, de origem desconhecida: o estado anterior não é
  *   persistido) NÃO é revertida: o vínculo permanece em 'cancelamento_pendente', estado seguro e conciliável.
  * Exige a operação informada encerrada como PROVEDOR_REJEITOU, nenhuma outra operação aberta e o estado externo já
- * sincronizado como 'authorized'. Na transação do chamador.
+ * sincronizado ('authorized' para 'ativa'; 'authorized' ou 'pending' para 'pendente'). Na transação do chamador.
  */
 function assinaturaServicoPreapprovalReverterCancelamentoRecusado(mysqli $conexao, int $idEmpresa, int $idAssinaturaPagamento, int $idOperacao, string $statusOrigem = ''): bool
 {
@@ -7226,7 +7227,7 @@ function assinaturaServicoPreapprovalReverterCancelamentoRecusado(mysqli $conexa
             "UPDATE assinatura_pagamento_recorrente v
                 SET v.status = 'pendente', v.slot_ativo = NULL, v.cobrar_a_partir_de = NULL
               WHERE v.id_assinatura_pagamento = ? AND v.id_empresa = ? AND v.status = 'cancelamento_pendente' AND v.slot_ativo = 1
-                AND v.status_externo = 'authorized' AND v.assinatura_externa_id IS NOT NULL
+                AND v.status_externo IN ('authorized', 'pending') AND v.assinatura_externa_id IS NOT NULL
                 AND {$operacaoRecusada}",
             'iii',
             $idAssinaturaPagamento,
@@ -7297,7 +7298,52 @@ function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(mysqli $conexao, i
         : 'O cancelamento do pagamento no cartão foi solicitado. O PIX será liberado assim que o Mercado Pago confirmar.', [
         'situacao' => (string)$r['situacao'],
         'id_operacao' => $r['id_operacao'] ?? null,
+        // Para o chamador sincronizar e, se o provedor recusar, devolver a tentativa ao estado anterior.
+        'preapproval_id' => (string)$vinculo['assinatura_externa_id'],
+        'teste' => $teste,
     ]);
+}
+
+/**
+ * Desistência de um cadastro de cartão aberto e não concluído (checkout abandonado: Preapproval `pending`, nunca
+ * autorizada) que o provedor recusou encerrar. Sem isto o vínculo ficaria para sempre em 'cancelamento_pendente' com o
+ * slot ocupado, bloqueando um novo cadastro (CANCELAMENTO_CARTAO_EM_ANDAMENTO) sem nada pendente de fato.
+ *
+ * Devolve o vínculo ao estado anterior ('pendente', sem slot), pelo mesmo serviço de reversão: a Preapproval continua
+ * vinculada (nunca ignorada nem duplicada) e o cadastro aberto pode ser concluído ("Continuar no Mercado Pago"); sem a
+ * autorização do pagador, uma Preapproval `pending` não cobra. Só atua com o estado externo sincronizado como `pending`,
+ * a última operação 'cancelar' recusada pelo provedor e nenhuma operação aberta (autorizada ou incerta não é revertida).
+ * Transação própria.
+ */
+function assinaturaServicoPreapprovalRecuperarDesistenciaRecusada(mysqli $conexao, int $idEmpresa): bool
+{
+    return assinaturaServicoPreapprovalTransacao($conexao, static function () use ($conexao, $idEmpresa): bool {
+        $vinculo = assinaturaServicoConsultaFinanceira(
+            $conexao,
+            "SELECT id_assinatura_pagamento FROM assinatura_pagamento_recorrente
+              WHERE id_empresa = ? AND motor_recorrencia = 'preapproval' AND status = 'cancelamento_pendente'
+                AND status_externo = 'pending' AND assinatura_externa_id IS NOT NULL
+              FOR UPDATE",
+            'i',
+            $idEmpresa
+        )[0] ?? null;
+        if ($vinculo === null) {
+            return false;
+        }
+        $operacao = assinaturaServicoConsultaFinanceira(
+            $conexao,
+            "SELECT id_operacao FROM operacao_assinatura_gateway
+              WHERE id_assinatura_pagamento = ? AND id_empresa = ? AND tipo_operacao = 'cancelar'
+              ORDER BY id_operacao DESC LIMIT 1 FOR UPDATE",
+            'ii',
+            (int)$vinculo['id_assinatura_pagamento'],
+            $idEmpresa
+        )[0] ?? null;
+
+        // A reversão confere, sob o mesmo lock, a recusa do provedor e a ausência de operação aberta.
+        return $operacao !== null && assinaturaServicoPreapprovalReverterCancelamentoRecusado(
+            $conexao, $idEmpresa, (int)$vinculo['id_assinatura_pagamento'], (int)$operacao['id_operacao'], 'pendente');
+    });
 }
 
 /**

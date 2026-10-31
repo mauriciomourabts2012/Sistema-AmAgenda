@@ -3365,7 +3365,7 @@ function mpSubOperacaoProcessar(mysqli $conexao, object $gateway, int $idOperaca
         try {
             $resposta = $gateway->atualizarPreapproval($preapprovalId, $ehValor
                 ? ['auto_recurring' => ['transaction_amount' => (float)$ref['valor_desejado'], 'currency_id' => 'BRL']]
-                : ['status' => $destino]);
+                : ['status' => $tipo === 'cancelar' ? 'cancelled' : $destino]);
         } catch (Throwable $e) {
             $resposta = pagamentoGatewayResultado(false, 'resultado_incerto', 'x');
         }
