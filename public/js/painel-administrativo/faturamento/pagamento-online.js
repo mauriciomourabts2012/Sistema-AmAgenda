@@ -316,26 +316,24 @@
       texto = "Sem cartão para cobrar a primeira mensalidade. Use \"Gerar cobrança de regularização\" para pagar com PIX.";
     }
     const criada = atual.autorizacao_criada === true && !["cancelada", "encerrada"].includes(String(atual.status || ""));
-    // Autorização confirmada: "Alterar cartão" substitui o cadastro (o servidor só oferece a troca para a recorrência ativa);
-    // os dois nunca aparecem juntos, mesmo que o servidor sinalize ambos.
-    const trocar = atual.pode_trocar_cartao
-      ? '<button class="botao-geral" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
     if (t.situacao === "cadastro_incerto" && t.criacao_exige_suporte) texto += TEXTO_SUPORTE_CADASTRO;
+    // 1.13.0: sem os botões de alterar cartão e de desistir do cadastro. Checkout aberto e não concluído é retomado em
+    // "Continuar no Mercado Pago" (mesmo cadastro, sem cobrança até a autorização); trocar o cartão é cancelar o
+    // pagamento automático e cadastrar outro depois da confirmação do Mercado Pago.
     const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : "Cadastrar cartão";
-    const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(rotuloAutorizar) : "";
-    const rotuloRemover = t.em_teste ? (t.autorizacao_confirmada === true ? "Cancelar cartão autorizado" : "Desistir do cadastro do cartão") : "Pagar com PIX em vez do cartão";
+    const autorizar = atual.pode_configurar ? botaoAutorizarCartao(rotuloAutorizar) : "";
+    // O servidor só oferece no teste grátis com cartão autorizado (pode_remover_cartao).
+    const rotuloRemover = t.em_teste ? "Cancelar pagamento automático" : "Pagar com PIX em vez do cartão";
     const remover = t.pode_remover_cartao
       ? `<button class="botao-geral" type="button" data-usar-pix><i class="fa-regular fa-credit-card" aria-hidden="true"></i>${rotuloRemover}</button>` : "";
-    alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${autorizar}${trocar}${remover}${botaoVerificar}</div>`;
+    alvo.innerHTML = `${cabecalhoCartao(icone, rotulo, titulo, texto, nota)}<div class="faturamento-acoes">${autorizar}${remover}${botaoVerificar}</div>`;
   }
 
   async function usarPix() {
     const teste = cartao.configuracao?.teste_gratis;
     if (cartao.redirecionando || !(cartao.configuracao?.primeira_cobranca?.pode_trocar_para_pix || teste?.pode_remover_cartao)) return;
-    const [tituloConfirmacao, mensagem] = teste && teste.em_teste && teste.autorizacao_confirmada !== true
-      ? ["Desistir do cadastro do cartão", "O cadastro do cartão ainda não foi concluído no Mercado Pago (não há cartão autorizado). Ele será encerrado e nenhuma mensalidade será cobrada. Seu teste grátis continua até o fim. Deseja continuar?"]
-      : teste && teste.em_teste
-      ? ["Cancelar cartão autorizado", "A autorização do cartão será cancelada no Mercado Pago e nenhuma mensalidade será cobrada nele. Seu teste grátis continua até o fim. Deseja continuar?"]
+    const [tituloConfirmacao, mensagem] = teste && teste.em_teste
+      ? ["Cancelar pagamento automático", "A autorização do cartão será cancelada no Mercado Pago e nenhuma mensalidade será cobrada nele. Seu teste grátis continua até o fim; depois da confirmação, você poderá cadastrar outro cartão. Deseja continuar?"]
       : ["Pagar com PIX em vez do cartão", "O pagamento no cartão desta contratação será cancelado no Mercado Pago e não poderá ser retomado para este contrato. Depois da confirmação, a primeira mensalidade poderá ser paga com PIX. Deseja continuar?"];
     const confirmado = window.MensagemSistema?.confirmar
       ? await window.MensagemSistema.confirmar(mensagem, { titulo: tituloConfirmacao, textoConfirmar: "Cancelar o cartão" })
@@ -404,12 +402,11 @@
       const proxima = dataBr(atual.proxima_cobranca_em);
       // Contrato pago: o checkout do Mercado Pago pode chamar os dias já pagos de "teste grátis"; aqui vale o contrato.
       const texto = `Recorrência autorizada no Mercado Pago. Sua próxima mensalidade será cobrada automaticamente na data programada pelo Mercado Pago.${proxima ? ` Próxima cobrança: ${proxima}.` : ""}`;
-      const trocar = atual.pode_trocar_cartao
-        ? '<button class="botao-geral destaque" type="button" data-trocar-cartao><i class="fa-regular fa-credit-card" aria-hidden="true"></i>Alterar cartão</button>' : "";
-      // Cancela só a cobrança automática no cartão; "Cancelar assinatura" (contrato) fica no resumo do Faturamento.
+      // Cancela só a cobrança automática no cartão; "Cancelar assinatura" (contrato) fica no resumo do Faturamento. Para usar
+      // outro cartão (1.13.0, sem "Alterar cartão"): cancelar aqui e, confirmado pelo Mercado Pago, cadastrar o novo.
       const cancelarAutomatico = atual.pode_cancelar_automatico
         ? '<button class="botao-geral" type="button" data-cancelar-automatico><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pagamento automático</button>' : "";
-      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${trocar}${cancelarAutomatico}${botaoVerificar}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
+      alvo.innerHTML = `${cabecalho("fa-regular fa-credit-card", "Cartão das próximas mensalidades", titulo, texto)}<div class="faturamento-acoes">${cancelarAutomatico}${botaoVerificar}<span class="faturamento-status faturamento-status--ativa">Ativo</span></div>`;
       return;
     }
     definirCabecalhoSecao("Pagamento automático", "Configure um cartão para automatizar as próximas mensalidades.");

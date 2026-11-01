@@ -562,8 +562,10 @@ verificar('F2 PIX segue bloqueado enquanto a Preapproval autorizada puder cobrar
 // ---------------------------------------------------------------------------------------------------------------
 $aut = $corpo($jsPo, 'renderizarAutorizacao');
 $ramoAtivo = substr($aut, (int)strpos($aut, 'if (atual.configurado) {'), 1900);
-verificar('F3 ativa+authorized: Alterar cartão, Cancelar pagamento automático e Atualizar situação, cada um pela permissão do servidor',
-    str_contains($ramoAtivo, 'atual.pode_trocar_cartao') && str_contains($ramoAtivo, 'atual.pode_cancelar_automatico') && str_contains($ramoAtivo, '${trocar}${cancelarAutomatico}${botaoVerificar}'));
+// ATUALIZADO (1.13.0): "Alterar cartão" saiu; trocar o cartão = cancelar o pagamento automático e cadastrar outro.
+verificar('F3 ativa+authorized: Cancelar pagamento automático e Atualizar situação pela permissão do servidor; sem Alterar cartão',
+    !str_contains($ramoAtivo, 'atual.pode_trocar_cartao') && !str_contains($ramoAtivo, 'data-trocar-cartao') && str_contains($ramoAtivo, 'atual.pode_cancelar_automatico')
+    && str_contains($ramoAtivo, '${cancelarAutomatico}${botaoVerificar}'));
 $ramoPendente = substr($aut, (int)strpos($aut, 'Autorização em conferência') - 1200, 1800);
 verificar('F3 pendente+authorized: cancelar e atualizar, sem Alterar cartão', str_contains($ramoPendente, 'cancelarAutomaticoPendente}${botaoVerificar}') && !str_contains($ramoPendente, 'data-trocar-cartao'));
 $ramoCancelando = substr($aut, (int)strpos($aut, 'cancelamento_pendente: ['), 330);
@@ -754,12 +756,12 @@ verificar('F37 teste grátis: sem Preapproval criada nunca vira "aguardando_auto
 // Frontend (leitura do código; a validação visual é do responsável).
 verificar('F37 UI: estado incerto explica, oferece Atualizar situação e orienta o suporte; nenhum botão de nova criação',
     str_contains($jsPo, 'cadastro_incerto: ["fa-solid fa-triangle-exclamation", "Não foi possível confirmar a abertura do cadastro do cartão", TEXTO_CADASTRO_INCERTO]')
-    && str_contains($jsPo, 'fale com o suporte') && str_contains($jsPo, 'TEXTO_SUPORTE_CADASTRO') && str_contains($jsPo, '${autorizar}${trocar}${remover}${botaoVerificar}'));
+    && str_contains($jsPo, 'fale com o suporte') && str_contains($jsPo, 'TEXTO_SUPORTE_CADASTRO') && str_contains($jsPo, '${autorizar}${remover}${botaoVerificar}')); // ATUALIZADO (1.13.0): sem ${trocar}.
 // ATUALIZADO (empresa 37): no teste grátis, a tentativa encerrada mostra "Cartão não cadastrado" com "Cadastrar cartão".
 verificar('F37 UI: novo cadastro só onde o servidor liberou pode_configurar e a Preapproval não foi criada',
     substr_count($jsPo, '"Tentar novamente"') === 1 && str_contains($jsPo, 'const rotuloAutorizar = criada ? "Continuar no Mercado Pago" : "Cadastrar cartão";')
     && str_contains($jsPo, 'cadastro_nao_criado: ["fa-regular fa-credit-card", "Cartão não cadastrado",')
-    && str_contains($jsPo, 'const autorizar = atual.pode_configurar && !trocar ? botaoAutorizarCartao(rotuloAutorizar) : "";')
+    && str_contains($jsPo, 'const autorizar = atual.pode_configurar ? botaoAutorizarCartao(rotuloAutorizar) : "";') // ATUALIZADO (1.13.0): sem troca.
     && str_contains($jsPo, 'atual.pode_configurar ? botaoAutorizar(criada ? "Continuar no Mercado Pago" : "Tentar novamente")'));
 $ini = $corpo($jsPo, 'iniciarAutorizacaoAssinatura');
 verificar('F37 clique: estado de processamento, sem clique duplicado, URL validada, sem window.open e sem sucesso por inferência',
@@ -993,11 +995,14 @@ verificar('F37b a nova tentativa depois de falha antes do envio reaproveita o v�
 verificar('F37b payload distingue checkout aberto (pending) de cartão autorizado (authorized); vínculo "pendente" sozinho não é cartão',
     str_contains($dpNovo, "'checkout_aberto' => \$criada && (\$v['status_externo'] ?? null) === 'pending'") && str_contains($dpNovo, "'autorizacao_confirmada' => \$criada && (\$v['status_externo'] ?? null) === 'authorized'")
     && str_contains($tg, "'autorizacao_confirmada' => \$externa && (\$v['status_externo'] ?? null) === 'authorized'"));
-verificar('F37b "Cancelar cartão autorizado" só aparece com autorização confirmada; sem ela o botão é "Desistir do cadastro do cartão"',
-    str_contains($jsPo, 't.autorizacao_confirmada === true ? "Cancelar cartão autorizado" : "Desistir do cadastro do cartão"')
-    && substr_count($jsPo, '"Cancelar cartão autorizado"') === 2 && str_contains($jsPo, 'teste.em_teste && teste.autorizacao_confirmada !== true'));
-verificar('F37b o diálogo de desistir informa que não há cartão autorizado e que o teste grátis continua',
-    str_contains($jsPo, 'não há cartão autorizado') && str_contains($jsPo, 'Seu teste grátis continua até o fim'));
+// ATUALIZADO (1.13.0): sem "Desistir do cadastro do cartão". No teste grátis, só o cartão AUTORIZADO pode ser cancelado
+// ("Cancelar pagamento automático", decidido pelo servidor); checkout aberto e não concluído não é cancelado.
+verificar('F37b teste grátis: "Cancelar pagamento automático" só com cartão autorizado (servidor); nenhum botão de desistir de checkout aberto',
+    str_contains($jsPo, 'const rotuloRemover = t.em_teste ? "Cancelar pagamento automático" : "Pagar com PIX em vez do cartão";')
+    && !str_contains($jsPo, '"Desistir do cadastro do cartão"') && !str_contains($jsPo, '"Cancelar cartão autorizado"')
+    && str_contains($tg, "&& (!\$emTeste || (\$externa && (\$v['status_externo'] ?? null) === 'authorized')),"));
+verificar('F37b o diálogo de cancelamento no teste grátis informa que o teste continua e que outro cartão pode ser cadastrado depois da confirmação',
+    str_contains($jsPo, 'Seu teste grátis continua até o fim; depois da confirmação, você poderá cadastrar outro cartão.'));
 verificar('F37b checkout recuperável: pending encontrado vira "Continuar no Mercado Pago" com a mesma Preapproval (sem novo POST); authorized sincroniza',
     str_contains($jsPo, 'criada ? "Continuar no Mercado Pago"') && str_contains($vinc, 'assinaturaServicoPreapprovalValidarExterna(') && str_contains($po, "\$statusExterno !== '' && \$statusExterno !== 'pending'")
     && str_contains($po, 'JA_VINCULADA') === str_contains($po, 'JA_VINCULADA') && str_contains($assSrc, "'JA_VINCULADA'"));
@@ -1531,6 +1536,180 @@ verificar('5 DIAS: reativação após pagamento segue a mesma regra (dívida ou 
     str_contains($corpo($assCob, 'assinaturaServicoBloqueioReativacao'), 'assinaturaServicoPendenciaFinanceira(')
     && str_contains($pend, "t.status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')"));
 $GLOBALS['pdo'] = $pdoAnterior;
+
+// ---------------------------------------------------------------------------------------------------------------
+// 1.13.0 — Desistência do cadastro de cartão (checkout aberto e abandonado): sequência completa reproduzida.
+// Cadastrar cartão → Preapproval `pending` vinculada → "Desistir" → o Mercado Pago recusa encerrar o checkout aberto.
+// Antes: o vínculo ficava para sempre em 'cancelamento_pendente' (slot ocupado), bloqueando um novo cadastro.
+// Executa o código REAL da desistência (rota), da recuperação e da reversão (cópias renomeadas onde já há stub com o
+// mesmo nome), com o Mercado Pago simulado ($GLOBALS['mp']['modo']) e SQLite.
+// ---------------------------------------------------------------------------------------------------------------
+final class PdoDesistencia extends PDO
+{
+    public function prepare(string $query, array $options = []): PDOStatement|false
+    {
+        // MySQL "UPDATE t v SET v.col = ..." → SQLite "UPDATE t AS v SET col = ..." (só nesta reescrita de teste).
+        $query = preg_replace_callback('/UPDATE assinatura_pagamento_recorrente v\s+SET (.*?)\s+WHERE/s',
+            fn($m) => 'UPDATE assinatura_pagamento_recorrente AS v SET ' . str_replace('v.', '', $m[1]) . ' WHERE', $query);
+
+        return parent::prepare(str_replace([' FOR UPDATE', 'FOR UPDATE'], '', $query), $options);
+    }
+}
+$pdoAntesDesistencia = $GLOBALS['pdo'];
+$GLOBALS['pdo'] = new PdoDesistencia('sqlite::memory:');
+$GLOBALS['pdo']->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$GLOBALS['pdo']->exec('CREATE TABLE assinatura_pagamento_recorrente (id_assinatura_pagamento INTEGER PRIMARY KEY, id_empresa INT, id_assinatura INT, motor_recorrencia TEXT,
+    status TEXT, status_externo TEXT, assinatura_externa_id TEXT, slot_ativo INT, cobrar_a_partir_de TEXT, ambiente TEXT)');
+$GLOBALS['pdo']->exec('CREATE TABLE operacao_assinatura_gateway (id_operacao INTEGER PRIMARY KEY, id_empresa INT, id_assinatura_pagamento INT, tipo_operacao TEXT,
+    status_processamento TEXT, erro_codigo TEXT)');
+if (!function_exists('assinaturaServicoPreapprovalExec')) {
+    function assinaturaServicoPreapprovalExec(object $conexao, string $sql, string $tipos = '', mixed ...$valores): int
+    {
+        $st = $GLOBALS['pdo']->prepare($sql);
+        $st->execute($valores);
+
+        return $st->rowCount();
+    }
+}
+if (!function_exists('mpWebhookRollback')) {
+    function mpWebhookRollback(object $conexao): void {}
+}
+// Lado do serviço já existente (registro da intenção): mesmas transições de estado do caminho com Preapproval externa
+// (assinaturaServicoPreapprovalCancelarPrimeiraExterna + RegistrarOperacao). A operação registra o desfecho que o
+// processador do outbox deixaria para o modo simulado do provedor.
+if (!function_exists('assinaturaServicoPreapprovalDesistirPrimeiraCobranca')) {
+    function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(object $conexao, int $idEmpresa, ?array $ator = null): array
+    {
+        $pdo = $GLOBALS['pdo'];
+        $v = $pdo->query("SELECT * FROM assinatura_pagamento_recorrente WHERE id_empresa = {$idEmpresa} AND status NOT IN ('cancelada', 'encerrada')")->fetch(PDO::FETCH_ASSOC);
+        $pdo->exec("UPDATE assinatura_pagamento_recorrente SET status = 'cancelamento_pendente', slot_ativo = 1, cobrar_a_partir_de = COALESCE(cobrar_a_partir_de, '2026-11-28')
+                     WHERE id_assinatura_pagamento = {$v['id_assinatura_pagamento']} AND status = 'pendente' AND slot_ativo IS NULL AND assinatura_externa_id IS NOT NULL");
+        $aberta = $pdo->query("SELECT id_operacao FROM operacao_assinatura_gateway WHERE id_assinatura_pagamento = {$v['id_assinatura_pagamento']}
+                                AND status_processamento IN ('pendente', 'processando', 'conciliacao')")->fetchColumn();
+        if ($aberta === false) {
+            [$st, $erro] = match ($GLOBALS['mp']['modo']) {
+                'recusa' => ['erro', 'PROVEDOR_REJEITOU'],
+                'incerto' => ['conciliacao', 'RESULTADO_INCERTO'],
+                default => ['concluida', null],
+            };
+            $pdo->exec("INSERT INTO operacao_assinatura_gateway (id_empresa, id_assinatura_pagamento, tipo_operacao, status_processamento, erro_codigo)
+                        VALUES ({$idEmpresa}, {$v['id_assinatura_pagamento']}, 'cancelar', '{$st}', " . ($erro === null ? 'NULL' : "'{$erro}'") . ')');
+            $aberta = (int)$pdo->lastInsertId();
+        }
+
+        return ['ok' => true, 'codigo' => 'CANCELAMENTO_CARTAO_SOLICITADO', 'mensagem' => 'Solicitado.', 'id_operacao' => (int)$aberta,
+            'preapproval_id' => (string)$v['assinatura_externa_id'], 'teste' => true];
+    }
+}
+$extrair('backend/_servicos/assinatura.php', ['assinaturaServicoPreapprovalTransacao']);
+$poDesist = str_replace("\r\n", "\n", $ler('backend/painel_administrativo/faturamento/gerenciar_pagamento_online.php'));
+$reverterReal = $corpo($assSrc, 'assinaturaServicoPreapprovalReverterCancelamentoRecusado');
+$recuperarReal = $corpo($assSrc, 'assinaturaServicoPreapprovalRecuperarDesistenciaRecusada');
+eval(str_replace('function assinaturaServicoPreapprovalReverterCancelamentoRecusado(', 'function reverterCancelamentoRecusadoReal(', $reverterReal));
+eval(str_replace('assinaturaServicoPreapprovalReverterCancelamentoRecusado(', 'reverterCancelamentoRecusadoReal(', $recuperarReal));
+eval($corpo($poDesist, 'pagamentoCartaoDesistirCadastro'));
+$vinculoDesist = fn() => $GLOBALS['pdo']->query('SELECT status, status_externo, assinatura_externa_id, slot_ativo, cobrar_a_partir_de FROM assinatura_pagamento_recorrente WHERE id_assinatura_pagamento = 24')->fetch(PDO::FETCH_ASSOC);
+$semearDesist = function (string $status = 'pendente', string $externo = 'pending', ?int $slot = null) {
+    $GLOBALS['pdo']->exec('DELETE FROM operacao_assinatura_gateway');
+    $GLOBALS['pdo']->exec('DELETE FROM assinatura_pagamento_recorrente');
+    $GLOBALS['pdo']->exec("INSERT INTO assinatura_pagamento_recorrente VALUES (24, 37, 45, 'preapproval', '{$status}', '{$externo}', 'PRE-ABERTO', " . ($slot ?? 'NULL') . ", NULL, 'teste')");
+    $GLOBALS['mp']['envios'] = [];
+    $GLOBALS['mp']['sync_cancelado'] = false;
+};
+$gwDesist = new GatewayFalso();
+
+// 1) Checkout abandonado + "Desistir": o provedor recusa encerrar o checkout `pending`.
+$semearDesist();
+$GLOBALS['mp']['modo'] = 'recusa';
+$d1 = pagamentoCartaoDesistirCadastro(new BancoFalso(), $gwDesist, 37);
+$v1 = $vinculoDesist();
+verificar('DESISTÊNCIA: recusa do provedor ao encerrar checkout aberto NÃO prende o vínculo: volta a pendente, sem slot e sem data, com a mesma Preapproval vinculada (nada ignorado)',
+    $d1['nao_aplicada'] === true && $v1['status'] === 'pendente' && $v1['slot_ativo'] === null && $v1['cobrar_a_partir_de'] === null
+    && $v1['assinatura_externa_id'] === 'PRE-ABERTO' && $v1['status_externo'] === 'pending');
+verificar('DESISTÊNCIA: só o PUT de encerramento e uma sincronização (GET) — nenhum POST de criação nem outra chamada desnecessária',
+    $GLOBALS['mp']['envios'] === ['PUT canceled', 'GET sync']);
+// 2) Desistências repetidas: cada uma é recusada e revertida; nunca acumula bloqueio nem duplica nada.
+$d2 = pagamentoCartaoDesistirCadastro(new BancoFalso(), $gwDesist, 37);
+$d3 = pagamentoCartaoDesistirCadastro(new BancoFalso(), $gwDesist, 37);
+$abertas = (int)$GLOBALS['pdo']->query("SELECT COUNT(*) FROM operacao_assinatura_gateway WHERE status_processamento IN ('pendente', 'processando', 'conciliacao')")->fetchColumn();
+verificar('DESISTÊNCIA repetida (3x): sempre volta a pendente, sem operação aberta, sem slot preso e com a mesma Preapproval',
+    $d2['nao_aplicada'] && $d3['nao_aplicada'] && $vinculoDesist()['status'] === 'pendente' && $vinculoDesist()['slot_ativo'] === null && $abertas === 0
+    && $vinculoDesist()['assinatura_externa_id'] === 'PRE-ABERTO' && !in_array('POST', $GLOBALS['mp']['envios'], true));
+// 3) Novo "Cadastrar cartão" depois da desistência recusada: retoma o mesmo checkout (vinculada), nunca cria outra.
+$reservarSrc = $corpo($assSrc, 'assinaturaServicoPreapprovalReservar');
+verificar('DESISTÊNCIA: o novo "Cadastrar cartão" retoma a Preapproval existente (acao vinculada → mesmo link), sem novo POST nem segunda Preapproval',
+    str_contains($reservarSrc, "if (\$vinculo['assinatura_externa_id'] !== null) {\n            return ['acao' => 'vinculada'")
+    && strpos($reservarSrc, "return ['acao' => 'vinculada'") < strpos($reservarSrc, "VALUES (?, ?, 'conciliar', ?, 'processando', 1, NOW(6))")
+    && str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalIniciar'), "if (\$reserva['acao'] === 'vinculada') {\n        return assinaturaServicoPreapprovalAutorizacaoExistente("));
+// 4) Resultado incerto: nunca dado como cancelado nem revertido às cegas; a recusa posterior destrava pelo "Atualizar situação".
+$semearDesist();
+$GLOBALS['mp']['modo'] = 'incerto';
+$d4 = pagamentoCartaoDesistirCadastro(new BancoFalso(), $gwDesist, 37);
+$rec4 = assinaturaServicoPreapprovalRecuperarDesistenciaRecusada(new BancoFalso(), 37);
+verificar('DESISTÊNCIA com resultado incerto: permanece em cancelamento (conciliável), sem reversão às cegas, nem pela recuperação do "Atualizar situação"',
+    $d4['nao_aplicada'] === false && $rec4 === false && $vinculoDesist()['status'] === 'cancelamento_pendente');
+$GLOBALS['pdo']->exec("UPDATE operacao_assinatura_gateway SET status_processamento = 'erro', erro_codigo = 'PROVEDOR_REJEITOU'");
+verificar('DESISTÊNCIA: vínculo já preso (recusa registrada, checkout pending) é destravado pelo "Atualizar situação", sem o Super Admin',
+    assinaturaServicoPreapprovalRecuperarDesistenciaRecusada(new BancoFalso(), 37) === true && $vinculoDesist()['status'] === 'pendente' && $vinculoDesist()['slot_ativo'] === null);
+// 5) Preapproval AUTORIZADA nunca é revertida/ignorada por esta recuperação (origem desconhecida; segue o fluxo seguro).
+$semearDesist('cancelamento_pendente', 'authorized', 1);
+$GLOBALS['pdo']->exec("INSERT INTO operacao_assinatura_gateway VALUES (90, 37, 24, 'cancelar', 'erro', 'PROVEDOR_REJEITOU')");
+verificar('DESISTÊNCIA: Preapproval autorizada no provedor nunca é revertida pela recuperação (cobrança possível não é ignorada)',
+    assinaturaServicoPreapprovalRecuperarDesistenciaRecusada(new BancoFalso(), 37) === false && $vinculoDesist()['status'] === 'cancelamento_pendente');
+// 6) Provedor aceita o encerramento: vínculo encerrado; o novo cadastro cria intenção nova (histórico preservado).
+$semearDesist();
+$GLOBALS['mp']['modo'] = 'confirma';
+$d6 = pagamentoCartaoDesistirCadastro(new BancoFalso(), $gwDesist, 37);
+verificar('DESISTÊNCIA aceita pelo provedor: vínculo cancelado (sem reversão) e novo cadastro com intenção nova, preservando o histórico',
+    $d6['nao_aplicada'] === false && $vinculoDesist()['status'] === 'cancelada'
+    && str_contains($reservarSrc, "\$encerrado = \$linha; // Histórico: uma Preapproval encerrada nunca é reaproveitada.")
+    && str_contains($reservarSrc, '$intencaoNova = $vinculo === null;'));
+// 7) Recusa, mas a sincronização mostra o checkout já cancelado: encerra pelo caminho normal, sem reversão.
+$semearDesist();
+$GLOBALS['mp']['modo'] = 'recusa';
+$GLOBALS['mp']['sync_cancelado'] = true;
+$d7 = pagamentoCartaoDesistirCadastro(new BancoFalso(), $gwDesist, 37);
+verificar('DESISTÊNCIA recusada mas já cancelada no provedor (sincronização): vínculo cancelado, nada revertido',
+    $d7['nao_aplicada'] === false && $vinculoDesist()['status'] === 'cancelada');
+$GLOBALS['mp']['sync_cancelado'] = false;
+$GLOBALS['mp']['modo'] = 'confirma';
+// 8) Estrutura: rota, "Atualizar situação" e reversão.
+$rotaDesist = substr($poDesist, strpos($poDesist, "if (\$rota === 'painel/faturamento/pagamento/cartao/usar-pix'"), 2000);
+verificar('DESISTÊNCIA estrutura: a rota usa o fluxo central e informa DESISTENCIA_NAO_APLICADA (teste grátis preservado, retomada orientada); "Atualizar situação" recupera depois da sincronização; a reversão aceita checkout pending',
+    str_contains($rotaDesist, '$desistencia = pagamentoCartaoDesistirCadastro($conexao, $gatewayCartao, $empresa);') && str_contains($rotaDesist, "'code'=>'DESISTENCIA_NAO_APLICADA'")
+    && str_contains($rotaDesist, 'seus dias grátis continuam valendo') && str_contains($rotaDesist, '"Continuar no Mercado Pago"')
+    && strpos($corpo($poDesist, 'pagamentoCartaoPreapprovalConsultar'), 'assinaturaServicoPreapprovalRecuperarDesistenciaRecusada($db, $empresa);')
+        > strpos($corpo($poDesist, 'pagamentoCartaoPreapprovalConsultar'), 'mpSubSincronizarPreapproval(')
+    && str_contains($reverterReal, "AND v.status_externo IN ('authorized', 'pending') AND v.assinatura_externa_id IS NOT NULL")
+    && str_contains($corpo($assSrc, 'assinaturaServicoPreapprovalDesistirPrimeiraCobranca'), "'preapproval_id' => (string)\$vinculo['assinatura_externa_id'],"));
+$GLOBALS['pdo'] = $pdoAntesDesistencia;
+
+// 1.13.0 — Gerenciamento de cartões simplificado: sem "Alterar cartão" e sem "Desistir do cadastro do cartão".
+$desistSrc = $corpo($assSrc, 'assinaturaServicoPreapprovalDesistirPrimeiraCobranca');
+verificar('1.13.0 checkout aberto e não concluído no teste grátis NÃO gera cancelamento: o serviço recusa antes de qualquer intenção externa (nada de PUT, nada preso)',
+    str_contains($desistSrc, "if (\$teste && (string)\$vinculo['status'] === 'pendente' && (\$vinculo['status_externo'] ?? null) !== 'authorized') {")
+    && strpos($desistSrc, "'CADASTRO_NAO_CONCLUIDO'") < strpos($desistSrc, 'assinaturaServicoPreapprovalCancelarPrimeiraExterna('));
+$rotaTroca = substr($poDesist, strpos($poDesist, "if (\$rota === 'painel/faturamento/pagamento/cartao/trocar'"), 1500);
+verificar('1.13.0 troca direta de cartão descontinuada: o servidor não oferece e a rota recusa ANTES de qualquer chamada ao Mercado Pago (token descartado)',
+    str_contains($corpo($poDesist, 'pagamentoCartaoDadosPreapproval'), "'pode_trocar_cartao' => false,")
+    && strpos($rotaTroca, "'TROCA_CARTAO_DESCONTINUADA'") < strpos($rotaTroca, 'pagamentoCartaoPreapprovalTrocarCartao(')
+    && strpos($rotaTroca, "unset(\$_POST['token'], \$_POST['payment_method_id']);") < strpos($rotaTroca, "'TROCA_CARTAO_DESCONTINUADA'")
+    && !str_contains($ler('public/js/painel-administrativo/faturamento/pagamento-online.js'), 'data-trocar-cartao><i'));
+$dadosSrc = $corpo($poDesist, 'pagamentoCartaoDadosPreapproval');
+verificar('1.13.0 troca = cancelar e cadastrar: novo cadastro só com o vínculo ENCERRADO (canceled confirmado); cancelamento pendente/inconclusivo ou recorrência ativa não oferecem cadastro',
+    str_contains($dadosSrc, "\$novo = \$vinculo === null || (in_array((string)\$vinculo['status'], ['cancelada', 'encerrada'], true) && \$novoVinculoPermitido);")
+    && str_contains($dadosSrc, '$podeConfigurar = $habilitado && $elegivel && ($novo || $retomavel) && !$configurado;')
+    && str_contains($dadosSrc, "\$retomavel = \$atual && ((\$status === 'pendente'") && !str_contains($dadosSrc, "'cancelamento_pendente' && \$retomavel")
+    && str_contains($reservarSrc, "throw new AssinaturaServicoConversaoErro('CANCELAMENTO_CARTAO_EM_ANDAMENTO'"));
+verificar('1.13.0 nova Preapproval respeita o período já pago e o teste grátis (start_date depois da cobertura) e nunca coexiste com outra recorrência do contrato ou da empresa',
+    str_contains($reservarSrc, '$inicio = assinaturaServicoPreapprovalInicioCobranca($fimPago);') && str_contains($reservarSrc, "'PERIODO_PAGO_INDISPONIVEL'")
+    && str_contains($reservarSrc, '$inicio = assinaturaServicoPreapprovalInicioTeste(') && str_contains($reservarSrc, "'MOTOR_RECORRENTE_ATIVO'")
+    && str_contains($reservarSrc, "'NOVA_AUTORIZACAO_INDISPONIVEL'"));
+$cancAuto = $corpo(str_replace("\r\n", "\n", $ler('backend/_servicos/cancelamento_recorrencia.php')), 'cancelamentoRecorrenciaCancelarPreapproval');
+verificar('1.13.0 cancelar o pagamento automático para trocar o cartão nunca cancela o plano comercial; recusa devolve ao estado anterior e incerto fica pendente (nada liberado)',
+    $cancAuto !== '' && !preg_match('/UPDATE assinatura\s|UPDATE cobranca|DELETE\s+FROM/', $cancAuto)
+    && str_contains($cancAuto, "return \$falha('CANCELAMENTO_AUTOMATICO_RECUSADO', 422);") && str_contains($cancAuto, 'return $pendente();')
+    && str_contains($cancAuto, 'if ($encerrado($ler())) return $ok();'));
 
 echo "\n{$total} verificações, {$falhas} falha(s).\n";
 exit($falhas === 0 ? 0 : 1);

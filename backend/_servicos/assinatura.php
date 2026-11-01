@@ -7288,6 +7288,11 @@ function assinaturaServicoPreapprovalDesistirPrimeiraCobranca(mysqli $conexao, i
             ? 'A autorização do cartão foi descartada. Nenhuma mensalidade será cobrada nele.'
             : 'O pagamento no cartão foi descartado. Você já pode pagar com PIX.', ['situacao' => (string)$r['situacao']]);
     }
+    if ($teste && (string)$vinculo['status'] === 'pendente' && ($vinculo['status_externo'] ?? null) !== 'authorized') {
+        // Teste grátis com checkout aberto e não concluído: não cobra e não é cancelado (o Mercado Pago recusa encerrar
+        // checkout pendente, o que deixava o vínculo preso). O mesmo cadastro é retomado em "Cadastrar cartão".
+        return assinaturaServicoNovaContratacaoResultado(false, 'CADASTRO_NAO_CONCLUIDO', 'O cadastro do cartão não foi concluído no Mercado Pago e não gera cobrança. Para continuar, use "Cadastrar cartão". Seus dias grátis continuam valendo.', ['http_status' => 409]);
+    }
     $r = assinaturaServicoPreapprovalCancelarPrimeiraExterna($conexao, $vinculo, $ator);
     if ($r === null) {
         return assinaturaServicoNovaContratacaoResultado(false, 'VINCULO_INCONSISTENTE', 'O pagamento no cartão precisa de verificação. Fale com o suporte.', ['http_status' => 409]);

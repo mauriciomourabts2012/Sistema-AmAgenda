@@ -757,7 +757,10 @@ function pagamentoCartaoTesteGratis(mysqli $db, int $empresa, ?array $assinatura
         'primeira_cobranca_prevista' => $prevista,
         'situacao' => $situacao,
         // Criação incerta não pode ser "removida": só a conciliação diz se há algo a cancelar no provedor.
-        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && !in_array($situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true),
+        'pode_remover_cartao' => $viva && $status !== 'cancelamento_pendente' && !in_array($situacao, ['processando', 'cadastro_incerto', 'cadastro_nao_criado'], true)
+            // No teste grátis só um cartão AUTORIZADO pode ser cancelado aqui; checkout aberto e não concluído não cobra e
+            // não gera cancelamento (1.13.0: sem "Desistir do cadastro do cartão").
+            && (!$emTeste || ($externa && ($v['status_externo'] ?? null) === 'authorized')),
         // Autorização confirmada pelo Mercado Pago (authorized). O vínculo local "pendente" ou um checkout aberto (pending)
         // nunca são cartão cadastrado.
         'autorizacao_confirmada' => $externa && ($v['status_externo'] ?? null) === 'authorized',
@@ -822,21 +825,12 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         && is_string($v['assinatura_externa_id']) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,149}$/D', $v['assinatura_externa_id']) === 1
         && $assinatura !== null && (string)$assinatura['modalidade'] === 'paga' && $assinatura['data_fim'] === null
         && in_array((string)$assinatura['status'], ['ativa', 'suspensa'], true);
-    // Oferta visual apenas; a rota de troca refaz todas as verificações (inclusive operação externa em curso) sob trava.
-    $chavePublica = null;
-    if ($habilitado && $configurado && assinaturaServicoPreapprovalTrocaCartaoElegivel($v, $assinatura, (int)$v['id_empresa'], false,
-            $db !== null && pagamentoCartaoParcelaEmAndamento($db, (int)$v['id_empresa'], (int)$v['id_assinatura_pagamento'])) === null) {
-        try {
-            $chavePublica = MercadoPagoGateway::chavePublicaAtiva();
-        } catch (RuntimeException $e) {
-            $chavePublica = null;
-        }
-    }
     // Cadastro (ou retomada do checkout já criado para o contrato ativo) só com elegibilidade local e liberação técnica;
     // o vínculo pendente do próprio contrato é o único "recorrência existente" que admite retomada.
     $elegivel = $cadastro !== null && $cadastro['liberado']
         && ($cadastro['elegivel'] || ($retomavel && $cadastro['motivo'] === 'RECORRENCIA_EXISTENTE'));
-    // Recorrência já autorizada nunca oferece cadastro: só a troca ("Alterar cartão").
+    // Recorrência já autorizada nunca oferece cadastro: para usar outro cartão, cancela-se o pagamento automático e, com o
+    // `canceled` confirmado (vínculo encerrado), o cadastro volta a ser novo, a partir do período já pago.
     $podeConfigurar = $habilitado && $elegivel && ($novo || $retomavel) && !$configurado;
     return [
         'motor_recorrencia' => 'preapproval', 'subscriptions_habilitado' => $habilitado,
@@ -846,11 +840,13 @@ function pagamentoCartaoDadosPreapproval(?array $vinculo, ?array $assinatura, bo
         'checkout_aberto' => $criada && ($v['status_externo'] ?? null) === 'pending',
         'autorizacao_confirmada' => $criada && ($v['status_externo'] ?? null) === 'authorized',
         'configurado' => $configurado,
-        'pode_trocar_cartao' => $chavePublica !== null,
+        // "Alterar cartão" descontinuado (1.13.0): trocar o cartão é cancelar o pagamento automático (confirmado pelo
+        // Mercado Pago) e depois cadastrar outro, com nova Preapproval a partir do período já pago.
+        'pode_trocar_cartao' => false,
         // Cancelar só o pagamento automático: contrato pago com a autorização confirmada (o servidor revalida na rota).
         // Também com vínculo 'pendente' autorizado no provedor (ex.: COBRANCA_EXTERNA_ANTECIPADA): o servidor revalida na rota.
         'pode_cancelar_automatico' => $habilitado && $primeira === null && $testeGratis === null && ($configurado || $podeCancelarPendente),
-        'public_key' => $chavePublica,
+        'public_key' => null, // Sem troca direta de cartão (1.13.0), o formulário seguro de cartão não é mais aberto aqui.
         // Bandeira e final só existem no vínculo depois de uma troca confirmada pelo GET da Preapproval.
         'bandeira' => $configurado ? ($v['bandeira'] ?? null) : null,
         'final_cartao' => $configurado ? ($v['final_cartao'] ?? null) : null,
@@ -1755,6 +1751,9 @@ try {
     if ($rota === 'painel/faturamento/pagamento/cartao/trocar' && $metodo === 'POST') {
         exigirPermissao($conexao, 'faturamento.pagar', $contexto);
         csrfValidarSessao();
+        unset($_POST['token'], $_POST['payment_method_id']);
+        // Troca direta na Preapproval descontinuada (1.13.0): nenhuma alteração externa por esta rota.
+        pagamentoOnlineFalhar('TROCA_CARTAO_DESCONTINUADA', 'Para usar outro cartão, cancele o pagamento automático e, depois da confirmação do Mercado Pago, cadastre o novo cartão. Sua assinatura e o período já pago não são alterados.', 409);
         $tokenTemporario = trim((string)($_POST['token'] ?? ''));
         unset($_POST['token'], $_POST['payment_method_id']);
         $gatewayCartao = pagamentoCartaoGatewayAtivo();
