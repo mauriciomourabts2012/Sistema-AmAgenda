@@ -653,7 +653,7 @@ final class MercadoPagoGateway
         if (array_key_exists('status', $corpo)) {
             $permitidos = $operacao === 'criar_preapproval'
                 ? ['pending', 'authorized']
-                : ['authorized', 'paused', 'canceled'];
+                : ['authorized', 'paused', 'canceled', 'cancelled'];
             if (!is_string($corpo['status']) || !in_array($corpo['status'], $permitidos, true)) {
                 return false;
             }
