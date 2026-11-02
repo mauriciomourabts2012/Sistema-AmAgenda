@@ -142,8 +142,9 @@ function detectarRedirectLogout(array $session, ?mysqli $conexaoEmpresa = null):
         return '/agendar/' . rawurlencode($slug);
     }
 
-    // fallback final
-    return '/public/views/login-super-admin.html';
+    // O login central é o destino oficial também quando o contexto legado ou
+    // incompleto da sessão não permite identificar um fluxo mais específico.
+    return '/public/views/login-empresa.php';
 }
 
 // Descobre a URL antes de destruir a sessão sem tornar o logout dependente

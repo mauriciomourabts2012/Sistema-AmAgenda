@@ -501,6 +501,7 @@ body.sidebar-agenda-aberta .sidebar-badge {
 .notificacao-item-topo strong { min-width: 0; font-size: 14px; line-height: 1.35; }
 .notificacao-item-mensagem { color: #4e6078; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .notificacao-item-rodape { color: #748399; font-size: 11px; }
+.notificacao-item-prazo { color: #8a5208; font-size: 12px; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
 
 .notificacao-chip {
   flex: 0 0 auto;

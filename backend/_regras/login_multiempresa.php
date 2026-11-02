@@ -241,6 +241,112 @@ function loginMultiempresaCriarPreSessao(int $idUsuario, string $credencialImpre
  *
  * @return array<string, mixed> bloco "data" da resposta LOGIN_OK
  */
+/**
+ * Registra o login bem-sucedido e, na PRIMEIRA entrada com a senha inicial/temporária, inicia o prazo de 24 horas para a
+ * troca (usuario.data_senha_temporaria passa a ser o início do prazo; a emissão fica na auditoria do cadastro).
+ *
+ * Atomicidade e concorrência: duas atualizações SEPARADAS dentro de uma transação, sem depender da ordem de avaliação das
+ * atribuições do MySQL. A primeira só casa quando ainda não há entrada depois da emissão (ou quando falta a data), é uma
+ * leitura corrente com bloqueio de linha (InnoDB): um login simultâneo espera, reavalia a condição sobre o valor já
+ * confirmado e não casa mais, então o prazo nunca é reiniciado. A segunda grava o acesso. Se qualquer etapa falhar, nada
+ * fica gravado (rollback) e a função lança exceção: o login NÃO prossegue sem o prazo controlado (falha segura). Como o
+ * estado não muda, a nova tentativa do usuário funciona normalmente (erro transitório não bloqueia a conta).
+ * Usuário sem senha temporária (deve_alterar_senha = 0) só tem o acesso registrado.
+ *
+ * Retorna se a senha temporária está vencida depois do registro (mesma expressão da sessão e do require_auth).
+ *
+ * @throws RuntimeException LOGIN_PRAZO_SENHA_NAO_REGISTRADO, sem dados do usuário nem do banco
+ */
+function loginRegistrarAcessoComPrazoSenha(mysqli $conexao, int $idUsuario): bool
+{
+    // Só a etapa vai ao log: nenhum SQL, mensagem do banco ou dado do usuário.
+    $falha = static function (string $etapa): RuntimeException {
+        error_log('[login_prazo_senha] falha na etapa: ' . $etapa);
+
+        return new RuntimeException('LOGIN_PRAZO_SENHA_NAO_REGISTRADO');
+    };
+    if ($idUsuario <= 0) {
+        throw $falha('usuario');
+    }
+    if (!$conexao->begin_transaction()) {
+        throw $falha('transacao');
+    }
+    try {
+        foreach ([
+            'prazo' => "UPDATE usuario SET data_senha_temporaria = NOW()
+                         WHERE id_usuario = ? AND deve_alterar_senha = 1
+                           AND (data_senha_temporaria IS NULL OR ultimo_login_em IS NULL OR ultimo_login_em < data_senha_temporaria)",
+            'acesso' => 'UPDATE usuario SET ultimo_login_em = NOW() WHERE id_usuario = ?',
+        ] as $etapa => $sql) {
+            $stmt = $conexao->prepare($sql);
+            if (!$stmt) {
+                throw $falha($etapa . '_preparo');
+            }
+            $stmt->bind_param('i', $idUsuario);
+            $executou = $stmt->execute();
+            $stmt->close();
+            if (!$executou) {
+                throw $falha($etapa . '_execucao');
+            }
+        }
+        // Confirmação do estado dentro da mesma transação: com senha temporária, o prazo precisa existir e o acesso
+        // registrado precisa ser posterior ou igual ao início dele.
+        $stmt = $conexao->prepare(
+            "SELECT deve_alterar_senha, data_senha_temporaria, ultimo_login_em,
+                    (deve_alterar_senha = 1 AND data_senha_temporaria IS NOT NULL
+                     AND CURRENT_TIMESTAMP >= DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR)) AS vencida
+               FROM usuario WHERE id_usuario = ? LIMIT 1"
+        );
+        if (!$stmt) {
+            throw $falha('confirmacao_preparo');
+        }
+        $stmt->bind_param('i', $idUsuario);
+        $lido = $stmt->execute();
+        $estado = $lido ? ($stmt->get_result()->fetch_assoc() ?: null) : null;
+        $stmt->close();
+        if ($estado === null) {
+            throw $falha('confirmacao_leitura');
+        }
+        $temporaria = (int)$estado['deve_alterar_senha'] === 1;
+        if ($estado['ultimo_login_em'] === null
+            || ($temporaria && ($estado['data_senha_temporaria'] === null
+                || (string)$estado['ultimo_login_em'] < (string)$estado['data_senha_temporaria']))) {
+            throw $falha('confirmacao_estado');
+        }
+        if (!$conexao->commit()) {
+            throw $falha('commit');
+        }
+    } catch (Throwable $e) {
+        try {
+            $conexao->rollback();
+        } catch (Throwable) {
+        }
+        throw $e instanceof RuntimeException && $e->getMessage() === 'LOGIN_PRAZO_SENHA_NAO_REGISTRADO'
+            ? $e : $falha('excecao');
+    }
+
+    // Aviso do sino com o mesmo prazo, fora da transação: melhor esforço (a listagem já usa o prazo do usuário).
+    try {
+        $stmt = $conexao->prepare(
+            "UPDATE notificacao n
+               JOIN usuario u ON u.id_usuario = n.destinatario_id
+                SET n.prazo_em = DATE_ADD(u.data_senha_temporaria, INTERVAL 24 HOUR)
+              WHERE n.destinatario_id = ? AND n.destinatario_tipo IN ('usuario', 'super_admin')
+                AND n.codigo = 'seguranca.senha_temporaria' AND n.concluida_em IS NULL AND n.cancelada_em IS NULL
+                AND u.deve_alterar_senha = 1 AND u.data_senha_temporaria IS NOT NULL"
+        );
+        if ($stmt) {
+            $stmt->bind_param('i', $idUsuario);
+            $stmt->execute();
+            $stmt->close();
+        }
+    } catch (Throwable) {
+        error_log('[login_prazo_senha] prazo do aviso não sincronizado');
+    }
+
+    return (int)$estado['vencida'] === 1;
+}
+
 function loginMultiempresaConsolidarSessao(mysqli $conexao, array $user, array $acesso): array
 {
     $idUsuario = (int)$user['id_usuario'];
@@ -254,11 +360,12 @@ function loginMultiempresaConsolidarSessao(mysqli $conexao, array $user, array $
     $perfilNome = (string)$acesso['perfil_nome'];
     $modoRegularizacao = (bool)$acesso['modo_regularizacao'];
 
-    $stmt = $conexao->prepare('UPDATE usuario SET ultimo_login_em = NOW() WHERE id_usuario = ? LIMIT 1');
-    if ($stmt) {
-        $stmt->bind_param('i', $idUsuario);
-        $stmt->execute();
-        $stmt->close();
+    // Primeiro login com a senha inicial inicia o prazo de 24 horas (o vencimento é recalculado depois do registro).
+    // Falha segura: sem o estado do prazo confirmado o acesso não é concedido (nada foi gravado; basta tentar de novo).
+    try {
+        $senhaTemporariaVencida = loginRegistrarAcessoComPrazoSenha($conexao, $idUsuario);
+    } catch (Throwable) {
+        out(['ok' => false, 'code' => 'LOGIN_TEMPORARIAMENTE_INDISPONIVEL', 'user_msg' => 'Não foi possível concluir o acesso agora. Tente novamente em instantes.'], 503);
     }
 
     session_regenerate_id(true);

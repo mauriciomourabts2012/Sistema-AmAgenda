@@ -1946,42 +1946,31 @@
     }
   }
 
-  // O navegador não permite abrir janela anônima ou outro navegador: apenas orienta
-  // e oferece a cópia do mesmo link. A sessão atual da empresa não é tocada.
-  async function orientarTesteCliente(campo, botao) {
-    if (!campo.value || !window.MensagemSistema?.confirmar) return;
-    const copiarLink = await window.MensagemSistema.confirmar(
-      "Para testar a Agenda Online como cliente, abra este link em uma janela anônima ou em outro navegador.",
-      { titulo: "Testar como cliente", textoConfirmar: "Copiar link", textoCancelar: "Fechar" }
-    );
-    if (copiarLink) await copiarEndereco(campo, botao);
-  }
-
   function configurarLink(auth) {
     const bloco = document.getElementById("agendaOnlineCompartilhar");
     const campo = document.getElementById("agendaOnlineUrl");
     const copiar = document.getElementById("agendaOnlineCopiar");
-    const testar = document.getElementById("agendaOnlineTestar");
-    if (!bloco || !campo || !copiar || !testar) return;
+    // Link nativo (target _blank + noopener/noreferrer): abre a agenda pública em nova aba sem depender de
+    // window.open, que o Safari do iPhone bloqueia fora do gesto do usuário. O painel continua aberto.
+    const abrir = document.getElementById("agendaOnlineAbrir");
+    if (!bloco || !campo || !copiar || !abrir) return;
 
     const url = podeExibir(auth) ? urlAgendaOnline(auth) : "";
     if (!url) {
       bloco.hidden = true;
       campo.value = "";
+      abrir.removeAttribute("href");
       bloco.dataset.configurado = "0";
       return;
     }
 
     campo.value = url;
+    abrir.href = url;
     bloco.hidden = false;
     bloco.dataset.configurado = "1";
     if (copiar.dataset.listenerConfigurado !== "1") {
       copiar.addEventListener("click", () => copiarEndereco(campo, copiar));
       copiar.dataset.listenerConfigurado = "1";
-    }
-    if (testar.dataset.listenerConfigurado !== "1") {
-      testar.addEventListener("click", () => orientarTesteCliente(campo, testar));
-      testar.dataset.listenerConfigurado = "1";
     }
   }
 

@@ -103,12 +103,24 @@ verificar(!str_contains(json_encode($res['erros']), 'segredo-de-teste-curto'), '
 $ausente = infobipConfigCarregar(__DIR__ . '/arquivo-inexistente.php');
 verificar($ausente['ok'] === false && $ausente['habilitado'] === false && $ausente['erros'] === ['CONFIG_AUSENTE'], 'configuração ausente => desligada');
 
-$exemplo = __DIR__ . '/../../backend/_config/infobip.example.php';
-$modelo = infobipConfigCarregar($exemplo);
-verificar($modelo['habilitado'] === false && $modelo['ok'] === false, 'modelo de exemplo nunca habilita o envio');
-$bruto = require $exemplo;
-verificar(($bruto['habilitado'] ?? null) === false, 'exemplo: envio desabilitado por padrão');
-verificar(($bruto['api_key'] ?? 'x') === '' && ($bruto['hmac_key'] ?? 'x') === '' && ($bruto['webhook_secret'] ?? 'x') === '', 'exemplo: sem segredos');
+// Configuração "em branco" simulada em memória (sem ler arquivo do repositório nem credenciais reais): jamais habilita o envio.
+$emBranco = [
+    'habilitado' => false,
+    'ambiente' => 'teste',
+    'base_url' => 'https://SEU-SUBDOMINIO.api.infobip.com',
+    'api_key' => '',
+    'sender' => 'AmAgenda',
+    'timeout_conexao' => 5,
+    'timeout_total' => 15,
+    'hmac_key' => '',
+    'webhook_secret' => '',
+    'webhook_url' => 'https://SEU-DOMINIO/public/api/api_central.php?path=webhooks/infobip',
+];
+$modelo = infobipConfigValidar($emBranco);
+verificar($modelo['ok'] === false && $modelo['config']['habilitado'] === false, 'configuração em branco nunca habilita o envio');
+verificar(array_diff(['HOST_NAO_INFOBIP', 'API_KEY_INVALIDA', 'HMAC_KEY_FRACA', 'WEBHOOK_SECRET_FRACO', 'WEBHOOK_URL_INVALIDA'], $modelo['erros']) === [], 'configuração em branco: placeholders e segredos vazios recusados');
+// Mesmo "habilitada" por engano, a configuração em branco continua inválida (sem segredos não há envio).
+verificar(infobipConfigValidar(array_replace($emBranco, ['habilitado' => true]))['ok'] === false, 'configuração em branco habilitada por engano continua inválida');
 
 $tmp = sys_get_temp_dir() . '/infobip-teste-' . bin2hex(random_bytes(4)) . '.php';
 file_put_contents($tmp, '<?php return ' . var_export(configValida(), true) . ';');
@@ -131,8 +143,14 @@ verificar($invalida['ok'] === false && $invalida['habilitado'] === false, 'arqui
 // Arquivo privado ignorado pelo Git e sem segredo versionado.
 $gitignore = (string)file_get_contents(__DIR__ . '/../../.gitignore');
 verificar(preg_match('#^/backend/_config/infobip\.php\s*$#m', $gitignore) === 1, '.gitignore ignora backend/_config/infobip.php');
-$conteudoExemplo = (string)file_get_contents($exemplo);
-verificar(preg_match('/[A-Fa-f0-9]{32,}/', $conteudoExemplo) !== 1, 'exemplo sem sequências longas que pareçam chaves');
+// O arquivo privado real não é lido por este teste (nenhuma credencial é acessada nem exibida).
+$dependentes = [];
+foreach (array_merge(glob(__DIR__ . '/*.php') ?: [], glob(__DIR__ . '/../../backend/_gateways/*.php') ?: [], glob(__DIR__ . '/../../backend/_servicos/*.php') ?: [], glob(__DIR__ . '/../../backend/webhooks/*.php') ?: []) as $arquivo) {
+    if (realpath($arquivo) !== realpath(__FILE__) && str_contains((string)file_get_contents($arquivo), 'infobip.example')) {
+        $dependentes[] = basename($arquivo);
+    }
+}
+verificar($dependentes === [], 'nenhum teste ou código depende de arquivo de exemplo da Infobip');
 
 echo $total . ' verificações, ' . count($falhas) . " falha(s)\n";
 foreach ($falhas as $falha) {

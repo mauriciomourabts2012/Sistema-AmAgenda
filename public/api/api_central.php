@@ -785,6 +785,17 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
             }
         }
 
+        // Aviso de segurança da senha temporária: a obrigação é da identidade global; garante o aviso na empresa atual
+        // (sem duplicar) para o usuário que ainda precisa trocar a senha. Falha aqui não impede a listagem das demais.
+        if ($destinatarioTipo === 'usuario' && !$modoSuporteNotificacoes
+            && ($authNotificacoes['deve_alterar_senha'] ?? false) === true) {
+            try {
+                notificacaoGarantirSenhaTemporaria($conexao, $idEmpresaNotificacoes, $idDestinatario);
+            } catch (Throwable $e) {
+                error_log('[notificacoes/listar] Falha ao garantir o aviso da senha temporária: ' . get_class($e));
+            }
+        }
+
         $pendentes = notificacaoListarPendentes(
             $conexao,
             $destinatarioTipo,
@@ -792,7 +803,20 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
             $idEmpresaNotificacoes,
             100
         );
-        $itens = array_map(static function (array $item): array {
+        // O prazo do aviso da senha temporária exibido é SEMPRE o do backend (usuario.data_senha_temporaria + 24 h),
+        // nunca recalculado na abertura da notificação nem copiado de outro lugar.
+        $prazoSenhaTemporaria = null;
+        foreach ($pendentes as $pendente) {
+            if ((string)$pendente['codigo'] === NOTIFICACAO_SENHA_TEMPORARIA_CODIGO) {
+                try {
+                    $prazoSenhaTemporaria = notificacaoPrazoSenhaTemporaria($conexao, $idDestinatario)['prazo'] ?? null;
+                } catch (Throwable $e) {
+                    error_log('[notificacoes/listar] Falha ao ler o prazo da senha temporária: ' . get_class($e));
+                }
+                break;
+            }
+        }
+        $itens = array_map(static function (array $item) use ($prazoSenhaTemporaria): array {
             $contextoSeguro = null;
             if (in_array((string)$item['codigo'], ['agenda.agendamento_pendente', 'agenda.agendamento_finalizacao_pendente'], true)
                 && is_array($item['contexto'] ?? null)
@@ -819,7 +843,9 @@ if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
                 'obrigatoria' => (bool)$item['obrigatoria'],
                 'acao_codigo' => $item['acao_codigo'] === null ? null : (string)$item['acao_codigo'],
                 'contexto' => $contextoSeguro,
-                'prazo_em' => $item['prazo_em'] === null ? null : (string)$item['prazo_em'],
+                'prazo_em' => (string)$item['codigo'] === NOTIFICACAO_SENHA_TEMPORARIA_CODIGO && $prazoSenhaTemporaria !== null
+                    ? $prazoSenhaTemporaria
+                    : ($item['prazo_em'] === null ? null : (string)$item['prazo_em']),
                 'lida' => $item['lida_em'] !== null,
                 'criada_em' => (string)$item['criado_em'],
             ];

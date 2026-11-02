@@ -689,6 +689,7 @@ body[data-menu-contexto="agenda"] .layout-controle{
 }
 
 .agenda-online-acoes .botao-geral.destaque { border-color: var(--am-marca, #1163dd); }
+.agenda-online-acoes a.botao-geral { text-decoration: none; }
 .agenda-online-acoes .botao-geral:focus-visible {
   outline: 3px solid rgba(var(--am-marca-rgb, 17, 99, 221), .28);
   outline-offset: 2px;

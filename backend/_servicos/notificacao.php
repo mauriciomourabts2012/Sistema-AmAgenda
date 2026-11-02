@@ -1130,6 +1130,90 @@ function notificacaoListarPendentes(
     return $itens;
 }
 
+/* ==========================================================
+   SEGURANÇA — aviso da senha temporária (identidade global)
+   ----------------------------------------------------------
+   O prazo é sempre o do backend: usuario.data_senha_temporaria + 24 horas (mesma expressão do require_auth). O aviso
+   precisa existir em cada empresa em que o usuário entra: a projeção cria, sob demanda e só no escopo da empresa atual,
+   o aviso que falta (verificação de aviso ativo + chave determinística: sem duplicidade; não toca outras notificações,
+   não reinicia prazo e não expõe dados de outras empresas). A troca de senha encerra todos os avisos do usuário.
+   ========================================================== */
+const NOTIFICACAO_SENHA_TEMPORARIA_CODIGO = 'seguranca.senha_temporaria';
+
+/**
+ * Início e vencimento da senha temporária pendente do usuário, ou null quando não há. Somente leitura.
+ *
+ * @return array{inicio: string, prazo: string}|null
+ */
+function notificacaoPrazoSenhaTemporaria(mysqli $conexao, int $idUsuario): ?array
+{
+    notificacaoInteiroPositivo($idUsuario, 'id_usuario');
+    $stmt = notificacaoPreparar($conexao, 'SELECT data_senha_temporaria, DATE_ADD(data_senha_temporaria, INTERVAL 24 HOUR) AS prazo FROM usuario WHERE id_usuario=? AND deve_alterar_senha=1 AND data_senha_temporaria IS NOT NULL LIMIT 1');
+    $stmt->bind_param('i', $idUsuario);
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível consultar o prazo da senha temporária.');
+        $resultado = $stmt->get_result();
+        $linha = $resultado ? ($resultado->fetch_assoc() ?: null) : null;
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível consultar o prazo da senha temporária.');
+    } finally {
+        $stmt->close();
+    }
+
+    return $linha === null ? null : ['inicio' => (string)$linha['data_senha_temporaria'], 'prazo' => (string)$linha['prazo']];
+}
+
+/**
+ * Garante o aviso da senha temporária no escopo da empresa atual do usuário (listagem do sino). Idempotente.
+ *
+ * @return array{criada: bool, motivo: string}
+ */
+function notificacaoGarantirSenhaTemporaria(mysqli $conexao, int $idEmpresa, int $idUsuario): array
+{
+    notificacaoInteiroPositivo($idEmpresa, 'id_empresa');
+    $periodo = notificacaoPrazoSenhaTemporaria($conexao, $idUsuario);
+    if ($periodo === null) {
+        return ['criada' => false, 'motivo' => 'sem_senha_temporaria'];
+    }
+
+    $codigo = NOTIFICACAO_SENHA_TEMPORARIA_CODIGO;
+    $stmt = notificacaoPreparar($conexao, "SELECT 1 FROM notificacao WHERE destinatario_tipo='usuario' AND destinatario_id=? AND id_empresa=? AND codigo=? AND concluida_em IS NULL AND cancelada_em IS NULL LIMIT 1");
+    $stmt->bind_param('iis', $idUsuario, $idEmpresa, $codigo);
+    try {
+        if (!$stmt->execute()) throw new RuntimeException('Não foi possível consultar o aviso da senha temporária.');
+        $stmt->store_result();
+        $ativa = $stmt->num_rows > 0;
+    } catch (mysqli_sql_exception) {
+        throw new RuntimeException('Não foi possível consultar o aviso da senha temporária.');
+    } finally {
+        $stmt->close();
+    }
+    if ($ativa) {
+        return ['criada' => false, 'motivo' => 'ja_ativa'];
+    }
+
+    $resultado = notificacaoCriar($conexao, [
+        'id_empresa' => $idEmpresa,
+        'destinatario_tipo' => 'usuario',
+        'destinatario_id' => $idUsuario,
+        'origem_tipo' => 'sistema',
+        'origem_id' => null,
+        'codigo' => $codigo,
+        'categoria' => 'seguranca',
+        'titulo' => 'Altere sua senha temporária',
+        'mensagem' => 'Sua senha atual é temporária. Altere-a dentro de 24 horas.',
+        'prioridade' => 'alta',
+        'obrigatoria' => true,
+        'acao_codigo' => 'perfil.alterar_senha',
+        'contexto' => null,
+        'prazo_em' => $periodo['prazo'],
+        'chave_deduplicacao' => 'seguranca.senha_temporaria:projecao:empresa:' . $idEmpresa . ':usuario:' . $idUsuario
+            . ':inicio:' . substr(hash('sha256', $periodo['inicio']), 0, 16),
+    ]);
+
+    return ['criada' => $resultado['criada'] === true, 'motivo' => $resultado['criada'] === true ? 'criada' : 'ja_existia'];
+}
+
 function notificacaoAtualizarEstado(
     mysqli $conexao,
     int $idNotificacao,

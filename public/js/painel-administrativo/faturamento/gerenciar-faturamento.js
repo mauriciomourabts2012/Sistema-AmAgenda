@@ -27,6 +27,7 @@
   const MENSAGEM_PIX_RESIDUAL = "Sua mensalidade já está paga. Não utilize o PIX gerado anteriormente para evitar pagamento duplicado.";
   // A conclusão recarrega a página para liberar o acesso; o aviso precisa sobreviver à recarga.
   const CHAVE_AVISO_CONTRATACAO = "amagenda:faturamento:contratacao-concluida";
+  const CHAVE_AVISO_CANCELAMENTO = "amagenda:faturamento:assinatura-cancelada";
   const normalizar = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const statusClasse = status => `faturamento-status faturamento-status--${esc(normalizar(status || "pendente").replace(/\s+/g, "-"))}`;
   const estadoVisual = (titulo, detalhe, erro = false, icone = "fa-file-circle-exclamation") => `<div class="faturamento-estado${erro ? " faturamento-estado--erro" : ""}"><span class="faturamento-estado-icone" aria-hidden="true"><i class="fa-solid ${icone}"></i></span><div><strong>${esc(titulo)}</strong><p>${esc(detalhe)}</p></div></div>`;
@@ -553,12 +554,16 @@
       fecharModalFaturamento("modalCancelarFaturamento");
       // Sucesso só com a resposta do servidor, que exige a recorrência já confirmada como cancelada.
       const semNovasCobrancas = json.data?.recorrencia_cancelada === true ? " Não haverá novas cobranças automáticas." : "";
-      avisar("sucesso", modalidade === "fim_periodo_pago"
-        ? `Cancelamento programado. O acesso termina após ${br(json.data?.data_fim)}.${semNovasCobrancas}`
-        : `Sua assinatura foi cancelada com sucesso.${semNovasCobrancas || " O histórico financeiro permanece disponível."}`);
+      if (modalidade === "imediato") {
+        // A página recarrega para aplicar o modo restrito: o aviso de sucesso precisa sobreviver à recarga (senão só o
+        // bloqueio das rotas restritas aparecia, como se o cancelamento tivesse falhado).
+        try { sessionStorage.setItem(CHAVE_AVISO_CANCELAMENTO, "1"); } catch { mostrarAvisoCancelamento(true); }
+        window.location.reload();
+        return;
+      }
+      avisar("sucesso", `Cancelamento programado. O acesso termina após ${br(json.data?.data_fim)}.${semNovasCobrancas}`);
       estado.carregado = false;
       await iniciar();
-      if (modalidade === "imediato") window.location.reload();
     } catch (erro) {
       if (erro.bloqueioRecorrencia) {
         // Nada foi cancelado nem enviado ao Mercado Pago: o cliente usa o botão próprio do pagamento automático.
@@ -596,7 +601,19 @@
     avisar("sucesso", aviso.mensagem);
     if (aviso.pix_residual === true) avisar("aviso", MENSAGEM_PIX_RESIDUAL);
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mostrarAvisoContratacao, { once: true });
-  else mostrarAvisoContratacao();
+  // Cancelamento comercial imediato confirmado pelo servidor (gravado antes da recarga).
+  function mostrarAvisoCancelamento(forcar = false) {
+    let pendente = forcar;
+    try {
+      pendente = pendente || sessionStorage.getItem(CHAVE_AVISO_CANCELAMENTO) === "1";
+      sessionStorage.removeItem(CHAVE_AVISO_CANCELAMENTO);
+    } catch {}
+    if (!pendente) return;
+    window.MensagemSistema?.sucesso?.("Sua assinatura do AmAgenda foi cancelada. Você pode consultar as informações e o histórico no Faturamento.",
+      { titulo: "Assinatura cancelada com sucesso!", tempo: 7000 });
+  }
+  const mostrarAvisosPosRecarga = () => { mostrarAvisoContratacao(); mostrarAvisoCancelamento(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mostrarAvisosPosRecarga, { once: true });
+  else mostrarAvisosPosRecarga();
   document.addEventListener("DOMContentLoaded", () => { document.addEventListener("amagenda:painel-aba-alterada", e => { if (e.detail?.aba === "faturamento" && !estado.carregado) iniciar(); }); document.addEventListener("amagenda:sessao-carregada", () => { if (document.getElementById("faturamento")?.classList.contains("ativa")) carregarCobrancas(); }); document.getElementById("pesquisar-faturamento")?.addEventListener("input", () => { estado.pagina = 1; carregarCobrancas(); }); const form = document.getElementById("formFiltrosFaturamento"); form?.addEventListener("submit", e => { e.preventDefault(); form.hidden = true; document.getElementById("btnFiltrosFaturamento")?.setAttribute("aria-expanded", "false"); estado.pagina = 1; carregarCobrancas(); }); document.getElementById("limparFiltrosFaturamento")?.addEventListener("click", () => { form?.reset(); estado.pagina = 1; carregarCobrancas(); }); document.getElementById("btnFiltrosFaturamento")?.addEventListener("click", () => { const aberto = !form?.hidden; if (form) form.hidden = aberto; document.getElementById("btnFiltrosFaturamento")?.setAttribute("aria-expanded", String(!aberto)); }); if (document.getElementById("faturamento")?.classList.contains("ativa")) iniciar(); });
 })();

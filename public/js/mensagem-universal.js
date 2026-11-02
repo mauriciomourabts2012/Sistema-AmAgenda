@@ -20,6 +20,16 @@
     const el = document.createElement("button"); el.type = "button"; el.className = `ui-alert__btn ${classe}`; el.textContent = texto; el.addEventListener("click", acao); return el;
   }
   function exibir(tipo, mensagem, opcoes = {}) {
+    // A mesma mensagem já visível não é empilhada de novo (ex.: vários módulos recebendo o mesmo 403 no primeiro acesso).
+    // Um aviso mais específico (com título próprio ou persistente) substitui o genérico; os demais reaproveitam o visível.
+    if (tipo !== "confirm") {
+      const texto = String(mensagem || "");
+      const repetida = Array.from(pilha().querySelectorAll(".ui-alert:not(.ui-alert--confirm):not(.is-leaving) .ui-alert__msg")).find(m => m.textContent === texto);
+      if (repetida) {
+        if (!opcoes.titulo && !opcoes.persistente) return repetida.closest(".ui-alert");
+        repetida.closest(".ui-alert").remove();
+      }
+    }
     const cfg = TIPOS[tipo] || TIPOS.info;
     const el = document.createElement("section"); el.className = `ui-alert ${cfg[0]}`; el.setAttribute("role", ["danger", "warning"].includes(tipo) ? "alert" : "status");
     // Confirmação destrutiva: mesmo componente, variante de perigo (vermelha).

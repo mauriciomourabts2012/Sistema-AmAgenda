@@ -276,6 +276,21 @@ try {
             $idEmpresaNotificacao > 0 ? $idEmpresaNotificacao : null
         );
     }
+    // Usuário em várias empresas: a obrigação é do usuário, então o aviso das demais empresas também deixa de valer.
+    $stmtDemais = $conexao->prepare(
+        "UPDATE notificacao SET concluida_em = NOW()
+          WHERE destinatario_tipo = ? AND destinatario_id = ? AND codigo = 'seguranca.senha_temporaria'
+            AND concluida_em IS NULL AND cancelada_em IS NULL"
+    );
+    if (!$stmtDemais) {
+        throw new Exception('Prepare conclusão dos avisos de senha temporária falhou.');
+    }
+    $stmtDemais->bind_param('si', $destinatarioTipo, $idUsuario);
+    if (!$stmtDemais->execute()) {
+        $stmtDemais->close();
+        throw new Exception('Conclusão dos avisos de senha temporária falhou.');
+    }
+    $stmtDemais->close();
 
     $conexao->commit();
 

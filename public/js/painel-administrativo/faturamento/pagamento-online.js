@@ -575,6 +575,15 @@
     cartao.carregando = true;
     try {
       const resposta = await fetch(CARTAO_CONFIGURACAO, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
+      if (resposta.status === 403) {
+        // Modo restrito (ex.: assinatura comercial cancelada): não há cartão a configurar e o aviso de regularização do
+        // Faturamento já orienta o cliente; o bloqueio da rota não é um erro desta seção.
+        const bloqueio = await resposta.clone().json().catch(() => ({}));
+        if (bloqueio?.code === "SESSION_REGULARIZATION_REQUIRED") {
+          if (secao) secao.hidden = true;
+          return;
+        }
+      }
       const retorno = await json(resposta);
       renderizarCartao(retorno.data || {});
     } catch (erro) {

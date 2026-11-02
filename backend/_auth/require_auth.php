@@ -107,11 +107,11 @@ $senhaTemporariaVencida = (int)($usuarioAtual['senha_temporaria_vencida'] ?? 0) 
 $_SESSION['auth']['deve_alterar_senha'] = $deveAlterarSenha;
 $_SESSION['auth']['senha_temporaria_vencida'] = $senhaTemporariaVencida;
 
-/* Funcionários comuns devem trocar a senha temporária imediatamente.
- * Super Admin pode usar o painel durante as primeiras 24 horas e só é
- * bloqueado quando o vencimento calculado pelo banco se torna verdadeiro. */
-$senhaTemporariaBloqueia = $senhaTemporariaVencida
-    || ($tipoUsuario !== 'super_admin' && $deveAlterarSenha);
+/* Senha inicial/temporária: todos (funcionários e Super Admin) podem usar o sistema
+ * durante as 24 horas contadas do primeiro login com ela (data_senha_temporaria,
+ * iniciada em loginRegistrarAcessoComPrazoSenha), com o aviso persistente no sino.
+ * Vencido o prazo calculado pelo banco, a troca passa a ser obrigatória também aqui. */
+$senhaTemporariaBloqueia = $senhaTemporariaVencida;
 
 if ($senhaTemporariaBloqueia && !defined('AUTH_PERMITIR_SENHA_TEMPORARIA_VENCIDA')) {
     out([

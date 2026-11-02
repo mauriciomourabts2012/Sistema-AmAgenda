@@ -286,6 +286,18 @@ if (str_starts_with($acaoLogin, 'recuperacao_')) {
         if (!$atualizado) {
             out(['ok' => false, 'code' => 'PASSWORD_RECOVERY_UNAVAILABLE', 'user_msg' => 'Não foi possível alterar a senha agora.'], 503);
         }
+        // A recuperação também cumpre a troca da senha inicial/temporária: o aviso do sino deixa de valer em todas as
+        // empresas do usuário (como na troca pelo perfil). Falha aqui não desfaz a senha já gravada.
+        $stmt = $conexao->prepare(
+            "UPDATE notificacao SET concluida_em = NOW()
+              WHERE destinatario_id = ? AND destinatario_tipo IN ('usuario', 'super_admin')
+                AND codigo = 'seguranca.senha_temporaria' AND concluida_em IS NULL AND cancelada_em IS NULL"
+        );
+        if ($stmt) {
+            $stmt->bind_param('i', $idUsuarioRecuperacao);
+            if (!$stmt->execute()) error_log('[recuperacao_senha] aviso de senha temporária não concluído.');
+            $stmt->close();
+        }
 
         unset($_SESSION['usuario_recuperacao_senha'], $_SESSION['csrf_token']);
         session_regenerate_id(true);
@@ -918,19 +930,12 @@ $senhaTemporariaVencida = (int)($user['senha_temporaria_vencida'] ?? 0) === 1;
  *   redirect => /views/super-admin/painel-super-admin.html
  */
 if ($tipoUsuario === 'super_admin') {
-    $sqlUpdateLogin = "
-        UPDATE usuario
-           SET ultimo_login_em = NOW()
-         WHERE id_usuario = ?
-         LIMIT 1
-    ";
-    $stmtUpdate = $conexao->prepare($sqlUpdateLogin);
-
-    if ($stmtUpdate) {
-        $idUsuarioUpdate = (int)$user['id_usuario'];
-        $stmtUpdate->bind_param('i', $idUsuarioUpdate);
-        $stmtUpdate->execute();
-        $stmtUpdate->close();
+    // Mesmo registro do login das empresas: o primeiro login com a senha inicial inicia o prazo de 24 horas.
+    // Falha segura: sem o estado do prazo confirmado o acesso não é concedido (nada foi gravado; basta tentar de novo).
+    try {
+        $senhaTemporariaVencida = loginRegistrarAcessoComPrazoSenha($conexao, (int)$user['id_usuario']);
+    } catch (Throwable) {
+        out(['ok' => false, 'code' => 'LOGIN_TEMPORARIAMENTE_INDISPONIVEL', 'user_msg' => 'Não foi possível concluir o acesso agora. Tente novamente em instantes.'], 503);
     }
 
     session_regenerate_id(true);

@@ -71,6 +71,12 @@
     return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(data);
   }
 
+  // "AAAA-MM-DD HH:MM[:SS]" do backend -> "DD/MM/AAAA às HH:MM", sem conversão de fuso nem novo cálculo (o vencimento é o do servidor).
+  function formatarPrazoNotificacao(valor) {
+    const partes = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(valor || ""));
+    return partes ? `${partes[3]}/${partes[2]}/${partes[1]} às ${partes[4]}:${partes[5]}` : "";
+  }
+
   function criarTextoEstado(texto, classe = "") {
     const { estado, lista } = elementosNotificacoes();
     if (!estado || !lista) return;
@@ -141,40 +147,6 @@
     return `${CHAVE_AVISO_SENHA_TEMPORARIA}:${Number.isInteger(idUsuario) && idUsuario > 0 ? idUsuario : "super-admin"}`;
   }
 
-  function avisoPrazoJaExibido(auth) {
-    if (estadoNotificacoes.avisoPrazoSenhaExibido) return true;
-    try {
-      return window.sessionStorage.getItem(chaveAvisoPrazoSenha(auth)) === "1";
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function marcarAvisoPrazoComoExibido(auth) {
-    // Marca antes de criar o aviso para deduplicar eventos simultâneos.
-    estadoNotificacoes.avisoPrazoSenhaExibido = true;
-    try {
-      window.sessionStorage.setItem(chaveAvisoPrazoSenha(auth), "1");
-    } catch (_) {}
-  }
-
-  function exibirAvisoPrazoSenhaTemporaria(auth) {
-    if (avisoPrazoJaExibido(auth)) return;
-    const mensagens = window.MensagemSistema;
-    if (!mensagens?.info) return;
-
-    marcarAvisoPrazoComoExibido(auth);
-    alertaPrazoSenhaTemporaria = mensagens.info(
-      "Sua senha temporária deve ser alterada dentro de 24 horas.",
-      {
-        titulo: "Senha temporária",
-        tempo: 6000,
-        focar: false,
-        aoFechar: () => { alertaPrazoSenhaTemporaria = null; },
-      }
-    );
-  }
-
   function fecharAvisoPrazoSenhaTemporaria() {
     if (alertaPrazoSenhaTemporaria?.isConnected) alertaPrazoSenhaTemporaria.remove();
     alertaPrazoSenhaTemporaria = null;
@@ -226,19 +198,17 @@
   }
 
   function aplicarEstadoSessao(auth) {
-    const superAdmin = String(auth?.tipo_usuario || "").trim().toLowerCase() === "super_admin";
     const deveAlterarSenha = auth?.deve_alterar_senha === true;
     const senhaTemporariaVencida = auth?.senha_temporaria_vencida === true;
-    const trocaObrigatoria = senhaTemporariaVencida || (!superAdmin && deveAlterarSenha);
-
-    if (trocaObrigatoria) {
+    // Senha inicial: 24 horas a partir do primeiro login com ela, com o aviso persistente no sino
+    // (seguranca.senha_temporaria, como a orientação de foto) e troca voluntária; vencido o prazo, modal obrigatório
+    // (o backend também bloqueia). Sem aviso flutuante extra: ele duplicava o aviso do sino no primeiro acesso.
+    if (senhaTemporariaVencida) {
       fecharAvisoPrazoSenhaTemporaria();
       ativarBloqueioSenha();
     } else if (estadoNotificacoes.bloqueioSenha) liberarBloqueioSenha(true);
 
-    if (superAdmin && deveAlterarSenha && !senhaTemporariaVencida) {
-      exibirAvisoPrazoSenhaTemporaria(auth);
-    } else if (auth && !deveAlterarSenha && !senhaTemporariaVencida) {
+    if (auth && !deveAlterarSenha && !senhaTemporariaVencida) {
       removerAvisoPrazoSenhaTemporaria(auth);
     }
   }
@@ -359,7 +329,16 @@
       const estadoLeitura = document.createElement("span");
       estadoLeitura.textContent = item.lida ? "Lida · pendente" : "Não lida";
       rodape.appendChild(estadoLeitura);
-      botaoItem.append(topo, mensagem, rodape);
+      // Senha temporária: acrescenta o prazo limite informado pelo backend (a mensagem original é preservada).
+      const prazoSenha = item.codigo === "seguranca.senha_temporaria" ? formatarPrazoNotificacao(item.prazo_em) : "";
+      if (prazoSenha) {
+        const prazo = document.createElement("span");
+        prazo.className = "notificacao-item-prazo";
+        prazo.textContent = `Prazo para alteração: ${prazoSenha}.`;
+        botaoItem.append(topo, mensagem, prazo, rodape);
+      } else {
+        botaoItem.append(topo, mensagem, rodape);
+      }
 
       botaoItem.addEventListener("click", async () => {
         if (botaoItem.disabled) return;
