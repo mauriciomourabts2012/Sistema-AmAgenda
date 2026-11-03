@@ -23,6 +23,7 @@ require_once __DIR__ . '/../_gateways/infobip.php';
 
 const SMS_PROVEDOR = 'infobip';
 const SMS_STATUS_FINAIS = ['entregue', 'nao_entregue', 'expirada', 'rejeitada', 'erro', 'cancelada'];
+const SMS_FUSO_BANCO = 'America/Sao_Paulo';
 
 function smsUuidV4(): string
 {
@@ -67,7 +68,7 @@ interface SmsBancoSubstituto
     /** @return list<array<string, mixed>> */
     public function consultarSubstituto(string $sql, array $valores): array;
 
-    public function executarSubstituto(string $sql, array $valores): int;
+    public function executarSubstituto(string $sql, array $valores, string $tipos = ''): int;
 }
 
 /**
@@ -101,7 +102,7 @@ function smsConsultar(mysqli $conexao, string $sql, string $tipos = '', mixed ..
 function smsExecutar(mysqli $conexao, string $sql, string $tipos = '', mixed ...$valores): int
 {
     if ($conexao instanceof SmsBancoSubstituto) {
-        return $conexao->executarSubstituto($sql, $valores);
+        return $conexao->executarSubstituto($sql, $valores, $tipos);
     }
     $stmt = $conexao->prepare($sql);
     if (!$stmt) {
@@ -217,7 +218,7 @@ function smsEnviarOtp(mysqli $conexao, array $carga, int $idOtpDesafio, string $
                     aceito_em = IF(? = 'aceita', NOW(6), aceito_em),
                     concluido_em = IF(?, NOW(6), concluido_em)
               WHERE id_otp_desafio = ? AND status = 'enviando'",
-            'sisssssissii',
+            'sissssissii',
             $statusMsg,
             $httpStatus,
             $erroCodigo,
@@ -285,7 +286,7 @@ function smsDataRelatorio(mixed $valor): ?string
         return null;
     }
 
-    return $data->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s.u');
+    return $data->setTimezone(new DateTimeZone(SMS_FUSO_BANCO))->format('Y-m-d H:i:s.u');
 }
 
 /**

@@ -30,7 +30,7 @@ function falsoRelatorio(): never
 
 final class BancoFalso extends mysqli implements SmsBancoSubstituto
 {
-    /** @var list<array{sql: string, valores: array}> */
+    /** @var list<array{sql: string, valores: array, tipos?: string}> */
     public array $log = [];
     /** @var list<array{0: string, 1: mixed, 2: bool}> */
     private array $regras = [];
@@ -78,9 +78,13 @@ final class BancoFalso extends mysqli implements SmsBancoSubstituto
         return is_array($r) ? $r : [];
     }
 
-    public function executarSubstituto(string $sql, array $valores): int
+    public function executarSubstituto(string $sql, array $valores, string $tipos = ''): int
     {
+        if (strlen($tipos) !== count($valores)) {
+            throw new InvalidArgumentException('Quantidade de tipos incompatível com os parâmetros do banco falso.');
+        }
         $r = $this->resolver($sql, $valores, 1);
+        $this->log[array_key_last($this->log)]['tipos'] = $tipos;
         if ($r instanceof Throwable) {
             throw $r;
         }

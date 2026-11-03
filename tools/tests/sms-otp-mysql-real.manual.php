@@ -80,18 +80,36 @@ $idsDesafios = [];
 
 function limpar(): void
 {
-    global $conexao, $idsClientes, $idsDesafios;
+    global $conexao, $conexaoLock, $idsClientes, $idsDesafios;
+    // Libera locks da conexão auxiliar e restaura o timeout, para a limpeza não ficar presa após falha no teste 12.
+    try {
+        if (isset($conexaoLock)) {
+            $conexaoLock->rollback();
+        }
+        $conexao->query('SET SESSION innodb_lock_wait_timeout = 50');
+    } catch (Throwable $e) {
+        fwrite(STDERR, "Aviso: não foi possível liberar o lock auxiliar.\n");
+    }
+    // Cada etapa é independente: uma falha não impede as demais (ordem: mensagem_envio -> otp_desafio -> cliente).
+    $passo = static function (string $sql): void {
+        global $conexao;
+        try {
+            w($conexao, $sql);
+        } catch (Throwable $e) {
+            fwrite(STDERR, "Aviso: etapa de limpeza falhou; confira os resíduos pelo SQL do procedimento.\n");
+        }
+    };
     if ($idsDesafios !== []) {
         $in = implode(',', array_map('intval', array_unique($idsDesafios)));
-        w($conexao, "DELETE FROM mensagem_envio WHERE id_otp_desafio IN ($in)");
-        w($conexao, "DELETE FROM otp_desafio WHERE id_otp_desafio IN ($in)");
+        $passo("DELETE FROM mensagem_envio WHERE id_otp_desafio IN ($in)");
+        $passo("DELETE FROM otp_desafio WHERE id_otp_desafio IN ($in)");
     }
     if ($idsClientes !== []) {
         $in = implode(',', array_map('intval', $idsClientes));
         // Desafios criados por este teste para estes clientes, caso algum id não tenha sido capturado.
-        w($conexao, "DELETE m FROM mensagem_envio m JOIN otp_desafio o ON o.id_otp_desafio = m.id_otp_desafio WHERE o.id_cliente IN ($in)");
-        w($conexao, "DELETE FROM otp_desafio WHERE id_cliente IN ($in)");
-        w($conexao, "DELETE FROM cliente WHERE id_cliente IN ($in) AND nome_completo = '" . $conexao->real_escape_string($GLOBALS['marca']) . "'");
+        $passo("DELETE m FROM mensagem_envio m JOIN otp_desafio o ON o.id_otp_desafio = m.id_otp_desafio WHERE o.id_cliente IN ($in)");
+        $passo("DELETE FROM otp_desafio WHERE id_cliente IN ($in)");
+        $passo("DELETE FROM cliente WHERE id_cliente IN ($in) AND nome_completo = '" . $conexao->real_escape_string($GLOBALS['marca']) . "'");
     }
 }
 register_shutdown_function('limpar');
@@ -309,6 +327,7 @@ t($r2['sucesso'] === false, 'consumo único também entre conexões diferentes')
 
 echo "== 13. Relatório de entrega (correlação, duplicado, ordem, ambiente, fuso)\n";
 $agora = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.vO');
+$agoraEpoch = (new DateTimeImmutable($agora))->format('U.u');
 $rel = [
     'messageId' => $msgId1, 'status' => ['id' => 5, 'groupName' => 'DELIVERED', 'name' => 'DELIVERED_TO_HANDSET'],
     'error' => ['id' => 0, 'name' => 'NO_ERROR', 'permanent' => false], 'price' => ['pricePerMessage' => 0.05, 'currency' => 'BRL'],
@@ -317,9 +336,17 @@ $rel = [
 t(smsAplicarRelatorio($conexao, 'producao', $rel)['motivo'] === 'desconhecida', 'mesmo messageId em outro ambiente não correlaciona');
 t(smsAplicarRelatorio($conexao, 'teste', ['messageId' => smsUuidV4()] + $rel)['motivo'] === 'desconhecida', 'messageId desconhecido ignorado');
 t(smsAplicarRelatorio($conexao, 'teste', $rel)['aplicado'] === true, 'relatório DELIVERED aplicado');
-$m = q($conexao, 'SELECT status, entregue_em, concluido_em, preco, moeda, ABS(TIMESTAMPDIFF(SECOND, entregue_em, NOW(6))) AS dif FROM mensagem_envio WHERE message_id = ?', 's', $msgId1)[0];
+$m = q(
+    $conexao,
+    'SELECT status, entregue_em, concluido_em, preco, moeda,
+            ABS(TIMESTAMPDIFF(MICROSECOND, entregue_em, FROM_UNIXTIME(?))) AS dif_evento_us
+       FROM mensagem_envio WHERE message_id = ?',
+    'ss',
+    $agoraEpoch,
+    $msgId1
+)[0];
 t($m['status'] === 'entregue' && $m['entregue_em'] !== null && $m['moeda'] === 'BRL', 'mensagem marcada entregue pelo relatório');
-t((int)$m['dif'] <= 5, 'fuso: horário do relatório (UTC) convertido coincide com o relógio do banco (diferença ≤ 5 s)');
+t((int)$m['dif_evento_us'] <= 1000, 'fuso: horário persistido representa o mesmo instante UTC do relatório (diferença ≤ 1 ms)');
 t(smsAplicarRelatorio($conexao, 'teste', $rel)['motivo'] === 'duplicado', 'relatório repetido é ignorado');
 $pend = ['status' => ['id' => 26, 'groupName' => 'PENDING', 'name' => 'PENDING_ACCEPTED']] + $rel;
 t(smsAplicarRelatorio($conexao, 'teste', $pend)['aplicado'] === false, 'relatório atrasado não rebaixa o estado final');

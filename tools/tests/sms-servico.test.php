@@ -90,7 +90,12 @@ $posPrimeiroCommit = array_search('COMMIT', $db->eventos, true);
 falsoVerificar($posInsert !== false && $posPrimeiroCommit !== false && $posInsert < $posPrimeiroCommit, 'registro confirmado (COMMIT) antes da chamada de rede');
 falsoVerificar(count($db->chamadas('/^UPDATE otp_desafio SET status = \'ativo\'/')) === 1, 'desafio fica ativo após aceite');
 $upd = $db->chamadas('/^UPDATE mensagem_envio/');
-falsoVerificar(count($upd) === 1 && str_contains($upd[0]['sql'], "AND status = 'enviando'"), 'atualização guardada por status enviando');
+falsoVerificar(
+    count($upd) === 1
+        && str_contains($upd[0]['sql'], "AND status = 'enviando'")
+        && strlen($upd[0]['tipos'] ?? '') === count($upd[0]['valores']),
+    'atualização guardada por status enviando e com bind compatível'
+);
 falsoVerificar($upd[0]['valores'][0] === 'aceita', 'status gravado: aceita (não entregue)');
 falsoVerificar($upd[0]['valores'][4] === 'bulk-1', 'bulkId gravado');
 $todos = $db->todosOsValores() . implode('|', $db->eventos);
@@ -189,7 +194,12 @@ $db = bancoComMensagem('aceita');
 $r = smsAplicarRelatorio($db, 'teste', relatorio($mid, 'DELIVERED'));
 falsoVerificar($r['aplicado'] === true, 'relatório DELIVERED aplicado');
 $u = $db->chamadas('/^UPDATE mensagem_envio/');
-falsoVerificar(count($u) === 1 && $u[0]['valores'][0] === 'entregue', 'status entregue gravado só pelo relatório');
+falsoVerificar(
+    count($u) === 1
+        && $u[0]['valores'][0] === 'entregue'
+        && $u[0]['valores'][12] === '2026-10-29 07:00:05.000000',
+    'status entregue e timestamp UTC convertido para o fuso do banco'
+);
 falsoVerificar($u[0]['valores'][10] === 'BRL' && $u[0]['valores'][9] === '0.050000', 'preço e moeda gravados');
 falsoVerificar(str_contains($u[0]['sql'], 'WHERE id_mensagem_envio = ?'), 'atualização pela chave primária bloqueada (FOR UPDATE)');
 falsoVerificar(count($db->chamadas('/FOR UPDATE$/')) === 1, 'consulta do estado atual com FOR UPDATE');
