@@ -1172,15 +1172,30 @@
                 <span class="cadastro-erro" data-erro="empresa.nome" aria-live="polite"></span>
               </div>
 
+              <fieldset class="cadastro-campo cadastro-tipo-pessoa" data-campo="empresa.tipo_pessoa">
+                <legend>Tipo de pessoa <span class="cadastro-req" aria-hidden="true">*</span></legend>
+                <div class="cadastro-tipo-opcoes">
+                  <label for="cadTipoPessoaJuridica">
+                    <input type="radio" id="cadTipoPessoaJuridica" name="cadTipoPessoa" value="juridica" checked>
+                    <span>Pessoa Jurídica</span>
+                  </label>
+                  <label for="cadTipoPessoaFisica">
+                    <input type="radio" id="cadTipoPessoaFisica" name="cadTipoPessoa" value="fisica">
+                    <span>Pessoa Física</span>
+                  </label>
+                </div>
+                <span class="cadastro-erro" data-erro="empresa.tipo_pessoa" aria-live="polite"></span>
+              </fieldset>
+
               <div class="cadastro-campo">
-                <label for="cadEmpresaCnpj">CNPJ <span class="cadastro-req" aria-hidden="true">*</span></label>
+                <label for="cadEmpresaDocumento"><span id="cadEmpresaDocumentoRotulo">CNPJ</span> <span class="cadastro-req" aria-hidden="true">*</span></label>
                 <div class="cadastro-input">
                   <svg class="cadastro-ic" aria-hidden="true" focusable="false"><use href="#cad-ic-idcard"/></svg>
                   <input
                     type="text"
-                    id="cadEmpresaCnpj"
-                    data-campo="empresa.cnpj"
-                    data-mascara="cnpj"
+                    id="cadEmpresaDocumento"
+                    data-campo="empresa.documento"
+                    data-mascara="documento"
                     inputmode="numeric"
                     maxlength="18"
                     placeholder="00.000.000/0000-00"
@@ -1189,7 +1204,7 @@
                   >
                 </div>
                 <span class="cadastro-ajuda">Apenas números; a pontuação é opcional.</span>
-                <span class="cadastro-erro" data-erro="empresa.cnpj" aria-live="polite"></span>
+                <span class="cadastro-erro" data-erro="empresa.documento" aria-live="polite"></span>
               </div>
 
               <div class="cadastro-campo">

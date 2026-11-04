@@ -8,7 +8,7 @@ declare(strict_types=1);
  * - Cria automaticamente o horário padrão da empresa
  * - Cria automaticamente a configuração padrão do WhatsApp da empresa
  * - Retorna JSON padrão
- * - CNPJ é OPCIONAL
+ * - Tipo de pessoa e CPF/CNPJ OBRIGATÓRIOS (persistido na coluna legada empresa.cnpj)
  * - Email é OBRIGATÓRIO
  * - Plano é OBRIGATÓRIO
  * - Status é OBRIGATÓRIO
@@ -116,6 +116,27 @@ function validarCnpj(string $cnpj): bool
     return $cnpj === (substr($cnpj, 0, 12) . $dig1 . $dig2);
 }
 
+function validarCpf(string $cpf): bool
+{
+    $cpf = onlyDigits($cpf);
+    if (strlen($cpf) !== 11 || preg_match('/^(\d)\1{10}$/', $cpf)) {
+        return false;
+    }
+
+    $calcular = static function (string $base, int $pesoInicial): int {
+        $soma = 0;
+        foreach (str_split($base) as $i => $digito) {
+            $soma += ((int)$digito) * ($pesoInicial - $i);
+        }
+        $resto = $soma % 11;
+        return $resto < 2 ? 0 : 11 - $resto;
+    };
+    $d1 = $calcular(substr($cpf, 0, 9), 10);
+    $d2 = $calcular(substr($cpf, 0, 9) . $d1, 11);
+
+    return $cpf === substr($cpf, 0, 9) . $d1 . $d2;
+}
+
 function formatarCnpj(string $cnpj): ?string
 {
     $digits = onlyDigits($cnpj);
@@ -133,6 +154,17 @@ function formatarCnpj(string $cnpj): ?string
            substr($digits, 5, 3) . '/' .
            substr($digits, 8, 4) . '-' .
            substr($digits, 12, 2);
+}
+
+function formatarCpf(string $cpf): ?string
+{
+    $digits = onlyDigits($cpf);
+    if (strlen($digits) !== 11) {
+        return null;
+    }
+
+    return substr($digits, 0, 3) . '.' . substr($digits, 3, 3) . '.' .
+           substr($digits, 6, 3) . '-' . substr($digits, 9, 2);
 }
 
 /* ==========================================================
@@ -168,17 +200,25 @@ if ($nome === '') {
     $erros['nome'] = 'O nome da empresa deve ter no mínimo 3 caracteres.';
 }
 
-// cnpj opcional
+// Tipo de pessoa e documento fiscal obrigatórios; a coluna mantém o nome legado cnpj.
+$tipoPessoa = mb_strtolower(strv('tipo_pessoa', 20, false), 'UTF-8');
 $cnpjDigits = onlyDigits($cnpjRaw);
 $cnpj = null;
 
-if ($cnpjRaw !== '') {
-    if (strlen($cnpjDigits) !== 14) {
-        $erros['cnpj'] = 'O CNPJ deve conter 14 dígitos.';
-    } elseif (!validarCnpj($cnpjDigits)) {
-        $erros['cnpj'] = 'Informe um CNPJ válido.';
+if (!in_array($tipoPessoa, ['fisica', 'juridica'], true)) {
+    $erros['tipo_pessoa'] = 'Selecione Pessoa Física ou Pessoa Jurídica.';
+} else {
+    $pessoaFisica = $tipoPessoa === 'fisica';
+    $rotuloDocumento = $pessoaFisica ? 'CPF' : 'CNPJ';
+    if ($cnpjRaw === '') {
+        $erros['cnpj'] = "Informe o {$rotuloDocumento} da empresa.";
+    } elseif (preg_match('/^[0-9.\/\-\s]+$/D', $cnpjRaw) !== 1
+        || !($pessoaFisica
+            ? (strlen($cnpjDigits) === 11 && validarCpf($cnpjDigits))
+            : (strlen($cnpjDigits) === 14 && validarCnpj($cnpjDigits)))) {
+        $erros['cnpj'] = "Informe um {$rotuloDocumento} válido.";
     } else {
-        $cnpj = formatarCnpj($cnpjDigits);
+        $cnpj = $pessoaFisica ? formatarCpf($cnpjDigits) : formatarCnpj($cnpjDigits);
     }
 }
 
@@ -262,7 +302,7 @@ try {
     $ddiPadraoWhatsapp = '55';
     $dddPadraoWhatsapp = null; // deixar null para a empresa preencher depois no modal
 
-    // valida duplicidade de CNPJ apenas se informado
+    // Valida duplicidade do documento fiscal apenas se informado.
     if ($cnpj !== null) {
         $sqlCheckCnpj = "SELECT id_empresa FROM empresa WHERE cnpj = ? LIMIT 1";
         $st = $conexao->prepare($sqlCheckCnpj);
@@ -281,9 +321,9 @@ try {
             out([
                 'ok' => false,
                 'code' => 'CNPJ_DUPLICADO',
-                'user_msg' => 'Já existe uma empresa cadastrada com este CNPJ.',
+                'user_msg' => 'Já existe uma empresa cadastrada com este CPF ou CNPJ.',
                 'fields' => [
-                    'cnpj' => 'Este CNPJ já está em uso.'
+                    'cnpj' => 'Este CPF ou CNPJ já está em uso.'
                 ],
             ], 409);
         }
@@ -488,7 +528,7 @@ try {
         'entidade_rotulo' => $nome,
         'descricao' => 'Criou a empresa ' . $nome . '.',
         'alteracoes' => ['depois' => ['antes' => null, 'depois' => [
-            'nome' => $nome, 'cnpj' => $cnpj, 'email' => $email, 'telefone' => $telefone,
+            'nome' => $nome, 'tipo_pessoa' => $tipoPessoa, 'cnpj' => $cnpj, 'email' => $email, 'telefone' => $telefone,
             'plano' => $planoId, 'status' => $status, 'endereco' => $endereco, 'observacao' => $observacao,
         ]]],
         'contexto' => ['origem' => 'painel_super_admin'],

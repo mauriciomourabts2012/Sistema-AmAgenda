@@ -115,6 +115,7 @@
 
   const empEditId = document.getElementById("emp_edit_id");
   const empEditNome = document.getElementById("emp_edit_nome");
+  const empEditTipoPessoa = document.getElementById("emp_edit_tipo_pessoa");
   const empEditCnpj = document.getElementById("emp_edit_cnpj");
   const empEditEmail = document.getElementById("emp_edit_email");
   const empEditTel = document.getElementById("emp_edit_tel");
@@ -392,6 +393,12 @@
     if (empEditId) empEditId.value = card.dataset.id || "";
     if (empEditNome) empEditNome.value = card.dataset.nome || "";
     if (empEditCnpj) empEditCnpj.value = card.dataset.cnpj || "";
+    if (empEditTipoPessoa) {
+      // Tipo atual deduzido pelo documento legado; registros sem documento exigem escolha.
+      const digitosDocumento = String(card.dataset.cnpj || "").replace(/D+/g, "");
+      empEditTipoPessoa.value = digitosDocumento.length === 11 ? "fisica" : digitosDocumento.length === 14 ? "juridica" : "";
+      empEditTipoPessoa.dispatchEvent(new Event("change"));
+    }
     if (empEditEmail) empEditEmail.value = card.dataset.email || "";
     if (empEditTel) empEditTel.value = card.dataset.telefone || "";
     if (empEditEndereco) empEditEndereco.value = card.dataset.endereco || "";
@@ -445,6 +452,7 @@
     const id = emp.id ?? "";
     const nome = emp.nome ?? "Empresa";
     const cnpj = emp.cnpj ?? "";
+    const documentoRotulo = String(cnpj).replace(/\D+/g, "").length === 11 ? "CPF" : "CNPJ";
     const plano = emp.plano ?? "—";
     const planoId = emp.plano_id ?? "";
     const status = normalizeStatus(emp.status);
@@ -476,7 +484,7 @@
             <div class="super-lista-metadados">
               <span class="super-lista-meta"><span class="super-lista-meta-label">ID</span><strong>${C.escapeHtml(String(id || "—"))}</strong></span>
               <span class="super-lista-meta"><span class="super-lista-meta-label">Plano</span><strong>${C.escapeHtml(plano)}</strong>${badgeTeste(emp)}</span>
-              ${cnpj ? `<span class="super-lista-meta"><span class="super-lista-meta-label">CNPJ</span><strong>${C.escapeHtml(cnpj)}</strong></span>` : ""}
+              ${cnpj ? `<span class="super-lista-meta"><span class="super-lista-meta-label">${documentoRotulo}</span><strong>${C.escapeHtml(cnpj)}</strong></span>` : ""}
               ${telefone ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone)}</strong></span>` : ""}
               ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
               ${loginLink ? `<span class="super-lista-meta super-lista-meta--link"><span class="super-lista-meta-label">Link</span><a href="${C.escapeHtml(loginLink)}" target="_blank" rel="noopener noreferrer">${C.escapeHtml(loginLink)}</a></span>` : ""}

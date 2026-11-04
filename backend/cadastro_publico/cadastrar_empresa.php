@@ -102,7 +102,7 @@ function cadastroPublicoAmbienteLocal(): bool
     return in_array($host, ['amagenda.local', 'localhost'], true);
 }
 
-/** Resposta única para situações sensíveis (conta/CNPJ existentes, limite de abuso). */
+/** Resposta única para situações sensíveis (conta/documento existentes, limite de abuso). */
 function cadastroPublicoRecusar(int $status = 409): void
 {
     out([
@@ -164,11 +164,37 @@ function cadastroPublicoCnpjValido(string $digitos): bool
     return $digitos === substr($digitos, 0, 12) . $d1 . $d2;
 }
 
-/** Mesmo formato persistido pelo cadastro do Super Admin (UNIQUE uq_empresa_cnpj sobre o texto formatado). */
+function cadastroPublicoCpfValido(string $digitos): bool
+{
+    if (strlen($digitos) !== 11 || preg_match('/^(\d)\1{10}$/', $digitos) === 1) {
+        return false;
+    }
+    $calcular = static function (string $base, int $pesoInicial): int {
+        $soma = 0;
+        foreach (str_split($base) as $i => $digito) {
+            $soma += ((int)$digito) * ($pesoInicial - $i);
+        }
+        $resto = $soma % 11;
+
+        return $resto < 2 ? 0 : 11 - $resto;
+    };
+    $d1 = $calcular(substr($digitos, 0, 9), 10);
+    $d2 = $calcular(substr($digitos, 0, 9) . $d1, 11);
+
+    return $digitos === substr($digitos, 0, 9) . $d1 . $d2;
+}
+
+/** Mesmo formato persistido pelo Super Admin (UNIQUE uq_empresa_cnpj sobre o texto formatado). */
 function cadastroPublicoCnpjFormatar(string $digitos): string
 {
     return substr($digitos, 0, 2) . '.' . substr($digitos, 2, 3) . '.' . substr($digitos, 5, 3)
         . '/' . substr($digitos, 8, 4) . '-' . substr($digitos, 12, 2);
+}
+
+function cadastroPublicoCpfFormatar(string $digitos): string
+{
+    return substr($digitos, 0, 3) . '.' . substr($digitos, 3, 3) . '.' . substr($digitos, 6, 3)
+        . '-' . substr($digitos, 9, 2);
 }
 
 /** Valida e normaliza um bloco; chaves fora da allowlist invalidam a requisição inteira. */
@@ -246,7 +272,10 @@ require_once __DIR__ . '/../_regras/politica_senha.php';
 ========================================================== */
 
 $raiz = cadastroPublicoBlocoExato($entrada, ['plano_id', 'empresa', 'proprietario', 'documentos']);
-$blocoEmpresa = $raiz === null ? null : cadastroPublicoBlocoExato($raiz['empresa'] ?? null, ['nome', 'cnpj', 'telefone', 'email']);
+$blocoEmpresa = $raiz === null ? null : cadastroPublicoBlocoExato(
+    $raiz['empresa'] ?? null,
+    ['nome', 'tipo_pessoa', 'documento', 'cnpj', 'telefone', 'email']
+);
 $blocoProprietario = $raiz === null ? null : cadastroPublicoBlocoExato($raiz['proprietario'] ?? null, ['nome', 'email', 'telefone', 'senha', 'senha2']);
 if ($raiz === null || $blocoEmpresa === null || $blocoProprietario === null
     || !is_array($raiz['documentos'] ?? null) || !array_is_list($raiz['documentos'])) {
@@ -275,16 +304,33 @@ if ($empresaNome === null || mb_strlen($empresaNome) < 3) {
     $erros['empresa.nome'] = 'O nome da empresa deve ter no máximo 140 caracteres.';
 }
 
-$empresaCnpj = null; // obrigatório no cadastro público; só é preenchido após validação completa
-$cnpjBruto = $blocoEmpresa['cnpj'] ?? null;
-$cnpjTexto = cadastroPublicoTexto($cnpjBruto);
-$cnpjDigitos = $cnpjTexto === null ? '' : cadastroPublicoApenasDigitos($cnpjTexto);
-if ($cnpjTexto === null || $cnpjTexto === '') {
-    $erros['empresa.cnpj'] = 'Informe o CNPJ da empresa.';
-} elseif (mb_strlen($cnpjTexto) > 30 || !cadastroPublicoCnpjValido($cnpjDigitos)) {
-    $erros['empresa.cnpj'] = 'Informe um CNPJ válido.';
+$empresaDocumentoFiscal = null; // Persistido na coluna legada empresa.cnpj.
+$usaContratoLegado = !array_key_exists('documento', $blocoEmpresa) && array_key_exists('cnpj', $blocoEmpresa);
+$campoDocumento = $usaContratoLegado ? 'empresa.cnpj' : 'empresa.documento';
+$tipoPessoa = $usaContratoLegado ? 'juridica' : mb_strtolower((string)cadastroPublicoTexto($blocoEmpresa['tipo_pessoa'] ?? null), 'UTF-8');
+if (!$usaContratoLegado && array_key_exists('cnpj', $blocoEmpresa)) {
+    $erros['_geral'] = 'Os dados enviados são inválidos.';
+}
+if (!in_array($tipoPessoa, ['fisica', 'juridica'], true)) {
+    $erros['empresa.tipo_pessoa'] = 'Selecione Pessoa Física ou Pessoa Jurídica.';
+}
+$documentoBruto = $usaContratoLegado ? ($blocoEmpresa['cnpj'] ?? null) : ($blocoEmpresa['documento'] ?? null);
+$documentoTexto = cadastroPublicoTexto($documentoBruto);
+$documentoDigitos = $documentoTexto === null ? '' : cadastroPublicoApenasDigitos($documentoTexto);
+$rotuloDocumento = $tipoPessoa === 'fisica' ? 'CPF' : 'CNPJ';
+$documentoValido = $tipoPessoa === 'fisica'
+    ? cadastroPublicoCpfValido($documentoDigitos)
+    : ($tipoPessoa === 'juridica' && cadastroPublicoCnpjValido($documentoDigitos));
+if ($documentoTexto === null || $documentoTexto === '') {
+    $erros[$campoDocumento] = "Informe o {$rotuloDocumento} da empresa.";
+} elseif (mb_strlen($documentoTexto) > 30
+    || preg_match('/^[0-9.\/\-\s]+$/D', $documentoTexto) !== 1
+    || !$documentoValido) {
+    $erros[$campoDocumento] = "Informe um {$rotuloDocumento} válido.";
 } else {
-    $empresaCnpj = cadastroPublicoCnpjFormatar($cnpjDigitos);
+    $empresaDocumentoFiscal = $tipoPessoa === 'fisica'
+        ? cadastroPublicoCpfFormatar($documentoDigitos)
+        : cadastroPublicoCnpjFormatar($documentoDigitos);
 }
 
 $validarTelefone = static function (mixed $valor, string $campo) use (&$erros): string {
@@ -701,9 +747,17 @@ try {
     // usuários existentes quando chamado pelos fluxos administrativos autorizados.
     $autorizarVinculoExistente = false;
 
-    // A consulta pelo CNPJ informado confirma a empresa existente; nenhum dado dela é devolvido.
-    if ($empresaCnpj !== null
-        && cadastroPublicoConsultar($conexao, 'SELECT id_empresa FROM empresa WHERE cnpj = ? LIMIT 1', 's', $empresaCnpj) !== []) {
+    // A coluna legada empresa.cnpj armazena o documento fiscal normalizado (CPF ou CNPJ).
+    if ($empresaDocumentoFiscal !== null
+        && cadastroPublicoConsultar($conexao, 'SELECT id_empresa FROM empresa WHERE cnpj = ? LIMIT 1', 's', $empresaDocumentoFiscal) !== []) {
+        if ($tipoPessoa === 'fisica') {
+            // CPF é identificador pessoal: não confirmar publicamente se ele já está cadastrado.
+            $encerrar([
+                'ok' => false,
+                'code' => 'SIGNUP_REFUSED',
+                'user_msg' => 'Não foi possível concluir o cadastro com os dados informados.',
+            ], 409);
+        }
         $encerrar(['ok' => false, 'code' => 'COMPANY_ALREADY_EXISTS', 'user_msg' => 'Esta empresa já possui cadastro no AmAgenda.'], 409);
     }
 
@@ -727,7 +781,7 @@ try {
     try {
         $empresaCriada = empresaServicoCriar($conexao, [
             'nome' => $empresaNome,
-            'cnpj' => $empresaCnpj,
+            'cnpj' => $empresaDocumentoFiscal,
             'email' => $empresaEmail,
             'telefone' => $empresaTelefone,
             'id_plano' => $idPlano,
@@ -736,7 +790,7 @@ try {
             'observacao' => '',
         ]);
     } catch (RuntimeException $e) {
-        // O serviço não expõe qual registro colidiu; atualmente o único UNIQUE de empresa é o CNPJ.
+        // O serviço não expõe qual registro colidiu; uq_empresa_cnpj protege CPF e CNPJ normalizados.
         if ($e->getMessage() === 'Registro duplicado ao inserir empresa.') {
             $encerrar([
                 'ok' => false,

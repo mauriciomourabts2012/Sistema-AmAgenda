@@ -67,8 +67,8 @@ function auditoriaCatalogo(): array
 
         'perfil.senha_alterada' => auditoriaDefinicaoEvento('perfil', 'usuario', 'critica', 'Alterou a própria senha.', ['senha_alterada']),
 
-        'empresa.criada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Criou uma empresa.', ['nome', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao', 'depois']),
-        'empresa.editada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Alterou uma empresa.', ['nome', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao']),
+        'empresa.criada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Criou uma empresa.', ['nome', 'tipo_pessoa', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao', 'depois']),
+        'empresa.editada' => auditoriaDefinicaoEvento('empresas', 'empresa', 'alta', 'Alterou uma empresa.', ['nome', 'tipo_pessoa', 'cnpj', 'email', 'telefone', 'plano', 'status', 'endereco', 'observacao']),
         'empresa.status_alterado' => auditoriaDefinicaoEvento('empresas', 'empresa', 'critica', 'Alterou o status de uma empresa.', ['status']),
 
         'assinatura.criada' => auditoriaDefinicaoEvento('financeiro', 'assinatura', 'alta', 'Criou uma assinatura.', [

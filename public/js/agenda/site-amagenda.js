@@ -340,6 +340,44 @@
   |
   */
 
+  function tipoPessoaCadastro() {
+    return document.querySelector('input[name="cadTipoPessoa"]:checked')?.value === "fisica"
+      ? "fisica"
+      : "juridica";
+  }
+
+  function mascararCpf(valor) {
+    const d = valor.replace(/\D/g, "").slice(0, 11);
+    return d
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/(\d{3})(\d)/, "$1-$2");
+  }
+
+  function mascararDocumentoCadastro(valor) {
+    return tipoPessoaCadastro() === "fisica"
+      ? mascararCpf(valor)
+      : mascararCnpj(valor);
+  }
+
+  function atualizarDocumentoCadastro() {
+    const pessoaFisica = tipoPessoaCadastro() === "fisica";
+    const campo = cadEl("cadEmpresaDocumento");
+    cadEl("cadEmpresaDocumentoRotulo").textContent = pessoaFisica ? "CPF" : "CNPJ";
+    campo.placeholder = pessoaFisica ? "000.000.000-00" : "00.000.000/0000-00";
+    campo.maxLength = pessoaFisica ? 14 : 18;
+    campo.value = "";
+    ["empresa.tipo_pessoa", "empresa.documento"].forEach(chave => {
+      const erro = document.querySelector(`#cadastroForm [data-erro="${chave}"]`);
+      const elemento = document.querySelector(`#cadastroForm [data-campo="${chave}"]`);
+      if (erro) erro.textContent = "";
+      if (elemento) {
+        elemento.removeAttribute("aria-invalid");
+        elemento.removeAttribute("aria-describedby");
+      }
+    });
+  }
+
   document
     .querySelectorAll(
       "[data-futuro]"
@@ -551,7 +589,7 @@
   // =====================================================================
   // Cadastro público: estado
   // A validação no navegador é apenas conveniência de uso. O backend é a
-  // autoridade para plano, identidade, CNPJ, documentos legais, senha,
+  // autoridade para plano, identidade, CPF/CNPJ, documentos legais, senha,
   // período de teste e limites. Nenhuma sessão é criada por este fluxo.
   // =====================================================================
 
@@ -1395,10 +1433,9 @@
         "input",
         () => {
 
-          campo.value =
-            campo.dataset.mascara === "cnpj"
-              ? mascararCnpj(campo.value)
-              : mascararTelefone(campo.value);
+          campo.value = campo.dataset.mascara === "documento"
+            ? mascararDocumentoCadastro(campo.value)
+            : mascararTelefone(campo.value);
         }
       );
     });
@@ -1446,6 +1483,28 @@
     );
   }
 
+  function cpfValido(texto) {
+    const digitos = texto.replace(/\D/g, "");
+    if (digitos.length !== 11 || /^(\d)\1+$/.test(digitos)) {
+      return false;
+    }
+
+    const calcular = base => {
+      let soma = 0;
+      let peso = base.length + 1;
+      for (const digito of base) {
+        soma += Number(digito) * peso--;
+      }
+      const resto = soma % 11;
+      return resto < 2 ? 0 : 11 - resto;
+    };
+
+    return (
+      calcular(digitos.slice(0, 9)) === Number(digitos[9]) &&
+      calcular(digitos.slice(0, 10)) === Number(digitos[10])
+    );
+  }
+
   function emailValido(texto) {
     return (
       texto.length <= 160 &&
@@ -1476,7 +1535,8 @@
     return {
       empresa: {
         nome: texto("cadEmpresaNome"),
-        cnpj: texto("cadEmpresaCnpj"),
+        tipo_pessoa: tipoPessoaCadastro(),
+        documento: texto("cadEmpresaDocumento"),
         telefone: texto("cadEmpresaTelefone"),
         email: texto("cadEmpresaEmail")
       },
@@ -1502,15 +1562,19 @@
         "Informe o nome da empresa com pelo menos 3 caracteres.";
     }
 
-    if (dados.empresa.cnpj === "") {
-      erros["empresa.cnpj"] =
-        "Informe o CNPJ da empresa.";
+    const pessoaFisica = dados.empresa.tipo_pessoa === "fisica";
+    const rotuloDocumento = pessoaFisica ? "CPF" : "CNPJ";
+    const documentoValido = pessoaFisica ? cpfValido : cnpjValido;
+    if (dados.empresa.documento === "") {
+      erros["empresa.documento"] =
+        `Informe o ${rotuloDocumento} da empresa.`;
     } else if (
-      !/^[0-9.\/\-\s]+$/.test(dados.empresa.cnpj) ||
-      !cnpjValido(dados.empresa.cnpj)
+      !/^[0-9.\/\-\s]+$/.test(dados.empresa.documento) ||
+      !documentoValido(dados.empresa.documento)
     ) {
-      erros["empresa.cnpj"] =
-        "Confira o CNPJ: ele deve ter 14 números válidos.";
+      erros["empresa.documento"] = pessoaFisica
+        ? "Confira o CPF: ele deve ter 11 números válidos."
+        : "Confira o CNPJ: ele deve ter 14 números válidos.";
     }
 
     if (!telefoneValido(dados.empresa.telefone)) {
@@ -1671,7 +1735,7 @@
 
     [
       "cadEmpresaNome",
-      "cadEmpresaCnpj",
+      "cadEmpresaDocumento",
       "cadEmpresaTelefone",
       "cadEmpresaEmail",
       "cadProprietarioNome",
@@ -1682,6 +1746,9 @@
     ].forEach(id => {
       cadEl(id).value = "";
     });
+
+    cadEl("cadTipoPessoaJuridica").checked = true;
+    atualizarDocumentoCadastro();
 
     reiniciarIndicadorSenhaCadastro();
 
@@ -1719,7 +1786,7 @@
 
   function mostrarEmpresaJaCadastrada() {
 
-    // Os dados digitados permanecem no formulário para que o CNPJ possa ser corrigido.
+    // Os dados digitados permanecem no formulário para que o documento possa ser corrigido.
     mostrarResultadoCadastro(
       "aviso",
       {
@@ -2182,6 +2249,10 @@
     enviarCadastroPublico
   );
 
+  document.querySelectorAll('input[name="cadTipoPessoa"]').forEach(campo => {
+    campo.addEventListener("change", atualizarDocumentoCadastro);
+  });
+
   cadEl("cadastroFechar").addEventListener(
     "click",
     fecharCadastroPublico
@@ -2201,7 +2272,7 @@
         cadEl("cadastroResultado").hidden = true;
         cadEl("cadastroForm").hidden = false;
 
-        cadEl("cadEmpresaCnpj").focus();
+        cadEl("cadEmpresaDocumento").focus();
 
         return;
       }

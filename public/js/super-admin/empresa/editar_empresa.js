@@ -10,7 +10,7 @@
       - Não envia JSON
    ✅ Compatível com:
       id_empresa, nome, cnpj, email, telefone, plano_id, status, endereco, obs
-   ✅ CNPJ é OPCIONAL
+   ✅ Tipo de pessoa + CPF/CNPJ obrigatórios (campo legado `cnpj`)
    ✅ Após sucesso:
       - fecha modal
       - dispara evento empresa:editada
@@ -47,6 +47,7 @@
 
   const elId = document.getElementById("emp_edit_id");
   const elNome = document.getElementById("emp_edit_nome");
+  const elTipoPessoa = document.getElementById("emp_edit_tipo_pessoa");
   const elCnpj = document.getElementById("emp_edit_cnpj");
   const elEmail = document.getElementById("emp_edit_email");
   const elTelefone = document.getElementById("emp_edit_tel");
@@ -254,6 +255,7 @@
     const alias = {
       id_empresa: "emp_edit_id",
       nome: "emp_edit_nome",
+      tipo_pessoa: "emp_edit_tipo_pessoa",
       cnpj: "emp_edit_cnpj",
       email: "emp_edit_email",
       telefone: "emp_edit_tel",
@@ -301,6 +303,7 @@
   [
     elId,
     elNome,
+    elTipoPessoa,
     elCnpj,
     elEmail,
     elTelefone,
@@ -500,6 +503,25 @@
     return resultado === Number(digitos.charAt(1));
   }
 
+  function validarCpf(cpf) {
+    cpf = onlyDigits(cpf);
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+
+    const calcular = (base, pesoInicial) => {
+      let soma = 0;
+      for (let i = 0; i < base.length; i++) {
+        soma += Number(base[i]) * (pesoInicial - i);
+      }
+      const resto = soma % 11;
+      return resto < 2 ? 0 : 11 - resto;
+    };
+
+    return (
+      calcular(cpf.slice(0, 9), 10) === Number(cpf[9]) &&
+      calcular(cpf.slice(0, 10), 11) === Number(cpf[10])
+    );
+  }
+
   function formatarCnpj(v) {
     const d = onlyDigits(v).slice(0, 14);
     return d
@@ -507,6 +529,37 @@
       .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
       .replace(/\.(\d{3})(\d)/, ".$1/$2")
       .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+
+  function formatarCpf(v) {
+    const d = onlyDigits(v).slice(0, 11);
+    return d
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/(\d{3})(\d)/, "$1-$2");
+  }
+
+  function validarDocumentoFiscal(v, tipo) {
+    const d = onlyDigits(v);
+    return tipo === "fisica"
+      ? d.length === 11 && validarCpf(d)
+      : tipo === "juridica" && d.length === 14 && validarCnpj(d);
+  }
+
+  function formatarDocumentoFiscal(v, tipo) {
+    if (tipo === "fisica") return formatarCpf(v);
+    if (tipo === "juridica") return formatarCnpj(v);
+    return onlyDigits(v).length <= 11 ? formatarCpf(v) : formatarCnpj(v);
+  }
+
+  // Atualiza rótulo e limite do campo conforme o tipo; o valor digitado é preservado.
+  function atualizarCampoDocumento() {
+    const tipo = elTipoPessoa?.value || "";
+    const rotulo = document.querySelector('label[for="emp_edit_cnpj"]');
+    if (rotulo) {
+      rotulo.textContent = tipo === "fisica" ? "CPF" : tipo === "juridica" ? "CNPJ" : "CPF ou CNPJ";
+    }
+    if (elCnpj) elCnpj.maxLength = tipo === "fisica" ? 14 : 18;
   }
 
   function formatarTelefone(v) {
@@ -527,6 +580,7 @@
     return {
       id_empresa: normalizarTexto(elId?.value),
       nome: normalizarTexto(elNome?.value),
+      tipo_pessoa: normalizarTexto(elTipoPessoa?.value),
       cnpj: normalizarTexto(elCnpj?.value),
       email: normalizarTexto(elEmail?.value),
       telefone: normalizarTexto(elTelefone?.value),
@@ -562,12 +616,16 @@
       ok = false;
     }
 
-    if (dados.cnpj) {
-      if (onlyDigits(dados.cnpj).length !== 14) {
-        setFieldError("emp_edit_cnpj", "O CNPJ deve conter 14 dígitos.");
+    if (!["fisica", "juridica"].includes(dados.tipo_pessoa)) {
+      setFieldError("emp_edit_tipo_pessoa", "Selecione Pessoa Física ou Pessoa Jurídica.");
+      ok = false;
+    } else {
+      const rotuloDocumento = dados.tipo_pessoa === "fisica" ? "CPF" : "CNPJ";
+      if (!dados.cnpj) {
+        setFieldError("emp_edit_cnpj", `Informe o ${rotuloDocumento} da empresa.`);
         ok = false;
-      } else if (!validarCnpj(dados.cnpj)) {
-        setFieldError("emp_edit_cnpj", "Informe um CNPJ válido.");
+      } else if (!validarDocumentoFiscal(dados.cnpj, dados.tipo_pessoa)) {
+        setFieldError("emp_edit_cnpj", `Informe um ${rotuloDocumento} válido.`);
         ok = false;
       }
     }
@@ -656,6 +714,7 @@
 
     if (elId) elId.value = "";
     if (elStatus) elStatus.value = "ativo";
+    atualizarCampoDocumento();
 
     if (elPlanoId && window.SelectListaUniversal?.carregar) {
       window.SelectListaUniversal.carregar("planos_ativos", "emp_edit_plano", { force: true });
@@ -667,8 +726,12 @@
   // ==========================================================
   if (elCnpj) {
     elCnpj.addEventListener("input", () => {
-      elCnpj.value = formatarCnpj(elCnpj.value);
+      elCnpj.value = formatarDocumentoFiscal(elCnpj.value, elTipoPessoa?.value || "");
     });
+  }
+
+  if (elTipoPessoa) {
+    elTipoPessoa.addEventListener("change", atualizarCampoDocumento);
   }
 
   if (elTelefone) {
@@ -725,6 +788,7 @@
     const fd = new FormData();
     fd.append("id_empresa", dados.id_empresa);
     fd.append("nome", dados.nome);
+    fd.append("tipo_pessoa", dados.tipo_pessoa);
     fd.append("cnpj", dados.cnpj || "");
     fd.append("email", dados.email);
     fd.append("telefone", dados.telefone);

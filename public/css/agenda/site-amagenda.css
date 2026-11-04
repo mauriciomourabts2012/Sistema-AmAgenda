@@ -3990,6 +3990,57 @@ body.cadastro-aberto {
   color: var(--cad-text);
 }
 
+.cadastro-tipo-pessoa {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cadastro-tipo-pessoa legend {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--cad-navy);
+}
+
+.cadastro-tipo-opcoes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cadastro-tipo-opcoes label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--cad-border);
+  border-radius: 12px;
+  background: var(--cad-surface);
+  color: var(--cad-text-2);
+  cursor: pointer;
+}
+
+.cadastro-tipo-opcoes label:has(input:checked) {
+  border-color: var(--cad-primary-700);
+  background: var(--cad-tint);
+  color: var(--cad-navy);
+}
+
+.cadastro-tipo-opcoes input {
+  width: 18px;
+  height: 18px;
+  margin: 0 8px 0 0;
+  accent-color: var(--cad-primary-700);
+}
+
+.cadastro-tipo-opcoes label:has(input:focus-visible) {
+  outline: 3px solid rgba(17, 99, 221, 0.35);
+  outline-offset: 2px;
+}
+
 .cadastro-req {
   color: var(--cad-danger);
 }
@@ -4565,6 +4616,12 @@ body.cadastro-aberto {
 
   .cadastro-acoes .btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .cadastro-tipo-opcoes {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

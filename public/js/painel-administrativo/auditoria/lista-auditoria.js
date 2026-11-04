@@ -35,7 +35,7 @@
     nome_exibicao: "Nome de exibição", logo: "Logo", imagem_login: "Imagem de login",
     login_tentado: "Login tentado",
     senha_alterada: "Senha", repetir_semanalmente: "Repetição semanal", recorrencia_data_fim: "Fim da recorrência",
-    cnpj: "CNPJ", plano: "Plano", preco_mensal: "Preço mensal", cobranca: "Cobrança",
+    cnpj: "CPF/CNPJ", tipo_pessoa: "Tipo de pessoa", plano: "Plano", preco_mensal: "Preço mensal", cobranca: "Cobrança",
     limite_usuarios: "Limite de usuários", limite_profissionais: "Limite de profissionais",
     limite_servicos: "Limite de serviços", limite_agendamentos: "Limite de agendamentos", destaque: "Destaque",
     plano_anterior: "Plano anterior", plano_novo: "Novo plano", valor_anterior: "Mensalidade anterior", valor_novo: "Nova mensalidade",
