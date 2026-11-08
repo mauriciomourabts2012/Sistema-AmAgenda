@@ -73,27 +73,27 @@ if (
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.5" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.6" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.14.5"
+    href="../css/login/login-web.css?v=1.14.6"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.14.5"
+    href="../css/login/login-mobile.css?v=1.14.6"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.14.5"
+    href="../css/login/login-cliente.css?v=1.14.6"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.14.5"
+    href="../css/identidade-visual/identidade-visual.css?v=1.14.6"
   />
 
   <link
@@ -107,7 +107,7 @@ if (
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.5"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.6"></script>
 
 </head>
 
@@ -563,6 +563,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   let resendAvailableAt = 0;
   let resendTimerId = null;
   let reenvioEmAndamento = false;
+  let phoneRetryAvailableAt = 0;
+  let phoneRetryTimerId = null;
+  let phoneRetryDigits = "";
+  let verificacaoEmAndamento = false;
   let acaoOtpAtual = "enviar_codigo";
 
   function safeOn(element, eventName, handler) {
@@ -674,22 +678,37 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       ...dados
     });
 
-    const response = await fetch(
-      ENDPOINT_CLIENTE,
-      {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type":
-            "application/x-www-form-urlencoded; charset=UTF-8",
-          "X-Requested-With":
-            "XMLHttpRequest"
-        },
-        body: body.toString()
-      }
-    );
+    let response;
+
+    try {
+      response = await fetch(
+        ENDPOINT_CLIENTE,
+        {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type":
+              "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With":
+              "XMLHttpRequest"
+          },
+          body: body.toString()
+        }
+      );
+    } catch (falhaRede) {
+      // Sem resposta do servidor: nada foi confirmado e nenhum prazo é inventado.
+      const erroRede = new Error(
+        "Não foi possível se comunicar com o servidor. Verifique sua conexão e tente novamente."
+      );
+
+      erroRede.code = "NETWORK_ERROR";
+      erroRede.retryAfter = 0;
+      erroRede.data = {};
+
+      throw erroRede;
+    }
 
     const json =
       await response
@@ -711,7 +730,15 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
         json?.code || "";
 
       erro.retryAfter =
-        Number(json?.data?.retry_after || 0);
+        Math.max(
+          0,
+          Math.ceil(Number(json?.data?.retry_after) || 0)
+        );
+
+      erro.data =
+        json?.data && typeof json.data === "object"
+          ? json.data
+          : {};
 
       throw erro;
     }
@@ -726,6 +753,148 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     }
 
     timerId = null;
+  }
+
+  /** 45 → "45s"; 125 → "2 min 5s"; 2843 → "48 min" (prazo real informado pelo backend). */
+  function formatarEspera(totalSegundos) {
+
+    const segundos =
+      Math.max(0, Math.ceil(Number(totalSegundos) || 0));
+
+    if (segundos < 60) {
+      return `${segundos}s`;
+    }
+
+    if (segundos < 600) {
+      const resto = segundos % 60;
+
+      return resto > 0
+        ? `${Math.floor(segundos / 60)} min ${resto}s`
+        : `${segundos / 60} min`;
+    }
+
+    return `${Math.ceil(segundos / 60)} min`;
+  }
+
+  /** Mensagem de recusa com o prazo real informado pelo backend, quando houver. */
+  function textoRecusa(error, padrao) {
+
+    const espera =
+      Number(error?.retryAfter) || 0;
+
+    if (error?.code === "CLIENT_OTP_RESEND_LIMIT" && espera > 0) {
+      return `Aguarde ${formatarEspera(espera)} antes de solicitar outro código.`;
+    }
+
+    const texto =
+      error?.message || padrao;
+
+    if (error?.code === "CLIENT_OTP_HOURLY_LIMIT" && espera > 0) {
+      return `${texto} Nova solicitação disponível em ${formatarEspera(espera)}.`;
+    }
+
+    return texto;
+  }
+
+  function stopPhoneRetryTimer() {
+
+    if (phoneRetryTimerId) {
+      clearInterval(phoneRetryTimerId);
+    }
+
+    phoneRetryTimerId = null;
+  }
+
+  /**
+   * Etapa do telefone: mantém "Verificar" indisponível somente pelo prazo
+   * que o backend informou (30 s de reenvio ou o limite por hora).
+   */
+  function updatePhoneRetry() {
+
+    if (!btnEnviarCodigo) {
+      return;
+    }
+
+    const restante =
+      Math.max(
+        0,
+        Math.ceil((phoneRetryAvailableAt - Date.now()) / 1000)
+      );
+
+    if (restante > 0) {
+      btnEnviarCodigo.textContent =
+        `Verificar em ${formatarEspera(restante)}`;
+
+      setButtonEnabled(btnEnviarCodigo, false);
+
+      return;
+    }
+
+    stopPhoneRetryTimer();
+
+    btnEnviarCodigo.textContent = "Verificar";
+
+    setButtonEnabled(
+      btnEnviarCodigo,
+      isValidBRPhone(inTelefone.value)
+    );
+  }
+
+  function startPhoneRetry(seconds) {
+
+    stopPhoneRetryTimer();
+
+    phoneRetryAvailableAt =
+      Date.now() + Math.max(0, Math.ceil(Number(seconds) || 0)) * 1000;
+
+    updatePhoneRetry();
+
+    if (phoneRetryAvailableAt > Date.now()) {
+      phoneRetryTimerId =
+        window.setInterval(updatePhoneRetry, 250);
+    }
+  }
+
+  function phoneRetryAtivo() {
+    return phoneRetryAvailableAt > Date.now();
+  }
+
+  /**
+   * Recusa sem novo desafio, mas com um código desta sessão ainda válido:
+   * abre a etapa do código com o prazo do backend em vez de prender o
+   * cliente na etapa do telefone.
+   */
+  function abrirCodigoPendente(acao, erro) {
+
+    const dados = erro?.data || {};
+    const expiresIn = Number(dados.expires_in) || 0;
+
+    if (dados.codigo_pendente !== true || expiresIn <= 0) {
+      return false;
+    }
+
+    acaoOtpAtual = acao;
+
+    expiresAt =
+      new Date(Date.now() + expiresIn * 1000);
+
+    showStep(3);
+    startTimer();
+    startResendCountdown(erro.retryAfter);
+
+    inCodigo.value = "";
+    setButtonEnabled(btnValidarCodigo, false);
+
+    if (msg3) {
+      msg3.textContent =
+        erro.code === "CLIENT_OTP_HOURLY_LIMIT"
+          ? `ℹ️ ${erro.message} Use o código já enviado por SMS.`
+          : "ℹ️ Um código já foi enviado para este telefone. Digite-o abaixo ou aguarde a liberação do reenvio.";
+    }
+
+    inCodigo.focus();
+
+    return true;
   }
 
   function stopResendTimer() {
@@ -753,7 +922,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
     if (remainingSeconds > 0) {
       btnReenviar.textContent =
-        `Reenviar código em ${remainingSeconds}s`;
+        `Reenviar código em ${formatarEspera(remainingSeconds)}`;
 
       setButtonEnabled(
         btnReenviar,
@@ -974,10 +1143,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       );
 
       if (acaoOtpAtual !== "iniciar_recuperacao") {
-        setButtonEnabled(
-          btnEnviarCodigo,
-          isValidBRPhone(inTelefone.value)
-        );
+        updatePhoneRetry();
       }
     }
   );
@@ -995,10 +1161,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       showStep(2);
 
-      setButtonEnabled(
-        btnEnviarCodigo,
-        isValidBRPhone(inTelefone.value)
-      );
+      updatePhoneRetry();
     }
   );
 
@@ -1010,10 +1173,16 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       inTelefone.value =
         maskPhone(inTelefone.value);
 
-      setButtonEnabled(
-        btnEnviarCodigo,
-        isValidBRPhone(inTelefone.value)
-      );
+      // O prazo recebido vale para o telefone que foi recusado; outro número
+      // é avaliado novamente pelo backend.
+      if (
+        phoneRetryAtivo()
+        && onlyDigits(inTelefone.value) !== phoneRetryDigits
+      ) {
+        phoneRetryAvailableAt = 0;
+      }
+
+      updatePhoneRetry();
     }
   );
 
@@ -1037,6 +1206,14 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
         return;
       }
+
+      // Evita cliques repetidos e pedidos durante o prazo informado pelo backend.
+      if (verificacaoEmAndamento || phoneRetryAtivo()) {
+        updatePhoneRetry();
+        return;
+      }
+
+      verificacaoEmAndamento = true;
 
       telefoneE164 =
         `+${ddiNumero}${digits}`;
@@ -1097,18 +1274,32 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       } catch (error) {
 
-        if (msg2) {
-          msg2.textContent =
-            `❌ ${
-              error.message ||
-              "Não foi possível continuar."
-            }`;
+        // Recusa sem novo SMS, mas com código desta sessão ainda válido.
+        if (abrirCodigoPendente("enviar_codigo", error)) {
+          return;
         }
 
-        setButtonEnabled(
-          btnEnviarCodigo,
-          true
-        );
+        if (error.retryAfter > 0) {
+          phoneRetryDigits = digits;
+          startPhoneRetry(error.retryAfter);
+        }
+
+        if (msg2) {
+          msg2.textContent =
+            `❌ ${textoRecusa(error, "Não foi possível continuar.")}`;
+        }
+
+      } finally {
+
+        verificacaoEmAndamento = false;
+
+        if (
+          steps.some(
+            (step) => step.dataset.step === "2" && !step.hidden
+          )
+        ) {
+          updatePhoneRetry();
+        }
       }
     }
   );
@@ -1179,9 +1370,13 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
           msg4
         );
       } catch (error) {
+        if (abrirCodigoPendente("iniciar_recuperacao", error)) {
+          return;
+        }
+
         if (msg4) {
           msg4.textContent =
-            `❌ ${error.message || "Não foi possível iniciar a recuperação."}`;
+            `❌ ${textoRecusa(error, "Não foi possível iniciar a recuperação.")}`;
         }
       } finally {
         setButtonEnabled(btnEsqueciSenha, true);
@@ -1376,18 +1571,39 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       } catch (error) {
 
+        // Prazo real do backend (30 s ou limite por hora); sem prazo, o
+        // contador não é reiniciado arbitrariamente.
         if (error.retryAfter > 0) {
           startResendCountdown(
             error.retryAfter
           );
         }
 
+        // Falha de envio com novo desafio: o código anterior deixou de valer.
+        if (error.code === "CLIENT_OTP_UNAVAILABLE" && error.retryAfter > 0) {
+          expiresAt = null;
+          stopTimer();
+          setButtonEnabled(btnValidarCodigo, false);
+
+          if (infoCodigo) {
+            infoCodigo.textContent =
+              "Solicite um novo código para continuar.";
+          }
+        }
+
         if (msg3) {
+          let texto =
+            textoRecusa(error, "Não foi possível reenviar o código.");
+
+          if (
+            error.code === "CLIENT_OTP_HOURLY_LIMIT"
+            && error.data?.codigo_pendente === true
+          ) {
+            texto += " Use o código já enviado por SMS.";
+          }
+
           msg3.textContent =
-            `❌ ${
-              error.message ||
-              "Não foi possível reenviar o código."
-            }`;
+            `❌ ${texto}`;
         }
 
       } finally {
@@ -1433,10 +1649,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.5" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.6" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.5"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.6"
 ></script>
 
 </body>

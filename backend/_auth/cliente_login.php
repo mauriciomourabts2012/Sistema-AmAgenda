@@ -460,6 +460,26 @@ function clienteLoginRespostaEnvioGenerica(
 
 
 /**
+ * Desafio OTP da sessão ainda utilizável para esta empresa e telefone
+ * (e, quando informada, para esta finalidade). Somente estado da sessão:
+ * a decisão final continua em smsOtpValidar().
+ */
+function clienteLoginDesafioSessaoAtivo(
+    mixed $desafio,
+    int $idEmpresa,
+    string $telefoneE164,
+    ?string $finalidade = null
+): bool {
+    return is_array($desafio)
+        && (int)($desafio['id_empresa'] ?? 0) === $idEmpresa
+        && (string)($desafio['telefone'] ?? '') === $telefoneE164
+        && (int)($desafio['id_otp_desafio'] ?? 0) > 0
+        && (int)($desafio['expira_em'] ?? 0) > time()
+        && ($finalidade === null || (string)($desafio['finalidade'] ?? '') === $finalidade);
+}
+
+
+/**
  * Confirma que um cliente localizado pode autenticar-se.
  */
 function clienteLoginClienteAtivo(?array $cliente): bool
@@ -602,10 +622,13 @@ if ($acao === 'verificar_telefone') {
         ], 403);
     }
 
-    unset(
-        $_SESSION['cliente_auth_desafio'],
-        $_SESSION['cliente_recuperacao_senha']
-    );
+    // Desafio de outro telefone/empresa é descartado. O do MESMO telefone é mantido: se o
+    // reenvio for recusado pelo intervalo/limite, o código já enviado continua utilizável.
+    $desafioSessao = $_SESSION['cliente_auth_desafio'] ?? null;
+    if (!clienteLoginDesafioSessaoAtivo($desafioSessao, $idEmpresa, $telefoneE164)) {
+        unset($_SESSION['cliente_auth_desafio']);
+    }
+    unset($_SESSION['cliente_recuperacao_senha']);
 
     $temSenha = is_array($cliente)
         && trim((string)($cliente['senha_hash'] ?? '')) !== '';
@@ -807,26 +830,66 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
     if (($resultadoOtp['sucesso'] ?? false) !== true) {
         $codigoOtp = (string)($resultadoOtp['codigo'] ?? '');
 
-        if (in_array($codigoOtp, ['SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE'], true)) {
+        $retryAfterOtp = max(
+            0,
+            (int)($resultadoOtp['dados']['retry_after'] ?? 0)
+        );
+
+        // Recusa não cria desafio: o código anterior desta sessão (mesmo telefone,
+        // empresa e finalidade), se ainda válido, continua sendo o código a digitar.
+        $desafioPendente = $_SESSION['cliente_auth_desafio'] ?? null;
+        $dadosRecusa = [
+            'retry_after' => $retryAfterOtp,
+        ];
+        if (clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp)) {
+            $dadosRecusa['codigo_pendente'] = true;
+            $dadosRecusa['expires_in'] = max(1, (int)$desafioPendente['expira_em'] - time());
+        }
+
+        // Intervalo mínimo entre solicitações (30 s) ou pedidos simultâneos.
+        if (in_array($codigoOtp, ['SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA'], true)) {
+            $dadosRecusa['retry_after'] = max(1, $retryAfterOtp ?: 30);
+
             out([
                 'ok' => false,
                 'code' => 'CLIENT_OTP_RESEND_LIMIT',
                 'user_msg' =>
                     'Aguarde alguns segundos antes de solicitar outro código.',
-                'data' => [
-                    'retry_after' =>
-                        (int)($resultadoOtp['dados']['retry_after'] ?? 30)
-                ]
+                'data' => $dadosRecusa,
+            ], 429);
+        }
+
+        // Limite por hora (telefone, IP ou primeiros acessos da empresa): prazo real
+        // calculado no banco; o motivo interno não é exposto.
+        if ($codigoOtp === 'SMS_OTP_LIMITE') {
+            $dadosRecusa['retry_after'] = max(1, $retryAfterOtp ?: 600);
+
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_OTP_HOURLY_LIMIT',
+                'user_msg' =>
+                    'Você atingiu o limite de solicitações de código. Tente novamente mais tarde.',
+                'data' => $dadosRecusa,
             ], 429);
         }
 
         // Na recuperação, falha de envio não distingue conta real de inexistente.
         if ($finalidadeOtp !== 'recuperacao_senha') {
+            // Falha de envio com desafio criado: o código anterior foi invalidado.
+            if ($codigoOtp === 'SMS_OTP_ENVIO_FALHOU') {
+                unset($_SESSION['cliente_auth_desafio']);
+            }
+
             out([
                 'ok' => false,
                 'code' => 'CLIENT_OTP_UNAVAILABLE',
                 'user_msg' =>
-                    'Não foi possível enviar o código agora. Tente novamente.'
+                    'Não foi possível enviar o código agora. Tente novamente.',
+                'data' => [
+                    'retry_after' => $codigoOtp === 'SMS_OTP_ENVIO_FALHOU'
+                        ? max(1, $retryAfterOtp)
+                        : 0,
+                ],
             ], 503);
         }
 

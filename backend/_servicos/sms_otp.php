@@ -190,6 +190,26 @@ function smsOtpPrincipalConfere(mysqli $conexao, array $p): bool
 }
 
 /**
+ * Segundos até o limite da janela de 1 hora voltar a permitir uma solicitação: o pedido volta a
+ * ser aceito quando o $limite-ésimo desafio mais recente da janela completa 1 hora. Calculado pelo
+ * relógio do banco (o mesmo de criado_em). Sem linha (corrida), devolve um prazo conservador.
+ */
+function smsOtpEsperaJanela(mysqli $conexao, string $filtro, string $tipoValor, mixed $valor, int $limite): int
+{
+    $linhas = smsConsultar(
+        $conexao,
+        'SELECT GREATEST(1, 3600 - TIMESTAMPDIFF(SECOND, criado_em, NOW(6))) AS espera FROM otp_desafio
+          WHERE ' . $filtro . ' AND criado_em > (NOW(6) - INTERVAL 1 HOUR)
+          ORDER BY criado_em DESC LIMIT 1 OFFSET ' . max(0, $limite - 1),
+        $tipoValor,
+        $valor
+    );
+    $espera = (int)($linhas[0]['espera'] ?? 0);
+
+    return $espera > 0 ? min(3600, $espera) : 600;
+}
+
+/**
  * Cria um desafio (invalidando o anterior do mesmo principal) e, quando permitido, envia o SMS.
  *
  * $p: principal_tipo, finalidade, id_empresa, id_cliente, id_usuario, telefone (E.164), ip, enviar (bool).
@@ -229,32 +249,47 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
         $cliente = (int)($p['id_cliente'] ?? 0) > 0 ? (int)$p['id_cliente'] : null;
         $usuario = (int)($p['id_usuario'] ?? 0) > 0 ? (int)$p['id_usuario'] : null;
 
-        $porTelefone = smsConsultar(
-            $conexao,
-            'SELECT COUNT(*) AS n FROM otp_desafio WHERE telefone_hash = UNHEX(?) AND criado_em > (NOW(6) - INTERVAL 1 HOUR)',
-            's',
-            $telefoneHash
-        );
-        $porIp = smsConsultar(
-            $conexao,
-            'SELECT COUNT(*) AS n FROM otp_desafio WHERE ip_hash = UNHEX(?) AND criado_em > (NOW(6) - INTERVAL 1 HOUR)',
-            's',
-            $ipHash
-        );
-        $excedeuNovos = false;
+        // Limites por hora. Desafios em 'erro_envio' (nenhum SMS saiu) não consomem a cota do
+        // telefone nem o teto de primeiros acessos da empresa; continuam contando no limite por IP,
+        // que segura repetições contra o provedor. Recusas (30 s/limite) nunca criam desafio.
+        $limites = [
+            ['telefone', 'telefone_hash = UNHEX(?) AND status <> \'erro_envio\'', 's', $telefoneHash, SMS_OTP_LIMITE_TELEFONE_HORA],
+            ['ip', 'ip_hash = UNHEX(?)', 's', $ipHash, SMS_OTP_LIMITE_IP_HORA],
+        ];
         if ($enviar && $tipo === 'ficticio' && $empresa !== null) {
-            $porEmpresa = smsConsultar(
-                $conexao,
-                "SELECT COUNT(*) AS n FROM otp_desafio
-                  WHERE id_empresa = ? AND principal_tipo = 'ficticio' AND finalidade = 'acesso_cliente'
-                    AND criado_em > (NOW(6) - INTERVAL 1 HOUR)",
+            $limites[] = [
+                'empresa',
+                "id_empresa = ? AND principal_tipo = 'ficticio' AND finalidade = 'acesso_cliente' AND status <> 'erro_envio'",
                 'i',
-                $empresa
-            );
-            $excedeuNovos = (int)$porEmpresa[0]['n'] >= SMS_OTP_LIMITE_NOVOS_EMPRESA_HORA;
+                $empresa,
+                SMS_OTP_LIMITE_NOVOS_EMPRESA_HORA,
+            ];
         }
-        if ($excedeuNovos || (int)$porTelefone[0]['n'] >= SMS_OTP_LIMITE_TELEFONE_HORA || (int)$porIp[0]['n'] >= SMS_OTP_LIMITE_IP_HORA) {
-            return smsOtpResultado(false, 'SMS_OTP_LIMITE', 'Aguarde alguns minutos antes de solicitar outro código.', ['retry_after' => 600]);
+        $espera = 0;
+        $motivo = '';
+        foreach ($limites as [$nome, $filtro, $tipoValor, $valor, $limite]) {
+            $contagem = smsConsultar(
+                $conexao,
+                'SELECT COUNT(*) AS n FROM otp_desafio WHERE ' . $filtro . ' AND criado_em > (NOW(6) - INTERVAL 1 HOUR)',
+                $tipoValor,
+                $valor
+            );
+            if ((int)($contagem[0]['n'] ?? 0) < $limite) {
+                continue;
+            }
+            $segundos = smsOtpEsperaJanela($conexao, $filtro, $tipoValor, $valor, $limite);
+            if ($segundos > $espera) {
+                $espera = $segundos;
+                $motivo = $nome;
+            }
+        }
+        if ($espera > 0) {
+            smsLog('otp_limite_hora', ['motivo' => $motivo, 'retry_after' => $espera]);
+
+            return smsOtpResultado(false, 'SMS_OTP_LIMITE', 'Limite de solicitações de código atingido.', [
+                'retry_after' => $espera,
+                'motivo' => $motivo,
+            ]);
         }
 
         $codigo = smsOtpGerarCodigo();
@@ -331,7 +366,11 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
     unset($texto, $codigo);
 
     if ($envio['sucesso'] !== true) {
-        return smsOtpResultado(false, 'SMS_OTP_ENVIO_FALHOU', 'Não foi possível enviar o código agora. Tente novamente.', $dados + ['estado_envio' => $envio['estado']]);
+        // O desafio já existe: o intervalo de 30 s entre solicitações vale também após a falha.
+        return smsOtpResultado(false, 'SMS_OTP_ENVIO_FALHOU', 'Não foi possível enviar o código agora. Tente novamente.', $dados + [
+            'estado_envio' => $envio['estado'],
+            'retry_after' => SMS_OTP_REENVIO_SEGUNDOS,
+        ]);
     }
 
     return smsOtpResultado(true, 'SMS_OTP_ENVIADO', '', $dados + ['estado_envio' => $envio['estado']]);

@@ -396,4 +396,68 @@ falsoVerificar(str_contains($cl, "\$acao !== 'iniciar_recuperacao' && is_array(\
 falsoVerificar(str_contains($cl, "'principal_tipo' => \$clienteOtpAtivo ? 'cliente' : 'ficticio',"), 'sem cadastro: principal fictício (primeiro acesso com SMS real)');
 falsoVerificar(preg_match('/principal_tipo.*?ficticio.*?acesso_cliente/s', (string)file_get_contents($raiz . '/backend/_servicos/sms_otp.php')) === 1, 'serviço distingue decoy (recuperação) de primeiro acesso (acesso_cliente)');
 
+// Auditoria 1.14.5: bloqueios indevidos e prazos reais.
+// Limite por telefone: retry_after é o prazo real até o 5º desafio mais recente sair da janela de 1 h.
+$db = bancoSolicitar([
+    ['/^SELECT COUNT\(\*\) AS n FROM otp_desafio WHERE telefone_hash/', [['n' => SMS_OTP_LIMITE_TELEFONE_HORA]]],
+    ['/^SELECT GREATEST\(1, 3600 .* telefone_hash/', [['espera' => 1234]]],
+]);
+$n = 0;
+$r = smsOtpSolicitar($db, $pCliente, transporteCapturando($codigo, $n));
+falsoVerificar($r['codigo'] === 'SMS_OTP_LIMITE' && $r['dados']['retry_after'] === 1234 && $r['dados']['motivo'] === 'telefone', 'limite por telefone devolve o prazo real calculado no banco');
+falsoVerificar($n === 0 && $db->chamadas('/^INSERT/') === [] && $db->inicios === 0, 'recusa por limite não cria desafio, não envia e não abre transação');
+$esperaSql = $db->chamadas('/^SELECT GREATEST\(1, 3600/')[0]['sql'] ?? '';
+falsoVerificar(str_contains($esperaSql, 'ORDER BY criado_em DESC LIMIT 1 OFFSET ' . (SMS_OTP_LIMITE_TELEFONE_HORA - 1)), 'prazo calculado a partir do 5º desafio mais recente da janela');
+falsoVerificar(str_contains($esperaSql, 'NOW(6)') && str_contains($esperaSql, 'INTERVAL 1 HOUR'), 'prazo usa o relógio do banco (sem fuso do PHP)');
+
+// Erro de envio (nenhum SMS saiu) não consome a cota do telefone nem o teto da empresa; continua no limite por IP.
+$db = bancoSolicitar();
+smsOtpSolicitar($db, $pNovo, transporteCapturando($codigo, $n));
+$sqlTel = $db->chamadas('/^SELECT COUNT\(\*\) AS n FROM otp_desafio WHERE telefone_hash/')[0]['sql'] ?? '';
+$sqlIp = $db->chamadas('/^SELECT COUNT\(\*\) AS n FROM otp_desafio WHERE ip_hash/')[0]['sql'] ?? '';
+$sqlEmp = $db->chamadas('/^SELECT COUNT\(\*\) AS n FROM otp_desafio WHERE id_empresa/')[0]['sql'] ?? '';
+falsoVerificar(str_contains($sqlTel, "status <> 'erro_envio'"), 'cota do telefone ignora desafios com erro de envio');
+falsoVerificar(str_contains($sqlEmp, "status <> 'erro_envio'"), 'teto de primeiros acessos ignora desafios com erro de envio');
+falsoVerificar($sqlIp !== '' && !str_contains($sqlIp, 'erro_envio'), 'limite por IP continua contando tentativas com erro de envio');
+falsoVerificar(!str_contains($sqlTel, 'id_empresa') && !str_contains($sqlTel, 'sessao_hash'), 'cota do telefone segue a regra oficial (por telefone, não por sessão)');
+
+// Abaixo do limite (4 na hora) o pedido segue normalmente.
+$db = bancoSolicitar([['/^SELECT COUNT\(\*\) AS n FROM otp_desafio WHERE telefone_hash/', [['n' => SMS_OTP_LIMITE_TELEFONE_HORA - 1]]]]);
+$n = 0;
+$r = smsOtpSolicitar($db, $pCliente, transporteCapturando($codigo, $n));
+falsoVerificar($r['sucesso'] === true && $n === 1 && $db->chamadas('/^SELECT GREATEST/') === [], 'com 4 desafios na hora o 5º é permitido');
+
+// Vários limites excedidos: vale o maior prazo.
+$db = bancoSolicitar([
+    ['/^SELECT COUNT\(\*\) AS n/', [['n' => 99]]],
+    ['/^SELECT GREATEST\(1, 3600 .* telefone_hash/', [['espera' => 100]]],
+    ['/^SELECT GREATEST\(1, 3600 .* ip_hash/', [['espera' => 2500]]],
+]);
+$r = smsOtpSolicitar($db, $pCliente, transporteCapturando($codigo, $n));
+falsoVerificar($r['dados']['retry_after'] === 2500 && $r['dados']['motivo'] === 'ip', 'limites simultâneos: retry_after é o maior prazo efetivo');
+
+// Falha de envio: o desafio existe, então o intervalo oficial de 30 s é informado.
+$r = smsOtpSolicitar(bancoSolicitar(), $pCliente, static fn (array $req): array => ['http_status' => 400, 'body' => '{}', 'errno' => 0]);
+falsoVerificar($r['codigo'] === 'SMS_OTP_ENVIO_FALHOU' && $r['dados']['retry_after'] === SMS_OTP_REENVIO_SEGUNDOS, 'falha de envio informa o intervalo real de 30 s');
+
+// Regras oficiais preservadas.
+falsoVerificar(SMS_OTP_VALIDADE_SEGUNDOS === 300 && SMS_OTP_REENVIO_SEGUNDOS === 30 && SMS_OTP_LIMITE_TELEFONE_HORA === 5 && SMS_OTP_MAX_TENTATIVAS === 5, 'valores oficiais (5 min, 30 s, 5/h, 5 tentativas) inalterados');
+falsoVerificar(SMS_OTP_LIMITE_IP_HORA === 20 && SMS_OTP_LIMITE_NOVOS_EMPRESA_HORA === 30, 'limites por IP e por empresa inalterados');
+
+// cliente_login.php: motivo real na resposta, sem expor o limite interno.
+$cl = (string)file_get_contents($raiz . '/backend/_auth/cliente_login.php');
+falsoVerificar(str_contains($cl, "'code' => 'CLIENT_OTP_HOURLY_LIMIT'") && str_contains($cl, 'Você atingiu o limite de solicitações de código. Tente novamente mais tarde.'), 'limite por hora tem código e mensagem próprios');
+falsoVerificar(str_contains($cl, "in_array(\$codigoOtp, ['SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA'], true)"), 'mensagem de "segundos" só para o intervalo de 30 s/concorrência');
+falsoVerificar(!str_contains($cl, "'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE'"), 'limite por hora não é mais mascarado como espera de segundos');
+falsoVerificar(!preg_match("/'motivo'\s*=>/", $cl), 'motivo interno (telefone/IP/empresa) não é exposto ao cliente');
+falsoVerificar(str_contains($cl, "\$dadosRecusa['codigo_pendente'] = true;") && str_contains($cl, 'clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp)'), 'recusa reaproveita o código ainda válido da mesma sessão, empresa, telefone e finalidade');
+falsoVerificar(str_contains($cl, "if (!clienteLoginDesafioSessaoAtivo(\$desafioSessao, \$idEmpresa, \$telefoneE164)) {"), 'verificar_telefone preserva o desafio do mesmo telefone e descarta os demais');
+
+// Frontend: prazo do backend na etapa do telefone e sem cliques duplicados.
+$lc = (string)file_get_contents($raiz . '/public/views/login-cliente.php');
+falsoVerificar(str_contains($lc, 'startPhoneRetry(error.retryAfter)') && str_contains($lc, 'verificacaoEmAndamento'), 'etapa do telefone respeita retry_after e bloqueia cliques simultâneos');
+falsoVerificar(str_contains($lc, 'abrirCodigoPendente("enviar_codigo", error)'), 'recusa com código pendente leva à etapa do código');
+falsoVerificar(str_contains($lc, '"NETWORK_ERROR"'), 'falha de comunicação tem mensagem própria, sem texto técnico');
+falsoVerificar(substr_count($lc, 'reenvioEmAndamento = true;') === 1 && str_contains($lc, 'Date.now() < resendAvailableAt'), 'reenvio continua protegido contra cliques duplicados');
+
 falsoRelatorio();
