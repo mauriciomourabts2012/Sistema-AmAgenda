@@ -25,6 +25,42 @@ $empresaSlugContexto = trim((string)($_SESSION['empresa_slug'] ?? ''));
 if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
     $empresaSlugContexto = '';
 }
+
+/*
+ * Restaura somente o estado visual do desafio OTP após atualizar a página.
+ * A autorização e os prazos efetivos continuam sendo validados no backend.
+ */
+$otpEstadoInicial = null;
+$desafioOtp = $_SESSION['cliente_auth_desafio'] ?? null;
+$agoraOtp = time();
+
+if (
+    is_array($desafioOtp)
+    && (int)($desafioOtp['id_empresa'] ?? 0) === $empresaId
+    && (int)($desafioOtp['expira_em'] ?? 0) > $agoraOtp
+    && in_array(
+        (string)($desafioOtp['finalidade'] ?? ''),
+        ['acesso', 'recuperacao_senha'],
+        true
+    )
+) {
+    $enviadoEmOtp = (int)($desafioOtp['enviado_em'] ?? 0);
+
+    $otpEstadoInicial = [
+        'telefone' => (string)($desafioOtp['telefone'] ?? ''),
+        'acao' => (string)$desafioOtp['finalidade'] === 'recuperacao_senha'
+            ? 'iniciar_recuperacao'
+            : 'enviar_codigo',
+        'expires_in' => max(
+            1,
+            (int)$desafioOtp['expira_em'] - $agoraOtp
+        ),
+        'retry_after' => max(
+            0,
+            30 - max(0, $agoraOtp - $enviadoEmOtp)
+        ),
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -37,27 +73,27 @@ if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.4" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.5" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.14.4"
+    href="../css/login/login-web.css?v=1.14.5"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.14.4"
+    href="../css/login/login-mobile.css?v=1.14.5"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.14.4"
+    href="../css/login/login-cliente.css?v=1.14.5"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.14.4"
+    href="../css/identidade-visual/identidade-visual.css?v=1.14.5"
   />
 
   <link
@@ -71,7 +107,7 @@ if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.4"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.5"></script>
 
 </head>
 
@@ -392,6 +428,7 @@ if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $empresaSlugContexto) !== 1) {
               class="cliente-link"
               id="btnReenviar"
               type="button"
+              disabled
             >
               Reenviar código
             </button>
@@ -434,6 +471,19 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
   const ENDPOINT_CLIENTE =
     "/api/api_central.php?path=_auth/cliente-login";
+
+  const REENVIO_PADRAO_SEGUNDOS = 30;
+
+  const otpEstadoInicial = <?php
+    echo json_encode(
+        $otpEstadoInicial,
+        JSON_UNESCAPED_UNICODE
+        | JSON_HEX_TAG
+        | JSON_HEX_AMP
+        | JSON_HEX_APOS
+        | JSON_HEX_QUOT
+    );
+  ?>;
 
   const $ = (selector) =>
     document.querySelector(selector);
@@ -510,6 +560,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   let telefoneE164 = "";
   let expiresAt = null;
   let timerId = null;
+  let resendAvailableAt = 0;
+  let resendTimerId = null;
+  let reenvioEmAndamento = false;
   let acaoOtpAtual = "enviar_codigo";
 
   function safeOn(element, eventName, handler) {
@@ -675,6 +728,78 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     timerId = null;
   }
 
+  function stopResendTimer() {
+
+    if (resendTimerId) {
+      clearInterval(resendTimerId);
+    }
+
+    resendTimerId = null;
+  }
+
+  function updateResendCountdown() {
+
+    if (!btnReenviar) {
+      return;
+    }
+
+    const remainingSeconds =
+      Math.max(
+        0,
+        Math.ceil(
+          (resendAvailableAt - Date.now()) / 1000
+        )
+      );
+
+    if (remainingSeconds > 0) {
+      btnReenviar.textContent =
+        `Reenviar código em ${remainingSeconds}s`;
+
+      setButtonEnabled(
+        btnReenviar,
+        false
+      );
+
+      return;
+    }
+
+    stopResendTimer();
+
+    btnReenviar.textContent =
+      "Reenviar código";
+
+    setButtonEnabled(
+      btnReenviar,
+      !reenvioEmAndamento
+    );
+  }
+
+  function startResendCountdown(
+    seconds = REENVIO_PADRAO_SEGUNDOS
+  ) {
+
+    stopResendTimer();
+
+    const safeSeconds =
+      Math.max(
+        0,
+        Math.ceil(Number(seconds) || 0)
+      );
+
+    resendAvailableAt =
+      Date.now() + safeSeconds * 1000;
+
+    updateResendCountdown();
+
+    if (safeSeconds > 0) {
+      resendTimerId =
+        window.setInterval(
+          updateResendCountdown,
+          250
+        );
+    }
+  }
+
   function atualizarInfoCodigo(textoTempo) {
 
     if (!infoCodigo) {
@@ -799,6 +924,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
     showStep(3);
     startTimer();
+    startResendCountdown();
 
     inCodigo.value = "";
 
@@ -1144,6 +1270,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
           );
 
         stopTimer();
+        stopResendTimer();
 
         if (msg3) {
           msg3.textContent =
@@ -1187,12 +1314,22 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     "click",
     async () => {
 
+      if (
+        reenvioEmAndamento
+        || Date.now() < resendAvailableAt
+      ) {
+        updateResendCountdown();
+        return;
+      }
+
       if (!telefoneE164) {
 
         showStep(2);
 
         return;
       }
+
+      reenvioEmAndamento = true;
 
       setButtonEnabled(
         btnReenviar,
@@ -1235,8 +1372,15 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
         }
 
         startTimer();
+        startResendCountdown();
 
       } catch (error) {
+
+        if (error.retryAfter > 0) {
+          startResendCountdown(
+            error.retryAfter
+          );
+        }
 
         if (msg3) {
           msg3.textContent =
@@ -1248,23 +1392,51 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       } finally {
 
-        setButtonEnabled(
-          btnReenviar,
-          true
-        );
+        reenvioEmAndamento = false;
+
+        updateResendCountdown();
       }
     }
   );
 
-  showStep(1);
+  if (
+    otpEstadoInicial
+    && otpEstadoInicial.telefone
+  ) {
+    telefoneE164 =
+      String(otpEstadoInicial.telefone);
+
+    acaoOtpAtual =
+      otpEstadoInicial.acao === "iniciar_recuperacao"
+        ? "iniciar_recuperacao"
+        : "enviar_codigo";
+
+    expiresAt =
+      new Date(
+        Date.now()
+        + Math.max(
+          1,
+          Number(otpEstadoInicial.expires_in) || 1
+        ) * 1000
+      );
+
+    showStep(3);
+    startTimer();
+    startResendCountdown(
+      Number(otpEstadoInicial.retry_after) || 0
+    );
+    inCodigo.focus();
+  } else {
+    showStep(1);
+  }
 
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.4" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.5" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.4"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.5"
 ></script>
 
 </body>
