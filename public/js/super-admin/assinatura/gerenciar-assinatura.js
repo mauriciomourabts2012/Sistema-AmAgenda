@@ -109,6 +109,30 @@
     `;
   }
 
+  const MENSAGEM_TROCA_PROGRAMADA = "A empresa continuará utilizando os benefícios e limites do plano atual até a efetivação da troca. A partir da data programada, passarão a valer os benefícios e limites do novo plano, conforme as regras de assinatura e a seleção de usuários registrada.";
+
+  // Troca programada: seção informativa; os dados da assinatura acima continuam sendo os vigentes.
+  function secaoTrocaProgramada(troca) {
+    if (!troca || troca.tipo !== "downgrade" || troca.status !== "programada") return "";
+    const quantidade = (rotulo, valor) => Number.isInteger(valor)
+      ? `<div class="assinatura-detalhe"><span>${esc(rotulo)}</span><strong>${esc(valor)}</strong></div>`
+      : "";
+    return `<section class="assinatura-troca-programada" aria-label="Troca de plano programada">
+      <p class="assinatura-troca-programada-titulo"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Troca de plano programada</p>
+      <div class="assinatura-detalhes">
+        <div class="assinatura-detalhe"><span>Plano atual</span><strong>${esc(troca.plano_atual)}</strong></div>
+        <div class="assinatura-detalhe"><span>Plano de destino</span><strong>${esc(troca.plano_novo)}</strong></div>
+        <div class="assinatura-detalhe"><span>Tipo</span><strong>Downgrade</strong></div>
+        <div class="assinatura-detalhe"><span>Status</span><strong>Programada</strong></div>
+        <div class="assinatura-detalhe"><span>Efetivação</span><strong>${dataBr(troca.data_efetivacao)}</strong></div>
+        ${troca.cobertura_ate ? `<div class="assinatura-detalhe"><span>Cobertura do plano atual até</span><strong>${dataBr(troca.cobertura_ate)}</strong></div>` : ""}
+        ${quantidade("Permanecerão habilitados", troca.quantidade_permanecer)}
+        ${quantidade("Previstos para bloqueio", troca.quantidade_bloquear)}
+      </div>
+      <p class="assinatura-troca-programada-msg">${esc(MENSAGEM_TROCA_PROGRAMADA)}</p>
+    </section>`;
+  }
+
   function renderizar(items) {
     const lista = document.getElementById("listaAssinaturas");
     if (!lista) return;
@@ -147,6 +171,7 @@
           <div class="assinatura-detalhe"><span>Início</span><strong>${dataBr(item.data_inicio)}</strong></div>
           <div class="assinatura-detalhe"><span>Fim</span><strong>${dataBr(item.data_fim)}</strong></div>
         </div>
+        ${secaoTrocaProgramada(item.troca_programada)}
       </article>`;
     }).join("");
   }

@@ -62,6 +62,9 @@
   const selecaoContadorEl = document.getElementById("emp_edit_selecao_contador");
   const selecaoErroEl = document.getElementById("emp_edit_selecao_erro");
   const btnCancelarSelecao = document.getElementById("emp_edit_cancelar_selecao");
+  const selecaoEfetivacaoEl = document.getElementById("emp_edit_selecao_efetivacao");
+  const selecaoEfetivacaoTextoEl = document.getElementById("emp_edit_selecao_efetivacao_texto");
+  const selecaoLimitesEl = document.getElementById("emp_edit_selecao_limites");
   let selecaoPlano = null;
   let selecaoPlanoValida = true;
 
@@ -143,18 +146,74 @@
     return wrap;
   }
 
+  // Resumo estruturado (rótulo/valor) e aviso da confirmação, montados com nós DOM e textContent.
+  function preencherDetalhesConfirmacao(conteudo, detalhes, aviso) {
+    if (!conteudo) return;
+    const itens = Array.isArray(detalhes) ? detalhes.filter((item) => item && item.valor !== "") : [];
+    if (itens.length) {
+      const lista = document.createElement("dl");
+      lista.className = "ui-alert-resumo";
+      itens.forEach((item) => {
+        const linha = document.createElement("div");
+        const rotulo = document.createElement("dt");
+        rotulo.textContent = String(item.rotulo || "");
+        const valor = document.createElement("dd");
+        valor.textContent = String(item.valor ?? "");
+        linha.append(rotulo, valor);
+        lista.appendChild(linha);
+      });
+      conteudo.appendChild(lista);
+    }
+    if (aviso) {
+      const avisoEl = document.createElement("p");
+      avisoEl.className = "ui-alert-resumo-aviso";
+      avisoEl.textContent = String(aviso);
+      conteudo.appendChild(avisoEl);
+    }
+  }
+
+  // Confirmação do downgrade programado: todos os valores e datas vêm da prévia calculada pelo backend.
+  function confirmacaoDowngrade(previa) {
+    const detalhes = [
+      { rotulo: "Plano de destino", valor: String(previa.plano_novo || "") },
+      { rotulo: "Mensalidade", valor: moedaBr(previa.valor_novo) },
+      { rotulo: "Término do plano atual", valor: dataBr(previa.termino_plano_atual) },
+      { rotulo: "Início do novo plano", valor: dataBr(previa.data_efetivacao) },
+    ];
+    if (previa.quantidade_permanecer !== undefined) {
+      detalhes.push(
+        { rotulo: "Permanecerão habilitados", valor: String(Number(previa.quantidade_permanecer)) },
+        { rotulo: "Serão bloqueados na efetivação", valor: String(Number(previa.quantidade_bloquear)) }
+      );
+    }
+    detalhes.push({ rotulo: "Estorno e crédito", valor: String(previa.observacao_financeira || "") });
+
+    const inicio = dataBr(previa.data_efetivacao);
+    return {
+      message: "O downgrade será programado para a próxima competência. Revise os dados antes de confirmar.",
+      detalhes,
+      aviso: previa.quantidade_permanecer !== undefined && inicio
+        ? `Nenhum usuário será bloqueado antes de ${inicio}.`
+        : "",
+    };
+  }
+
   function toastConfirm({
     title = "Confirmação",
     message = "Deseja continuar?",
     type = "confirm",
     confirmText = "Confirmar",
     cancelText = "Cancelar",
+    detalhes = null,
+    aviso = "",
   }) {
     return new Promise((resolve) => {
       const stack = getToastStack();
 
       const wrap = document.createElement("div");
-      wrap.className = `ui-alert ui-alert--${type}`;
+      // Confirmações deste modal trazem textos longos: os botões ficam em uma linha própria abaixo do conteúdo.
+      wrap.className = `ui-alert ui-alert--${type} ui-alert--confirmacao-empresa`;
+      wrap.setAttribute("role", "alertdialog");
 
       wrap.innerHTML = `
         <div class="ui-alert__icon">ℹ️</div>
@@ -176,6 +235,7 @@
 
       $title.textContent = title;
       $msg.textContent = message;
+      preencherDetalhesConfirmacao(wrap.querySelector(".ui-alert__content"), detalhes, aviso);
 
       if ($icon) {
         $icon.textContent =
@@ -343,6 +403,37 @@
     })[recurso] || recurso;
   }
 
+  function rotuloSituacao(situacao) {
+    return ({ ativo: "Ativo", bloqueado: "Bloqueado", inativo: "Inativo" })[situacao] || "";
+  }
+
+  function dataBr(iso) {
+    const partes = String(iso || "").split("-");
+    return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : "";
+  }
+
+  // Downgrade programado: os bloqueios só ocorrem na data de efetivação; nos demais fluxos, ao salvar.
+  function textoDecisaoPlano(permanece) {
+    if (permanece) return "Permanecerá habilitado";
+    const data = dataBr(selecaoPlano?.data_efetivacao);
+    return data ? `Será bloqueado em ${data}` : "Será bloqueado ao salvar";
+  }
+
+  function atualizarDecisoesSelecaoPlano() {
+    if (!selecaoUsuariosEl) return;
+    selecaoUsuariosEl.querySelectorAll(".plano-selecao-item").forEach((item) => {
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      const decisao = item.querySelector(".plano-selecao-decisao");
+      const permanece = Boolean(checkbox?.checked);
+      item.classList.toggle("is-bloqueio-futuro", !permanece);
+      if (decisao) {
+        decisao.textContent = textoDecisaoPlano(permanece);
+        decisao.classList.toggle("plano-selecao-decisao--permanece", permanece);
+        decisao.classList.toggle("plano-selecao-decisao--bloqueio", !permanece);
+      }
+    });
+  }
+
   function idsSelecionadosPlano() {
     if (!selecaoUsuariosEl) return [];
     return Array.from(selecaoUsuariosEl.querySelectorAll('input[type="checkbox"]:checked'))
@@ -402,6 +493,7 @@
       selecaoContadorEl.textContent = `${quantidade} de ${necessaria} selecionado${necessaria === 1 ? "" : "s"}`;
     }
     if (selecaoErroEl) selecaoErroEl.textContent = resultado.mensagem;
+    atualizarDecisoesSelecaoPlano();
     setLoading(form.dataset.loading === "1");
   }
 
@@ -414,6 +506,12 @@
     if (selecaoUsuariosEl) selecaoUsuariosEl.replaceChildren();
     if (selecaoContadorEl) selecaoContadorEl.textContent = "";
     if (selecaoErroEl) selecaoErroEl.textContent = "";
+    if (selecaoEfetivacaoEl) selecaoEfetivacaoEl.hidden = true;
+    if (selecaoEfetivacaoTextoEl) selecaoEfetivacaoTextoEl.textContent = "";
+    if (selecaoLimitesEl) {
+      selecaoLimitesEl.hidden = true;
+      selecaoLimitesEl.textContent = "";
+    }
     if (restaurarPlano && elPlanoId && form.dataset.planoOriginal) {
       elPlanoId.value = form.dataset.planoOriginal;
     }
@@ -433,6 +531,22 @@
       selecaoResumoEl.textContent = `Selecione exatamente ${necessaria} ${necessaria === 1 ? "vínculo" : "vínculos"} para permanecer com acesso no novo plano.`;
     }
 
+    const dataEfetivacao = dataBr(data.data_efetivacao);
+    if (selecaoEfetivacaoEl && selecaoEfetivacaoTextoEl) {
+      selecaoEfetivacaoEl.hidden = !dataEfetivacao;
+      selecaoEfetivacaoTextoEl.textContent = dataEfetivacao
+        ? `Efetivação prevista: ${dataEfetivacao}. Nenhum usuário será bloqueado antes dessa data; até lá, todos mantêm o acesso do plano atual.`
+        : "";
+    }
+
+    const limites = data.limites || {};
+    if (selecaoLimitesEl) {
+      selecaoLimitesEl.hidden = false;
+      selecaoLimitesEl.textContent = `Limites do plano de destino: ${Number(limites.usuarios || 0)} ${rotuloRecurso("usuarios").toLowerCase()} · `
+        + `${Number(limites.profissionais || 0)} ${rotuloRecurso("profissionais").toLowerCase()} · `
+        + `${Number(limites.administrativos || 0)} ${rotuloRecurso("administrativos").toLowerCase()}`;
+    }
+
     (Array.isArray(data.excessos) ? data.excessos : []).forEach((excesso) => {
       const card = document.createElement("div");
       card.className = "plano-selecao-excesso";
@@ -444,7 +558,9 @@
       selecaoExcessosEl?.appendChild(card);
     });
 
-    (Array.isArray(data.usuarios_para_selecao) ? data.usuarios_para_selecao : []).forEach((usuario) => {
+    const candidatos = Array.isArray(data.usuarios_para_selecao) ? [...data.usuarios_para_selecao] : [];
+    candidatos.sort((a, b) => String(a?.nome || "").localeCompare(String(b?.nome || ""), "pt-BR"));
+    candidatos.forEach((usuario) => {
       const label = document.createElement("label");
       label.className = "plano-selecao-item";
       const checkbox = document.createElement("input");
@@ -456,7 +572,16 @@
       nome.textContent = String(usuario.nome || "Usuário");
       const perfil = document.createElement("small");
       perfil.textContent = rotuloRecurso(String(usuario.perfil || ""));
-      textos.append(nome, perfil);
+      const situacao = rotuloSituacao(String(usuario.situacao || ""));
+      if (situacao) {
+        const situacaoEl = document.createElement("span");
+        situacaoEl.className = "plano-selecao-situacao";
+        situacaoEl.textContent = ` · ${situacao}`;
+        perfil.appendChild(situacaoEl);
+      }
+      const decisao = document.createElement("small");
+      decisao.className = "plano-selecao-decisao";
+      textos.append(nome, perfil, decisao);
       label.append(checkbox, textos);
       selecaoUsuariosEl.appendChild(label);
     });
@@ -841,9 +966,15 @@
         // downgrade) e só aplica depois da confirmação explícita do administrador.
         if (json.code === "TROCA_PLANO_CONFIRMACAO_NECESSARIA" && json.data?.valor_confirmacao_centavos !== undefined) {
           setLoading(false);
+          const previaTroca = json.data?.previa || {};
+          const resumoTroca = previaTroca.tipo === "downgrade"
+            ? confirmacaoDowngrade(previaTroca)
+            : { message: json.user_msg || "Confirma a troca de plano desta assinatura?", detalhes: null, aviso: "" };
           const confirmouTroca = await toastConfirm({
             title: "Confirmar troca de plano",
-            message: json.user_msg || "Confirma a troca de plano desta assinatura?",
+            message: resumoTroca.message,
+            detalhes: resumoTroca.detalhes,
+            aviso: resumoTroca.aviso,
             type: "warning",
             confirmText: "Confirmar troca",
           });
@@ -875,7 +1006,8 @@
 
         toastMsg(
           "danger",
-          json.user_msg || "Não foi possível atualizar a empresa."
+          json.user_msg || "Não foi possível atualizar a empresa.",
+          typeof json.user_title === "string" ? json.user_title : ""
         );
         return;
       }

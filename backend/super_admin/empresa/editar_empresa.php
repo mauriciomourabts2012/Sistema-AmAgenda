@@ -164,18 +164,227 @@ function formatarCpf(string $cpf): ?string
            substr($digits, 6, 3) . '-' . substr($digits, 9, 2);
 }
 
-function editarEmpresaErroTransacional(mysqli $conexao, string $code, string $mensagem, int $httpStatus = 409): void
+function editarEmpresaErroTransacional(mysqli $conexao, string $code, string $mensagem, int $httpStatus = 409, ?string $titulo = null): void
 {
     try {
         $conexao->rollback();
     } catch (Throwable) {
     }
 
-    out([
+    $resposta = [
         'ok' => false,
         'code' => $code,
         'user_msg' => $mensagem,
-    ], $httpStatus);
+    ];
+    if ($titulo !== null && $titulo !== '') {
+        $resposta['user_title'] = $titulo;
+    }
+    out($resposta, $httpStatus);
+}
+
+/* ==========================================================
+   CORTESIA -> PLANO PÚBLICO PAGO (exclusivo do Super Admin)
+   ----------------------------------------------------------
+   Encerra a Cortesia (status 'cancelada', estado reconhecido pela nova contratação) e abre a contratação pendente
+   pelo serviço oficial (assinaturaServicoSolicitarNovaContratacao): contrato 'suspensa'/'contratacao_pendente' com a
+   cobrança do primeiro período. Os benefícios param na requisição seguinte (acesso_assinatura.php) e só voltam com
+   assinaturaServicoConcluirNovaContratacao após o pagamento confirmado, que também grava empresa.plano_id.
+   Participa da transação do chamador; qualquer recusa desfaz tudo e mantém a Cortesia intacta.
+========================================================== */
+function editarEmpresaCortesiaParaPago(
+    mysqli $conexao,
+    int $idEmpresa,
+    int $idPlanoNovo,
+    int $idAssinatura,
+    int $idPlanoEmpresa,
+    string $nomeEmpresa,
+    ?array $idsPermanentesPlano
+): array {
+    $contrato = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_plano, status, modalidade, DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio,
+                DATE_FORMAT(data_fim, '%Y-%m-%d') AS data_fim
+           FROM assinatura
+          WHERE id_assinatura = ? AND id_empresa = ?
+          LIMIT 1
+          FOR UPDATE",
+        'ii',
+        $idAssinatura,
+        $idEmpresa
+    )[0] ?? null;
+    if ($contrato === null || (string)$contrato['status'] !== 'ativa' || (string)$contrato['modalidade'] !== 'paga') {
+        editarEmpresaErroTransacional($conexao, 'ASSINATURA_ALTERADA', 'A assinatura foi alterada por outra operação. Atualize a empresa e tente novamente.');
+    }
+    if ((int)$contrato['id_plano'] !== $idPlanoEmpresa) {
+        editarEmpresaErroTransacional($conexao, 'PLANO_ASSINATURA_DIVERGENTE', 'A assinatura vigente não corresponde ao plano atual da empresa.');
+    }
+    if ($contrato['data_fim'] !== null) {
+        editarEmpresaErroTransacional($conexao, 'CANCELAMENTO_PROGRAMADO',
+            'A assinatura tem encerramento programado. A troca de plano exige uma decisão contratual separada.');
+    }
+    if (assinaturaServicoTrocaPendenteEmpresa($conexao, $idEmpresa)) {
+        editarEmpresaErroTransacional($conexao, 'TROCA_PLANO_PENDENTE',
+            'A empresa tem uma troca de plano em andamento pelo faturamento. Conclua ou cancele essa troca antes.');
+    }
+    $hoje = assinaturaServicoHojeBanco($conexao);
+    $inicioContrato = (string)$contrato['data_inicio'];
+    if (!assinaturaServicoDataValida($inicioContrato, 'Y-m-d')) {
+        editarEmpresaErroTransacional($conexao, 'ASSINATURA_INCONSISTENTE', 'A assinatura vigente possui dados contratuais inválidos.');
+    }
+    if ($inicioContrato > $hoje) {
+        editarEmpresaErroTransacional($conexao, 'CONTRATO_INICIO_FUTURO',
+            'A assinatura vigente desta empresa começa em ' . date('d/m/Y', strtotime($inicioContrato))
+                . '. Não é possível alterar o plano antes do início do contrato. Tente novamente a partir dessa data.');
+    }
+
+    // Pagamento automático: mesma regra estrita da concessão de Cortesia (nenhuma chamada ao provedor).
+    $vinculos = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT v.motor_recorrencia, v.status, v.status_externo, v.slot_ativo, v.assinatura_externa_id,
+                v.ultimo_erro_codigo,
+                o.id_operacao AS id_operacao_aberta
+           FROM assinatura_pagamento_recorrente v
+           LEFT JOIN operacao_assinatura_gateway o
+             ON o.id_assinatura_pagamento = v.id_assinatura_pagamento
+            AND o.status_processamento IN ('pendente', 'processando', 'conciliacao')
+          WHERE v.id_empresa = ?
+          ORDER BY v.id_assinatura_pagamento
+          FOR UPDATE",
+        'i',
+        $idEmpresa
+    );
+    $bloqueioRecorrencia = assinaturaServicoTrocaAdministrativaBloqueioRecorrencia(
+        $vinculos,
+        'Esta empresa possui uma assinatura de pagamento automático ativa. Para continuar com a alteração para o plano pago, é necessário cancelar primeiro o pagamento automático e aguardar a confirmação do cancelamento.'
+    );
+    if ($bloqueioRecorrencia !== null) {
+        editarEmpresaErroTransacional($conexao, (string)$bloqueioRecorrencia['codigo'], (string)$bloqueioRecorrencia['mensagem'], 409,
+            (string)($bloqueioRecorrencia['titulo'] ?? ''));
+    }
+
+    // Mesmos critérios do cancelamento imediato do Super Admin: transação em andamento e cobrança pendente do contrato.
+    $operacoes = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT COUNT(*) AS total
+           FROM transacao_pagamento t
+          INNER JOIN cobranca c ON c.id_cobranca = t.id_cobranca AND c.id_empresa = t.id_empresa
+          WHERE c.id_empresa = ? AND c.id_assinatura = ?
+            AND (t.status IN ('criada', 'enviando', 'aguardando', 'processando', 'conciliacao')
+                 OR t.requer_conciliacao = 1)",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    );
+    if ((int)($operacoes[0]['total'] ?? 0) > 0) {
+        editarEmpresaErroTransacional($conexao, 'PAGAMENTO_AGUARDANDO_CONFIRMACAO',
+            'Há pagamento aguardando confirmação ou conciliação. Tente novamente após a confirmação.');
+    }
+    $cobrancaPendente = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT id_cobranca FROM cobranca
+          WHERE id_empresa = ? AND id_assinatura = ? AND status = 'pendente'
+          ORDER BY id_cobranca LIMIT 1 FOR UPDATE",
+        'ii',
+        $idEmpresa,
+        $idAssinatura
+    );
+    if ($cobrancaPendente !== []) {
+        editarEmpresaErroTransacional($conexao, 'COBRANCA_PENDENTE_TROCA_PLANO',
+            'Há cobrança pendente na assinatura atual. Quite ou cancele a cobrança pelo financeiro antes de trocar o plano.');
+    }
+
+    // Limites do plano pago: mesma seleção de usuários do downgrade administrativo (PLAN_USER_SELECTION_*), validada
+    // no backend. Os excedentes recebem bloqueado_plano = 1 nesta transação (nenhum dado é excluído); a nova
+    // contratação e a ativação após o pagamento revalidam a capacidade considerando somente os vínculos não bloqueados.
+    $resultadoLimites = limitesPlanoPrepararTrocaEmpresa($conexao, $idEmpresa, $idPlanoNovo, $idsPermanentesPlano);
+    limitesPlanoAbortarSeNegado($conexao, $resultadoLimites);
+
+    // O Proprietário precisa continuar habilitado para acessar o Faturamento e pagar a contratação pendente.
+    $vinculosHabilitados = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT pf.nome AS perfil_nome
+           FROM empresa_usuario eu
+          INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+          INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+          WHERE eu.id_empresa = ?
+            AND eu.status = 'ativo'
+            AND eu.bloqueado_plano = 0
+            AND u.status = 'ativo'
+            AND u.tipo_usuario <> 'super_admin'
+          FOR UPDATE",
+        'i',
+        $idEmpresa
+    );
+    $proprietarioHabilitado = false;
+    foreach ($vinculosHabilitados as $vinculoHabilitado) {
+        if (limitesPlanoNormalizarPerfil((string)$vinculoHabilitado['perfil_nome']) === 'proprietarios') {
+            $proprietarioHabilitado = true;
+            break;
+        }
+    }
+    if (!$proprietarioHabilitado) {
+        editarEmpresaErroTransacional(
+            $conexao,
+            'PLAN_USER_SELECTION_INVALID',
+            'Mantenha pelo menos um Proprietário ativo entre os usuários selecionados. Ele precisa acessar o Faturamento para pagar a contratação do novo plano.',
+            422
+        );
+    }
+
+    $stmt = $conexao->prepare(
+        "UPDATE assinatura
+            SET status = 'cancelada', data_fim = ?
+          WHERE id_assinatura = ? AND id_empresa = ? AND status = 'ativa' AND modalidade = 'paga'
+            AND data_fim IS NULL AND id_plano = ?"
+    );
+    if (!$stmt) {
+        throw new RuntimeException('Prepare encerramento da Cortesia falhou.');
+    }
+    $stmt->bind_param('siii', $hoje, $idAssinatura, $idEmpresa, $idPlanoEmpresa);
+    if (!$stmt->execute()) {
+        $erro = $stmt->error;
+        $stmt->close();
+        throw new RuntimeException('Falha ao encerrar a Cortesia: ' . $erro);
+    }
+    $encerrada = $stmt->affected_rows;
+    $stmt->close();
+    if ($encerrada !== 1) {
+        editarEmpresaErroTransacional($conexao, 'ASSINATURA_ALTERADA', 'A assinatura foi alterada por outra operação. Atualize a empresa e tente novamente.');
+    }
+
+    $ator = auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa);
+    auditoriaRegistrar($conexao, 'assinatura.cancelada', [
+        'ator' => $ator,
+        'entidade_id' => $idAssinatura,
+        'entidade_rotulo' => 'Assinatura encerrada da empresa ' . $nomeEmpresa,
+        'descricao' => 'Encerrou a assinatura sem cobrança da empresa ' . $nomeEmpresa . ' para contratar um plano pago.',
+        'alteracoes' => [
+            'status' => ['antes' => 'ativa', 'depois' => 'cancelada'],
+            'data_fim' => ['antes' => null, 'depois' => $hoje],
+        ],
+        'contexto' => [
+            'origem' => 'painel_super_admin',
+            'motivo' => 'troca_plano_sem_cobranca_para_pago',
+            'id_plano_anterior' => $idPlanoEmpresa,
+            'id_plano_novo' => $idPlanoNovo,
+        ],
+    ]);
+
+    // Mecanismo oficial da nova contratação: valida o plano público pago, os bloqueios financeiros e a recorrência
+    // anterior, cria o contrato pendente e a cobrança do primeiro período. Nada é ativado aqui.
+    $resultado = assinaturaServicoSolicitarNovaContratacao($conexao, $idEmpresa, $idPlanoNovo, $ator);
+    if (!($resultado['ok'] ?? false) || (string)($resultado['resultado'] ?? '') !== 'criada') {
+        editarEmpresaErroTransacional(
+            $conexao,
+            (string)($resultado['codigo'] ?? 'CONTRATACAO_NEGADA'),
+            (string)($resultado['mensagem'] ?? 'Não foi possível abrir a contratação do novo plano.')
+        );
+    }
+    $resultado['mensagem'] = 'A Cortesia foi encerrada e a contratação do novo plano aguarda o pagamento da primeira cobrança. '
+        . 'O acesso ao sistema será liberado somente após a confirmação do pagamento.';
+    $resultado['quantidade_bloqueada_plano'] = (int)($resultadoLimites['data']['quantidade_bloqueada'] ?? 0);
+
+    return $resultado;
 }
 
 /* ==========================================================
@@ -512,27 +721,63 @@ try {
     // bloqueio por dívida/pagamento incerto e limites validados na ativação. O contrato nunca é alterado
     // diretamente por aqui. Ordem de locks do projeto: empresa -> assinatura -> troca -> cobrança.
     $trocaAdministrativa = null;
+    // Exceção isolada e exclusiva do Super Admin: concessão de plano sem cobrança (plano.gera_cobranca = 0) a uma
+    // empresa com assinatura paga de plano cobrado ou com trial válido. Não passa pela troca do Faturamento (sem
+    // proporcional, crédito ou downgrade programado); todas as demais trocas seguem exatamente o fluxo abaixo.
+    $concessaoSemCobranca = false;
     require_once __DIR__ . '/../../_servicos/assinatura.php';
     $linhasEmpresaTroca = assinaturaServicoConsultaFinanceira($conexao, 'SELECT plano_id FROM empresa WHERE id_empresa = ? LIMIT 1 FOR UPDATE', 'i', $idEmpresa);
     if ($linhasEmpresaTroca !== [] && (int)$linhasEmpresaTroca[0]['plano_id'] !== $planoId) {
         $vigentesTroca = assinaturaServicoConsultaFinanceira(
             $conexao,
-            "SELECT modalidade FROM assinatura WHERE id_empresa = ? AND status IN ('ativa', 'suspensa') FOR UPDATE",
+            "SELECT id_assinatura, modalidade, status FROM assinatura WHERE id_empresa = ? AND status IN ('ativa', 'suspensa') FOR UPDATE",
             'i',
             $idEmpresa
         );
         $modalidadesTroca = array_column($vigentesTroca, 'modalidade');
-        if (in_array('paga', $modalidadesTroca, true)) {
+        $planoDestinoTroca = assinaturaServicoConsultaFinanceira($conexao, 'SELECT gera_cobranca FROM plano WHERE id_plano = ? LIMIT 1', 'i', $planoId)[0] ?? null;
+        if ($planoDestinoTroca !== null && (int)$planoDestinoTroca['gera_cobranca'] === 0
+            && count($vigentesTroca) === 1 && (string)$vigentesTroca[0]['status'] === 'ativa') {
+            $modalidadeVigenteTroca = (string)$vigentesTroca[0]['modalidade'];
+            $concessaoSemCobranca = $modalidadeVigenteTroca === 'teste'
+                || ($modalidadeVigenteTroca === 'paga'
+                    && assinaturaServicoPlanoGeraCobranca($conexao, (int)$vigentesTroca[0]['id_assinatura'], true));
+        }
+        // Exceção isolada: Cortesia (plano atual sem cobrança) -> plano pago. Não usa a troca do Faturamento;
+        // reutiliza a contratação pendente. A edição segue com o plano atual: empresa.plano_id só muda na ativação.
+        $cortesiaParaPago = !$concessaoSemCobranca
+            && $planoDestinoTroca !== null && (int)$planoDestinoTroca['gera_cobranca'] === 1
+            && count($vigentesTroca) === 1 && (string)$vigentesTroca[0]['status'] === 'ativa'
+            && (string)$vigentesTroca[0]['modalidade'] === 'paga'
+            && !assinaturaServicoPlanoGeraCobranca($conexao, (int)$vigentesTroca[0]['id_assinatura'], true);
+        if ($cortesiaParaPago) {
+            $planoAtualEmpresa = (int)$linhasEmpresaTroca[0]['plano_id'];
+            $trocaAdministrativa = editarEmpresaCortesiaParaPago(
+                $conexao,
+                $idEmpresa,
+                $planoId,
+                (int)$vigentesTroca[0]['id_assinatura'],
+                $planoAtualEmpresa,
+                $nome,
+                $idsPermanentesPlano
+            );
+            $planoId = $planoAtualEmpresa;
+        }
+        if (!$concessaoSemCobranca && !$cortesiaParaPago && in_array('paga', $modalidadesTroca, true)) {
             $confirmadoBruto = $_POST['troca_valor_confirmado_centavos'] ?? null;
             $valorConfirmadoTroca = is_scalar($confirmadoBruto) && preg_match('/^\d{1,12}$/', (string)$confirmadoBruto)
                 ? (int)$confirmadoBruto
                 : null;
+            // Super Admin: o downgrade para plano que não comporta a estrutura atual aceita a seleção de usuários,
+            // gravada com a troca e aplicada somente na efetivação.
             $trocaAdministrativa = assinaturaServicoSolicitarTrocaPlano(
                 $conexao,
                 $idEmpresa,
                 $planoId,
                 $valorConfirmadoTroca,
-                auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa)
+                auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
+                true,
+                $idsPermanentesPlano
             );
             if (!($trocaAdministrativa['ok'] ?? false)) {
                 try {
@@ -540,6 +785,14 @@ try {
                 } catch (Throwable) {
                 }
                 $codigoTroca = (string)($trocaAdministrativa['codigo'] ?? 'TROCA_PLANO_NEGADA');
+                if (str_starts_with($codigoTroca, 'PLAN_USER_SELECTION_') && is_array($trocaAdministrativa['data'] ?? null)) {
+                    out([
+                        'ok' => false,
+                        'code' => $codigoTroca,
+                        'user_msg' => (string)($trocaAdministrativa['mensagem'] ?? 'Revise a seleção de usuários.'),
+                        'data' => $trocaAdministrativa['data'],
+                    ], (int)($trocaAdministrativa['http_status'] ?? 409));
+                }
                 $previaTroca = is_array($trocaAdministrativa['previa'] ?? null) ? $trocaAdministrativa['previa'] : null;
                 if ($codigoTroca === 'VALOR_ALTERADO' && $previaTroca !== null) {
                     $valorConfirmacao = (string)$previaTroca['tipo'] === 'upgrade'
@@ -563,6 +816,10 @@ try {
 
     $resultadoTrocaPlano = limitesPlanoPrepararTrocaEmpresa($conexao, $idEmpresa, $planoId, $idsPermanentesPlano);
     limitesPlanoAbortarSeNegado($conexao, $resultadoTrocaPlano);
+    // Cortesia -> pago: os bloqueios por limite já foram aplicados antes da contratação pendente (plano da edição inalterado).
+    if (isset($trocaAdministrativa['quantidade_bloqueada_plano'])) {
+        $resultadoTrocaPlano['data']['quantidade_bloqueada'] = (int)$trocaAdministrativa['quantidade_bloqueada_plano'];
+    }
 
     // A decisão da troca usa o estado autoritativo já bloqueado pela regra de limites,
     // nunca a leitura realizada antes da transação.
@@ -597,6 +854,7 @@ try {
         $stmtAssinaturaVigente = $conexao->prepare(
             "SELECT id_assinatura, id_empresa, id_plano, valor_contratado, periodicidade,
                     dia_vencimento, status, modalidade, data_fim, teste_iniciado_em, teste_expira_em,
+                    DATE_FORMAT(data_inicio, '%Y-%m-%d') AS data_inicio,
                     CASE
                         WHEN status = 'ativa'
                          AND modalidade = 'teste'
@@ -702,8 +960,65 @@ try {
             );
         }
 
+        if ($concessaoSemCobranca) {
+            // Pagamento automático: qualquer vínculo recorrente da empresa que ainda possa cobrar impede a concessão.
+            // Vínculos e operações bloqueados (assinatura -> vínculo -> operação); nenhuma chamada ao provedor.
+            $vinculosRecorrentes = assinaturaServicoConsultaFinanceira(
+                $conexao,
+                "SELECT v.motor_recorrencia, v.status, v.status_externo, v.slot_ativo, v.assinatura_externa_id,
+                        v.ultimo_erro_codigo,
+                        o.id_operacao AS id_operacao_aberta
+                   FROM assinatura_pagamento_recorrente v
+                   LEFT JOIN operacao_assinatura_gateway o
+                     ON o.id_assinatura_pagamento = v.id_assinatura_pagamento
+                    AND o.status_processamento IN ('pendente', 'processando', 'conciliacao')
+                  WHERE v.id_empresa = ?
+                  ORDER BY v.id_assinatura_pagamento
+                  FOR UPDATE",
+                'i',
+                $idEmpresa
+            );
+            $bloqueioRecorrencia = assinaturaServicoTrocaAdministrativaBloqueioRecorrencia($vinculosRecorrentes);
+            if ($bloqueioRecorrencia !== null) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    (string)$bloqueioRecorrencia['codigo'],
+                    (string)$bloqueioRecorrencia['mensagem'],
+                    409,
+                    (string)($bloqueioRecorrencia['titulo'] ?? '')
+                );
+            }
+            // Mesmos bloqueios financeiros da troca do Faturamento: dívida vencida ou pagamento incerto.
+            $bloqueioFinanceiro = assinaturaServicoTrocaBloqueioFinanceiro($conexao, $idEmpresa);
+            if ($bloqueioFinanceiro !== null) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    (string)$bloqueioFinanceiro['codigo'],
+                    (string)$bloqueioFinanceiro['mensagem']
+                );
+            }
+            // O contrato atual será encerrado: uma cobrança pendente dele (inclusive a de conversão do trial)
+            // ficaria órfã. Deve ser quitada ou cancelada antes pelo fluxo financeiro existente.
+            $cobrancaPendenteConcessao = assinaturaServicoConsultaFinanceira(
+                $conexao,
+                "SELECT id_cobranca FROM cobranca
+                  WHERE id_empresa = ? AND id_assinatura = ? AND status = 'pendente'
+                  ORDER BY id_cobranca LIMIT 1 FOR UPDATE",
+                'ii',
+                $idEmpresa,
+                $assinaturaAnteriorId
+            );
+            if ($cobrancaPendenteConcessao !== []) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    'COBRANCA_PENDENTE_CONCESSAO',
+                    'Há cobrança pendente nesta assinatura. Quite ou cancele a cobrança pelo financeiro antes de conceder o plano sem cobrança.'
+                );
+            }
+        }
+
         $stmtPlanoAssinatura = $conexao->prepare(
-            'SELECT preco_mensal, cobranca FROM plano WHERE id_plano = ? LIMIT 1 FOR UPDATE'
+            'SELECT preco_mensal, cobranca, gera_cobranca FROM plano WHERE id_plano = ? LIMIT 1 FOR UPDATE'
         );
         if (!$stmtPlanoAssinatura) {
             throw new RuntimeException('Prepare plano da assinatura falhou.');
@@ -723,8 +1038,16 @@ try {
 
         $valorContratado = (float)$planoAssinatura['preco_mensal'];
         $periodicidadeAssinatura = (string)$planoAssinatura['cobranca'];
+        if ($concessaoSemCobranca && (int)$planoAssinatura['gera_cobranca'] !== 0) {
+            editarEmpresaErroTransacional($conexao, 'PLANO_ALTERADO', 'O plano selecionado foi alterado. Atualize a página e tente novamente.');
+        }
+        $contextoTrocaAssinatura = $concessaoSemCobranca
+            ? ['origem' => 'painel_super_admin', 'motivo' => 'concessao_plano_sem_cobranca', 'modalidade_anterior' => $modalidadeAssinatura]
+            : ['origem' => 'painel_super_admin'];
 
-        if ($modalidadeAssinatura === 'teste') {
+        // Trial -> plano sem cobrança segue o caminho do contrato novo (abaixo): o trial é encerrado como histórico
+        // e a nova assinatura nasce como no cadastro administrativo (paga, ativa, sem datas de teste).
+        if ($modalidadeAssinatura === 'teste' && !$concessaoSemCobranca) {
             $idPlanoAnteriorAssinatura = (int)$assinaturaVigente['id_plano'];
             $valorAnteriorAssinatura = (float)$assinaturaVigente['valor_contratado'];
             $periodicidadeAnteriorAssinatura = (string)$assinaturaVigente['periodicidade'];
@@ -782,18 +1105,42 @@ try {
                 'contexto' => ['origem' => 'painel_super_admin'],
             ]);
         } else {
+            // chk_assinatura_datas: data_fim >= data_inicio. A data da operação é a do banco (mesmo relógio do
+            // CURDATE/CURRENT_TIMESTAMP que grava data_inicio). Contrato com início futuro não recebe a concessão:
+            // nenhuma data contratual é ajustada automaticamente.
+            $inicioContratoVigente = (string)($assinaturaVigente['data_inicio'] ?? '');
+            if (!assinaturaServicoDataValida($inicioContratoVigente, 'Y-m-d')) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    'ASSINATURA_INCONSISTENTE',
+                    'A assinatura vigente possui dados contratuais inválidos.'
+                );
+            }
+            if ($concessaoSemCobranca) {
+                $dataOperacaoAssinatura = assinaturaServicoHojeBanco($conexao);
+            }
+            if ($inicioContratoVigente > $dataOperacaoAssinatura) {
+                editarEmpresaErroTransacional(
+                    $conexao,
+                    'CONTRATO_INICIO_FUTURO',
+                    'A assinatura vigente desta empresa começa em ' . date('d/m/Y', strtotime($inicioContratoVigente))
+                        . '. Não é possível conceder o plano sem cobrança antes do início do contrato. Tente novamente a partir dessa data.'
+                );
+            }
             $stmtEncerrarAssinatura = $conexao->prepare(
                 "UPDATE assinatura
                     SET status = 'encerrada', data_fim = ?
                    WHERE id_assinatura = ?
                      AND id_empresa = ?
                      AND status = 'ativa'
-                     AND modalidade = 'paga'"
+                     AND modalidade = ?
+                     AND (modalidade = 'paga' OR teste_expira_em > CURRENT_TIMESTAMP)"
             );
             if (!$stmtEncerrarAssinatura) {
                 throw new RuntimeException('Prepare encerramento de assinatura falhou.');
             }
-            $stmtEncerrarAssinatura->bind_param('sii', $dataOperacaoAssinatura, $assinaturaAnteriorId, $idEmpresa);
+            $modalidadeEncerramento = $modalidadeAssinatura === 'teste' ? 'teste' : 'paga';
+            $stmtEncerrarAssinatura->bind_param('siis', $dataOperacaoAssinatura, $assinaturaAnteriorId, $idEmpresa, $modalidadeEncerramento);
             if (!$stmtEncerrarAssinatura->execute()) {
                 $erro = $stmtEncerrarAssinatura->error;
                 $stmtEncerrarAssinatura->close();
@@ -842,7 +1189,7 @@ try {
                 'entidade_rotulo' => 'Assinatura encerrada da empresa ' . $nome,
                 'descricao' => 'Encerrou a assinatura anterior da empresa ' . $nome . '.',
                 'alteracoes' => ['status' => ['antes' => 'ativa', 'depois' => 'encerrada'], 'data_fim' => ['antes' => null, 'depois' => $dataOperacaoAssinatura]],
-                'contexto' => ['origem' => 'painel_super_admin'],
+                'contexto' => $contextoTrocaAssinatura,
             ]);
             auditoriaRegistrar($conexao, 'assinatura.criada', [
                 'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
@@ -858,7 +1205,7 @@ try {
                     'data_inicio' => $dataOperacaoAssinatura,
                     'status' => $statusAssinatura,
                 ]]],
-                'contexto' => ['origem' => 'painel_super_admin'],
+                'contexto' => $contextoTrocaAssinatura,
             ]);
             auditoriaRegistrar($conexao, 'assinatura.trocada', [
                 'ator' => auditoriaResolverAtorSuperAdmin($conexao, $idEmpresa),
@@ -871,7 +1218,7 @@ try {
                     'valor_contratado' => ['antes' => null, 'depois' => $valorContratado],
                     'periodicidade' => ['antes' => null, 'depois' => $periodicidadeAssinatura],
                 ],
-                'contexto' => ['origem' => 'painel_super_admin'],
+                'contexto' => $contextoTrocaAssinatura,
             ]);
         }
     }

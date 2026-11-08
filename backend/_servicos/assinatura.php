@@ -3271,8 +3271,11 @@ function assinaturaServicoProximaCompetencia(mysqli $conexao, int $idEmpresa, in
     return $fim === null ? null : assinaturaServicoData((string)$fim)->modify('+1 day')->format('Y-m-d');
 }
 
-/** Prévia do downgrade programado. @return array<string, mixed> */
-function assinaturaServicoPreviaDowngrade(mysqli $conexao, array $contexto, array $plano): array
+/**
+ * Prévia do downgrade programado. $selecaoAdministrativa (somente Super Admin) dispensa a capacidade prévia: os
+ * excedentes são escolhidos agora e bloqueados apenas na efetivação. @return array<string, mixed>
+ */
+function assinaturaServicoPreviaDowngrade(mysqli $conexao, array $contexto, array $plano, bool $selecaoAdministrativa = false): array
 {
     $assinatura = $contexto['assinatura'];
     $idEmpresa = (int)$contexto['empresa']['id_empresa'];
@@ -3280,7 +3283,7 @@ function assinaturaServicoPreviaDowngrade(mysqli $conexao, array $contexto, arra
     if ($efetivacao === null || $efetivacao <= (string)$contexto['hoje']) {
         return assinaturaServicoNovaContratacaoResultado(false, 'COMPETENCIA_INDISPONIVEL', 'Não foi possível determinar a próxima competência. Entre em contato com o suporte.');
     }
-    if (!$plano['comporta_usuarios']) {
+    if (!$plano['comporta_usuarios'] && !$selecaoAdministrativa) {
         return assinaturaServicoNovaContratacaoResultado(false, 'PLANO_LIMITE_USUARIOS', sprintf('O plano %s não comporta os usuários ativos da empresa. Desative ou ajuste os vínculos excedentes antes de agendar o downgrade; nenhum dado é excluído automaticamente.', $plano['nome']));
     }
 
@@ -3293,6 +3296,9 @@ function assinaturaServicoPreviaDowngrade(mysqli $conexao, array $contexto, arra
         'valor_atual' => pagamentoGatewayValorDecimal(pagamentoGatewayValorCentavos(number_format((float)$assinatura['valor_contratado'], 2, '.', ''))),
         'valor_novo' => (string)$plano['valor'],
         'data_efetivacao' => $efetivacao,
+        // Campos de apresentação da confirmação; não alteram o cálculo nem a efetivação.
+        'termino_plano_atual' => assinaturaServicoData($efetivacao)->modify('-1 day')->format('Y-m-d'),
+        'observacao_financeira' => 'Não há estorno nem crédito proporcional.',
     ]);
 }
 
@@ -3494,6 +3500,280 @@ function assinaturaServicoAplicarPlanoTroca(mysqli $conexao, array $contexto, ar
     $stmt->close();
 
     return null;
+}
+
+/**
+ * Estrutura da seleção administrativa do downgrade (tabela assinatura_troca_plano_usuario, criada manualmente).
+ * Sem ela a seleção é recusada e downgrades sem seleção seguem exatamente como antes.
+ */
+function assinaturaServicoTrocaSelecaoEstruturaDisponivel(mysqli $conexao): bool
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    $linhas = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT COUNT(*) AS total FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'assinatura_troca_plano_usuario'"
+    );
+    $cache = (int)($linhas[0]['total'] ?? 0) === 1;
+
+    return $cache;
+}
+
+/**
+ * Vínculos que ocupam limites do plano, com o mesmo critério de assinaturaServicoPlanoComportaEmpresa(),
+ * bloqueados na transação do chamador.
+ *
+ * @return list<array<string, mixed>>
+ */
+function assinaturaServicoVinculosHabilitadosPlano(mysqli $conexao, int $idEmpresa): array
+{
+    return assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT eu.id_empresa_usuario, eu.id_usuario, eu.id_perfil, eu.status, u.status AS status_usuario,
+                u.nome, pf.nome AS perfil_nome
+           FROM empresa_usuario eu
+          INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
+          INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil
+          WHERE eu.id_empresa = ?
+            AND eu.status IN ('ativo', 'bloqueado')
+            AND eu.bloqueado_plano = 0
+            AND u.status IN ('ativo', 'bloqueado')
+            AND u.tipo_usuario <> 'super_admin'
+          ORDER BY eu.id_empresa_usuario
+          FOR UPDATE",
+        'i',
+        $idEmpresa
+    );
+}
+
+/** O Proprietário ativo é quem acessa o Faturamento; a empresa nunca pode ficar sem nenhum. */
+function assinaturaServicoVinculosTemProprietarioAtivo(array $vinculos): bool
+{
+    require_once __DIR__ . '/../_regras/limites_plano.php';
+    foreach ($vinculos as $vinculo) {
+        if ((string)($vinculo['status'] ?? '') === 'ativo'
+            && (string)($vinculo['status_usuario'] ?? '') === 'ativo'
+            && limitesPlanoNormalizarPerfil((string)($vinculo['perfil_nome'] ?? '')) === 'proprietarios') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Seleção administrativa (exclusiva do Super Admin) dos vínculos que permanecem após um downgrade programado.
+ * Reutiliza o planejamento e a validação da regra de limites. Nada é bloqueado aqui: a decisão de cada vínculo
+ * habilitado é devolvida para ser gravada com a troca e aplicada somente na efetivação.
+ *
+ * @param array<string, mixed> $plano plano de destino (assinaturaServicoTrocaPlanos)
+ * @param list<mixed>|null $idsPermanentes id_empresa_usuario escolhidos; null quando a seleção ainda não foi feita
+ * @return array<string, mixed>
+ */
+function assinaturaServicoDowngradeSelecaoAdministrativa(
+    mysqli $conexao,
+    int $idEmpresa,
+    array $plano,
+    ?array $idsPermanentes,
+    string $dataEfetivacao
+): array {
+    require_once __DIR__ . '/../_regras/limites_plano.php';
+    if (!assinaturaServicoTrocaSelecaoEstruturaDisponivel($conexao)) {
+        return assinaturaServicoNovaContratacaoResultado(false, 'ESTRUTURA_PENDENTE',
+            'A seleção de usuários no downgrade ainda não está disponível. Entre em contato com o suporte técnico.');
+    }
+    $vinculos = assinaturaServicoVinculosHabilitadosPlano($conexao, $idEmpresa);
+    $planejamento = limitesPlanoPlanejarDowngradeUsuarios($vinculos, $plano);
+    $falhaSelecao = static function (array $resultado) use ($dataEfetivacao): array {
+        $dados = is_array($resultado['data'] ?? null) ? $resultado['data'] : [];
+        $dados['data_efetivacao'] = $dataEfetivacao;
+
+        return assinaturaServicoNovaContratacaoResultado(false, (string)($resultado['code'] ?? 'PLAN_USER_SELECTION_INVALID'),
+            (string)($resultado['user_msg'] ?? 'A seleção de usuários é inválida.'),
+            ['data' => $dados, 'http_status' => (int)($resultado['http_status'] ?? 409)]);
+    };
+
+    if (($planejamento['code'] ?? '') === 'PLAN_USER_SELECTION_REQUIRED') {
+        if ($idsPermanentes === null) {
+            return $falhaSelecao($planejamento);
+        }
+        $validacao = limitesPlanoValidarSelecaoDowngradeUsuarios($vinculos, $plano, $idsPermanentes);
+        if (($validacao['ok'] ?? false) !== true) {
+            return $falhaSelecao($validacao);
+        }
+        $bloquear = $validacao['bloquear_ids'];
+    } elseif (($planejamento['ok'] ?? false) === true && $idsPermanentes === null) {
+        // Plano com limite zero em algum perfil: o bloqueio é determinístico e não há escolha a fazer.
+        $bloquear = $planejamento['bloquear_ids'];
+    } else {
+        return $falhaSelecao([
+            'code' => 'PLAN_USER_SELECTION_STALE',
+            'user_msg' => 'Os limites mudaram. Revise novamente a troca de plano.',
+            'http_status' => 409,
+        ]);
+    }
+
+    $bloquear = array_fill_keys(array_map('intval', $bloquear), true);
+    $decisoes = [];
+    $permanecem = [];
+    $usuariosPermanecer = [];
+    $usuariosBloquear = [];
+    foreach ($vinculos as $vinculo) {
+        $bloqueia = isset($bloquear[(int)$vinculo['id_empresa_usuario']]);
+        $decisoes[] = [
+            'id_usuario' => (int)$vinculo['id_usuario'],
+            'id_perfil' => (int)$vinculo['id_perfil'],
+            'decisao' => $bloqueia ? 'bloquear' : 'permanecer',
+        ];
+        if ($bloqueia) {
+            $usuariosBloquear[] = (int)$vinculo['id_usuario'];
+        } else {
+            $permanecem[] = $vinculo;
+            $usuariosPermanecer[] = (int)$vinculo['id_usuario'];
+        }
+    }
+    if (!assinaturaServicoVinculosTemProprietarioAtivo($permanecem)) {
+        $dados = is_array($planejamento['data'] ?? null) ? $planejamento['data'] : [];
+        $dados['data_efetivacao'] = $dataEfetivacao;
+
+        return assinaturaServicoNovaContratacaoResultado(false, 'PLAN_USER_SELECTION_INVALID',
+            'Mantenha pelo menos um Proprietário ativo entre os usuários que permanecerão. Ele precisa acessar o Faturamento.',
+            ['data' => $dados, 'http_status' => 422]);
+    }
+
+    return assinaturaServicoNovaContratacaoResultado(true, null, '', [
+        'vinculos' => $decisoes,
+        'usuarios_permanecer' => $usuariosPermanecer,
+        'usuarios_bloquear' => $usuariosBloquear,
+        'quantidade_permanecer' => count($usuariosPermanecer),
+        'quantidade_bloquear' => count($usuariosBloquear),
+    ]);
+}
+
+/**
+ * Grava a decisão de cada vínculo habilitado junto com o downgrade programado. As FKs compostas por id_empresa
+ * impedem, no próprio banco, referenciar troca ou vínculo de outra empresa.
+ *
+ * @param list<array{id_usuario: int, id_perfil: int, decisao: string}> $vinculos
+ */
+function assinaturaServicoGravarSelecaoDowngrade(mysqli $conexao, int $idEmpresa, int $idTroca, array $vinculos): void
+{
+    $stmt = $conexao->prepare(
+        'INSERT INTO assinatura_troca_plano_usuario (id_empresa, id_troca, id_usuario, id_perfil, decisao) VALUES (?, ?, ?, ?, ?)'
+    );
+    if (!$stmt) {
+        throw new RuntimeException('Falha ao preparar a gravação da seleção do downgrade.');
+    }
+    foreach ($vinculos as $vinculo) {
+        $idUsuario = (int)$vinculo['id_usuario'];
+        $idPerfil = (int)$vinculo['id_perfil'];
+        $decisao = (string)$vinculo['decisao'];
+        $stmt->bind_param('iiiis', $idEmpresa, $idTroca, $idUsuario, $idPerfil, $decisao);
+        if (!$stmt->execute() || $stmt->affected_rows !== 1) {
+            $stmt->close();
+            throw new RuntimeException('Falha ao gravar a seleção do downgrade.');
+        }
+    }
+    $stmt->close();
+}
+
+/**
+ * Aplica, na efetivação, a seleção gravada no agendamento. A seleção é preservada como registrada (não é
+ * descartada porque a empresa passou a caber no plano), mas só é aplicada se os vínculos ainda forem compatíveis:
+ * - vínculo habilitado fora da seleção (novo ou reativado): cancela; nenhum usuário novo é bloqueado automaticamente;
+ * - vínculo com perfil diferente do registrado: cancela;
+ * - nenhum Proprietário ativo entre os que permanecem, ou os que permanecem não cabem no plano: cancela.
+ * Vínculos da seleção que deixaram de estar habilitados não são alterados. A validação ocorre antes de qualquer
+ * bloqueio; os bloqueios e a troca do plano são confirmados juntos pela transação do chamador.
+ *
+ * @return array{possui_selecao: bool, causa: ?string, detalhes: array<string, mixed>, bloqueados: list<int>}
+ */
+function assinaturaServicoAplicarSelecaoDowngrade(mysqli $conexao, int $idEmpresa, array $troca): array
+{
+    require_once __DIR__ . '/../_regras/limites_plano.php';
+    $resultado = ['possui_selecao' => false, 'causa' => null, 'detalhes' => [], 'bloqueados' => []];
+    if (!assinaturaServicoTrocaSelecaoEstruturaDisponivel($conexao)) {
+        return $resultado;
+    }
+    $copia = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        'SELECT id_usuario, id_perfil, decisao FROM assinatura_troca_plano_usuario
+          WHERE id_empresa = ? AND id_troca = ? FOR UPDATE',
+        'ii',
+        $idEmpresa,
+        (int)$troca['id_troca']
+    );
+    if ($copia === []) {
+        return $resultado;
+    }
+    $resultado['possui_selecao'] = true;
+    $registrados = [];
+    foreach ($copia as $linha) {
+        $registrados[(int)$linha['id_usuario']] = $linha;
+    }
+
+    // Mesma ordem de locks do agendamento: plano antes dos vínculos.
+    $plano = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        'SELECT id_plano, limite_usuarios, limite_proprietarios, limite_profissionais, limite_recepcionistas
+           FROM plano WHERE id_plano = ? LIMIT 1 FOR UPDATE',
+        'i',
+        (int)$troca['id_plano_novo']
+    )[0] ?? null;
+    $vinculos = assinaturaServicoVinculosHabilitadosPlano($conexao, $idEmpresa);
+
+    $novos = [];
+    $perfilAlterado = [];
+    $permanecem = [];
+    $bloquear = [];
+    foreach ($vinculos as $vinculo) {
+        $idUsuario = (int)$vinculo['id_usuario'];
+        $registrado = $registrados[$idUsuario] ?? null;
+        if ($registrado === null) {
+            $novos[] = $idUsuario;
+        } elseif ((int)$registrado['id_perfil'] !== (int)$vinculo['id_perfil']) {
+            $perfilAlterado[] = $idUsuario;
+        } elseif ((string)$registrado['decisao'] === 'bloquear') {
+            $bloquear[] = $vinculo;
+        } else {
+            $permanecem[] = $vinculo;
+        }
+    }
+    if ($novos !== []) {
+        return ['causa' => 'vinculo_novo', 'detalhes' => ['usuarios' => $novos]] + $resultado;
+    }
+    if ($perfilAlterado !== []) {
+        return ['causa' => 'perfil_alterado', 'detalhes' => ['usuarios' => $perfilAlterado]] + $resultado;
+    }
+    if (!assinaturaServicoVinculosTemProprietarioAtivo($permanecem)) {
+        return ['causa' => 'sem_proprietario', 'detalhes' => []] + $resultado;
+    }
+    $planejamento = $plano === null ? null : limitesPlanoPlanejarDowngradeUsuarios($permanecem, $plano);
+    if ($planejamento === null || ($planejamento['ok'] ?? false) !== true || ($planejamento['bloquear_ids'] ?? []) !== []) {
+        return ['causa' => 'limites', 'detalhes' => ['usuarios_permanecer' => array_map(static fn (array $v): int => (int)$v['id_usuario'], $permanecem)]] + $resultado;
+    }
+
+    if ($bloquear !== []) {
+        $stmt = $conexao->prepare('UPDATE empresa_usuario SET bloqueado_plano = 1 WHERE id_empresa = ? AND id_empresa_usuario = ? AND bloqueado_plano = 0');
+        if (!$stmt) {
+            throw new RuntimeException('Falha ao preparar o bloqueio dos vínculos do downgrade.');
+        }
+        foreach ($bloquear as $vinculo) {
+            $idVinculo = (int)$vinculo['id_empresa_usuario'];
+            $stmt->bind_param('ii', $idEmpresa, $idVinculo);
+            if (!$stmt->execute() || $stmt->affected_rows !== 1) {
+                $stmt->close();
+                throw new RuntimeException('Falha ao bloquear vínculo excedente do downgrade.');
+            }
+            $resultado['bloqueados'][] = (int)$vinculo['id_usuario'];
+        }
+        $stmt->close();
+    }
+
+    return $resultado;
 }
 
 /** Atualiza o status da troca de forma condicional (idempotência). */
@@ -3759,8 +4039,15 @@ function assinaturaServicoUpgradeCobrancaConflitante(string $erroBanco): array
  * $valorConfirmadoCentavos é o valor exibido ao cliente: se o cálculo atual divergir, nada é gravado e a
  * nova prévia é devolvida para nova confirmação (o valor cobrado é sempre o valor apresentado).
  */
-function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, int $idPlano, ?int $valorConfirmadoCentavos, ?array $ator = null): array
-{
+function assinaturaServicoSolicitarTrocaPlano(
+    mysqli $conexao,
+    int $idEmpresa,
+    int $idPlano,
+    ?int $valorConfirmadoCentavos,
+    ?array $ator = null,
+    bool $selecaoAdministrativa = false,
+    ?array $idsPermanentes = null
+): array {
     $contexto = assinaturaServicoTrocaContexto($conexao, $idEmpresa);
     if (!$contexto['ok']) {
         return $contexto;
@@ -3792,9 +4079,33 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
 
     $previa = $plano['tipo'] === 'upgrade'
         ? assinaturaServicoPreviaUpgrade($conexao, $contexto, $plano)
-        : assinaturaServicoPreviaDowngrade($conexao, $contexto, $plano);
+        : assinaturaServicoPreviaDowngrade($conexao, $contexto, $plano, $selecaoAdministrativa);
     if (!$previa['ok']) {
         return $previa;
+    }
+    // Seleção administrativa: só no downgrade do Super Admin para plano que não comporta a estrutura atual.
+    $selecaoDowngrade = null;
+    if ($selecaoAdministrativa && $plano['tipo'] === 'downgrade' && !$plano['comporta_usuarios']) {
+        $selecaoDowngrade = assinaturaServicoDowngradeSelecaoAdministrativa(
+            $conexao,
+            $idEmpresa,
+            $plano,
+            $idsPermanentes,
+            (string)$previa['data_efetivacao']
+        );
+        if (!$selecaoDowngrade['ok']) {
+            return $selecaoDowngrade;
+        }
+        $previa['quantidade_permanecer'] = $selecaoDowngrade['quantidade_permanecer'];
+        $previa['quantidade_bloquear'] = $selecaoDowngrade['quantidade_bloquear'];
+        $previa['mensagem'] = (string)$previa['mensagem'] . sprintf(
+            ' Em %s, %d %s e %d %s habilitados. Nenhum usuário será bloqueado antes dessa data.',
+            assinaturaServicoDataBr((string)$previa['data_efetivacao']),
+            $selecaoDowngrade['quantidade_bloquear'],
+            $selecaoDowngrade['quantidade_bloquear'] === 1 ? 'usuário será bloqueado' : 'usuários serão bloqueados',
+            $selecaoDowngrade['quantidade_permanecer'],
+            $selecaoDowngrade['quantidade_permanecer'] === 1 ? 'permanecerá' : 'permanecerão'
+        );
     }
     $valorAtual = $plano['tipo'] === 'upgrade' ? (int)$previa['valor_proporcional_centavos'] : (int)$plano['valor_centavos'];
     if ($valorConfirmadoCentavos === null || $valorConfirmadoCentavos !== $valorAtual) {
@@ -3806,7 +4117,7 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
     $hoje = (string)$contexto['hoje'];
 
     if ($plano['tipo'] === 'downgrade') {
-        if (!$plano['comporta_usuarios']) {
+        if (!$plano['comporta_usuarios'] && $selecaoDowngrade === null) {
             return assinaturaServicoNovaContratacaoResultado(false, 'PLANO_LIMITE_USUARIOS', 'O plano escolhido não comporta os usuários ativos.');
         }
         $stmt = $conexao->prepare(
@@ -3828,15 +4139,32 @@ function assinaturaServicoSolicitarTrocaPlano(mysqli $conexao, int $idEmpresa, i
         }
         $idTroca = (int)$stmt->insert_id;
         $stmt->close();
+        if ($selecaoDowngrade !== null) {
+            // Somente a decisão é gravada: nenhum vínculo é bloqueado no agendamento.
+            assinaturaServicoGravarSelecaoDowngrade($conexao, $idEmpresa, $idTroca, $selecaoDowngrade['vinculos']);
+        }
         // Preapproval: atualização do valor agendada para antes da efetivação; a efetivação local depende da confirmação externa.
         assinaturaServicoPreapprovalSincronizarValorNaTransacao($conexao, $idEmpresa, $idAssinatura, $ator);
         $resumo = assinaturaServicoTrocaResumo($conexao, assinaturaServicoTrocaPorId($conexao, $idEmpresa, $idTroca));
+        // O contexto da auditoria aceita só chaves catalogadas: a seleção vai no campo 'depois' do evento.
+        $contextoDowngrade = ['origem' => 'troca_plano', 'id_empresa' => $idEmpresa, 'id_assinatura' => $idAssinatura, 'id_plano' => $idPlano, 'motivo' => 'downgrade_programado'];
+        $extraDowngrade = [];
+        if ($selecaoDowngrade !== null) {
+            $contextoDowngrade['motivo'] = 'downgrade_programado_com_selecao';
+            $contextoDowngrade['quantidade_afetada'] = $selecaoDowngrade['quantidade_bloquear'];
+            $extraDowngrade['depois'] = [
+                'usuarios_permanecer' => $selecaoDowngrade['usuarios_permanecer'],
+                'usuarios_bloquear' => $selecaoDowngrade['usuarios_bloquear'],
+                'bloqueio_previsto_em' => $efetivacao,
+            ];
+        }
         assinaturaServicoAuditar($conexao, 'assinatura.downgrade_programado', [
             'entidade_id' => $idAssinatura,
             'entidade_rotulo' => "Assinatura #{$idAssinatura}",
-            'descricao' => sprintf('Programou o downgrade do plano %s para o %s a partir de %s.', $resumo['plano_anterior'], $resumo['plano_novo'], assinaturaServicoDataBr($efetivacao)),
-            'alteracoes' => assinaturaServicoTrocaAlteracoes($resumo),
-            'contexto' => ['origem' => 'troca_plano', 'id_empresa' => $idEmpresa, 'id_assinatura' => $idAssinatura, 'id_plano' => $idPlano, 'motivo' => 'downgrade_programado'],
+            'descricao' => sprintf('Programou o downgrade do plano %s para o %s a partir de %s.', $resumo['plano_anterior'], $resumo['plano_novo'], assinaturaServicoDataBr($efetivacao))
+                . ($selecaoDowngrade !== null ? sprintf(' Seleção administrativa: %d permanecem e %d serão bloqueados na efetivação.', $selecaoDowngrade['quantidade_permanecer'], $selecaoDowngrade['quantidade_bloquear']) : ''),
+            'alteracoes' => assinaturaServicoTrocaAlteracoes($resumo, $extraDowngrade),
+            'contexto' => $contextoDowngrade,
         ], $ator);
 
         return assinaturaServicoNovaContratacaoResultado(true, null, (string)$previa['mensagem'], ['resultado' => 'programada', 'id_troca' => $idTroca, 'data_efetivacao' => $efetivacao]);
@@ -4050,7 +4378,22 @@ function assinaturaServicoProcessarTrocasEmpresa(mysqli $conexao, int $idEmpresa
             $resumo['atencao']++;
             continue;
         }
+        // Seleção administrativa gravada no agendamento: revalidada agora; incompatível, cancela sem bloquear ninguém.
+        $selecao = assinaturaServicoAplicarSelecaoDowngrade($conexao, $idEmpresa, $troca);
+        if ($selecao['causa'] !== null) {
+            // A causa compõe o motivo auditado (o contexto da auditoria aceita apenas chaves catalogadas).
+            assinaturaServicoEncerrarTroca($conexao, $idEmpresa, $troca, 'cancelada', 'selecao_desatualizada_' . $selecao['causa'], $ator, [
+                'origem' => 'geracao_automatica',
+                'quantidade_afetada' => count($selecao['detalhes']['usuarios'] ?? $selecao['detalhes']['usuarios_permanecer'] ?? []),
+            ]);
+            $resumo['encerradas']++;
+            continue;
+        }
         $aplicacao = assinaturaServicoAplicarPlanoTroca($conexao, $contexto, $troca);
+        if ($aplicacao !== null && $selecao['possui_selecao']) {
+            // Os bloqueios já foram aplicados nesta transação: falhar inteiro evita bloqueio sem troca de plano.
+            throw new RuntimeException('O downgrade com seleção de usuários não pôde ser aplicado.');
+        }
         if ($aplicacao !== null) {
             // Limites não comportados na data: o downgrade é cancelado e o plano atual permanece (nada é excluído).
             assinaturaServicoEncerrarTroca($conexao, $idEmpresa, $troca, 'cancelada', 'limites_incompativeis', $ator, ['origem' => 'geracao_automatica']);
@@ -4064,10 +4407,11 @@ function assinaturaServicoProcessarTrocasEmpresa(mysqli $conexao, int $idEmpresa
             'entidade_id' => $idAssinatura,
             'entidade_rotulo' => "Assinatura #{$idAssinatura}",
             'descricao' => sprintf('Efetivou o downgrade do plano %s para o %s na competência iniciada em %s.', $dados['plano_anterior'], $dados['plano_novo'], assinaturaServicoDataBr($dados['data_efetivacao'])),
-            'alteracoes' => assinaturaServicoTrocaAlteracoes($dados)
+            'alteracoes' => assinaturaServicoTrocaAlteracoes($dados, $selecao['possui_selecao'] ? ['depois' => ['usuarios_bloqueados' => $selecao['bloqueados']]] : [])
                 + ['id_plano' => ['antes' => $dados['id_plano_anterior'], 'depois' => $dados['id_plano_novo']],
                    'valor_contratado' => ['antes' => $dados['valor_anterior'], 'depois' => $dados['valor_novo']]],
-            'contexto' => ['origem' => 'geracao_automatica', 'id_empresa' => $idEmpresa, 'id_assinatura' => $idAssinatura, 'id_plano' => $dados['id_plano_novo'], 'motivo' => 'downgrade_efetivado'],
+            'contexto' => ['origem' => 'geracao_automatica', 'id_empresa' => $idEmpresa, 'id_assinatura' => $idAssinatura, 'id_plano' => $dados['id_plano_novo'], 'motivo' => 'downgrade_efetivado']
+                + ($selecao['possui_selecao'] ? ['quantidade_afetada' => count($selecao['bloqueados'])] : []),
         ], $ator);
         $resumo['downgrades']++;
         $contexto = assinaturaServicoTrocaContexto($conexao, $idEmpresa);
@@ -4106,6 +4450,72 @@ function assinaturaServicoDowngradeProgramadoAte(mysqli $conexao, int $idAssinat
         $idAssinatura,
         $periodoInicio
     ) !== [];
+}
+
+/**
+ * Downgrades programados das empresas informadas, para exibição (somente leitura, uma consulta para o lote).
+ * Só retorna troca 'programada' cujo contrato ainda está ativo no plano de origem: troca cancelada, efetivada ou
+ * de contrato alterado nunca aparece como programada. As contagens vêm da seleção gravada; sem ela, ficam null.
+ *
+ * @param list<int> $idsEmpresa
+ * @return array<int, array<string, mixed>> indexado por id_empresa
+ */
+function assinaturaServicoDowngradesProgramadosPorEmpresas(mysqli $conexao, array $idsEmpresa): array
+{
+    $idsEmpresa = array_values(array_unique(array_filter(array_map('intval', $idsEmpresa), static fn (int $id): bool => $id > 0)));
+    if ($idsEmpresa === [] || assinaturaServicoTrocaEstruturaPendente($conexao) !== null) {
+        return [];
+    }
+    $marcadores = implode(',', array_fill(0, count($idsEmpresa), '?'));
+    $comSelecao = assinaturaServicoTrocaSelecaoEstruturaDisponivel($conexao);
+    $colunasSelecao = $comSelecao ? ', sel.quantidade_permanecer, sel.quantidade_bloquear' : '';
+    $juncaoSelecao = $comSelecao
+        ? "LEFT JOIN (SELECT id_empresa, id_troca,
+                             SUM(decisao = 'permanecer') AS quantidade_permanecer,
+                             SUM(decisao = 'bloquear') AS quantidade_bloquear
+                        FROM assinatura_troca_plano_usuario
+                       WHERE id_empresa IN ({$marcadores})
+                       GROUP BY id_empresa, id_troca) sel
+                 ON sel.id_empresa = t.id_empresa AND sel.id_troca = t.id_troca"
+        : '';
+    $valores = $comSelecao ? [...$idsEmpresa, ...$idsEmpresa] : $idsEmpresa;
+    $linhas = assinaturaServicoConsultaFinanceira(
+        $conexao,
+        "SELECT t.id_troca, t.id_empresa, t.id_assinatura, t.tipo, t.status,
+                pa.nome AS plano_atual, pn.nome AS plano_novo,
+                DATE_FORMAT(t.data_efetivacao, '%Y-%m-%d') AS data_efetivacao,
+                DATE_FORMAT(DATE_SUB(t.data_efetivacao, INTERVAL 1 DAY), '%Y-%m-%d') AS cobertura_ate
+                {$colunasSelecao}
+           FROM assinatura_troca_plano t
+          INNER JOIN assinatura a ON a.id_empresa = t.id_empresa AND a.id_assinatura = t.id_assinatura
+                 AND a.status = 'ativa' AND a.id_plano = t.id_plano_anterior
+          INNER JOIN plano pa ON pa.id_plano = t.id_plano_anterior
+          INNER JOIN plano pn ON pn.id_plano = t.id_plano_novo
+          {$juncaoSelecao}
+          WHERE t.tipo = 'downgrade' AND t.status = 'programada' AND t.data_efetivacao IS NOT NULL
+            AND t.id_empresa IN ({$marcadores})",
+        str_repeat('i', count($valores)),
+        ...$valores
+    );
+    $resultado = [];
+    foreach ($linhas as $linha) {
+        $permanecer = $linha['quantidade_permanecer'] ?? null;
+        $bloquear = $linha['quantidade_bloquear'] ?? null;
+        $resultado[(int)$linha['id_empresa']] = [
+            'id_troca' => (int)$linha['id_troca'],
+            'id_assinatura' => (int)$linha['id_assinatura'],
+            'tipo' => (string)$linha['tipo'],
+            'status' => (string)$linha['status'],
+            'plano_atual' => (string)$linha['plano_atual'],
+            'plano_novo' => (string)$linha['plano_novo'],
+            'data_efetivacao' => (string)$linha['data_efetivacao'],
+            'cobertura_ate' => (string)$linha['cobertura_ate'],
+            'quantidade_permanecer' => $permanecer === null ? null : (int)$permanecer,
+            'quantidade_bloquear' => $bloquear === null ? null : (int)$bloquear,
+        ];
+    }
+
+    return $resultado;
 }
 
 /** Há troca pendente para a empresa (bloqueia troca administrativa paralela). */
@@ -7048,6 +7458,54 @@ function assinaturaServicoPreapprovalVinculoDoContrato(mysqli $conexao, int $idE
         if ((int)$linha['id_assinatura_pagamento'] === $idAssinaturaPagamento) {
             return $linha;
         }
+    }
+
+    return null;
+}
+
+/**
+ * Concessão administrativa de plano sem cobrança: bloqueia enquanto a empresa possuir qualquer vínculo recorrente
+ * que ainda possa cobrar (ativo, autorização pendente, cancelamento em andamento, operação externa aberta ou
+ * cancelamento externo não confirmado). Estado desconhecido bloqueia. A decisão é exclusivamente local, com os
+ * vínculos já bloqueados pelo chamador: nada é consultado nem cancelado no provedor por este fluxo. Havendo
+ * Preapproval externa, só o status externo 'canceled' gravado pelo fluxo oficial (webhook/conciliação) libera.
+ *
+ * @param list<array<string, mixed>> $vinculos motor_recorrencia, status, status_externo, slot_ativo,
+ *                                             assinatura_externa_id, ultimo_erro_codigo, id_operacao_aberta
+ * @return array<string, mixed>|null
+ */
+function assinaturaServicoTrocaAdministrativaBloqueioRecorrencia(
+    array $vinculos,
+    string $mensagem = 'Esta empresa possui uma assinatura de pagamento automático ativa. Para continuar com a alteração para o plano Cortesia, é necessário cancelar primeiro o pagamento automático e aguardar a confirmação do cancelamento.'
+): ?array
+{
+    foreach ($vinculos as $vinculo) {
+        $status = (string)($vinculo['status'] ?? '');
+        $motor = (string)($vinculo['motor_recorrencia'] ?? '');
+        $statusExterno = strtolower((string)($vinculo['status_externo'] ?? ''));
+        $temIdExterno = ($vinculo['assinatura_externa_id'] ?? null) !== null;
+        $operacaoAberta = ($vinculo['id_operacao_aberta'] ?? null) !== null;
+        $slotInativo = (int)($vinculo['slot_ativo'] ?? 0) !== 1;
+        $encerradaPeloSuporte = $motor === 'preapproval'
+            && $status === 'pendente'
+            && !$temIdExterno
+            && (string)($vinculo['ultimo_erro_codigo'] ?? '') === 'TENTATIVA_ENCERRADA_PELO_SUPORTE';
+        $terminalLocal = in_array($status, ['cancelada', 'encerrada', 'erro'], true) || $encerradaPeloSuporte;
+        $cancelamentoConfirmado = !$operacaoAberta && $terminalLocal && $slotInativo;
+        if ($motor === 'preapproval' && $temIdExterno) {
+            $cancelamentoConfirmado = $cancelamentoConfirmado
+                && in_array($statusExterno, ['canceled', 'cancelled'], true);
+        }
+        if ($cancelamentoConfirmado) {
+            continue;
+        }
+
+        return assinaturaServicoNovaContratacaoResultado(
+            false,
+            'PAGAMENTO_AUTOMATICO_ATIVO',
+            $mensagem,
+            ['titulo' => 'Pagamento automático ativo']
+        );
     }
 
     return null;

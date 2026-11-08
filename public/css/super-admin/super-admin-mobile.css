@@ -10,6 +10,12 @@
   .plano-selecao-lista > div { grid-template-columns: 1fr; }
   .plano-selecao-cabecalho { gap: 9px; }
   .plano-selecao-item { min-height: 48px; }
+  .plano-selecao-efetivacao { padding: 9px 10px; font-size: 12px; }
+  .ui-alert.ui-alert--confirmacao-empresa { grid-template-columns: 38px minmax(0, 1fr); }
+  .ui-alert--confirmacao-empresa .ui-alert__btn { flex: 1 1 auto; }
+  .ui-alert-resumo > div { grid-template-columns: 1fr; gap: 2px; }
+  .ui-alert-resumo dd { text-align: left; }
+  .plano-selecao-limites { font-size: 11px; }
   .plano-selecao-usuarios > .botao-geral { width: 100%; }
   .plano-vagas-administrativas { padding: 8px 10px; font-size: 12px; }
 }

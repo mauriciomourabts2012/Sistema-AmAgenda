@@ -602,6 +602,30 @@ try {
     }
     unset($itemEmpresa);
 
+    /* ==========================================================
+       DOWNGRADE PROGRAMADO (somente leitura, uma consulta por página)
+       O card continua exibindo o plano vigente; a troca é informação
+       secundária até a efetivação.
+    ========================================================== */
+    $downgrades = [];
+    if ($idsPagina) {
+        try {
+            require_once __DIR__ . '/../../_servicos/assinatura.php';
+            $downgrades = assinaturaServicoDowngradesProgramadosPorEmpresas($conexao, $idsPagina);
+        } catch (Throwable $erroDowngrade) {
+            error_log('LISTA_EMPRESA_DOWNGRADE: ' . get_class($erroDowngrade));
+            $downgrades = [];
+        }
+    }
+    foreach ($items as &$itemEmpresa) {
+        $troca = $downgrades[$itemEmpresa['id_empresa']] ?? null;
+        $itemEmpresa['downgrade_programado'] = $troca === null ? null : [
+            'plano_novo' => $troca['plano_novo'],
+            'data_efetivacao' => $troca['data_efetivacao'],
+        ];
+    }
+    unset($itemEmpresa);
+
     $totalPages = (int) max(1, (int) ceil($total / $limit));
 
     out([

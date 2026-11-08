@@ -1468,6 +1468,11 @@
                     <p id="emp_edit_selecao_resumo"></p>
                   </div>
                 </div>
+                <p id="emp_edit_selecao_efetivacao" class="plano-selecao-efetivacao" hidden>
+                  <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>
+                  <span id="emp_edit_selecao_efetivacao_texto"></span>
+                </p>
+                <p id="emp_edit_selecao_limites" class="plano-selecao-limites" hidden></p>
                 <div id="emp_edit_selecao_excessos" class="plano-selecao-excessos"></div>
                 <fieldset class="plano-selecao-lista">
                   <legend>Usuários elegíveis</legend>
@@ -1547,12 +1552,27 @@
               </div>
 
               <!-- Empresa -->
-              <div class="modal-campo">
-                <label for="u_empresa_super_admin" class="label-fixa"></label>
+              <!-- Seletor pesquisável (mesmo padrão de Editar Usuário). O select oculto continua sendo a fonte
+                   das empresas (SelectListaUniversal) e o valor enviado em empresa_id. -->
+              <div class="modal-campo cadastro-usuario-empresa-campo">
+                <label for="btnCadastroUsuarioEmpresa" class="label-fixa"></label>
 
-                <select id="u_empresa_super_admin" name="empresa_id" required>
+                <select id="u_empresa_super_admin" name="empresa_id" required hidden aria-hidden="true" tabindex="-1">
                   <option value="">Empresa</option>
                 </select>
+
+                <div class="section-filtro" id="seletorCadastroUsuarioEmpresa">
+                  <button id="btnCadastroUsuarioEmpresa" class="btn-filtro" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="popoverCadastroUsuarioEmpresa">
+                    <span id="cadastroUsuarioEmpresaNome">Selecione uma empresa</span>
+                    <span class="caret" aria-hidden="true">▾</span>
+                  </button>
+                  <div id="popoverCadastroUsuarioEmpresa" class="popover" hidden>
+                    <div class="filtro">
+                      <input type="search" class="input-filtro" id="cadastroUsuarioEmpresaPesquisa" placeholder="Pesquisar por nome ou ID..." aria-label="Pesquisar empresa por nome ou ID" autocomplete="off" inputmode="search">
+                    </div>
+                    <div id="opcoesCadastroUsuarioEmpresa" class="agenda-pesquisa-resultados-lista" role="listbox" aria-label="Empresas"></div>
+                  </div>
+                </div>
 
                 <small class="msg-erro" data-erro-for="u_empresa_super_admin"></small>
               </div>

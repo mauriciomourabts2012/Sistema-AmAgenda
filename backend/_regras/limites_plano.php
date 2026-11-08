@@ -600,6 +600,8 @@ function limitesPlanoPlanejarDowngradeUsuarios(array $usuarios, array $plano): a
             'nome' => trim((string)($usuario['nome'] ?? '')),
             'perfil' => $perfil,
             'recurso_limite' => $recursoLimite,
+            // Somente para exibição na seleção; não participa das regras de limite.
+            'situacao' => (string)($usuario['status'] ?? ''),
         ];
         $usuariosNormalizados[] = $item;
         if (isset($porPerfil[$recursoLimite])) {
@@ -894,7 +896,7 @@ function limitesPlanoPrepararTrocaEmpresa(mysqli $conexao, int $idEmpresa, int $
     }
 
     $sqlUsuarios = "
-        SELECT eu.id_empresa_usuario, eu.id_usuario, u.nome, pf.nome AS perfil_nome
+        SELECT eu.id_empresa_usuario, eu.id_usuario, eu.status, u.nome, pf.nome AS perfil_nome
         FROM empresa_usuario eu
         INNER JOIN usuario u ON u.id_usuario = eu.id_usuario
         INNER JOIN perfil pf ON pf.id_perfil = eu.id_perfil

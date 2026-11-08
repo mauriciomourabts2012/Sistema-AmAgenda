@@ -355,6 +355,141 @@
   }
 
   // ==========================================================
+  // SELETOR PESQUISÁVEL DE EMPRESA
+  // Mesmo padrão de popover do modal Editar Usuário. A lista vem do select oculto, já carregado pelo
+  // SelectListaUniversal com as empresas autorizadas: a pesquisa filtra localmente, sem nova consulta.
+  // ==========================================================
+  const elSeletorEmpresa = $("seletorCadastroUsuarioEmpresa");
+  const elEmpresaBotao = $("btnCadastroUsuarioEmpresa");
+  const elEmpresaNome = $("cadastroUsuarioEmpresaNome");
+  const elEmpresaPopover = $("popoverCadastroUsuarioEmpresa");
+  const elEmpresaPesquisa = $("cadastroUsuarioEmpresaPesquisa");
+  const elEmpresaOpcoes = $("opcoesCadastroUsuarioEmpresa");
+  const ROTULO_EMPRESA = "Selecione uma empresa";
+
+  function normalizarBuscaEmpresa(v) {
+    return String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  }
+
+  function empresasDisponiveis() {
+    if (!elEmpresa) return [];
+    return Array.from(elEmpresa.options)
+      .filter((opcao) => opcao.value !== "")
+      .map((opcao) => ({ id: opcao.value, nome: opcao.textContent.trim() }));
+  }
+
+  function sincronizarEmpresaSelecionada() {
+    if (!elEmpresaNome) return;
+    const opcao = elEmpresa?.value ? elEmpresa.selectedOptions[0] : null;
+    elEmpresaNome.textContent = opcao ? opcao.textContent.trim() : ROTULO_EMPRESA;
+    elEmpresaNome.title = opcao ? opcao.textContent.trim() : "";
+  }
+
+  function renderizarOpcoesEmpresa() {
+    if (!elEmpresaOpcoes) return;
+    const termo = normalizarBuscaEmpresa(elEmpresaPesquisa?.value);
+    const selecionada = String(elEmpresa?.value || "");
+    const itens = empresasDisponiveis().filter((empresa) =>
+      !termo || normalizarBuscaEmpresa(empresa.nome).includes(termo) || empresa.id === termo
+    );
+
+    elEmpresaOpcoes.replaceChildren();
+    if (!itens.length) {
+      const vazio = document.createElement("div");
+      vazio.className = "agenda-pesquisa-estado";
+      vazio.textContent = empresasDisponiveis().length ? "Nenhuma empresa encontrada." : "Nenhuma empresa disponível.";
+      elEmpresaOpcoes.appendChild(vazio);
+      return;
+    }
+
+    itens.forEach((empresa) => {
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "agenda-menu-item";
+      botao.setAttribute("role", "option");
+      botao.setAttribute("aria-selected", String(empresa.id === selecionada));
+      botao.dataset.id = empresa.id;
+      const icone = document.createElement("i");
+      icone.className = "fa-regular fa-building";
+      icone.setAttribute("aria-hidden", "true");
+      const nome = document.createElement("span");
+      nome.textContent = empresa.nome;
+      botao.append(icone, nome);
+      elEmpresaOpcoes.appendChild(botao);
+    });
+  }
+
+  function fecharSeletorEmpresa({ focarBotao = false } = {}) {
+    if (elEmpresaPopover) elEmpresaPopover.hidden = true;
+    elEmpresaBotao?.setAttribute("aria-expanded", "false");
+    if (focarBotao) elEmpresaBotao?.focus();
+  }
+
+  function abrirSeletorEmpresa() {
+    if (!elEmpresaPopover || !elEmpresaBotao) return;
+    if (!elEmpresaPopover.hidden) {
+      fecharSeletorEmpresa();
+      return;
+    }
+    if (elEmpresaPesquisa) elEmpresaPesquisa.value = "";
+    renderizarOpcoesEmpresa();
+    elEmpresaPopover.hidden = false;
+    elEmpresaBotao.setAttribute("aria-expanded", "true");
+    elEmpresaPesquisa?.focus();
+  }
+
+  function reiniciarPesquisaEmpresa() {
+    fecharSeletorEmpresa();
+    if (elEmpresaPesquisa) elEmpresaPesquisa.value = "";
+    sincronizarEmpresaSelecionada();
+  }
+
+  elEmpresaBotao?.addEventListener("click", abrirSeletorEmpresa);
+  elEmpresaPesquisa?.addEventListener("input", renderizarOpcoesEmpresa);
+  elEmpresaOpcoes?.addEventListener("click", (e) => {
+    const opcao = e.target.closest("button[data-id]");
+    if (!opcao || !elEmpresa) return;
+    // O ID vai para o select oculto: o envio e a validação continuam lendo elEmpresa.value.
+    elEmpresa.value = opcao.dataset.id;
+    elEmpresa.dispatchEvent(new Event("change", { bubbles: true }));
+    setFieldError("u_empresa_super_admin", "");
+    fecharSeletorEmpresa({ focarBotao: true });
+  });
+
+  // Teclado: setas percorrem pesquisa e opções; Esc fecha só a lista (sem fechar o modal).
+  elEmpresaPopover?.addEventListener("keydown", (e) => {
+    const opcoes = Array.from(elEmpresaOpcoes?.querySelectorAll("button[data-id]") || []);
+    const atual = opcoes.indexOf(document.activeElement);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      fecharSeletorEmpresa({ focarBotao: true });
+    } else if (e.key === "ArrowDown" && opcoes.length) {
+      e.preventDefault();
+      opcoes[Math.min(atual + 1, opcoes.length - 1)].focus();
+    } else if (e.key === "ArrowUp" && opcoes.length) {
+      e.preventDefault();
+      if (atual <= 0) elEmpresaPesquisa?.focus();
+      else opcoes[atual - 1].focus();
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (elSeletorEmpresa && !elSeletorEmpresa.contains(e.target)) fecharSeletorEmpresa();
+  });
+
+  // Reflete o valor do select: recarga das empresas (SelectListaUniversal), reset do formulário e abertura/fechamento do modal.
+  if (elEmpresa) {
+    elEmpresa.addEventListener("change", sincronizarEmpresaSelecionada);
+    new MutationObserver(sincronizarEmpresaSelecionada).observe(elEmpresa, { childList: true });
+  }
+  form.addEventListener("reset", () => setTimeout(reiniciarPesquisaEmpresa, 0));
+  if (modal) {
+    new MutationObserver(reiniciarPesquisaEmpresa).observe(modal, { attributes: true, attributeFilter: ["aria-hidden", "class"] });
+  }
+  sincronizarEmpresaSelecionada();
+
+  // ==========================================================
   // SUBMIT
   // ==========================================================
   form.addEventListener("submit", async (e) => {

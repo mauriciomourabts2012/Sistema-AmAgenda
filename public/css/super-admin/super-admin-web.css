@@ -190,6 +190,87 @@
 .plano-selecao-item strong { display: block; overflow-wrap: anywhere; color: #253f5b; font-size: 13px; }
 .plano-selecao-item small { display: block; margin-top: 2px; color: #6c8096; font-size: 11px; }
 
+/* Confirmações do modal Editar empresa (ui-alert): o grid padrão coloca os botões em uma coluna "auto" ao lado
+   do texto; com mensagem longa, o texto era comprimido. Aqui os botões ocupam uma linha própria no rodapé. */
+.ui-alert.ui-alert--confirmacao-empresa {
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+}
+
+.ui-alert--confirmacao-empresa .ui-alert__actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid #e6eaf2;
+}
+
+.ui-alert--confirmacao-empresa .ui-alert__msg { overflow-wrap: break-word; }
+
+.ui-alert-resumo {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #e6eaf2;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.ui-alert-resumo > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ui-alert-resumo dt { color: #526a84; font-weight: 600; }
+.ui-alert-resumo dd { margin: 0; color: #0f172a; font-weight: 800; text-align: right; overflow-wrap: break-word; }
+
+.ui-alert-resumo-aviso {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #eaf3ff;
+  color: #173b63;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* Downgrade programado: data da efetivação, limites do destino e decisão prevista de cada vínculo. */
+.plano-selecao-efetivacao {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #b7d3f3;
+  border-radius: 10px;
+  background: #eaf3ff;
+  color: #173b63;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.plano-selecao-efetivacao i { margin-top: 2px; color: #006ae4; }
+.plano-selecao-limites { margin: 10px 0 0; color: #344d68; font-size: 12px; font-weight: 600; }
+.plano-selecao-situacao { color: #8a9bb0; }
+
+.plano-selecao-item .plano-selecao-decisao {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.plano-selecao-decisao--permanece { background: #e3f4ea; color: #1d6b3d; }
+.plano-selecao-decisao--bloqueio { background: #fdecea; color: #b42318; }
+.plano-selecao-item.is-bloqueio-futuro { border-color: #f1c4bf; background: #fffafa; }
+
 .plano-selecao-contador { margin: 10px 0 0; color: #27496d; font-size: 13px; font-weight: 700; }
 .plano-selecao-erro { min-height: 18px; margin: 4px 0 10px; color: #b42318; font-size: 12px; }
 .plano-selecao-usuarios > .botao-geral { min-height: 38px; }
@@ -727,6 +808,14 @@
   color: #9a5b00;
 }
 
+/* Downgrade programado: o plano vigente segue no texto principal; o selo indica a mudança futura. */
+#empresas .super-teste-badge--downgrade {
+  background: #f3effd;
+  border-color: #d6c8f5;
+  color: #563d99;
+  white-space: normal;
+}
+
 #empresas .agenda-acoes,
 #planos .agenda-acoes,
 #usuarios .agenda-acoes,
@@ -935,6 +1024,14 @@
   font-size: 11px;
   font-weight: 700;
 }
+
+/* Cadastrar Usuário: mesmo seletor pesquisável de empresa do Editar Usuário, no lugar do select tradicional. */
+#modalCadastrarUsuario #seletorCadastroUsuarioEmpresa { width: 100%; }
+#modalCadastrarUsuario #btnCadastroUsuarioEmpresa { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#modalCadastrarUsuario #cadastroUsuarioEmpresaNome { min-width: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+#modalCadastrarUsuario #popoverCadastroUsuarioEmpresa { position: static; width: 100%; min-width: 0; margin-top: 8px; box-shadow: none; }
+#modalCadastrarUsuario #opcoesCadastroUsuarioEmpresa { max-height: min(260px, 40vh); }
+#modalCadastrarUsuario #opcoesCadastroUsuarioEmpresa .agenda-menu-item span { overflow-wrap: anywhere; text-align: left; }
 
 #modalEditarUsuario #seletorNovaEmpresa { width: 100%; }
 #modalEditarUsuario #btnEditUsuarioEmpresa { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -1197,6 +1294,11 @@
 #assinaturas .assinatura-card--historico .assinatura-detalhe strong { color: #5f7188; }
 #assinaturas .assinatura-card--historico .assinatura-detalhe--valor strong { color: #61758f; }
 
+/* Troca programada: bloco informativo abaixo dos dados vigentes, sem substituir o plano atual. */
+#assinaturas .assinatura-troca-programada { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid #d6c8f5; border-radius: 12px; background: #faf8ff; }
+#assinaturas .assinatura-troca-programada-titulo { display: flex; align-items: center; gap: 7px; margin: 0; color: #563d99; font-size: 13px; font-weight: 800; }
+#assinaturas .assinatura-troca-programada-msg { margin: 0; color: #4b5d73; font-size: 12px; line-height: 1.45; }
+
 @media (max-width: 1120px) {
   #assinaturas .assinatura-card { grid-template-columns: minmax(0, 1fr); }
 }
@@ -1219,6 +1321,7 @@
   #assinaturas .assinaturas-toolbar .botao-geral { width: 100%; justify-content: center; }
   #assinaturas .assinatura-card { grid-template-columns: 1fr; gap: 10px; padding: 16px; }
   #assinaturas .assinatura-card-cabecalho { align-items: flex-start; }
+  #assinaturas .assinatura-troca-programada .assinatura-detalhes { padding-top: 0; border-top: 0; }
   #assinaturas .assinatura-detalhes { flex-direction: column; align-items: flex-start; gap: 9px; padding-top: 12px; border-top: 1px solid #e1eaf4; }
   #cobrancas .cobranca-toolbar { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 10px; }
   #cobrancas .cobranca-geracao-contexto,

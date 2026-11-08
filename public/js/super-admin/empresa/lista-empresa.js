@@ -392,12 +392,18 @@
 
     if (empEditId) empEditId.value = card.dataset.id || "";
     if (empEditNome) empEditNome.value = card.dataset.nome || "";
-    if (empEditCnpj) empEditCnpj.value = card.dataset.cnpj || "";
+    // Documento real do cadastro (empresa.cnpj guarda CPF ou CNPJ). O tipo é deduzido só pelos dígitos e
+    // selecionado antes do preenchimento, para que a máscara oficial do campo use o tipo correto.
+    const documento = String(card.dataset.cnpj || "");
+    const digitosDocumento = documento.replace(/\D+/g, "");
     if (empEditTipoPessoa) {
-      // Tipo atual deduzido pelo documento legado; registros sem documento exigem escolha.
-      const digitosDocumento = String(card.dataset.cnpj || "").replace(/D+/g, "");
       empEditTipoPessoa.value = digitosDocumento.length === 11 ? "fisica" : digitosDocumento.length === 14 ? "juridica" : "";
       empEditTipoPessoa.dispatchEvent(new Event("change"));
+    }
+    if (empEditCnpj) {
+      empEditCnpj.value = documento;
+      // Reaplica a máscara do editar_empresa.js (listener "input") sem alterar os dígitos do documento.
+      empEditCnpj.dispatchEvent(new Event("input"));
     }
     if (empEditEmail) empEditEmail.value = card.dataset.email || "";
     if (empEditTel) empEditTel.value = card.dataset.telefone || "";
@@ -448,6 +454,18 @@
     return `<span class="super-teste-badge ${cls}">${C.escapeHtml(txt)}</span>`;
   }
 
+  // Downgrade programado: informação secundária; o plano exibido continua sendo o vigente até a efetivação.
+  function badgeDowngrade(emp) {
+    const troca = emp.downgrade_programado;
+    if (!troca || !troca.plano_novo || !troca.data_efetivacao) return "";
+    const partes = String(troca.data_efetivacao).split("-");
+    const data = partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : "";
+    if (!data) return "";
+    const txt = `Downgrade programado · ${troca.plano_novo} em ${data}`;
+    const dica = `O plano atual permanece vigente até ${data}.`;
+    return `<span class="super-teste-badge super-teste-badge--downgrade" title="${C.escapeHtml(dica)}">${C.escapeHtml(txt)}</span>`;
+  }
+
   function cardTemplate(emp) {
     const id = emp.id ?? "";
     const nome = emp.nome ?? "Empresa";
@@ -483,7 +501,7 @@
 
             <div class="super-lista-metadados">
               <span class="super-lista-meta"><span class="super-lista-meta-label">ID</span><strong>${C.escapeHtml(String(id || "—"))}</strong></span>
-              <span class="super-lista-meta"><span class="super-lista-meta-label">Plano</span><strong>${C.escapeHtml(plano)}</strong>${badgeTeste(emp)}</span>
+              <span class="super-lista-meta"><span class="super-lista-meta-label">Plano</span><strong>${C.escapeHtml(plano)}</strong>${badgeTeste(emp)}${badgeDowngrade(emp)}</span>
               ${cnpj ? `<span class="super-lista-meta"><span class="super-lista-meta-label">${documentoRotulo}</span><strong>${C.escapeHtml(cnpj)}</strong></span>` : ""}
               ${telefone ? `<span class="super-lista-meta"><span class="super-lista-meta-label">Telefone</span><strong>${C.escapeHtml(telefone)}</strong></span>` : ""}
               ${email ? `<span class="super-lista-meta"><span class="super-lista-meta-label">E-mail</span><strong>${C.escapeHtml(email)}</strong></span>` : ""}
@@ -828,6 +846,7 @@
       plano: e.plano_nome ?? "—",
       teste_ativo: e.teste_ativo === true,
       teste_dias: Number.isInteger(e.teste_dias_restantes) ? e.teste_dias_restantes : null,
+      downgrade_programado: e.downgrade_programado && typeof e.downgrade_programado === "object" ? e.downgrade_programado : null,
       status: normalizeStatus(e.status ?? "Ativo"),
       endereco: e.endereco ?? "",
       observacao: e.observacao ?? "",

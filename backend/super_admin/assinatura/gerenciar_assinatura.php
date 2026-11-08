@@ -131,8 +131,18 @@ function assinaturaListar(mysqli $conexao): void
         error_log('LISTA_ASSINATURA_RECORRENCIA: ' . get_class($erro));
         $recorrencias = [];
     }
+    // Downgrade programado (só leitura): associado somente à assinatura ativa de origem da troca.
+    try {
+        require_once __DIR__ . '/../../_servicos/assinatura.php';
+        $downgrades = assinaturaServicoDowngradesProgramadosPorEmpresas($conexao, array_column($items, 'id_empresa'));
+    } catch (Throwable $erro) {
+        error_log('LISTA_ASSINATURA_DOWNGRADE: ' . get_class($erro));
+        $downgrades = [];
+    }
     foreach ($items as &$item) {
         $item['recorrencia'] = $recorrencias[$item['id_assinatura']] ?? null;
+        $troca = $downgrades[$item['id_empresa']] ?? null;
+        $item['troca_programada'] = $troca !== null && $troca['id_assinatura'] === $item['id_assinatura'] ? $troca : null;
     }
     unset($item);
 
