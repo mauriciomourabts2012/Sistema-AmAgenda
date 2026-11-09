@@ -178,6 +178,11 @@ function smsEnviarOtp(mysqli $conexao, array $carga, int $idOtpDesafio, string $
         $conexao->commit();
     } catch (Throwable $e) {
         $conexao->rollback();
+        try {
+            smsExecutar($conexao, "UPDATE otp_desafio SET status = 'erro_envio' WHERE id_otp_desafio = ? AND status = 'pendente_envio'", 'i', $idOtpDesafio);
+        } catch (Throwable) {
+            smsLog('registro_envio_slot_falhou', ['otp' => $idOtpDesafio]);
+        }
         smsLog('registro_envio_falhou', ['otp' => $idOtpDesafio]);
 
         return $falha('SMS_REGISTRO_INDISPONIVEL');
@@ -252,10 +257,17 @@ function smsEnviarOtp(mysqli $conexao, array $carga, int $idOtpDesafio, string $
         return ['sucesso' => false, 'estado' => 'incerto', 'codigo' => 'SMS_CONCLUSAO_INDISPONIVEL'];
     }
 
-    smsLog('envio_' . $resultado, ['otp' => $idOtpDesafio, 'http' => $httpStatus ?? 0]);
+    smsLog('envio_' . $resultado, [
+        'otp' => $idOtpDesafio,
+        'message_id' => $messageId,
+        'http' => $httpStatus ?? 0,
+        'codigo' => $erroCodigo ?? 'SMS_ACEITO',
+    ]);
 
     return [
-        'sucesso' => in_array($resultado, ['aceita', 'incerto'], true),
+        // Somente a aceitação confirmada pela API é sucesso operacional.
+        // O estado incerto mantém o desafio utilizável, mas exige contrato próprio.
+        'sucesso' => $resultado === 'aceita',
         'estado' => $resultado,
         'codigo' => $erroCodigo ?? 'SMS_ACEITO',
     ];
@@ -394,6 +406,11 @@ function smsAplicarRelatorio(mysqli $conexao, string $ambiente, array $resultado
             (int)$atual['id_mensagem_envio']
         );
         $conexao->commit();
+        smsLog('relatorio_aplicado', [
+            'mensagem' => (int)$atual['id_mensagem_envio'],
+            'estado' => $novo,
+            'codigo' => isset($status['id']) ? (int)$status['id'] : 0,
+        ]);
     } catch (Throwable $e) {
         $conexao->rollback();
         smsLog('relatorio_falhou', []);

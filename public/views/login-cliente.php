@@ -59,6 +59,9 @@ if (
             0,
             30 - max(0, $agoraOtp - $enviadoEmOtp)
         ),
+        'request_state' => (string)($desafioOtp['estado_envio'] ?? '') === 'uncertain'
+            ? 'uncertain'
+            : 'existing',
     ];
 }
 ?>
@@ -73,27 +76,27 @@ if (
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.6" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.8" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.14.6"
+    href="../css/login/login-web.css?v=1.14.8"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.14.6"
+    href="../css/login/login-mobile.css?v=1.14.8"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.14.6"
+    href="../css/login/login-cliente.css?v=1.14.8"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.14.6"
+    href="../css/identidade-visual/identidade-visual.css?v=1.14.8"
   />
 
   <link
@@ -107,7 +110,7 @@ if (
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.6"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.8"></script>
 
 </head>
 
@@ -568,6 +571,15 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   let phoneRetryDigits = "";
   let verificacaoEmAndamento = false;
   let acaoOtpAtual = "enviar_codigo";
+  const MENSAGEM_ENVIO_ACEITO =
+    "Código solicitado com sucesso. Confira suas mensagens SMS.";
+  const MENSAGEM_CODIGO_EXISTENTE =
+    "Você já solicitou um código. Utilize o código anterior ou aguarde para solicitar outro.";
+  const MENSAGEM_ENVIO_INCERTO =
+    "Não foi possível confirmar o envio do código. Aguarde antes de tentar novamente.";
+  const MENSAGEM_SOLICITACAO_GENERICA =
+    "Se o telefone estiver elegível, você receberá um código por SMS.";
+  let mensagemCodigoAtual = MENSAGEM_CODIGO_EXISTENTE;
 
   function safeOn(element, eventName, handler) {
 
@@ -874,6 +886,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     }
 
     acaoOtpAtual = acao;
+    mensagemCodigoAtual =
+      erro.code === "CLIENT_OTP_SEND_UNCERTAIN"
+        ? MENSAGEM_ENVIO_INCERTO
+        : MENSAGEM_CODIGO_EXISTENTE;
 
     expiresAt =
       new Date(Date.now() + expiresIn * 1000);
@@ -886,10 +902,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     setButtonEnabled(btnValidarCodigo, false);
 
     if (msg3) {
-      msg3.textContent =
-        erro.code === "CLIENT_OTP_HOURLY_LIMIT"
-          ? `ℹ️ ${erro.message} Use o código já enviado por SMS.`
-          : "ℹ️ Um código já foi enviado para este telefone. Digite-o abaixo ou aguarde a liberação do reenvio.";
+      msg3.textContent = `ℹ️ ${mensagemCodigoAtual}`;
     }
 
     inCodigo.focus();
@@ -981,7 +994,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       document.createElement("span");
 
     linha1.textContent =
-      `Enviamos um código para ${telefoneE164}.`;
+      mensagemCodigoAtual;
 
     const quebra =
       document.createElement("br");
@@ -1079,6 +1092,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       await requisitarAutenticacao(acao);
 
     acaoOtpAtual = acao;
+    mensagemCodigoAtual =
+      json?.data?.request_state === "accepted"
+        ? MENSAGEM_ENVIO_ACEITO
+        : MENSAGEM_SOLICITACAO_GENERICA;
 
     const expiresIn =
       Number(
@@ -1101,6 +1118,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       btnValidarCodigo,
       false
     );
+
+    if (msg3) {
+      msg3.textContent = `ℹ️ ${mensagemCodigoAtual}`;
+    }
 
     inCodigo.focus();
   }
@@ -1548,6 +1569,11 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
             json?.data?.expires_in
           ) || 300;
 
+        mensagemCodigoAtual =
+          json?.data?.request_state === "accepted"
+            ? MENSAGEM_ENVIO_ACEITO
+            : MENSAGEM_SOLICITACAO_GENERICA;
+
         expiresAt =
           new Date(
             Date.now() +
@@ -1563,13 +1589,17 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
         if (msg3) {
           msg3.textContent =
-            "✅ Código reenviado!";
+            `ℹ️ ${mensagemCodigoAtual}`;
         }
 
         startTimer();
         startResendCountdown();
 
       } catch (error) {
+
+        if (abrirCodigoPendente(acaoOtpAtual, error)) {
+          return;
+        }
 
         // Prazo real do backend (30 s ou limite por hora); sem prazo, o
         // contador não é reiniciado arbitrariamente.
@@ -1579,8 +1609,8 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
           );
         }
 
-        // Falha de envio com novo desafio: o código anterior deixou de valer.
-        if (error.code === "CLIENT_OTP_UNAVAILABLE" && error.retryAfter > 0) {
+        // Falha definitiva sem desafio anterior utilizável.
+        if (error.code === "CLIENT_OTP_SEND_FAILED" && error.retryAfter > 0) {
           expiresAt = null;
           stopTimer();
           setButtonEnabled(btnValidarCodigo, false);
@@ -1627,6 +1657,11 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
         ? "iniciar_recuperacao"
         : "enviar_codigo";
 
+    mensagemCodigoAtual =
+      otpEstadoInicial.request_state === "uncertain"
+        ? MENSAGEM_ENVIO_INCERTO
+        : MENSAGEM_CODIGO_EXISTENTE;
+
     expiresAt =
       new Date(
         Date.now()
@@ -1641,6 +1676,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     startResendCountdown(
       Number(otpEstadoInicial.retry_after) || 0
     );
+    if (msg3) {
+      msg3.textContent = `ℹ️ ${mensagemCodigoAtual}`;
+    }
     inCodigo.focus();
   } else {
     showStep(1);
@@ -1649,10 +1687,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.6" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.8" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.6"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.8"
 ></script>
 
 </body>

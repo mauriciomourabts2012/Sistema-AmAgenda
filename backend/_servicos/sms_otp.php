@@ -295,6 +295,7 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
         $codigo = smsOtpGerarCodigo();
         $hashCodigo = smsOtpCodigoHash($carga, $codigo);
 
+        $idAnteriorAtivo = null;
         $conexao->begin_transaction();
         try {
             $anterior = smsConsultar(
@@ -310,6 +311,18 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
                 return smsOtpResultado(false, 'SMS_OTP_REENVIO_AGUARDAR', 'Aguarde alguns segundos antes de solicitar outro código.', [
                     'retry_after' => SMS_OTP_REENVIO_SEGUNDOS - (int)$anterior[0]['idade'],
                 ]);
+            }
+            $ativoAnterior = smsConsultar(
+                $conexao,
+                "SELECT id_otp_desafio FROM otp_desafio
+                  WHERE chave_principal = UNHEX(?) AND status = 'ativo'
+                    AND expira_em > NOW(6) AND tentativas_validacao < max_tentativas
+                  ORDER BY id_otp_desafio DESC LIMIT 1 FOR UPDATE",
+                's',
+                $chave
+            );
+            if ($ativoAnterior !== []) {
+                $idAnteriorAtivo = (int)$ativoAnterior[0]['id_otp_desafio'];
             }
             smsExecutar(
                 $conexao,
@@ -365,11 +378,47 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
     $envio = smsEnviarOtp($conexao, $carga, $idDesafio, $telefone, $texto, $transporte);
     unset($texto, $codigo);
 
+    if ($envio['estado'] === 'incerto' || $envio['estado'] === 'duplicado') {
+        // Pode ter sido aceito: o novo desafio permanece como o único utilizável e
+        // nunca há reenvio automático. A interface recebe um estado explícito.
+        return smsOtpResultado(false, 'SMS_OTP_ENVIO_INCERTO', 'Não foi possível confirmar o envio do código.', $dados + [
+            'estado_envio' => $envio['estado'],
+            'retry_after' => SMS_OTP_REENVIO_SEGUNDOS,
+        ]);
+    }
+
     if ($envio['sucesso'] !== true) {
-        // O desafio já existe: o intervalo de 30 s entre solicitações vale também após a falha.
+        // A falha é definitiva e o desafio novo já não ocupa o slot ativo. Restaura
+        // somente o código anterior que estava ativo, ainda não expirou e não esgotou
+        // tentativas; assim nunca há dois códigos utilizáveis ao mesmo tempo.
+        $anteriorPreservado = false;
+        if ($idAnteriorAtivo !== null) {
+            try {
+                $conexao->begin_transaction();
+                $restaurado = smsExecutar(
+                    $conexao,
+                    "UPDATE otp_desafio SET status = 'ativo', invalidado_em = NULL
+                      WHERE id_otp_desafio = ? AND status = 'invalidado'
+                        AND expira_em > NOW(6) AND tentativas_validacao < max_tentativas",
+                    'i',
+                    $idAnteriorAtivo
+                );
+                $conexao->commit();
+                if ($restaurado === 1) {
+                    $anteriorPreservado = true;
+                    smsLog('otp_anterior_restaurado', ['otp' => $idAnteriorAtivo, 'novo' => $idDesafio]);
+                }
+            } catch (Throwable) {
+                $conexao->rollback();
+                smsLog('otp_anterior_restauracao_falhou', ['otp' => $idAnteriorAtivo, 'novo' => $idDesafio]);
+            }
+        }
+
+        // O desafio novo existe, então o intervalo de 30 s continua valendo.
         return smsOtpResultado(false, 'SMS_OTP_ENVIO_FALHOU', 'Não foi possível enviar o código agora. Tente novamente.', $dados + [
             'estado_envio' => $envio['estado'],
             'retry_after' => SMS_OTP_REENVIO_SEGUNDOS,
+            'desafio_anterior_preservado' => $anteriorPreservado,
         ]);
     }
 

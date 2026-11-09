@@ -453,7 +453,8 @@ function clienteLoginRespostaEnvioGenerica(
 
         'data' => [
             'expires_in' =>
-                $expiresIn
+                $expiresIn,
+            'request_state' => 'generic',
         ]
     ]);
 }
@@ -476,6 +477,29 @@ function clienteLoginDesafioSessaoAtivo(
         && (int)($desafio['id_otp_desafio'] ?? 0) > 0
         && (int)($desafio['expira_em'] ?? 0) > time()
         && ($finalidade === null || (string)($desafio['finalidade'] ?? '') === $finalidade);
+}
+
+
+/** Guarda somente o vínculo do desafio; o código OTP nunca entra na sessão. */
+function clienteLoginGuardarDesafioSessao(
+    int $idEmpresa,
+    string $telefoneE164,
+    string $finalidade,
+    ?int $idCliente,
+    int $idOtpDesafio,
+    int $expiresIn,
+    string $estadoEnvio
+): void {
+    $_SESSION['cliente_auth_desafio'] = [
+        'id_empresa' => $idEmpresa,
+        'telefone' => $telefoneE164,
+        'finalidade' => $finalidade,
+        'id_cliente' => $idCliente,
+        'id_otp_desafio' => $idOtpDesafio,
+        'estado_envio' => $estadoEnvio,
+        'enviado_em' => time(),
+        'expira_em' => time() + max(1, $expiresIn),
+    ];
 }
 
 
@@ -827,8 +851,10 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         'enviar' => !$recuperacaoFicticia,
     ]);
 
+    $codigoOtp = (string)($resultadoOtp['codigo'] ?? '');
+    $expiresIn = max(1, (int)($resultadoOtp['dados']['expires_in'] ?? 300));
+
     if (($resultadoOtp['sucesso'] ?? false) !== true) {
-        $codigoOtp = (string)($resultadoOtp['codigo'] ?? '');
 
         $retryAfterOtp = max(
             0,
@@ -873,50 +899,85 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
             ], 429);
         }
 
-        // Na recuperação, falha de envio não distingue conta real de inexistente.
-        if ($finalidadeOtp !== 'recuperacao_senha') {
-            // Falha de envio com desafio criado: o código anterior foi invalidado.
-            if ($codigoOtp === 'SMS_OTP_ENVIO_FALHOU') {
-                unset($_SESSION['cliente_auth_desafio']);
+        // O gateway pode ter aceitado a mensagem. O novo desafio é o único
+        // utilizável, mas o resultado não é apresentado como sucesso operacional.
+        if ($codigoOtp === 'SMS_OTP_ENVIO_INCERTO') {
+            clienteLoginGuardarDesafioSessao(
+                $idEmpresa,
+                $telefoneE164,
+                $finalidadeOtp,
+                $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : null,
+                (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
+                $expiresIn,
+                'uncertain'
+            );
+
+            // A recuperação mantém o mesmo contrato para conta real e fictícia.
+            if ($finalidadeOtp === 'recuperacao_senha') {
+                clienteLoginRespostaEnvioGenerica($expiresIn);
             }
 
             out([
                 'ok' => false,
-                'code' => 'CLIENT_OTP_UNAVAILABLE',
-                'user_msg' =>
-                    'Não foi possível enviar o código agora. Tente novamente.',
+                'code' => 'CLIENT_OTP_SEND_UNCERTAIN',
+                'user_msg' => 'Não foi possível confirmar o envio do código. Aguarde antes de tentar novamente.',
                 'data' => [
-                    'retry_after' => $codigoOtp === 'SMS_OTP_ENVIO_FALHOU'
-                        ? max(1, $retryAfterOtp)
-                        : 0,
+                    'codigo_pendente' => true,
+                    'expires_in' => $expiresIn,
+                    'retry_after' => max(1, $retryAfterOtp ?: 30),
                 ],
             ], 503);
         }
 
-        $clienteOtpAtivo = false;
+        if (
+            $codigoOtp === 'SMS_OTP_ENVIO_FALHOU'
+            && ($resultadoOtp['dados']['desafio_anterior_preservado'] ?? false) !== true
+        ) {
+            unset($_SESSION['cliente_auth_desafio']);
+            unset($dadosRecusa['codigo_pendente'], $dadosRecusa['expires_in']);
+        }
+
+        // Falha definitiva: smsOtpSolicitar() já restaurou o desafio anterior
+        // válido, quando havia um. A sessão antiga é mantida e informada ao cliente.
+        if ($finalidadeOtp !== 'recuperacao_senha') {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_OTP_SEND_FAILED',
+                'user_msg' => 'Não foi possível enviar o código agora. Tente novamente.',
+                'data' => $dadosRecusa,
+            ], 503);
+        }
+
+        // A recuperação não revela se havia conta nem se um SMS real foi tentado.
+        if (isset($dadosRecusa['expires_in'])) {
+            clienteLoginRespostaEnvioGenerica((int)$dadosRecusa['expires_in']);
+        }
+        unset($_SESSION['cliente_auth_desafio']);
+        clienteLoginRespostaEnvioGenerica(300);
     }
 
-    $expiresIn = (int)($resultadoOtp['dados']['expires_in'] ?? 300);
-
-    // Somente identificadores: o código nunca é guardado na sessão.
-    $_SESSION[
-        'cliente_auth_desafio'
-    ] = [
-        'id_empresa' => $idEmpresa,
-        'telefone' => $telefoneE164,
-        'finalidade' => $finalidadeOtp,
-        'id_cliente' => $clienteOtpAtivo
-            ? (int)$clienteOtp['id_cliente']
-            : null,
-        'id_otp_desafio' =>
-            (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
-        'enviado_em' => time(),
-        'expira_em' => time() + $expiresIn,
-    ];
-
-    clienteLoginRespostaEnvioGenerica(
-        $expiresIn
+    clienteLoginGuardarDesafioSessao(
+        $idEmpresa,
+        $telefoneE164,
+        $finalidadeOtp,
+        $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : null,
+        (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
+        $expiresIn,
+        $finalidadeOtp === 'recuperacao_senha' ? 'generic' : 'accepted'
     );
+
+    if ($finalidadeOtp === 'recuperacao_senha') {
+        clienteLoginRespostaEnvioGenerica($expiresIn);
+    }
+
+    out([
+        'ok' => true,
+        'code' => 'CLIENT_OTP_SEND_ACCEPTED',
+        'data' => [
+            'expires_in' => $expiresIn,
+            'request_state' => 'accepted',
+        ],
+    ]);
 }
 
 

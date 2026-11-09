@@ -211,7 +211,7 @@ $r = smsOtpSolicitar(bancoSolicitar(), $pCliente, static function (array $req) u
 });
 falsoVerificar($r['sucesso'] === false && $r['codigo'] === 'SMS_OTP_ENVIO_FALHOU' && $n === 1, 'rejeição do provedor => falha sem reenvio');
 $r = smsOtpSolicitar(bancoSolicitar(), $pCliente, static fn (array $req): array => ['http_status' => 0, 'body' => '', 'errno' => 28]);
-falsoVerificar($r['sucesso'] === true && $r['dados']['estado_envio'] === 'incerto', 'timeout: resposta genérica de sucesso (o SMS pode chegar), sem reenvio');
+falsoVerificar($r['sucesso'] === false && $r['codigo'] === 'SMS_OTP_ENVIO_INCERTO' && $r['dados']['estado_envio'] === 'incerto', 'timeout: resultado incerto explícito (o SMS pode chegar), sem reenvio');
 smsOtpCarga(['ok' => false, 'habilitado' => false, 'erros' => ['CONFIG_AUSENTE'], 'config' => []]);
 $r = smsOtpSolicitar(bancoSolicitar(), $pCliente);
 falsoVerificar($r['codigo'] === 'SMS_CONFIG_INVALIDA', 'sem configuração válida não cria desafio');
@@ -437,8 +437,25 @@ $r = smsOtpSolicitar($db, $pCliente, transporteCapturando($codigo, $n));
 falsoVerificar($r['dados']['retry_after'] === 2500 && $r['dados']['motivo'] === 'ip', 'limites simultâneos: retry_after é o maior prazo efetivo');
 
 // Falha de envio: o desafio existe, então o intervalo oficial de 30 s é informado.
-$r = smsOtpSolicitar(bancoSolicitar(), $pCliente, static fn (array $req): array => ['http_status' => 400, 'body' => '{}', 'errno' => 0]);
+$db = bancoSolicitar([['/^SELECT id_otp_desafio FROM otp_desafio.*status = \'ativo\'/s', [['id_otp_desafio' => 41]]]]);
+$r = smsOtpSolicitar($db, $pCliente, static fn (array $req): array => ['http_status' => 400, 'body' => '{}', 'errno' => 0]);
 falsoVerificar($r['codigo'] === 'SMS_OTP_ENVIO_FALHOU' && $r['dados']['retry_after'] === SMS_OTP_REENVIO_SEGUNDOS, 'falha de envio informa o intervalo real de 30 s');
+falsoVerificar(
+    count($db->chamadas("/^UPDATE otp_desafio SET status = 'ativo'.*id_otp_desafio = \?.*status = 'invalidado'/s")) === 1,
+    'falha definitiva reativa o desafio anterior ainda válido depois de marcar o novo com erro'
+);
+falsoVerificar($r['dados']['desafio_anterior_preservado'] === true, 'contrato confirma que o código anterior foi preservado');
+$posErroNovo = array_search(true, array_map(static fn ($e) => str_contains($e, "status = 'erro_envio'"), $db->eventos), true);
+$posRestauraAnterior = array_search(true, array_map(static fn ($e) => str_starts_with($e, "UPDATE otp_desafio SET status = 'ativo', invalidado_em = NULL"), $db->eventos), true);
+falsoVerificar($posErroNovo !== false && $posRestauraAnterior !== false && $posErroNovo < $posRestauraAnterior, 'novo desafio libera o slot antes de reativar o anterior');
+
+$db = bancoSolicitar([['/^SELECT id_otp_desafio FROM otp_desafio.*status = \'ativo\'/s', []]]);
+smsOtpSolicitar($db, $pCliente, static fn (array $req): array => ['http_status' => 400, 'body' => '{}', 'errno' => 0]);
+falsoVerificar($db->chamadas("/^UPDATE otp_desafio SET status = 'ativo'.*status = 'invalidado'/s") === [], 'desafio anterior expirado ou inexistente não é reativado');
+
+$db = bancoSolicitar([['/^SELECT id_otp_desafio FROM otp_desafio.*status = \'ativo\'/s', [['id_otp_desafio' => 41]]]]);
+$r = smsOtpSolicitar($db, $pCliente, static fn (array $req): array => ['http_status' => 0, 'body' => '', 'errno' => 28]);
+falsoVerificar($r['codigo'] === 'SMS_OTP_ENVIO_INCERTO' && $db->chamadas("/invalidado_em = NULL/") === [], 'resultado incerto mantém somente o novo desafio utilizável');
 
 // Regras oficiais preservadas.
 falsoVerificar(SMS_OTP_VALIDADE_SEGUNDOS === 300 && SMS_OTP_REENVIO_SEGUNDOS === 30 && SMS_OTP_LIMITE_TELEFONE_HORA === 5 && SMS_OTP_MAX_TENTATIVAS === 5, 'valores oficiais (5 min, 30 s, 5/h, 5 tentativas) inalterados');
@@ -452,6 +469,8 @@ falsoVerificar(!str_contains($cl, "'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE'"), '
 falsoVerificar(!preg_match("/'motivo'\s*=>/", $cl), 'motivo interno (telefone/IP/empresa) não é exposto ao cliente');
 falsoVerificar(str_contains($cl, "\$dadosRecusa['codigo_pendente'] = true;") && str_contains($cl, 'clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp)'), 'recusa reaproveita o código ainda válido da mesma sessão, empresa, telefone e finalidade');
 falsoVerificar(str_contains($cl, "if (!clienteLoginDesafioSessaoAtivo(\$desafioSessao, \$idEmpresa, \$telefoneE164)) {"), 'verificar_telefone preserva o desafio do mesmo telefone e descarta os demais');
+falsoVerificar(str_contains($cl, "'CLIENT_OTP_SEND_ACCEPTED'") && str_contains($cl, "'CLIENT_OTP_SEND_UNCERTAIN'") && str_contains($cl, "'CLIENT_OTP_SEND_FAILED'"), 'contrato cliente distingue aceite, incerteza e falha definitiva');
+falsoVerificar(str_contains($cl, "'request_state' => 'generic'") && str_contains($cl, "'request_state' => 'accepted'"), 'recuperação genérica não é confundida com aceite confirmado');
 
 // Frontend: prazo do backend na etapa do telefone e sem cliques duplicados.
 $lc = (string)file_get_contents($raiz . '/public/views/login-cliente.php');
@@ -459,5 +478,9 @@ falsoVerificar(str_contains($lc, 'startPhoneRetry(error.retryAfter)') && str_con
 falsoVerificar(str_contains($lc, 'abrirCodigoPendente("enviar_codigo", error)'), 'recusa com código pendente leva à etapa do código');
 falsoVerificar(str_contains($lc, '"NETWORK_ERROR"'), 'falha de comunicação tem mensagem própria, sem texto técnico');
 falsoVerificar(substr_count($lc, 'reenvioEmAndamento = true;') === 1 && str_contains($lc, 'Date.now() < resendAvailableAt'), 'reenvio continua protegido contra cliques duplicados');
+falsoVerificar(str_contains($lc, 'Código solicitado com sucesso. Confira suas mensagens SMS.'), 'frontend informa aceite sem afirmar entrega');
+falsoVerificar(str_contains($lc, 'Você já solicitou um código. Utilize o código anterior ou aguarde para solicitar outro.'), 'frontend distingue desafio existente');
+falsoVerificar(str_contains($lc, 'Não foi possível confirmar o envio do código. Aguarde antes de tentar novamente.'), 'frontend distingue resultado incerto');
+falsoVerificar(!str_contains($lc, 'Enviamos um código para ${telefoneE164}.'), 'restauração não afirma que houve novo envio');
 
 falsoRelatorio();

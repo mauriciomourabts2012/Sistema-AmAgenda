@@ -115,22 +115,22 @@ falsoVerificar(count($db->chamadas("/erro_envio/")) === 1, 'desafio marcado erro
 $db = bancoPronto();
 $n = 0;
 $r = smsEnviarOtp($db, $carga, 79, TELEFONE, TEXTO, transporteFalso(['http_status' => 0, 'body' => '', 'errno' => 28], $n));
-falsoVerificar($r['estado'] === 'incerto' && $r['sucesso'] === true && $n === 1, 'timeout => incerto, uma só tentativa');
+falsoVerificar($r['estado'] === 'incerto' && $r['sucesso'] === false && $n === 1, 'timeout => incerto, sem falso sucesso e com uma só tentativa');
 $upd = $db->chamadas('/^UPDATE mensagem_envio/');
 falsoVerificar($upd[0]['valores'][0] === 'resultado_incerto', 'status resultado_incerto gravado');
 falsoVerificar(count($db->chamadas('/^UPDATE otp_desafio SET status = \'ativo\'/')) === 1, 'timeout mantém o desafio ativo (o SMS pode chegar)');
 falsoVerificar($db->chamadas('/erro_envio/') === [], 'timeout não marca erro_envio');
 
-// 5xx incerto; 400 rejeitada; 429 limitada; conexão => erro.
-foreach ([[500, 0, 'resultado_incerto', true], [503, 0, 'resultado_incerto', true], [400, 0, 'rejeitada', false], [429, 0, 'rejeitada', false], [0, 7, 'erro', false]] as [$http, $errno, $esperado, $segue]) {
+// 5xx incerto; 400 rejeitada; 429 limitada; conexão => erro. Só aceite confirmado é sucesso operacional.
+foreach ([[500, 0, 'resultado_incerto', 'incerto'], [503, 0, 'resultado_incerto', 'incerto'], [400, 0, 'rejeitada', 'rejeitada'], [429, 0, 'rejeitada', 'limitada'], [0, 7, 'erro', 'falha_conexao']] as [$http, $errno, $esperado, $estado]) {
     $db = bancoPronto();
     $n = 0;
     $r = smsEnviarOtp($db, $carga, 80, TELEFONE, TEXTO, transporteFalso(['http_status' => $http, 'body' => '', 'errno' => $errno], $n));
     $upd = $db->chamadas('/^UPDATE mensagem_envio/');
     falsoVerificar(($upd[0]['valores'][0] ?? '') === $esperado, "http $http/errno $errno => $esperado");
-    falsoVerificar($r['sucesso'] === $segue, "http $http/errno $errno: sucesso=" . var_export($segue, true));
+    falsoVerificar($r['sucesso'] === false && $r['estado'] === $estado, "http $http/errno $errno: estado explícito, sem falso sucesso");
     falsoVerificar($n === 1, "http $http/errno $errno: sem reenvio automático");
-    falsoVerificar($segue || count($db->chamadas('/erro_envio/')) === 1, "http $http/errno $errno: falha definitiva marca erro_envio");
+    falsoVerificar($estado === 'incerto' || count($db->chamadas('/erro_envio/')) === 1, "http $http/errno $errno: falha definitiva marca erro_envio");
 }
 
 // Idempotência: mensagem já existente para o desafio.
@@ -164,6 +164,7 @@ $db->regra('/^INSERT INTO mensagem_envio/', new RuntimeException('banco fora'));
 $n = 0;
 $r = smsEnviarOtp($db, $carga, 85, TELEFONE, TEXTO, transporteAceita($n));
 falsoVerificar($r['sucesso'] === false && $n === 0 && $db->rollbacks === 1, 'falha ao registrar => rollback e nada enviado');
+falsoVerificar(count($db->chamadas("/UPDATE otp_desafio SET status = 'erro_envio'/")) === 1, 'falha ao registrar libera o slot do desafio sem envio');
 
 // Relatórios de entrega.
 function relatorio(string $messageId, string $grupo, array $extra = []): array
