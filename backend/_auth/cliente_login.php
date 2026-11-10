@@ -109,6 +109,10 @@ require_once
 require_once
     __DIR__ . '/../_servicos/sms_otp.php';
 
+// Canal e-mail (C3): regras de elegibilidade do e-mail no login do cliente.
+require_once
+    __DIR__ . '/../_regras/cliente_login_email.php';
+
 // Marcador da credencial da sessão (A6.1).
 require_once
     __DIR__ . '/../_regras/login_multiempresa.php';
@@ -201,9 +205,12 @@ if (
         $acao,
         [
             'verificar_telefone',
+            'verificar_email',
             'login_senha',
             'enviar_codigo',
             'iniciar_recuperacao',
+            'enviar_codigo_email',
+            'iniciar_recuperacao_email',
             'validar_codigo'
         ],
         true
@@ -444,18 +451,26 @@ function clienteLoginBuscarCliente(
  * Não revela se o telefone está cadastrado.
  */
 function clienteLoginRespostaEnvioGenerica(
-    int $expiresIn = 300
+    int $expiresIn = 300,
+    ?string $canal = null
 ): void {
+    $dados = [
+        'expires_in' =>
+            $expiresIn,
+        'request_state' => 'generic',
+    ];
+
+    // Canal do código vigente, informado só quando o chamador sabe (campo aditivo).
+    if ($canal === 'email' || $canal === 'sms') {
+        $dados['canal'] = $canal;
+    }
+
     out([
         'ok' => true,
         'code' =>
             'CLIENT_OTP_REQUEST_ACCEPTED',
 
-        'data' => [
-            'expires_in' =>
-                $expiresIn,
-            'request_state' => 'generic',
-        ]
+        'data' => $dados
     ]);
 }
 
@@ -469,11 +484,18 @@ function clienteLoginDesafioSessaoAtivo(
     mixed $desafio,
     int $idEmpresa,
     string $telefoneE164,
-    ?string $finalidade = null
+    ?string $finalidade = null,
+    ?string $email = null
 ): bool {
+    // Sem telefone (conta só com e-mail), o desafio pertence ao mesmo e-mail.
+    $mesmoContato = $telefoneE164 !== ''
+        || ($email !== null && $email !== ''
+            && is_array($desafio) && (string)($desafio['email'] ?? '') === $email);
+
     return is_array($desafio)
         && (int)($desafio['id_empresa'] ?? 0) === $idEmpresa
         && (string)($desafio['telefone'] ?? '') === $telefoneE164
+        && $mesmoContato
         && (int)($desafio['id_otp_desafio'] ?? 0) > 0
         && (int)($desafio['expira_em'] ?? 0) > time()
         && ($finalidade === null || (string)($desafio['finalidade'] ?? '') === $finalidade);
@@ -488,12 +510,17 @@ function clienteLoginGuardarDesafioSessao(
     ?int $idCliente,
     int $idOtpDesafio,
     int $expiresIn,
-    string $estadoEnvio
+    string $estadoEnvio,
+    string $canal = 'sms',
+    ?string $email = null
 ): void {
     $_SESSION['cliente_auth_desafio'] = [
         'id_empresa' => $idEmpresa,
         'telefone' => $telefoneE164,
         'finalidade' => $finalidade,
+        'canal' => $canal === 'email' ? 'email' : 'sms',
+        // E-mail informado neste pedido (somente servidor): a validação exige o mesmo endereço.
+        'email' => $canal === 'email' ? (string)$email : null,
         'id_cliente' => $idCliente,
         'id_otp_desafio' => $idOtpDesafio,
         'estado_envio' => $estadoEnvio,
@@ -523,8 +550,15 @@ function clienteLoginCriarSessao(
     int $idEmpresa,
     string $telefoneE164,
     ?array $cliente,
-    bool $autorizarRecuperacao = false
+    bool $autorizarRecuperacao = false,
+    string $metodoVerificacao = 'sms',
+    ?string $email = null
 ): void {
+    // C3.1: $telefoneE164 e $email são os identificadores COMPROVADOS neste login (um dos dois pode
+    // ser vazio). Conta só com e-mail não tem telefone na sessão (nunca há telefone fictício).
+    $emailSessao = mb_strtolower(trim((string)$email), 'UTF-8');
+    $identificadorSessao = $telefoneE164 !== '' ? $telefoneE164 : 'email:' . $emailSessao;
+
     $clienteExistente = is_array($cliente);
     $idCliente = $clienteExistente
         ? (int)($cliente['id_cliente'] ?? 0)
@@ -543,10 +577,18 @@ function clienteLoginCriarSessao(
         'id_cliente' => $idCliente,
         'id_empresa' => $idEmpresa,
         'telefone' => $telefoneE164,
+        'email' => $emailSessao,
+        'identificador' => $identificadorSessao,
         'nome_completo' => $clienteExistente
             ? (string)($cliente['nome_completo'] ?? '')
             : '',
-        'telefone_verificado' => true,
+        // Os flags significam "comprovado NESTE login" (SMS, código por e-mail ou senha do
+        // identificador usado), não o estado do banco (telefone_verificado_em/email_verificado_em).
+        'telefone_verificado' => $telefoneE164 !== '',
+        'email_verificado' => $emailSessao !== '',
+        'metodo_verificacao' => in_array($metodoVerificacao, ['sms', 'email', 'senha'], true)
+            ? $metodoVerificacao
+            : 'sms',
         'cadastro_completo' => $cadastroCompleto,
         'status' => 'ativo',
         'tipo' => 'cliente',
@@ -570,11 +612,22 @@ function clienteLoginCriarSessao(
             'id_empresa' => $idEmpresa,
             'id_cliente' => $idCliente,
             'telefone' => $telefoneE164,
+            'identificador' => $identificadorSessao,
             'autorizado_em' => time(),
             'expira_em' => time() + 600,
         ];
     } else {
         unset($_SESSION['cliente_recuperacao_senha']);
+    }
+
+    // Código por SMS aprovado para um cliente existente: o celular cadastrado passa a constar como
+    // validado (só quando o número comprovado é o cadastrado). Falha não interrompe o login.
+    if ($idCliente !== null && $metodoVerificacao === 'sms' && $telefoneE164 !== '') {
+        try {
+            clienteLoginTelefoneMarcarVerificado($conexao, $idEmpresa, $idCliente, $telefoneE164);
+        } catch (Throwable $e) {
+            error_log('[cliente_login] telefone_verificado_em não atualizado');
+        }
     }
 
     if ($idCliente !== null) {
@@ -669,6 +722,73 @@ if ($acao === 'verificar_telefone') {
 
 /*
 |--------------------------------------------------------------------------
+| VERIFICAR E-MAIL / DECIDIR PRÓXIMO PASSO (C3.1)
+|--------------------------------------------------------------------------
+|
+| Identificação por e-mail (conta só com e-mail, ou cliente que prefere o e-mail).
+| Só um e-mail já validado do cliente pode seguir para a senha; qualquer outro
+| caso segue o fluxo de código (que responde de forma genérica, sem revelar cadastro).
+|
+*/
+
+if ($acao === 'verificar_email') {
+    $emailVerificar = clienteLoginEmailNormalizar(
+        (string)($_POST['email'] ?? '')
+    );
+
+    if ($emailVerificar === null) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_EMAIL_INVALID',
+            'user_msg' => 'Informe um e-mail válido.',
+        ], 422);
+    }
+
+    try {
+        $cliente = clienteLoginBuscarClientePorEmail(
+            $conexao,
+            $idEmpresa,
+            $emailVerificar
+        );
+    } catch (Throwable $e) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_LOOKUP_UNAVAILABLE',
+            'user_msg' => 'Não foi possível continuar agora.',
+        ], 503);
+    }
+
+    if (is_array($cliente) && !clienteLoginClienteAtivo($cliente)) {
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_NOT_AVAILABLE',
+            'user_msg' => 'Não foi possível concluir o acesso.',
+        ], 403);
+    }
+
+    // Desafio de outro e-mail/empresa é descartado; o do mesmo e-mail é mantido.
+    $desafioSessao = $_SESSION['cliente_auth_desafio'] ?? null;
+    if (!clienteLoginDesafioSessaoAtivo($desafioSessao, $idEmpresa, '', null, $emailVerificar)) {
+        unset($_SESSION['cliente_auth_desafio']);
+    }
+    unset($_SESSION['cliente_recuperacao_senha']);
+
+    $senhaPorEmail = is_array($cliente)
+        && trim((string)($cliente['senha_hash'] ?? '')) !== ''
+        && ($cliente['email_verificado_em'] ?? null) !== null;
+
+    out([
+        'ok' => true,
+        'code' => 'CLIENT_LOGIN_NEXT_STEP',
+        'data' => [
+            'proximo_passo' => $senhaPorEmail ? 'senha' : 'otp',
+        ],
+    ]);
+}
+
+
+/*
+|--------------------------------------------------------------------------
 | LOGIN POR SENHA
 |--------------------------------------------------------------------------
 */
@@ -677,24 +797,33 @@ if ($acao === 'login_senha') {
     $telefoneE164 = clienteLoginNormalizarTelefone(
         (string)($_POST['telefone'] ?? '')
     );
+    // C3.1: o identificador pode ser o celular OU o e-mail validado da conta.
+    $emailSenha = $telefoneE164 === null
+        ? clienteLoginEmailNormalizar((string)($_POST['email'] ?? ''))
+        : null;
     $senha = (string)($_POST['senha'] ?? '');
+    $mensagemCredenciais = $emailSenha !== null
+        ? 'E-mail ou senha inválidos.'
+        : 'Telefone ou senha inválidos.';
 
-    if ($telefoneE164 === null || $senha === '') {
+    if (($telefoneE164 === null && $emailSenha === null) || $senha === '') {
         out([
             'ok' => false,
             'code' => 'CLIENT_CREDENTIALS_INVALID',
-            'user_msg' => 'Telefone ou senha inválidos.',
+            'user_msg' => $mensagemCredenciais,
         ], 401);
     }
 
     // A4: limite persistente de tentativas (conta e conta + IP), verificado
     // antes da busca do cliente e de password_verify. Afeta somente o login
     // por senha; OTP e recuperação por código não passam por aqui.
+    // A chave usa o identificador do login (telefone E.164 ou "email:<endereço>").
     require_once __DIR__ . '/../_regras/limite_tentativas.php';
+    $identificadorLimite = $telefoneE164 ?? ('email:' . $emailSenha);
     $limiteSenhaCliente = limiteTentativasClienteIniciar(
         $conexao,
         $idEmpresa,
-        $telefoneE164
+        $identificadorLimite
     );
     // Garante a liberação do lock em qualquer saída (out() encerra com exit).
     register_shutdown_function(
@@ -704,11 +833,9 @@ if ($acao === 'login_senha') {
     );
 
     try {
-        $cliente = clienteLoginBuscarCliente(
-            $conexao,
-            $idEmpresa,
-            $telefoneE164
-        );
+        $cliente = $telefoneE164 !== null
+            ? clienteLoginBuscarCliente($conexao, $idEmpresa, $telefoneE164)
+            : clienteLoginBuscarClientePorEmail($conexao, $idEmpresa, (string)$emailSenha);
     } catch (Throwable $e) {
         out([
             'ok' => false,
@@ -721,8 +848,14 @@ if ($acao === 'login_senha') {
         ? trim((string)($cliente['senha_hash'] ?? ''))
         : '';
 
+    // E-mail só é credencial depois de validado (posse comprovada); antes disso a resposta é a mesma
+    // de credenciais inválidas.
+    $emailNaoValidado = $emailSenha !== null
+        && (!is_array($cliente) || ($cliente['email_verificado_em'] ?? null) === null);
+
     if (
         !clienteLoginClienteAtivo($cliente)
+        || $emailNaoValidado
         || $hash === ''
         || !password_verify($senha, $hash)
     ) {
@@ -732,7 +865,7 @@ if ($acao === 'login_senha') {
         out([
             'ok' => false,
             'code' => 'CLIENT_CREDENTIALS_INVALID',
-            'user_msg' => 'Telefone ou senha inválidos.',
+            'user_msg' => $mensagemCredenciais,
         ], 401);
     }
 
@@ -742,8 +875,11 @@ if ($acao === 'login_senha') {
     clienteLoginCriarSessao(
         $conexao,
         $idEmpresa,
-        $telefoneE164,
-        $cliente
+        $telefoneE164 ?? '',
+        $cliente,
+        false,
+        'senha',
+        $emailSenha
     );
 }
 
@@ -754,7 +890,12 @@ if ($acao === 'login_senha') {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
+if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao', 'enviar_codigo_email', 'iniciar_recuperacao_email'], true)) {
+
+    // Canal e-mail (C3): mesmas regras do SMS; a ação base define acesso x recuperação.
+    $ehEmail = str_ends_with($acao, '_email');
+    $acaoBase = $ehEmail ? substr($acao, 0, -strlen('_email')) : $acao;
+    $canalOtp = $ehEmail ? 'email' : 'sms';
 
     $telefoneInformado =
         (string)(
@@ -766,7 +907,9 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
             $telefoneInformado
         );
 
-    if ($telefoneE164 === null) {
+    // C3.1: no canal e-mail o telefone é opcional (conta só com e-mail); quando informado, precisa ser
+    // válido. No canal SMS continua obrigatório.
+    if ($telefoneE164 === null && (!$ehEmail || trim($telefoneInformado) !== '')) {
         out([
             'ok' => false,
             'code' =>
@@ -776,13 +919,29 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
                 'Informe um telefone válido.'
         ], 422);
     }
+    $telefoneE164 = (string)$telefoneE164;
+
+    $emailInformado = null;
+
+    if ($ehEmail) {
+        $emailInformado = clienteLoginEmailNormalizar(
+            (string)($_POST['email'] ?? '')
+        );
+
+        if ($emailInformado === null) {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_EMAIL_INVALID',
+                'user_msg' => 'Informe um e-mail válido.',
+            ], 422);
+        }
+    }
 
     try {
-        $clienteOtp = clienteLoginBuscarCliente(
-            $conexao,
-            $idEmpresa,
-            $telefoneE164
-        );
+        // Identidade: o telefone informado; sem telefone (conta só com e-mail), o próprio e-mail.
+        $clienteOtp = $telefoneE164 !== ''
+            ? clienteLoginBuscarCliente($conexao, $idEmpresa, $telefoneE164)
+            : clienteLoginBuscarClientePorEmail($conexao, $idEmpresa, (string)$emailInformado);
     } catch (Throwable $e) {
         out([
             'ok' => false,
@@ -793,7 +952,7 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
 
     // Recuperação de senha nunca revela se a conta existe: o caso indisponível segue adiante
     // como desafio fictício (sem SMS) e com a mesma resposta pública.
-    if ($acao !== 'iniciar_recuperacao' && is_array($clienteOtp) && !clienteLoginClienteAtivo($clienteOtp)) {
+    if ($acaoBase !== 'iniciar_recuperacao' && is_array($clienteOtp) && !clienteLoginClienteAtivo($clienteOtp)) {
         out([
             'ok' => false,
             'code' => 'CLIENT_NOT_AVAILABLE',
@@ -805,9 +964,13 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         ? trim((string)($clienteOtp['senha_hash'] ?? ''))
         : '';
 
-    $finalidadeOtp = $acao === 'iniciar_recuperacao'
+    $finalidadeOtp = $acaoBase === 'iniciar_recuperacao'
         ? 'recuperacao_senha'
         : 'acesso';
+
+    // Recuperação e todo pedido por e-mail respondem de forma genérica: a elegibilidade do
+    // e-mail (cadastrado e validado) nunca é revelada pela resposta.
+    $respostaGenerica = $finalidadeOtp === 'recuperacao_senha' || $ehEmail;
 
     $recuperacaoFicticia = false;
 
@@ -838,23 +1001,40 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         && clienteLoginClienteAtivo($clienteOtp)
         && !$recuperacaoFicticia;
 
-    $resultadoOtp = smsOtpSolicitar($conexao, [
-        'principal_tipo' => $clienteOtpAtivo ? 'cliente' : 'ficticio',
-        'finalidade' => $finalidadeOtp === 'recuperacao_senha'
-            ? 'recuperacao_cliente'
-            : 'acesso_cliente',
+    $resultadoOtp = smsOtpSolicitar($conexao, clienteLoginParametrosSolicitacao([
+        'canal' => $canalOtp,
+        'email' => $emailInformado,
         'id_empresa' => $idEmpresa,
-        'id_cliente' => $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : 0,
-        'id_usuario' => 0,
         'telefone' => $telefoneE164,
+        'cliente_ativo' => $clienteOtpAtivo,
+        'id_cliente' => $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : 0,
+        'finalidade' => $finalidadeOtp,
+        'ficticio_sem_envio' => $recuperacaoFicticia,
         'ip' => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
-        'enviar' => !$recuperacaoFicticia,
-    ]);
+    ]));
 
     $codigoOtp = (string)($resultadoOtp['codigo'] ?? '');
     $expiresIn = max(1, (int)($resultadoOtp['dados']['expires_in'] ?? 300));
 
     if (($resultadoOtp['sucesso'] ?? false) !== true) {
+
+        // Canal e-mail desligado (configuração) ou e-mail malformado: independe do cadastro,
+        // então pode ser informado sem revelar nada sobre a conta.
+        if ($codigoOtp === 'EMAIL_INDISPONIVEL') {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_EMAIL_UNAVAILABLE',
+                'user_msg' => 'O envio por e-mail está indisponível no momento. Use o código por SMS.',
+            ], 503);
+        }
+
+        if (in_array($codigoOtp, ['EMAIL_INVALIDO', 'OTP_CANAL_INVALIDO'], true)) {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_EMAIL_INVALID',
+                'user_msg' => 'Informe um e-mail válido.',
+            ], 422);
+        }
 
         $retryAfterOtp = max(
             0,
@@ -867,9 +1047,11 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         $dadosRecusa = [
             'retry_after' => $retryAfterOtp,
         ];
-        if (clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp)) {
+        if (clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp, $emailInformado)) {
             $dadosRecusa['codigo_pendente'] = true;
             $dadosRecusa['expires_in'] = max(1, (int)$desafioPendente['expira_em'] - time());
+            // Canal do código pendente (pode ser diferente do canal pedido agora).
+            $dadosRecusa['canal'] = (string)($desafioPendente['canal'] ?? 'sms') === 'email' ? 'email' : 'sms';
         }
 
         // Intervalo mínimo entre solicitações (30 s) ou pedidos simultâneos.
@@ -909,12 +1091,14 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
                 $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : null,
                 (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
                 $expiresIn,
-                'uncertain'
+                'uncertain',
+                $canalOtp,
+                $emailInformado
             );
 
-            // A recuperação mantém o mesmo contrato para conta real e fictícia.
-            if ($finalidadeOtp === 'recuperacao_senha') {
-                clienteLoginRespostaEnvioGenerica($expiresIn);
+            // A recuperação e o canal e-mail mantêm o mesmo contrato para conta real e fictícia.
+            if ($respostaGenerica) {
+                clienteLoginRespostaEnvioGenerica($expiresIn, $ehEmail ? 'email' : null);
             }
 
             out([
@@ -939,7 +1123,7 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
 
         // Falha definitiva: smsOtpSolicitar() já restaurou o desafio anterior
         // válido, quando havia um. A sessão antiga é mantida e informada ao cliente.
-        if ($finalidadeOtp !== 'recuperacao_senha') {
+        if (!$respostaGenerica) {
             out([
                 'ok' => false,
                 'code' => 'CLIENT_OTP_SEND_FAILED',
@@ -948,12 +1132,13 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
             ], 503);
         }
 
-        // A recuperação não revela se havia conta nem se um SMS real foi tentado.
+        // A recuperação e o canal e-mail não revelam se havia conta (ou e-mail validado) nem
+        // se uma mensagem real foi tentada.
         if (isset($dadosRecusa['expires_in'])) {
-            clienteLoginRespostaEnvioGenerica((int)$dadosRecusa['expires_in']);
+            clienteLoginRespostaEnvioGenerica((int)$dadosRecusa['expires_in'], $dadosRecusa['canal'] ?? null);
         }
         unset($_SESSION['cliente_auth_desafio']);
-        clienteLoginRespostaEnvioGenerica(300);
+        clienteLoginRespostaEnvioGenerica(300, $ehEmail ? 'email' : null);
     }
 
     clienteLoginGuardarDesafioSessao(
@@ -963,11 +1148,13 @@ if (in_array($acao, ['enviar_codigo', 'iniciar_recuperacao'], true)) {
         $clienteOtpAtivo ? (int)$clienteOtp['id_cliente'] : null,
         (int)($resultadoOtp['dados']['id_otp_desafio'] ?? 0),
         $expiresIn,
-        $finalidadeOtp === 'recuperacao_senha' ? 'generic' : 'accepted'
+        $respostaGenerica ? 'generic' : 'accepted',
+        $canalOtp,
+        $emailInformado
     );
 
-    if ($finalidadeOtp === 'recuperacao_senha') {
-        clienteLoginRespostaEnvioGenerica($expiresIn);
+    if ($respostaGenerica) {
+        clienteLoginRespostaEnvioGenerica($expiresIn, $ehEmail ? 'email' : null);
     }
 
     out([
@@ -1010,13 +1197,21 @@ $desafioIdCliente = isset($desafio['id_cliente'])
     ? (int)$desafio['id_cliente']
     : null;
 $desafioIdOtp = (int)($desafio['id_otp_desafio'] ?? 0);
+// Canal do desafio (C3). Sessões anteriores à C3 não têm o campo e são SMS.
+$desafioCanal = (string)($desafio['canal'] ?? 'sms') === 'email' ? 'email' : 'sms';
+$desafioEmail = $desafioCanal === 'email'
+    ? (clienteLoginEmailNormalizar((string)($desafio['email'] ?? '')) ?? '')
+    : '';
 
 if (
     $desafioEmpresa !== $idEmpresa
     ||
-    $desafioTelefone === ''
+    // C3.1: conta só com e-mail não tem telefone; o desafio precisa de ao menos um dos dois.
+    ($desafioTelefone === '' && $desafioEmail === '')
     ||
     $desafioIdOtp <= 0
+    ||
+    ($desafioCanal === 'email' && $desafioEmail === '')
     ||
     !in_array(
         $desafioFinalidade,
@@ -1060,7 +1255,7 @@ if (strlen($codigo) !== 6) {
  * Expiração, tentativas (persistentes), vínculo com a sessão, empresa real
  * do cliente e consumo único são decididos em smsOtpValidar().
  */
-$validacaoOtp = smsOtpValidar($conexao, [
+$parametrosValidacao = [
     'principal_tipo' => ($desafioIdCliente ?? 0) > 0 ? 'cliente' : 'ficticio',
     'finalidade' => $desafioFinalidade === 'recuperacao_senha'
         ? 'recuperacao_cliente'
@@ -1071,7 +1266,14 @@ $validacaoOtp = smsOtpValidar($conexao, [
     'telefone' => $desafioTelefone,
     'id_otp_desafio' => $desafioIdOtp,
     'codigo' => $codigo,
-]);
+];
+if ($desafioCanal === 'email') {
+    // Desafio por e-mail só valida com o mesmo endereço que o originou.
+    $parametrosValidacao['canal'] = 'email';
+    $parametrosValidacao['email'] = $desafioEmail;
+}
+
+$validacaoOtp = smsOtpValidar($conexao, $parametrosValidacao);
 
 if (($validacaoOtp['sucesso'] ?? false) !== true) {
     $codigoValidacao = (string)($validacaoOtp['codigo'] ?? '');
@@ -1125,12 +1327,10 @@ if (($validacaoOtp['sucesso'] ?? false) !== true) {
 */
 
 try {
-    $clienteAtual =
-        clienteLoginBuscarCliente(
-            $conexao,
-            $idEmpresa,
-            $desafioTelefone
-        );
+    // Mesma identidade do pedido: o telefone, ou o e-mail quando não há telefone.
+    $clienteAtual = $desafioTelefone !== ''
+        ? clienteLoginBuscarCliente($conexao, $idEmpresa, $desafioTelefone)
+        : clienteLoginBuscarClientePorEmail($conexao, $idEmpresa, $desafioEmail);
 } catch (Throwable $e) {
     unset(
         $_SESSION[
@@ -1166,6 +1366,32 @@ if ($clienteExistente && !clienteLoginClienteAtivo($clienteAtual)) {
         'user_msg' =>
             'Não foi possível concluir o acesso.'
     ], 403);
+}
+
+/*
+ * Código aprovado por e-mail: o endereço comprova controle do e-mail, não a identidade de
+ * um cadastro existente por coincidência. Cliente existente só autentica se for o principal do
+ * desafio e o e-mail continuar cadastrado e validado agora (alterar o e-mail invalida a
+ * verificação). Primeiro acesso só autentica com e-mail ainda livre na empresa, e a conta
+ * nasce só com e-mail (sem telefone fictício) no cadastro do perfil.
+ */
+if (
+    $desafioCanal === 'email'
+    && !clienteLoginEmailPodeAutenticar(
+        $conexao,
+        $idEmpresa,
+        $clienteExistente ? $clienteAtual : null,
+        $desafioIdCliente,
+        $desafioEmail
+    )
+) {
+    unset($_SESSION['cliente_auth_desafio']);
+
+    out([
+        'ok' => false,
+        'code' => 'CLIENT_OTP_NOT_APPROVED',
+        'user_msg' => 'Código inválido ou expirado.',
+    ], 422);
 }
 
 $autorizarRecuperacao =
@@ -1206,10 +1432,14 @@ if ($autorizarRecuperacao) {
     ], 409);
 }
 
+// A sessão guarda apenas o contato COMPROVADO por este código: o celular (SMS) ou o e-mail. Conta
+// só com e-mail fica sem telefone na sessão (nunca há telefone fictício).
 clienteLoginCriarSessao(
     $conexao,
     $idEmpresa,
-    $desafioTelefone,
+    $desafioCanal === 'email' ? '' : $desafioTelefone,
     $clienteAtual,
-    $autorizarRecuperacao
+    $autorizarRecuperacao,
+    $desafioCanal,
+    $desafioCanal === 'email' ? $desafioEmail : null
 );

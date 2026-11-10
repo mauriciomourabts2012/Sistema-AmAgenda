@@ -12,10 +12,25 @@ try {
     $sessao = exigirSessaoCliente();
     $cliente = buscarClienteDaSessao($conexao, $sessao);
 
-    // Nome e Telefone são os únicos dados cadastrais obrigatórios.
+    // C3.1: contatos da conta (celular e/ou e-mail). Com cadastro, valem os do banco; sem cadastro
+    // (primeiro acesso), o contato comprovado na sessão. Nunca há telefone fictício.
+    $telefoneConta = $cliente !== null
+        ? trim((string)($cliente['whatsapp_celular'] ?? ''))
+        : (string)$sessao['telefone'];
+    $emailConta = $cliente !== null
+        ? trim((string)($cliente['email'] ?? ''))
+        : (string)$sessao['email'];
+    $telefoneValidado = $cliente !== null
+        ? ($telefoneConta !== '' && ($cliente['telefone_verificado_em'] ?? null) !== null)
+        : ($telefoneConta !== '' && $sessao['telefone_comprovado'] === true);
+    $emailValidado = $cliente !== null
+        ? ($emailConta !== '' && ($cliente['email_verificado_em'] ?? null) !== null)
+        : ($emailConta !== '' && $sessao['email_comprovado'] === true);
+
+    // Obrigatórios: Nome e ao menos um contato (celular ou e-mail).
     $dadosObrigatoriosCompletos = $cliente !== null
         && trim((string)($cliente['nome_completo'] ?? '')) !== ''
-        && trim((string)$sessao['telefone']) !== '';
+        && ($telefoneConta !== '' || $emailConta !== '');
 
     if ($cliente !== null) {
         $_SESSION['cliente_auth']['id_cliente'] = (int)$cliente['id_cliente'];
@@ -29,8 +44,13 @@ try {
         'data' => [
             'id_cliente' => $cliente === null ? null : (int)$cliente['id_cliente'],
             'nome_completo' => (string)($cliente['nome_completo'] ?? ''),
-            'whatsapp_celular' => (string)$sessao['telefone'],
-            'email' => (string)($cliente['email'] ?? ''),
+            'whatsapp_celular' => $telefoneConta,
+            'email' => $emailConta,
+            // Estado dos contatos para o perfil (verificar o segundo contato, último contato validado).
+            'telefone_validado' => $telefoneValidado,
+            'email_validado' => $emailValidado,
+            'email_editavel' => !($emailValidado && !$telefoneValidado) || $cliente === null,
+            'cadastrado' => $cliente !== null,
             'cpf' => (string)($cliente['cpf'] ?? ''),
             'data_nascimento' => (string)($cliente['data_nascimento'] ?? ''),
             'cep' => (string)($cliente['cep'] ?? ''),

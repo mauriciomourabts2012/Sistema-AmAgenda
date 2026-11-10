@@ -27,6 +27,14 @@ try {
 
     $nome = textoCliente($_POST['nome'] ?? '');
     $email = mb_strtolower(textoCliente($_POST['email'] ?? ''), 'UTF-8');
+
+    // C3.1: conta nova criada por e-mail: o e-mail é o comprovado no login (não editável aqui) e o
+    // celular só entra depois, confirmado por SMS no perfil (contatos_cliente.php). Nunca há telefone
+    // fictício: sem celular comprovado, whatsapp_celular fica NULL.
+    $telefoneConta = $sessao['telefone'] !== '' ? $sessao['telefone'] : null;
+    if ($cliente === null && $sessao['email_comprovado'] === true) {
+        $email = (string)$sessao['email'];
+    }
     $cpf = somenteDigitosCliente($_POST['cpf'] ?? '');
     $nascimento = textoCliente($_POST['nascimento'] ?? '');
     $cep = somenteDigitosCliente($_POST['cep'] ?? '');
@@ -86,6 +94,45 @@ try {
     }
 
     $idClienteAtual = $cliente === null ? 0 : (int)$cliente['id_cliente'];
+
+    // Regras dos contatos (C3.1): a conta mantém ao menos um contato e nunca perde o último contato
+    // validado por edição. Alterar o e-mail invalida a verificação anterior (SQL abaixo e trigger).
+    if ($cliente === null) {
+        if ($telefoneConta === null && $email === '') {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_CONTACT_REQUIRED',
+                'user_msg' => 'Informe ao menos um contato (celular ou e-mail).',
+                'fields' => ['cli_email' => 'Informe o e-mail.'],
+            ], 422);
+        }
+    } else {
+        $emailBancoAtual = mb_strtolower(trim((string)($cliente['email'] ?? '')), 'UTF-8');
+        $emailVerificadoAtual = ($cliente['email_verificado_em'] ?? null) !== null;
+        $telefoneVerificadoAtual = ($cliente['telefone_verificado_em'] ?? null) !== null
+            && trim((string)($cliente['whatsapp_celular'] ?? '')) !== '';
+        $temTelefoneAtual = trim((string)($cliente['whatsapp_celular'] ?? '')) !== '';
+
+        if ($email !== $emailBancoAtual) {
+            if ($emailVerificadoAtual && !$telefoneVerificadoAtual) {
+                out([
+                    'ok' => false,
+                    'code' => 'CLIENT_LAST_VERIFIED_CONTACT',
+                    'user_msg' => 'Este é seu único contato validado. Valide o celular antes de alterar ou remover o e-mail.',
+                    'fields' => ['cli_email' => 'Último contato validado.'],
+                ], 409);
+            }
+            if ($email === '' && !$temTelefoneAtual) {
+                out([
+                    'ok' => false,
+                    'code' => 'CLIENT_CONTACT_REQUIRED',
+                    'user_msg' => 'A conta precisa de ao menos um contato (celular ou e-mail).',
+                    'fields' => ['cli_email' => 'Informe o e-mail.'],
+                ], 422);
+            }
+        }
+    }
+
     if ($email !== '') {
         $stmtEmail = $conexao->prepare(
             'SELECT id_cliente FROM cliente WHERE id_empresa = ? AND LOWER(email) = ? AND id_cliente <> ? LIMIT 1'
@@ -120,19 +167,25 @@ try {
     $complementoBanco = $complemento === '' ? null : $complemento;
 
     if ($cliente === null) {
+        // O contato comprovado neste login nasce validado; o outro (se houver) entra sem validação.
+        $telefoneConfirmado = $telefoneConta !== null && $sessao['telefone_comprovado'] === true ? 1 : 0;
+        $emailConfirmado = $emailBanco !== null && $sessao['email_comprovado'] === true
+            && $emailBanco === (string)$sessao['email'] ? 1 : 0;
+
         $stmt = $conexao->prepare(
             "INSERT INTO cliente
-                (id_empresa, nome_completo, whatsapp_celular, email, cpf, data_nascimento, cep, logradouro, numero, bairro, cidade, uf, complemento, cadastro_completo, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ativo')"
+                (id_empresa, nome_completo, whatsapp_celular, email, cpf, data_nascimento, cep, logradouro, numero, bairro, cidade, uf, complemento, cadastro_completo, status,
+                 telefone_verificado_em, email_verificado_em)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ativo', IF(? = 1, NOW(), NULL), IF(? = 1, NOW(), NULL))"
         );
         if (!$stmt) {
             throw new RuntimeException('Não foi possível preparar o cadastro.');
         }
         $stmt->bind_param(
-            'issssssssssss',
+            'issssssssssssii',
             $sessao['id_empresa'],
             $nome,
-            $sessao['telefone'],
+            $telefoneConta,
             $emailBanco,
             $cpfBanco,
             $nascimentoBanco,
@@ -142,15 +195,21 @@ try {
             $bairroBanco,
             $cidadeBanco,
             $ufBanco,
-            $complementoBanco
+            $complementoBanco,
+            $telefoneConfirmado,
+            $emailConfirmado
         );
     } else {
         // Atualização: reenvia todos os campos (o formulário sempre parte dos
         // valores já carregados do cadastro), então nenhum dado opcional
         // existente é apagado por uma alteração implícita.
+        // Alterar (ou apagar) o e-mail invalida a verificação anterior (email_verificado_em).
+        // A atribuição de email_verificado_em vem ANTES de "email = ?": o MySQL avalia as
+        // atribuições da esquerda para a direita, então "LOWER(email)" ainda é o e-mail antigo.
         $stmt = $conexao->prepare(
             "UPDATE cliente
-                SET nome_completo = ?, email = ?, cpf = ?, data_nascimento = ?, cep = ?,
+                SET email_verificado_em = IF(LOWER(email) <=> ?, email_verificado_em, NULL),
+                    nome_completo = ?, email = ?, cpf = ?, data_nascimento = ?, cep = ?,
                     logradouro = ?, numero = ?, bairro = ?, cidade = ?, uf = ?, complemento = ?,
                     cadastro_completo = 1
               WHERE id_cliente = ? AND id_empresa = ? AND status = 'ativo'
@@ -161,7 +220,8 @@ try {
         }
         $idCliente = (int)$cliente['id_cliente'];
         $stmt->bind_param(
-            'sssssssssssii',
+            'ssssssssssssii',
+            $emailBanco,
             $nome,
             $emailBanco,
             $cpfBanco,

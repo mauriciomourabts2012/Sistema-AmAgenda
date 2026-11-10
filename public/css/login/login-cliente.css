@@ -13,7 +13,7 @@
 .cliente-info { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .cliente-link { width: 100%; display: inline-block; margin-top: 6px; padding: 7px 2px; border: 0; background: transparent; color: var(--am-marca-texto, var(--primary)); font: inherit; font-size: 13px; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; }
 .cliente-link:hover { text-decoration: underline; }
-.step[data-step="1"] > .cliente-link { min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 0; padding: 13px 18px; border: 1px solid #b8c8dd; border-radius: 12px; background: #fff; font-size: 14px; font-weight: 700; }
+.step[data-step="1"] > .cliente-link { min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 12px; padding: 13px 18px; border: 1px solid #b8c8dd; border-radius: 12px; background: #fff; font-size: 14px; font-weight: 700; }
 .step[data-step="1"] > .cliente-link:hover { border-color: var(--primary); background: var(--primary-weak); text-decoration: none; }
 .cliente-termos { margin: 32px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
 .cliente-termos::before { content: "\1F6E1"; margin-right: 6px; color: #71819a; }

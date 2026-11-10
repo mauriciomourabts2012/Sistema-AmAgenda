@@ -390,10 +390,13 @@ falsoVerificar($r['codigo'] === 'SMS_OTP_CONCORRENCIA', 'lock wait timeout (1205
 // Fase 3: regra do primeiro acesso x recuperação no cliente_login.php.
 $cl = (string)file_get_contents($raiz . '/backend/_auth/cliente_login.php');
 falsoVerificar(str_contains($cl, '$recuperacaoFicticia = !clienteLoginClienteAtivo($clienteOtp) || $hashClienteOtp === \'\';'), 'recuperação de conta inexistente/inativa/sem senha vira desafio fictício');
-falsoVerificar(str_contains($cl, "'enviar' => !\$recuperacaoFicticia,"), 'recuperação fictícia nunca envia SMS');
+// C3: o handler entrega a regra à função de parâmetros (backend/_regras/cliente_login_email.php),
+// que mantém enviar = !ficticio_sem_envio.
+$rg = (string)file_get_contents($raiz . '/backend/_regras/cliente_login_email.php');
+falsoVerificar(str_contains($cl, "'ficticio_sem_envio' => \$recuperacaoFicticia,") && str_contains($rg, "\$enviar = !\$c['ficticio_sem_envio'];"), 'recuperação fictícia nunca envia SMS');
 falsoVerificar(!str_contains($cl, 'CLIENT_PASSWORD_RECOVERY_UNAVAILABLE'), 'recuperação não devolve erro que revele a conta');
-falsoVerificar(str_contains($cl, "\$acao !== 'iniciar_recuperacao' && is_array(\$clienteOtp)"), 'recuperação não devolve CLIENT_NOT_AVAILABLE');
-falsoVerificar(str_contains($cl, "'principal_tipo' => \$clienteOtpAtivo ? 'cliente' : 'ficticio',"), 'sem cadastro: principal fictício (primeiro acesso com SMS real)');
+falsoVerificar(str_contains($cl, "\$acaoBase !== 'iniciar_recuperacao' && is_array(\$clienteOtp)"), 'recuperação não devolve CLIENT_NOT_AVAILABLE');
+falsoVerificar(str_contains($rg, "'principal_tipo' => \$c['cliente_ativo'] ? 'cliente' : 'ficticio',"), 'sem cadastro: principal fictício (primeiro acesso com SMS real)');
 falsoVerificar(preg_match('/principal_tipo.*?ficticio.*?acesso_cliente/s', (string)file_get_contents($raiz . '/backend/_servicos/sms_otp.php')) === 1, 'serviço distingue decoy (recuperação) de primeiro acesso (acesso_cliente)');
 
 // Auditoria 1.14.5: bloqueios indevidos e prazos reais.
@@ -467,7 +470,7 @@ falsoVerificar(str_contains($cl, "'code' => 'CLIENT_OTP_HOURLY_LIMIT'") && str_c
 falsoVerificar(str_contains($cl, "in_array(\$codigoOtp, ['SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA'], true)"), 'mensagem de "segundos" só para o intervalo de 30 s/concorrência');
 falsoVerificar(!str_contains($cl, "'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE'"), 'limite por hora não é mais mascarado como espera de segundos');
 falsoVerificar(!preg_match("/'motivo'\s*=>/", $cl), 'motivo interno (telefone/IP/empresa) não é exposto ao cliente');
-falsoVerificar(str_contains($cl, "\$dadosRecusa['codigo_pendente'] = true;") && str_contains($cl, 'clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp)'), 'recusa reaproveita o código ainda válido da mesma sessão, empresa, telefone e finalidade');
+falsoVerificar(str_contains($cl, "\$dadosRecusa['codigo_pendente'] = true;") && str_contains($cl, 'clienteLoginDesafioSessaoAtivo($desafioPendente, $idEmpresa, $telefoneE164, $finalidadeOtp, $emailInformado)'), 'recusa reaproveita o código ainda válido da mesma sessão, empresa, telefone e finalidade');
 falsoVerificar(str_contains($cl, "if (!clienteLoginDesafioSessaoAtivo(\$desafioSessao, \$idEmpresa, \$telefoneE164)) {"), 'verificar_telefone preserva o desafio do mesmo telefone e descarta os demais');
 falsoVerificar(str_contains($cl, "'CLIENT_OTP_SEND_ACCEPTED'") && str_contains($cl, "'CLIENT_OTP_SEND_UNCERTAIN'") && str_contains($cl, "'CLIENT_OTP_SEND_FAILED'"), 'contrato cliente distingue aceite, incerteza e falha definitiva');
 falsoVerificar(str_contains($cl, "'request_state' => 'generic'") && str_contains($cl, "'request_state' => 'accepted'"), 'recuperação genérica não é confundida com aceite confirmado');
@@ -477,7 +480,8 @@ $lc = (string)file_get_contents($raiz . '/public/views/login-cliente.php');
 falsoVerificar(str_contains($lc, 'startPhoneRetry(error.retryAfter)') && str_contains($lc, 'verificacaoEmAndamento'), 'etapa do telefone respeita retry_after e bloqueia cliques simultâneos');
 falsoVerificar(str_contains($lc, 'abrirCodigoPendente("enviar_codigo", error)'), 'recusa com código pendente leva à etapa do código');
 falsoVerificar(str_contains($lc, '"NETWORK_ERROR"'), 'falha de comunicação tem mensagem própria, sem texto técnico');
-falsoVerificar(substr_count($lc, 'reenvioEmAndamento = true;') === 1 && str_contains($lc, 'Date.now() < resendAvailableAt'), 'reenvio continua protegido contra cliques duplicados');
+// C3: a troca de canal e o envio por e-mail usam a mesma trava do reenvio (3 pontos, todos com guarda).
+falsoVerificar(substr_count($lc, 'reenvioEmAndamento = true;') === 3 && substr_count($lc, 'if (reenvioEmAndamento ||') === 2 && str_contains($lc, 'Date.now() < resendAvailableAt'), 'reenvio continua protegido contra cliques duplicados');
 falsoVerificar(str_contains($lc, 'Código solicitado com sucesso. Confira suas mensagens SMS.'), 'frontend informa aceite sem afirmar entrega');
 falsoVerificar(str_contains($lc, 'Você já solicitou um código. Utilize o código anterior ou aguarde para solicitar outro.'), 'frontend distingue desafio existente');
 falsoVerificar(str_contains($lc, 'Não foi possível confirmar o envio do código. Aguarde antes de tentar novamente.'), 'frontend distingue resultado incerto');

@@ -154,12 +154,18 @@ function smsOtpCombinacaoValida(array $p): bool
     };
 }
 
-function smsOtpChavePrincipal(array $carga, array $p, string $telefoneE164): string
+/**
+ * Chave do slot ativo. Cliente/usuário: a identidade é o próprio principal (independe do canal).
+ * Fictício (primeiro acesso): o telefone, quando há; sem telefone (conta só com e-mail), o e-mail.
+ */
+function smsOtpChavePrincipal(array $carga, array $p, string $telefoneE164, ?string $email = null): string
 {
     $identidade = match ((string)$p['principal_tipo']) {
         'cliente' => 'c' . (int)$p['id_cliente'],
         'usuario' => 'u' . (int)$p['id_usuario'],
-        default => 'f' . smsOtpHmac($carga, 'telefone', $telefoneE164),
+        default => $telefoneE164 === '' && $email !== null && $email !== ''
+            ? 'e' . smsOtpHmac($carga, 'email', $email)
+            : 'f' . smsOtpHmac($carga, 'telefone', $telefoneE164),
     };
 
     return smsOtpHmac($carga, 'principal', implode('|', [
@@ -207,10 +213,16 @@ function smsOtpEmailPermitido(mysqli $conexao, array $p, string $email): bool
 {
     $tipo = (string)$p['principal_tipo'];
     if ($tipo === 'cliente') {
+        // 'verificar_contato' só é definido pelo perfil autenticado (backend/cliente/contatos_cliente.php):
+        // o cliente logado confirma a posse do e-mail JÁ cadastrado nele, ainda não validado. O login
+        // nunca define essa opção, então só e-mail validado recebe código de acesso/recuperação.
+        $exigirValidado = ($p['verificar_contato'] ?? false) !== true;
+
         return smsConsultar(
             $conexao,
             'SELECT 1 FROM cliente
-              WHERE id_cliente = ? AND id_empresa = ? AND LOWER(email) = ? AND email_verificado_em IS NOT NULL LIMIT 1',
+              WHERE id_cliente = ? AND id_empresa = ? AND LOWER(email) = ?'
+              . ($exigirValidado ? ' AND email_verificado_em IS NOT NULL' : '') . ' LIMIT 1',
             'iis',
             (int)$p['id_cliente'],
             (int)$p['id_empresa'],
@@ -264,8 +276,11 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
     if ($carga['ok'] !== true) {
         return smsOtpResultado(false, 'SMS_CONFIG_INVALIDA', 'Serviço de SMS temporariamente indisponível.');
     }
-    $telefone = smsOtpNormalizarTelefone((string)($p['telefone'] ?? ''));
-    if ($telefone === null) {
+    // Telefone: obrigatório no canal SMS. No canal e-mail é opcional (conta só com e-mail), mas,
+    // quando informado, precisa ser válido.
+    $telefoneBruto = trim((string)($p['telefone'] ?? ''));
+    $telefone = smsOtpNormalizarTelefone($telefoneBruto);
+    if ($telefone === null && ((string)($p['canal'] ?? 'sms') !== 'email' || $telefoneBruto !== '')) {
         return smsOtpResultado(false, 'TELEFONE_INVALIDO', 'Telefone inválido.');
     }
     if (!smsOtpCombinacaoValida($p)) {
@@ -306,8 +321,8 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
             $enviar = false;
         }
 
-        $chave = smsOtpChavePrincipal($carga, $p, $telefone);
-        $telefoneHash = smsOtpHmac($carga, 'telefone', $telefone);
+        $chave = smsOtpChavePrincipal($carga, $p, (string)$telefone, $email);
+        $telefoneHash = $telefone !== null ? smsOtpHmac($carga, 'telefone', $telefone) : null;
         $ipHash = smsOtpHmac($carga, 'ip', (string)($p['ip'] ?? ''));
         $sessaoHash = smsOtpHmac($carga, 'sessao', smsOtpVinculoSessao());
         $empresa = (int)($p['id_empresa'] ?? 0) > 0 ? (int)$p['id_empresa'] : null;
@@ -318,10 +333,11 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
         // telefone nem o teto de primeiros acessos da empresa; continuam contando no limite por IP,
         // que segura repetições contra o provedor. Recusas (30 s/limite) nunca criam desafio.
         $destinoHash = $email !== null ? smsOtpHmac($carga, 'email', $email) : null;
-        $limites = [
-            ['telefone', 'telefone_hash = UNHEX(?) AND status <> \'erro_envio\'', 's', $telefoneHash, SMS_OTP_LIMITE_TELEFONE_HORA],
-            ['ip', 'ip_hash = UNHEX(?)', 's', $ipHash, SMS_OTP_LIMITE_IP_HORA],
-        ];
+        $limites = [];
+        if ($telefoneHash !== null) {
+            $limites[] = ['telefone', 'telefone_hash = UNHEX(?) AND status <> \'erro_envio\'', 's', $telefoneHash, SMS_OTP_LIMITE_TELEFONE_HORA];
+        }
+        $limites[] = ['ip', 'ip_hash = UNHEX(?)', 's', $ipHash, SMS_OTP_LIMITE_IP_HORA];
         if ($destinoHash !== null) {
             $limites[] = ['email', 'destino_hash = UNHEX(?) AND status <> \'erro_envio\'', 's', $destinoHash, EMAIL_OTP_LIMITE_DESTINO_HORA];
         }
@@ -514,13 +530,15 @@ function smsOtpValidar(mysqli $conexao, array $p): array
         return smsOtpResultado(false, 'SMS_CONFIG_INVALIDA', 'Serviço de SMS temporariamente indisponível.');
     }
     $telefone = smsOtpNormalizarTelefone((string)($p['telefone'] ?? ''));
+    // Conta só com e-mail: sem telefone, a identidade do desafio fictício é o e-mail.
+    $emailIdentidade = emailOtpNormalizar((string)($p['email'] ?? ''));
     $codigo = preg_replace('/\D+/', '', (string)($p['codigo'] ?? '')) ?? '';
     $idDesafio = (int)($p['id_otp_desafio'] ?? 0);
-    if ($telefone === null || strlen($codigo) !== 6 || $idDesafio <= 0 || !smsOtpCombinacaoValida($p)) {
+    if (($telefone === null && $emailIdentidade === null) || strlen($codigo) !== 6 || $idDesafio <= 0 || !smsOtpCombinacaoValida($p)) {
         return $generico('SMS_OTP_CODIGO_INVALIDO');
     }
 
-    $chave = smsOtpChavePrincipal($carga, $p, $telefone);
+    $chave = smsOtpChavePrincipal($carga, $p, (string)$telefone, $emailIdentidade);
     $sessaoHash = smsOtpHmac($carga, 'sessao', smsOtpVinculoSessao());
 
     try {

@@ -27,15 +27,23 @@ function exigirSessaoCliente(): array
         ? (int)$idClienteRaw
         : null;
     $telefone = trim((string)($auth['telefone'] ?? ''));
+    $email = mb_strtolower(trim((string)($auth['email'] ?? '')), 'UTF-8');
     $tipo = (string)($auth['tipo_usuario'] ?? $auth['tipo'] ?? '');
+
+    // C3.1: a sessão vale quando ao menos UM contato foi comprovado neste login (celular por SMS/senha
+    // ou e-mail por código/senha). Contas só com e-mail não têm telefone na sessão.
+    $telefoneComprovado = ($auth['telefone_verificado'] ?? false) === true
+        && preg_match('/^\+55\d{11}$/', $telefone) === 1;
+    $emailComprovado = ($auth['email_verificado'] ?? false) === true
+        && mb_strlen($email, 'UTF-8') <= 160
+        && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 
     if (
         $idEmpresa <= 0
         || $idEmpresa !== $empresaSessao
         || $tipo !== 'cliente'
-        || ($auth['telefone_verificado'] ?? false) !== true
         || ($auth['status'] ?? '') !== 'ativo'
-        || preg_match('/^\+55\d{11}$/', $telefone) !== 1
+        || (!$telefoneComprovado && !$emailComprovado)
     ) {
         unset($_SESSION['cliente_auth']);
         out([
@@ -57,10 +65,21 @@ function exigirSessaoCliente(): array
     }
     sessaoCredencialExigirCliente($conexaoSessaoCliente, $idEmpresa, $idCliente);
 
+    // Identificador do login (telefone ou "email:<endereço>"): usado na recuperação de senha e no
+    // limite de tentativas. Sessões anteriores à C3.1 só têm o telefone.
+    $identificador = trim((string)($auth['identificador'] ?? ''));
+    if ($identificador === '') {
+        $identificador = $telefoneComprovado ? $telefone : 'email:' . $email;
+    }
+
     return [
         'id_empresa' => $idEmpresa,
         'id_cliente' => $idCliente,
-        'telefone' => $telefone,
+        'telefone' => $telefoneComprovado ? $telefone : '',
+        'email' => $emailComprovado ? $email : '',
+        'telefone_comprovado' => $telefoneComprovado,
+        'email_comprovado' => $emailComprovado,
+        'identificador' => $identificador,
     ];
 }
 
@@ -78,6 +97,10 @@ function buscarClienteDaSessao(mysqli $conexao, array $sessao): ?array
             throw new RuntimeException('Não foi possível preparar a consulta do cliente.');
         }
         $stmt->bind_param('ii', $idCliente, $idEmpresa);
+    } elseif ($telefone === '') {
+        // Sessão só com e-mail e ainda sem cadastro: nunca associa a um cliente existente pelo
+        // e-mail (o cadastro novo nasce em salvar_dados_cadastrais.php; e-mail já usado é recusado).
+        return null;
     } else {
         $digitos = preg_replace('/\D+/', '', $telefone) ?? '';
         $semPais = str_starts_with($digitos, '55') ? substr($digitos, 2) : $digitos;

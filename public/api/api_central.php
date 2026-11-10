@@ -203,6 +203,10 @@ $routes = [
     'cliente/perfil/salvar' => [
         'POST' => __DIR__ . '/../../backend/cliente/salvar_dados_cadastrais.php',
     ],
+    // C3.1: validar o segundo contato (celular/e-mail) e adicionar celular com código confirmado.
+    'cliente/perfil/contatos' => [
+        'POST' => __DIR__ . '/../../backend/cliente/contatos_cliente.php',
+    ],
     'cliente/agendamentos/listar' => [
         'GET' => __DIR__ . '/../../backend/cliente/listar_agendamentos.php',
     ],

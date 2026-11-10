@@ -42,9 +42,10 @@ try {
     $recuperacaoAutorizada = is_array($recuperacao)
         && (int)($recuperacao['id_empresa'] ?? 0) === $idEmpresa
         && (int)($recuperacao['id_cliente'] ?? 0) === $idCliente
+        // C3.1: a autorização vale para o mesmo identificador de login (celular ou "email:<endereço>").
         && hash_equals(
-            (string)($sessao['telefone'] ?? ''),
-            (string)($recuperacao['telefone'] ?? '')
+            (string)($sessao['identificador'] ?? ''),
+            (string)($recuperacao['identificador'] ?? $recuperacao['telefone'] ?? '')
         )
         && (int)($recuperacao['expira_em'] ?? 0) > time();
 

@@ -68,6 +68,21 @@
       </header>
 
       <main>
+        <!-- NOTIFICAÇÃO: Cadastro incompleto -->
+        <div id="notificacaoCadastroIncompleto" class="notificacao-cadastro" role="alert" aria-live="polite" hidden>
+          <div class="notificacao-cadastro-conteudo">
+            <i class="fa-solid fa-circle-exclamation notificacao-cadastro-icone" aria-hidden="true"></i>
+            <div class="notificacao-cadastro-texto">
+              <strong>Complete seu cadastro</strong>
+              <span>Algumas informações do seu perfil ainda estão pendentes. Complete seu cadastro para aproveitar todos os recursos disponíveis.</span>
+            </div>
+            <button class="botao-geral destaque notificacao-cadastro-btn" type="button" data-abrir-modal="modalDadosCadastraisCliente">
+              <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+              Completar cadastro
+            </button>
+          </div>
+        </div>
+
         <!-- LISTA DE AGENDAMENTOS DO CLIENTE -->
         <section class="layout-controle cliente-conteudo-global cliente-painel" aria-labelledby="tituloListaAgendamentos">
           <div class="cliente-painel-topo">
@@ -262,7 +277,7 @@
           <div class="modal-corpo cadastro-modal-corpo">
             <p id="cadastroAvisoObrigatorio" class="cadastro-aviso" role="alert" hidden>
               <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
-              Somente Nome e WhatsApp/Celular são obrigatórios. Preencha para continuar.
+              Somente Nome e um contato (celular ou e-mail) são obrigatórios. Preencha para continuar.
             </p>
 
             <nav class="tabs cadastro-modal-tabs" aria-label="Seções dos dados cadastrais">
@@ -277,7 +292,7 @@
             <div class="tabs-content">
               <!-- INFORMAÇÕES PESSOAIS -->
               <section class="tab-pane active" id="tab-perfil" role="tabpanel" aria-labelledby="tab-perfil-btn">
-                <p class="card-sub">Somente Nome e WhatsApp/Celular são obrigatórios.</p>
+                <p class="card-sub">Somente Nome e um contato (celular ou e-mail) são obrigatórios.</p>
                 <div class="modal-grid">
                   <div class="modal-campo">
                     <input id="cli_nome" name="nome" type="text" maxlength="140" autocomplete="name" placeholder=" " required>
@@ -286,15 +301,49 @@
                   </div>
 
                   <div class="modal-campo">
-                    <input id="cli_whats" name="whats" type="tel" maxlength="20" autocomplete="tel" placeholder=" " required readonly aria-readonly="true">
-                    <label for="cli_whats">WhatsApp/Celular <span class="req">*</span></label>
+                    <input id="cli_whats" name="whats" type="tel" maxlength="20" autocomplete="tel" placeholder=" " readonly aria-readonly="true">
+                    <label for="cli_whats">WhatsApp/Celular</label>
                     <small class="msg-erro" data-erro-for="cli_whats"></small>
                   </div>
 
                   <div class="modal-campo">
                     <input id="cli_email" name="email" type="email" maxlength="160" autocomplete="email" placeholder=" ">
-                    <label for="cli_email">E-mail (opcional)</label>
+                    <label for="cli_email">E-mail</label>
                     <small class="msg-erro" data-erro-for="cli_email"></small>
+                  </div>
+
+                  <!-- VALIDAÇÃO DOS CONTATOS (celular e e-mail são credenciais independentes) -->
+                  <div class="contatos-validacao" id="contatosValidacao">
+                    <p class="card-sub">Validação dos contatos</p>
+
+                    <div class="contato-linha">
+                      <span id="contatoTelefoneEstado" class="contato-estado"></span>
+                      <button class="botao-geral" id="btnValidarTelefone" type="button" hidden>Validar celular</button>
+                    </div>
+
+                    <div class="contato-linha">
+                      <span id="contatoEmailEstado" class="contato-estado"></span>
+                      <button class="botao-geral" id="btnValidarEmailPerfil" type="button" hidden>Validar e-mail</button>
+                    </div>
+
+                    <div class="contato-adicionar" id="contatoAdicionarTelefone" hidden>
+                      <div class="modal-campo">
+                        <input id="cli_whats_novo" type="tel" maxlength="20" autocomplete="tel" inputmode="numeric" placeholder=" ">
+                        <label for="cli_whats_novo">Adicionar celular</label>
+                        <small class="msg-erro" data-erro-for="cli_whats_novo"></small>
+                      </div>
+                      <button class="botao-geral" id="btnAdicionarTelefone" type="button">Enviar código por SMS</button>
+                    </div>
+
+                    <div class="contato-codigo" id="contatoCodigoBox" hidden>
+                      <div class="modal-campo">
+                        <input id="contatoCodigo" type="text" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder=" ">
+                        <label for="contatoCodigo" id="contatoCodigoRotulo">Código de confirmação</label>
+                      </div>
+                      <button class="botao-geral destaque" id="btnConfirmarContato" type="button" disabled>Confirmar código</button>
+                    </div>
+
+                    <p class="cadastro-mensagem" id="contatoMensagem" role="alert" aria-live="polite"></p>
                   </div>
 
                   <div class="modal-campo">

@@ -159,12 +159,14 @@ function documentosLegaisContextoAutenticado(mysqli $conexao, bool $exigir = tru
     $empresaSessao = (int)($_SESSION['empresa_id'] ?? 0);
     if ($idCliente > 0 && $idEmpresa > 0 && $idEmpresa === $empresaSessao
         && (string)($clienteAuth['tipo_usuario'] ?? $clienteAuth['tipo'] ?? '') === 'cliente'
-        && ($clienteAuth['telefone_verificado'] ?? false) === true) {
+        // C3.1: o cliente pode estar autenticado por celular OU e-mail (conta só com e-mail).
+        && (($clienteAuth['telefone_verificado'] ?? false) === true
+            || ($clienteAuth['email_verificado'] ?? false) === true)) {
         // A6.1: senha alterada (ou sessão sem marcador) revoga a sessão do cliente.
         sessaoCredencialExigirCliente($conexao, $idEmpresa, $idCliente);
 
         $stmt = $conexao->prepare(
-            "SELECT c.nome_completo,c.whatsapp_celular,e.nome
+            "SELECT c.nome_completo,COALESCE(NULLIF(TRIM(c.whatsapp_celular),''),c.email) AS identificador_contato,e.nome
                FROM cliente c
                INNER JOIN empresa e ON e.id_empresa=c.id_empresa AND e.status='ativo'
               WHERE c.id_cliente=? AND c.id_empresa=? AND c.status='ativo'

@@ -33,15 +33,20 @@ if ($clienteAuth) {
   $clienteTipo = (string)($clienteAuth['tipo_usuario'] ?? $clienteAuth['tipo'] ?? '');
   $clienteStatus = (string)($clienteAuth['status'] ?? '');
   $modoVisualizacao = ($clienteAuth['modo_visualizacao'] ?? false) === true;
-  $telefoneVerificado = ($clienteAuth['telefone_verificado'] ?? false) === true;
+  $clienteEmail = mb_strtolower(trim((string)($clienteAuth['email'] ?? '')), 'UTF-8');
+  // C3.1: ao menos um contato comprovado neste login (celular ou e-mail) autentica a sessão.
+  $telefoneVerificado = ($clienteAuth['telefone_verificado'] ?? false) === true
+    && preg_match('/^\+55\d{11}$/', $clienteTelefone) === 1;
+  $emailVerificado = ($clienteAuth['email_verificado'] ?? false) === true
+    && mb_strlen($clienteEmail, 'UTF-8') <= 160
+    && filter_var($clienteEmail, FILTER_VALIDATE_EMAIL) !== false;
   $cadastroCompleto = ($clienteAuth['cadastro_completo'] ?? false) === true;
   $nomeCompleto = (string)($clienteAuth['nome_completo'] ?? '');
 
   if (
     $clienteEmpresaId > 0
     && $clienteEmpresaId === $empresaSessaoId
-    && preg_match('/^\+55\d{11}$/', $clienteTelefone) === 1
-    && $telefoneVerificado
+    && ($telefoneVerificado || $emailVerificado)
     && (!$cadastroCompleto || $clienteId !== null)
     && $clienteTipo === 'cliente'
     && $clienteStatus === 'ativo'
@@ -97,8 +102,10 @@ if ($clienteAuth) {
           'empresa_id' => $clienteEmpresaId,
           'empresa_slug' => $clienteEmpresaSlug,
           'agenda_online_path' => $clienteEmpresaSlug !== '' ? '/agendar/' . rawurlencode($clienteEmpresaSlug) : '',
-          'telefone' => $clienteTelefone,
-          'telefone_verificado' => true,
+          'telefone' => $telefoneVerificado ? $clienteTelefone : '',
+          'telefone_verificado' => $telefoneVerificado,
+          'email' => $emailVerificado ? $clienteEmail : '',
+          'email_verificado' => $emailVerificado,
           'cadastro_completo' => $cadastroCompleto,
           'nome_completo' => $nomeCompleto,
           'perfil' => 'cliente',

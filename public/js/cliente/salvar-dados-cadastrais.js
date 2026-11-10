@@ -23,7 +23,7 @@
   // Campos cadastrais opcionais: se qualquer um estiver vazio, o modal
   // abre automaticamente como lembrete (sem bloquear o uso do sistema).
   const CAMPOS_OPCIONAIS = [
-    "email", "cpf", "data_nascimento", "cep",
+    "email", "whatsapp_celular", "cpf", "data_nascimento", "cep",
     "logradouro", "numero", "bairro", "cidade", "uf", "complemento"
   ];
 
@@ -107,6 +107,174 @@
     });
     if (campo("cli_cpf")) campo("cli_cpf").value = formatarCpf(campo("cli_cpf").value);
     if (campo("end_cep")) campo("end_cep").value = formatarCep(campo("end_cep").value);
+    renderizarContatos(dados);
+  }
+
+  /* ============================
+     CONTATOS (celular e e-mail): validação do segundo contato
+     Cada contato é uma credencial independente e só vale depois de validado por código
+     (SMS ou e-mail). Não é preciso validar os dois ao mesmo tempo.
+     ============================ */
+  let dadosContatos = {};
+  let contatoPendente = null; // { tipo: "verificar"|"adicionar_telefone", contato: "telefone"|"email" }
+
+  const el = {
+    estadoTelefone: document.getElementById("contatoTelefoneEstado"),
+    estadoEmail: document.getElementById("contatoEmailEstado"),
+    btnValidarTelefone: document.getElementById("btnValidarTelefone"),
+    btnValidarEmail: document.getElementById("btnValidarEmailPerfil"),
+    boxAdicionar: document.getElementById("contatoAdicionarTelefone"),
+    inNovoTelefone: document.getElementById("cli_whats_novo"),
+    btnAdicionar: document.getElementById("btnAdicionarTelefone"),
+    boxCodigo: document.getElementById("contatoCodigoBox"),
+    inCodigo: document.getElementById("contatoCodigo"),
+    rotuloCodigo: document.getElementById("contatoCodigoRotulo"),
+    btnConfirmar: document.getElementById("btnConfirmarContato"),
+    mensagem: document.getElementById("contatoMensagem")
+  };
+
+  function mensagemContato(texto, tipo = "") {
+    if (!el.mensagem) return;
+    el.mensagem.textContent = texto || "";
+    el.mensagem.className = `cadastro-mensagem${tipo ? ` ${tipo}` : ""}`;
+  }
+
+  function definirEstado(elemento, rotulo, preenchido, validado) {
+    if (!elemento) return;
+    elemento.textContent = !preenchido
+      ? `${rotulo}: não informado`
+      : (validado ? `${rotulo}: validado` : `${rotulo}: ainda não validado`);
+    elemento.classList.toggle("validado", Boolean(preenchido && validado));
+    elemento.classList.toggle("pendente", Boolean(preenchido && !validado));
+  }
+
+  function renderizarContatos(dados) {
+    dadosContatos = dados || {};
+    const cadastrado = dados?.cadastrado === true;
+    const temTelefone = String(dados?.whatsapp_celular ?? "").trim() !== "";
+    const temEmail = String(dados?.email ?? "").trim() !== "";
+
+    definirEstado(el.estadoTelefone, "Celular", temTelefone, dados?.telefone_validado === true);
+    definirEstado(el.estadoEmail, "E-mail", temEmail, dados?.email_validado === true);
+
+    // Só dá para validar um contato já salvo na conta (o cadastro precisa existir).
+    if (el.btnValidarTelefone) el.btnValidarTelefone.hidden = !(cadastrado && temTelefone && dados?.telefone_validado !== true);
+    if (el.btnValidarEmail) el.btnValidarEmail.hidden = !(cadastrado && temEmail && dados?.email_validado !== true);
+    // Conta sem celular pode adicionar um; o número só é gravado depois de confirmado por SMS.
+    if (el.boxAdicionar) el.boxAdicionar.hidden = !(cadastrado && !temTelefone);
+
+    // O último contato validado não pode ser alterado/removido (o servidor também recusa).
+    const emailBloqueado = (!cadastrado && dados?.email_validado === true) || dados?.email_editavel === false;
+    const campoEmail = campo("cli_email");
+    if (campoEmail) {
+      campoEmail.readOnly = emailBloqueado;
+      campoEmail.setAttribute("aria-readonly", String(emailBloqueado));
+      campoEmail.title = emailBloqueado ? "Valide outro contato para poder alterar este e-mail." : "";
+    }
+
+    if (!cadastrado) mensagemContato("Salve seus dados para poder validar os contatos.");
+  }
+
+  function mostrarCodigo(contato) {
+    if (el.boxCodigo) el.boxCodigo.hidden = false;
+    if (el.rotuloCodigo) {
+      el.rotuloCodigo.textContent = contato === "email"
+        ? "Código enviado ao seu e-mail"
+        : "Código enviado por SMS";
+    }
+    if (el.inCodigo) { el.inCodigo.value = ""; el.inCodigo.focus(); }
+    if (el.btnConfirmar) el.btnConfirmar.disabled = true;
+  }
+
+  async function requisitarContato(dados) {
+    const corpo = new FormData();
+    Object.entries(dados).forEach(([chave, valor]) => corpo.append(chave, String(valor)));
+    return requisitar("cliente/perfil/contatos", {
+      method: "POST",
+      headers: { Accept: "application/json", "X-CSRF-Token": String(window.__AUTH__?.csrf_token || "") },
+      body: corpo
+    });
+  }
+
+  async function solicitarContato(dados, pendente, botao) {
+    if (botao) botao.disabled = true;
+    mensagemContato("Enviando código...");
+    try {
+      const json = await requisitarContato(dados);
+      contatoPendente = pendente;
+      mostrarCodigo(pendente.contato);
+      mensagemContato(json.user_msg || "Código enviado.", "sucesso");
+    } catch (erro) {
+      mensagemContato(erro.message || "Não foi possível enviar o código.", "erro");
+      if (erro.campos && erro.campos.cli_whats_novo && campo("cli_whats_novo")) {
+        campo("cli_whats_novo").setAttribute("aria-invalid", "true");
+      }
+    } finally {
+      if (botao) botao.disabled = false;
+    }
+  }
+
+  if (el.btnValidarTelefone) {
+    el.btnValidarTelefone.addEventListener("click", () => solicitarContato(
+      { acao: "solicitar_verificacao", contato: "telefone" },
+      { tipo: "verificar", contato: "telefone" },
+      el.btnValidarTelefone
+    ));
+  }
+
+  if (el.btnValidarEmail) {
+    el.btnValidarEmail.addEventListener("click", () => {
+      // O código vai para o e-mail SALVO na conta: alterações ainda não salvas não valem.
+      const digitado = String(campo("cli_email")?.value || "").trim().toLowerCase();
+      if (digitado !== String(dadosContatos.email || "").trim().toLowerCase()) {
+        mensagemContato("Salve o e-mail antes de validá-lo.", "erro");
+        return;
+      }
+      solicitarContato(
+        { acao: "solicitar_verificacao", contato: "email" },
+        { tipo: "verificar", contato: "email" },
+        el.btnValidarEmail
+      );
+    });
+  }
+
+  if (el.btnAdicionar) {
+    el.btnAdicionar.addEventListener("click", () => {
+      const digitos = somenteDigitos(el.inNovoTelefone?.value);
+      if (digitos.length !== 11) {
+        mensagemContato("Informe o celular com DDD (11 dígitos).", "erro");
+        return;
+      }
+      solicitarContato(
+        { acao: "solicitar_adicao_telefone", telefone: digitos },
+        { tipo: "adicionar_telefone", contato: "telefone" },
+        el.btnAdicionar
+      );
+    });
+  }
+
+  if (el.inCodigo) {
+    el.inCodigo.addEventListener("input", () => {
+      el.inCodigo.value = somenteDigitos(el.inCodigo.value).slice(0, 6);
+      if (el.btnConfirmar) el.btnConfirmar.disabled = el.inCodigo.value.length !== 6;
+    });
+  }
+
+  if (el.btnConfirmar) {
+    el.btnConfirmar.addEventListener("click", async () => {
+      if (!contatoPendente) return;
+      el.btnConfirmar.disabled = true;
+      mensagemContato("Validando...");
+      try {
+        const json = await requisitarContato({ acao: "validar", codigo: somenteDigitos(el.inCodigo?.value) });
+        mensagemContato(json.user_msg || "Contato validado.", "sucesso");
+        contatoPendente = null;
+        window.setTimeout(() => window.location.reload(), 650);
+      } catch (erro) {
+        mensagemContato(erro.message || "Código inválido ou expirado.", "erro");
+        el.btnConfirmar.disabled = (el.inCodigo?.value || "").length !== 6;
+      }
+    });
   }
 
   function limparErros() {

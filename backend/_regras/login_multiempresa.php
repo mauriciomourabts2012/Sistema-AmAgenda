@@ -481,7 +481,14 @@ function sessaoInatividadeIdentidade(string $escopo): string
 {
     if ($escopo === 'cliente') {
         $cliente = is_array($_SESSION['cliente_auth'] ?? null) ? $_SESSION['cliente_auth'] : [];
-        return 'cliente:' . (int)($cliente['id_empresa'] ?? 0) . ':' . (string)($cliente['telefone'] ?? '');
+        // C3.1: identificador do login (telefone ou "email:<endereço>"), estável durante a sessão;
+        // sessões antigas só têm o telefone.
+        $identificadorCliente = trim((string)($cliente['identificador'] ?? ''));
+        if ($identificadorCliente === '') {
+            $identificadorCliente = (string)($cliente['telefone'] ?? '');
+        }
+
+        return 'cliente:' . (int)($cliente['id_empresa'] ?? 0) . ':' . $identificadorCliente;
     }
     $auth = is_array($_SESSION['auth'] ?? null) ? $_SESSION['auth'] : [];
 

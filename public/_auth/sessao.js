@@ -357,7 +357,8 @@
     if (!auth || typeof auth !== "object") return "";
     const tipo = String(auth.tipo_usuario || "").toLowerCase();
     const empresa = Number(auth.empresa_id || auth.id_empresa || 0);
-    if (tipo === "cliente") return `cliente:${empresa}:${String(auth.telefone || "")}`;
+    // C3.1: conta só com e-mail não tem telefone na sessão; o e-mail comprovado identifica o login.
+    if (tipo === "cliente") return `cliente:${empresa}:${String(auth.telefone || auth.email || "")}`;
     return `${tipo}:${Number(auth.id_usuario || 0)}:${empresa}:${auth.modo_suporte === true ? 1 : 0}`;
   }
 

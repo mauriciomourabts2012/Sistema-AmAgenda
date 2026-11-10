@@ -45,8 +45,12 @@ if (
     )
 ) {
     $enviadoEmOtp = (int)($desafioOtp['enviado_em'] ?? 0);
+    $canalOtpInicial = (string)($desafioOtp['canal'] ?? 'sms') === 'email' ? 'email' : 'sms';
 
     $otpEstadoInicial = [
+        'canal' => $canalOtpInicial,
+        // E-mail que o próprio cliente informou nesta sessão (necessário para reenviar).
+        'email' => $canalOtpInicial === 'email' ? (string)($desafioOtp['email'] ?? '') : '',
         'telefone' => (string)($desafioOtp['telefone'] ?? ''),
         'acao' => (string)$desafioOtp['finalidade'] === 'recuperacao_senha'
             ? 'iniciar_recuperacao'
@@ -214,6 +218,14 @@ if (
 
               Continuar com telefone
 
+            </button>
+
+            <button
+              class="cliente-link"
+              id="btnContinuarEmail"
+              type="button"
+            >
+              Prefere usar o e-mail? Continuar com e-mail
             </button>
 
             <p class="cliente-termos">
@@ -399,7 +411,7 @@ if (
               ←
             </button>
 
-            <h3 class="cliente-titulo">
+            <h3 class="cliente-titulo" id="tituloStep3">
               Confirme seu telefone
             </h3>
 
@@ -436,9 +448,126 @@ if (
               Reenviar código
             </button>
 
+            <button
+              class="cliente-link"
+              id="btnTrocarCanal"
+              type="button"
+            >
+              Não recebeu o SMS? Receber código por e-mail
+            </button>
+
             <p
               class="mensagem"
               id="msgStep3"
+              role="alert"
+              aria-live="polite"
+            ></p>
+
+          </section>
+
+          <!-- ====================================================
+               STEP 5 - CÓDIGO POR E-MAIL
+          ===================================================== -->
+
+          <section
+            class="step"
+            data-step="5"
+          >
+
+            <button
+              class="cliente-voltar"
+              id="btnVoltarStepEmail"
+              type="button"
+              aria-label="Voltar"
+            >
+              ←
+            </button>
+
+            <h3 class="cliente-titulo">
+              Receber código por e-mail
+            </h3>
+
+            <input
+              type="email"
+              id="emailCodigo"
+              class="cliente-input"
+              placeholder="Seu e-mail cadastrado"
+              inputmode="email"
+              autocomplete="email"
+              maxlength="160"
+            />
+
+            <p class="cliente-info">
+              Informe o e-mail já cadastrado e confirmado na sua conta.
+              Enviaremos o código somente se ele estiver elegível.
+            </p>
+
+            <button
+              class="botao-entrar"
+              id="btnEnviarCodigoEmail"
+              type="button"
+              disabled
+            >
+              Enviar código por e-mail
+            </button>
+
+            <p
+              class="mensagem"
+              id="msgStep5"
+              role="alert"
+              aria-live="polite"
+            ></p>
+
+          </section>
+
+          <!-- ====================================================
+               STEP 6 - IDENTIFICAÇÃO POR E-MAIL
+          ===================================================== -->
+
+          <section
+            class="step"
+            data-step="6"
+          >
+
+            <button
+              class="cliente-voltar"
+              id="btnVoltarStepEmailLogin"
+              type="button"
+              aria-label="Voltar"
+            >
+              ←
+            </button>
+
+            <h3 class="cliente-titulo">
+              Informe seu e-mail
+            </h3>
+
+            <input
+              type="email"
+              id="emailLogin"
+              class="cliente-input"
+              placeholder="Seu e-mail"
+              inputmode="email"
+              autocomplete="email"
+              maxlength="160"
+            />
+
+            <p class="cliente-info">
+              Use o e-mail para entrar ou criar sua conta. Enviaremos um código de confirmação.
+            </p>
+
+            <button
+              class="botao-entrar"
+              id="btnVerificarEmail"
+              type="button"
+              disabled
+            >
+              Verificar
+            </button>
+
+            <p
+              class="mensagem"
+              id="msgStep6"
               role="alert"
               aria-live="polite"
             ></p>
@@ -551,6 +680,41 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
   const msg4 =
     $("#msgStep4");
 
+  // Código por e-mail (C3): alternativa ao SMS no mesmo fluxo de confirmação.
+  const tituloStep3 =
+    $("#tituloStep3");
+
+  const btnTrocarCanal =
+    $("#btnTrocarCanal");
+
+  const btnVoltarStepEmail =
+    $("#btnVoltarStepEmail");
+
+  const inEmail =
+    $("#emailCodigo");
+
+  const btnEnviarCodigoEmail =
+    $("#btnEnviarCodigoEmail");
+
+  const msg5 =
+    $("#msgStep5");
+
+  // Identificação por e-mail (C3.1): entrar ou criar a conta só com e-mail.
+  const btnContinuarEmail =
+    $("#btnContinuarEmail");
+
+  const btnVoltarStepEmailLogin =
+    $("#btnVoltarStepEmailLogin");
+
+  const inEmailLogin =
+    $("#emailLogin");
+
+  const btnVerificarEmail =
+    $("#btnVerificarEmail");
+
+  const msg6 =
+    $("#msgStep6");
+
   if (
     !steps.length ||
     !btnContinuarTelefone ||
@@ -579,7 +743,58 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     "Não foi possível confirmar o envio do código. Aguarde antes de tentar novamente.";
   const MENSAGEM_SOLICITACAO_GENERICA =
     "Se o telefone estiver elegível, você receberá um código por SMS.";
+  const MENSAGEM_EMAIL_GENERICA =
+    "Se o e-mail estiver elegível, você receberá um código por e-mail.";
   let mensagemCodigoAtual = MENSAGEM_CODIGO_EXISTENTE;
+
+  // Canal do código vigente: "sms" (principal) ou "email". O e-mail é o que o próprio
+  // cliente informou; o backend só envia se for o e-mail cadastrado e confirmado da conta.
+  let canalAtual = "sms";
+  let emailAtual = "";
+
+  // Como o cliente se identificou: "telefone" (padrão) ou "email" (conta só com e-mail).
+  let identidade = "telefone";
+  let emailLogin = "";
+
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function temIdentidade() {
+    return identidade === "email"
+      ? emailLogin !== ""
+      : telefoneE164 !== "";
+  }
+
+  function acaoEfetiva() {
+    return canalAtual === "email"
+      ? `${acaoOtpAtual}_email`
+      : acaoOtpAtual;
+  }
+
+  function dadosDoCanal() {
+    return canalAtual === "email"
+      ? { email: emailAtual }
+      : {};
+  }
+
+  function atualizarCanalUi() {
+
+    if (tituloStep3) {
+      tituloStep3.textContent =
+        canalAtual === "email"
+          ? "Confirme seu e-mail"
+          : "Confirme seu telefone";
+    }
+
+    if (btnTrocarCanal) {
+      btnTrocarCanal.textContent =
+        canalAtual === "email"
+          ? "Prefere receber por SMS? Receber código por SMS"
+          : "Não recebeu o SMS? Receber código por e-mail";
+
+      // Quem se identificou só pelo e-mail não informou celular: não há SMS para oferecer.
+      btnTrocarCanal.hidden = identidade === "email";
+    }
+  }
 
   function safeOn(element, eventName, handler) {
 
@@ -658,9 +873,22 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     if (msg4) {
       msg4.textContent = "";
     }
+
+    if (msg5) {
+      msg5.textContent = "";
+    }
+
+    if (msg6) {
+      msg6.textContent = "";
+    }
   }
 
   function showStep(stepNumber) {
+
+    if (String(stepNumber) === "3") {
+      atualizarCanalUi();
+    }
+
 
     steps.forEach((step) => {
 
@@ -886,6 +1114,16 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     }
 
     acaoOtpAtual = acao;
+
+    // O código pendente pode ser de outro canal que o pedido agora (ex.: SMS ainda válido).
+    if (dados.canal === "email" || dados.canal === "sms") {
+      canalAtual = dados.canal;
+
+      if (canalAtual === "sms") {
+        emailAtual = "";
+      }
+    }
+
     mensagemCodigoAtual =
       erro.code === "CLIENT_OTP_SEND_UNCERTAIN"
         ? MENSAGEM_ENVIO_INCERTO
@@ -1080,7 +1318,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
   async function iniciarFluxoOtp(
     acao,
-    elementoMensagem
+    elementoMensagem,
+    canal = "sms",
+    email = ""
   ) {
 
     if (elementoMensagem) {
@@ -1089,13 +1329,21 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     }
 
     const json =
-      await requisitarAutenticacao(acao);
+      await requisitarAutenticacao(
+        canal === "email" ? `${acao}_email` : acao,
+        canal === "email" ? { email } : {}
+      );
 
     acaoOtpAtual = acao;
+    canalAtual = canal === "email" ? "email" : "sms";
+    emailAtual = canalAtual === "email" ? email : "";
+
     mensagemCodigoAtual =
-      json?.data?.request_state === "accepted"
-        ? MENSAGEM_ENVIO_ACEITO
-        : MENSAGEM_SOLICITACAO_GENERICA;
+      canalAtual === "email"
+        ? MENSAGEM_EMAIL_GENERICA
+        : json?.data?.request_state === "accepted"
+          ? MENSAGEM_ENVIO_ACEITO
+          : MENSAGEM_SOLICITACAO_GENERICA;
 
     const expiresIn =
       Number(
@@ -1160,10 +1408,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       showStep(
         acaoOtpAtual === "iniciar_recuperacao"
           ? 4
-          : 2
+          : (identidade === "email" ? 6 : 2)
       );
 
-      if (acaoOtpAtual !== "iniciar_recuperacao") {
+      if (acaoOtpAtual !== "iniciar_recuperacao" && identidade !== "email") {
         updatePhoneRetry();
       }
     }
@@ -1178,6 +1426,12 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
       if (inSenha) {
         inSenha.value = "";
+      }
+
+      if (identidade === "email") {
+        showStep(6);
+
+        return;
       }
 
       showStep(2);
@@ -1235,6 +1489,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       }
 
       verificacaoEmAndamento = true;
+
+      // Identificação por telefone (padrão): descarta qualquer identificação por e-mail anterior.
+      identidade = "telefone";
+      emailLogin = "";
 
       telefoneE164 =
         `+${ddiNumero}${digits}`;
@@ -1358,7 +1616,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       try {
         const json = await requisitarAutenticacao(
           "login_senha",
-          { senha }
+          identidade === "email"
+            ? { senha, email: emailLogin }
+            : { senha }
         );
 
         if (msg4) {
@@ -1386,9 +1646,13 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       setButtonEnabled(btnEsqueciSenha, false);
 
       try {
+        // Conta identificada só por e-mail recupera o acesso pelo e-mail validado; a conta
+        // identificada pelo celular continua recebendo o código por SMS.
         await iniciarFluxoOtp(
           "iniciar_recuperacao",
-          msg4
+          msg4,
+          identidade === "email" ? "email" : "sms",
+          identidade === "email" ? emailLogin : ""
         );
       } catch (error) {
         if (abrirCodigoPendente("iniciar_recuperacao", error)) {
@@ -1538,9 +1802,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
         return;
       }
 
-      if (!telefoneE164) {
+      if (!temIdentidade()) {
 
-        showStep(2);
+        showStep(identidade === "email" ? 6 : 2);
 
         return;
       }
@@ -1561,7 +1825,8 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 
         const json =
           await requisitarAutenticacao(
-            acaoOtpAtual
+            acaoEfetiva(),
+            dadosDoCanal()
           );
 
         const expiresIn =
@@ -1570,9 +1835,11 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
           ) || 300;
 
         mensagemCodigoAtual =
-          json?.data?.request_state === "accepted"
-            ? MENSAGEM_ENVIO_ACEITO
-            : MENSAGEM_SOLICITACAO_GENERICA;
+          canalAtual === "email"
+            ? MENSAGEM_EMAIL_GENERICA
+            : json?.data?.request_state === "accepted"
+              ? MENSAGEM_ENVIO_ACEITO
+              : MENSAGEM_SOLICITACAO_GENERICA;
 
         expiresAt =
           new Date(
@@ -1598,6 +1865,7 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
       } catch (error) {
 
         if (abrirCodigoPendente(acaoOtpAtual, error)) {
+          atualizarCanalUi();
           return;
         }
 
@@ -1629,7 +1897,9 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
             error.code === "CLIENT_OTP_HOURLY_LIMIT"
             && error.data?.codigo_pendente === true
           ) {
-            texto += " Use o código já enviado por SMS.";
+            texto += canalAtual === "email"
+              ? " Use o código já enviado por e-mail."
+              : " Use o código já enviado por SMS.";
           }
 
           msg3.textContent =
@@ -1645,12 +1915,330 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
     }
   );
 
+  /* ------------------------------------------------------------------
+     Identificação por e-mail (conta só com e-mail)
+  ------------------------------------------------------------------ */
+
+  safeOn(
+    btnContinuarEmail,
+    "click",
+    () => {
+
+      showStep(6);
+
+      inEmailLogin?.focus();
+    }
+  );
+
+  safeOn(
+    btnVoltarStepEmailLogin,
+    "click",
+    (event) => {
+
+      event.preventDefault();
+
+      showStep(1);
+    }
+  );
+
+  safeOn(
+    inEmailLogin,
+    "input",
+    () => {
+      setButtonEnabled(
+        btnVerificarEmail,
+        EMAIL_REGEX.test(String(inEmailLogin.value || "").trim())
+      );
+    }
+  );
+
+  safeOn(
+    btnVerificarEmail,
+    "click",
+    async () => {
+
+      const email =
+        String(inEmailLogin?.value || "").trim().toLowerCase();
+
+      if (!EMAIL_REGEX.test(email) || email.length > 160) {
+
+        if (msg6) {
+          msg6.textContent =
+            "⚠️ Informe um e-mail válido.";
+        }
+
+        return;
+      }
+
+      if (verificacaoEmAndamento) {
+        return;
+      }
+
+      verificacaoEmAndamento = true;
+
+      // Identificação por e-mail: não existe telefone nesta conta/sessão.
+      identidade = "email";
+      emailLogin = email;
+      telefoneE164 = "";
+
+      setButtonEnabled(btnVerificarEmail, false);
+
+      if (msg6) {
+        msg6.textContent = "Verificando...";
+      }
+
+      try {
+
+        const json =
+          await requisitarAutenticacao(
+            "verificar_email",
+            { email }
+          );
+
+        const proximoPasso =
+          json?.data?.proximo_passo;
+
+        if (proximoPasso === "senha") {
+          acaoOtpAtual = "enviar_codigo";
+
+          if (infoTelefoneSenha) {
+            infoTelefoneSenha.textContent =
+              `E-mail identificado: ${email}`;
+          }
+
+          if (inSenha) {
+            inSenha.value = "";
+          }
+
+          setButtonEnabled(btnEntrarSenha, false);
+
+          showStep(4);
+          inSenha?.focus();
+          return;
+        }
+
+        if (proximoPasso === "otp") {
+          await iniciarFluxoOtp(
+            "enviar_codigo",
+            msg6,
+            "email",
+            email
+          );
+          return;
+        }
+
+        throw new Error(
+          "Não foi possível determinar a forma de acesso."
+        );
+
+      } catch (error) {
+
+        if (abrirCodigoPendente("enviar_codigo", error)) {
+          atualizarCanalUi();
+          return;
+        }
+
+        if (msg6) {
+          msg6.textContent =
+            `❌ ${textoRecusa(error, "Não foi possível continuar.")}`;
+        }
+
+      } finally {
+
+        verificacaoEmAndamento = false;
+
+        setButtonEnabled(
+          btnVerificarEmail,
+          EMAIL_REGEX.test(String(inEmailLogin?.value || "").trim())
+        );
+      }
+    }
+  );
+
+  safeOn(
+    btnTrocarCanal,
+    "click",
+    async () => {
+
+      // SMS -> e-mail: pede o e-mail cadastrado; o SMS já enviado segue válido até o
+      // novo código ser aceito pelo backend.
+      if (canalAtual !== "email") {
+
+        if (inEmail) {
+          inEmail.value = emailAtual;
+        }
+
+        showStep(5);
+
+        setButtonEnabled(
+          btnEnviarCodigoEmail,
+          EMAIL_REGEX.test(String(inEmail?.value || "").trim())
+        );
+
+        inEmail?.focus();
+
+        return;
+      }
+
+      // E-mail -> SMS: novo código por SMS (principal), com as mesmas regras de reenvio.
+      if (reenvioEmAndamento || !telefoneE164) {
+        return;
+      }
+
+      reenvioEmAndamento = true;
+
+      setButtonEnabled(btnTrocarCanal, false);
+      setButtonEnabled(btnReenviar, false);
+
+      try {
+
+        await iniciarFluxoOtp(
+          acaoOtpAtual,
+          msg3,
+          "sms"
+        );
+
+      } catch (error) {
+
+        if (abrirCodigoPendente(acaoOtpAtual, error)) {
+          atualizarCanalUi();
+          return;
+        }
+
+        if (error.retryAfter > 0) {
+          startResendCountdown(error.retryAfter);
+        }
+
+        if (msg3) {
+          msg3.textContent =
+            `❌ ${textoRecusa(error, "Não foi possível enviar o código por SMS.")}`;
+        }
+
+      } finally {
+
+        reenvioEmAndamento = false;
+
+        setButtonEnabled(btnTrocarCanal, true);
+
+        updateResendCountdown();
+      }
+    }
+  );
+
+  safeOn(
+    btnVoltarStepEmail,
+    "click",
+    (event) => {
+
+      event.preventDefault();
+
+      showStep(3);
+    }
+  );
+
+  safeOn(
+    inEmail,
+    "input",
+    () => {
+      setButtonEnabled(
+        btnEnviarCodigoEmail,
+        EMAIL_REGEX.test(String(inEmail.value || "").trim())
+      );
+    }
+  );
+
+  safeOn(
+    btnEnviarCodigoEmail,
+    "click",
+    async () => {
+
+      const email =
+        String(inEmail?.value || "").trim().toLowerCase();
+
+      if (!EMAIL_REGEX.test(email) || email.length > 160) {
+
+        if (msg5) {
+          msg5.textContent =
+            "⚠️ Informe um e-mail válido.";
+        }
+
+        return;
+      }
+
+      if (reenvioEmAndamento || !telefoneE164) {
+        return;
+      }
+
+      reenvioEmAndamento = true;
+
+      setButtonEnabled(btnEnviarCodigoEmail, false);
+
+      try {
+
+        await iniciarFluxoOtp(
+          acaoOtpAtual,
+          msg5,
+          "email",
+          email
+        );
+
+      } catch (error) {
+
+        // Intervalo de 30 s: permanece nesta etapa com o prazo real (o SMS enviado segue válido
+        // e o botão voltar retorna à confirmação). Outras recusas com código pendente abrem a
+        // confirmação com esse código.
+        if (
+          error.code !== "CLIENT_OTP_RESEND_LIMIT"
+          && abrirCodigoPendente(acaoOtpAtual, error)
+        ) {
+          atualizarCanalUi();
+          return;
+        }
+
+        if (msg5) {
+          msg5.textContent =
+            `❌ ${textoRecusa(error, "Não foi possível enviar o código por e-mail.")}`;
+        }
+
+      } finally {
+
+        reenvioEmAndamento = false;
+
+        setButtonEnabled(
+          btnEnviarCodigoEmail,
+          EMAIL_REGEX.test(String(inEmail?.value || "").trim())
+        );
+
+        updateResendCountdown();
+      }
+    }
+  );
+
   if (
     otpEstadoInicial
-    && otpEstadoInicial.telefone
+    && (
+      otpEstadoInicial.telefone
+      || (otpEstadoInicial.canal === "email" && otpEstadoInicial.email)
+    )
   ) {
     telefoneE164 =
-      String(otpEstadoInicial.telefone);
+      String(otpEstadoInicial.telefone || "");
+
+    canalAtual =
+      otpEstadoInicial.canal === "email"
+        ? "email"
+        : "sms";
+
+    emailAtual =
+      canalAtual === "email"
+        ? String(otpEstadoInicial.email || "")
+        : "";
+
+    // Sem telefone no desafio, o cliente se identificou pelo e-mail.
+    if (telefoneE164 === "") {
+      identidade = "email";
+      emailLogin = emailAtual;
+    }
 
     acaoOtpAtual =
       otpEstadoInicial.acao === "iniciar_recuperacao"

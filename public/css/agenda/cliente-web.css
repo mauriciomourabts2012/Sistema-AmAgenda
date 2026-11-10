@@ -609,6 +609,42 @@ body[data-menu-contexto="cliente"] {
 .cadastro-mensagem.sucesso { color: #18703b; }
 .cadastro-mensagem.erro { color: #b42318; }
 
+/* Validação dos contatos (celular e e-mail) no perfil do cliente. Reaproveita os tokens do modal. */
+.modal-cadastro-cliente .contatos-validacao {
+  grid-column: 1 / -1;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f7f9fc;
+}
+
+.modal-cadastro-cliente .contatos-validacao .card-sub { margin-bottom: 10px; }
+
+.contato-linha {
+  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.contato-estado {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.contato-estado.validado { color: #18703b; }
+.contato-estado.pendente { color: #7a4b00; }
+
+.contato-adicionar,
+.contato-codigo {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
 .cadastro-modal-acoes {
   flex: 0 0 auto;
   justify-content: flex-end;
