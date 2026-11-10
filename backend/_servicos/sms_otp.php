@@ -21,6 +21,12 @@ declare(strict_types=1);
 */
 
 require_once __DIR__ . '/sms.php';
+require_once __DIR__ . '/email_otp.php';
+
+// Canais de entrega do código. O desafio (otp_desafio) é o mesmo para todos; somente o transporte muda.
+const OTP_CANAIS = ['sms', 'email'];
+// Limite por hora de desafios para o mesmo e-mail (além dos limites por telefone e IP, que valem para os dois canais).
+const EMAIL_OTP_LIMITE_DESTINO_HORA = 5;
 
 const SMS_OTP_VALIDADE_SEGUNDOS = 300;
 const SMS_OTP_MAX_TENTATIVAS = 5;
@@ -190,6 +196,41 @@ function smsOtpPrincipalConfere(mysqli $conexao, array $p): bool
 }
 
 /**
+ * Decide se o código por e-mail deve realmente ser enviado para este principal.
+ * Retorna false (desafio "decoy", sem e-mail e com a mesma resposta) quando o envio seria
+ * inseguro ou revelaria o cadastro:
+ * - cliente existente: o e-mail precisa ser o cadastrado E já validado (email_verificado_em);
+ * - telefone sem cadastro (primeiro acesso): o e-mail não pode pertencer a nenhum cliente da
+ *   empresa, evitando associar um e-mail já cadastrado a uma conta nova (duplicidade).
+ */
+function smsOtpEmailPermitido(mysqli $conexao, array $p, string $email): bool
+{
+    $tipo = (string)$p['principal_tipo'];
+    if ($tipo === 'cliente') {
+        return smsConsultar(
+            $conexao,
+            'SELECT 1 FROM cliente
+              WHERE id_cliente = ? AND id_empresa = ? AND LOWER(email) = ? AND email_verificado_em IS NOT NULL LIMIT 1',
+            'iis',
+            (int)$p['id_cliente'],
+            (int)$p['id_empresa'],
+            $email
+        ) !== [];
+    }
+    if ($tipo === 'ficticio' && (string)$p['finalidade'] === 'acesso_cliente') {
+        return smsConsultar(
+            $conexao,
+            'SELECT 1 FROM cliente WHERE id_empresa = ? AND LOWER(email) = ? LIMIT 1',
+            'is',
+            (int)$p['id_empresa'],
+            $email
+        ) === [];
+    }
+
+    return false;
+}
+
+/**
  * Segundos até o limite da janela de 1 hora voltar a permitir uma solicitação: o pedido volta a
  * ser aceito quando o $limite-ésimo desafio mais recente da janela completa 1 hora. Calculado pelo
  * relógio do banco (o mesmo de criado_em). Sem linha (corrida), devolve um prazo conservador.
@@ -231,6 +272,25 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
         return smsOtpResultado(false, 'SMS_OTP_PRINCIPAL_INVALIDO', 'Não foi possível enviar o código agora.');
     }
 
+    // Canal de entrega. O telefone continua sendo a identidade do principal nos dois canais:
+    // o slot ativo (chave_principal) não depende do canal, então trocar de SMS para e-mail
+    // invalida o código anterior e nunca há dois códigos utilizáveis.
+    $canal = (string)($p['canal'] ?? 'sms');
+    if (!in_array($canal, OTP_CANAIS, true)) {
+        return smsOtpResultado(false, 'OTP_CANAL_INVALIDO', 'Não foi possível enviar o código agora.');
+    }
+    $email = null;
+    if ($canal === 'email') {
+        $email = emailOtpNormalizar((string)($p['email'] ?? ''));
+        if ($email === null) {
+            return smsOtpResultado(false, 'EMAIL_INVALIDO', 'E-mail inválido.');
+        }
+        // Recuperação de usuário interno (módulo Empresa) não usa e-mail nesta etapa.
+        if ((string)$p['principal_tipo'] === 'usuario' || !emailOtpConfigurado()) {
+            return smsOtpResultado(false, 'EMAIL_INDISPONIVEL', 'Envio por e-mail temporariamente indisponível.');
+        }
+    }
+
     $tipo = (string)$p['principal_tipo'];
     $finalidade = (string)$p['finalidade'];
     $decoy = $tipo === 'ficticio' && $finalidade !== 'acesso_cliente';
@@ -239,6 +299,11 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
     try {
         if (!smsOtpPrincipalConfere($conexao, $p)) {
             return smsOtpResultado(false, 'SMS_OTP_PRINCIPAL_INVALIDO', 'Não foi possível enviar o código agora.');
+        }
+        if ($canal === 'email' && $enviar && !smsOtpEmailPermitido($conexao, $p, (string)$email)) {
+            // Mesmo contrato do sucesso (desafio ativo, sem envio): não revela cadastro nem validação do e-mail.
+            $decoy = true;
+            $enviar = false;
         }
 
         $chave = smsOtpChavePrincipal($carga, $p, $telefone);
@@ -252,10 +317,14 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
         // Limites por hora. Desafios em 'erro_envio' (nenhum SMS saiu) não consomem a cota do
         // telefone nem o teto de primeiros acessos da empresa; continuam contando no limite por IP,
         // que segura repetições contra o provedor. Recusas (30 s/limite) nunca criam desafio.
+        $destinoHash = $email !== null ? smsOtpHmac($carga, 'email', $email) : null;
         $limites = [
             ['telefone', 'telefone_hash = UNHEX(?) AND status <> \'erro_envio\'', 's', $telefoneHash, SMS_OTP_LIMITE_TELEFONE_HORA],
             ['ip', 'ip_hash = UNHEX(?)', 's', $ipHash, SMS_OTP_LIMITE_IP_HORA],
         ];
+        if ($destinoHash !== null) {
+            $limites[] = ['email', 'destino_hash = UNHEX(?) AND status <> \'erro_envio\'', 's', $destinoHash, EMAIL_OTP_LIMITE_DESTINO_HORA];
+        }
         if ($enviar && $tipo === 'ficticio' && $empresa !== null) {
             $limites[] = [
                 'empresa',
@@ -335,9 +404,9 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
                 $conexao,
                 "INSERT INTO otp_desafio
                     (id_empresa, id_usuario, id_cliente, principal_tipo, finalidade, chave_principal, telefone_hash, ip_hash,
-                     sessao_hash, codigo_hash, status, max_tentativas, expira_em)
-                 VALUES (?, ?, ?, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, NOW(6) + INTERVAL ? SECOND)",
-                'iiissssssssii',
+                     sessao_hash, codigo_hash, status, max_tentativas, expira_em, canal, destino_hash)
+                 VALUES (?, ?, ?, ?, ?, UNHEX(?), UNHEX(?), UNHEX(?), UNHEX(?), ?, ?, ?, NOW(6) + INTERVAL ? SECOND, ?, UNHEX(?))",
+                'iiissssssssiiss',
                 $empresa,
                 $usuario,
                 $cliente,
@@ -350,7 +419,9 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
                 $hashCodigo,
                 $enviar ? 'pendente_envio' : 'ativo',
                 SMS_OTP_MAX_TENTATIVAS,
-                SMS_OTP_VALIDADE_SEGUNDOS
+                SMS_OTP_VALIDADE_SEGUNDOS,
+                $canal,
+                $destinoHash
             );
             $idDesafio = (int)smsConsultar($conexao, 'SELECT LAST_INSERT_ID() AS id')[0]['id'];
             $conexao->commit();
@@ -367,7 +438,7 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
         return smsOtpResultado(false, 'SMS_OTP_INDISPONIVEL', 'Não foi possível enviar o código agora. Tente novamente.');
     }
 
-    $dados = ['id_otp_desafio' => $idDesafio, 'expires_in' => SMS_OTP_VALIDADE_SEGUNDOS, 'decoy' => $decoy];
+    $dados = ['id_otp_desafio' => $idDesafio, 'expires_in' => SMS_OTP_VALIDADE_SEGUNDOS, 'decoy' => $decoy, 'canal' => $canal];
     if (!$enviar) {
         return smsOtpResultado(true, 'SMS_OTP_CRIADO', '', $dados);
     }
@@ -375,7 +446,13 @@ function smsOtpSolicitar(mysqli $conexao, array $p, ?callable $transporte = null
     $texto = $finalidade === 'acesso_cliente'
         ? 'AmAgenda: seu código de acesso é ' . $codigo . '. Ele expira em 5 minutos.'
         : 'AmAgenda: seu código de recuperação é ' . $codigo . '. Ele expira em 5 minutos.';
-    $envio = smsEnviarOtp($conexao, $carga, $idDesafio, $telefone, $texto, $transporte);
+    if ($canal === 'email') {
+        $assunto = $finalidade === 'acesso_cliente' ? 'AmAgenda - seu código de acesso' : 'AmAgenda - seu código de recuperação';
+        $texto .= "\n\nSe você não solicitou este código, ignore esta mensagem. Nunca compartilhe o código com ninguém.";
+        $envio = emailEnviarOtp($conexao, emailOtpCarga(), $idDesafio, (string)$email, $assunto, $texto, $transporte);
+    } else {
+        $envio = smsEnviarOtp($conexao, $carga, $idDesafio, $telefone, $texto, $transporte);
+    }
     unset($texto, $codigo);
 
     if ($envio['estado'] === 'incerto' || $envio['estado'] === 'duplicado') {
@@ -452,6 +529,7 @@ function smsOtpValidar(mysqli $conexao, array $p): array
             $conexao,
             "SELECT o.status, o.codigo_hash, o.tentativas_validacao, o.max_tentativas, o.id_empresa AS otp_empresa,
                     LOWER(HEX(o.sessao_hash)) AS sessao_hex, (o.expira_em <= NOW(6)) AS expirado,
+                    o.canal, LOWER(HEX(o.destino_hash)) AS destino_hex,
                     c.id_empresa AS cliente_empresa, c.status AS cliente_status
                FROM otp_desafio o
                LEFT JOIN cliente c ON c.id_cliente = o.id_cliente
@@ -472,6 +550,17 @@ function smsOtpValidar(mysqli $conexao, array $p): array
             $conexao->rollback();
 
             return $generico('SMS_OTP_NAO_ENCONTRADO');
+        }
+        // Desafio por e-mail só vale para o mesmo endereço que o originou (impede trocar o destino
+        // entre o pedido e a validação). Informado pelo chamador em $p['email'].
+        if ((string)($o['canal'] ?? 'sms') === 'email') {
+            $emailInformado = emailOtpNormalizar((string)($p['email'] ?? ''));
+            if ($emailInformado === null
+                || !hash_equals((string)($o['destino_hex'] ?? ''), smsOtpHmac($carga, 'email', $emailInformado))) {
+                $conexao->rollback();
+
+                return $generico('SMS_OTP_NAO_ENCONTRADO');
+            }
         }
         if ((string)$p['principal_tipo'] === 'cliente'
             && ((int)$o['cliente_empresa'] !== (int)$o['otp_empresa'] || (string)$o['cliente_status'] !== 'ativo')) {
@@ -510,7 +599,7 @@ function smsOtpValidar(mysqli $conexao, array $p): array
             $conexao->commit();
 
             return $consumidas === 1
-                ? smsOtpResultado(true, 'SMS_OTP_VALIDADO', '', ['id_otp_desafio' => $idDesafio])
+                ? smsOtpResultado(true, 'SMS_OTP_VALIDADO', '', ['id_otp_desafio' => $idDesafio, 'canal' => (string)($o['canal'] ?? 'sms')])
                 : $generico('SMS_OTP_NAO_ENCONTRADO');
         }
 
