@@ -147,6 +147,8 @@ try {
     $inicio = s($_GET['inicio'] ?? '');
     $fim    = s($_GET['fim'] ?? '');
     $ordem  = lower($_GET['ordem'] ?? 'movimentacao');
+    // Origem do cadastro: '' (todas), painel, agenda_online ou nao_informado (origem_cadastro IS NULL).
+    $origem = lower($_GET['origem'] ?? '');
 
     $pagina = (int)($_GET['pagina'] ?? 1);
     $limite = (int)($_GET['limite'] ?? 10);
@@ -167,6 +169,11 @@ try {
 
     if (!in_array($status, ['todos', 'ativo', 'inativo', 'bloqueado'], true)) {
         $status = 'ativo';
+    }
+
+    // Valor desconhecido nunca vira condição SQL: equivale a "todas".
+    if (!in_array($origem, ['painel', 'agenda_online', 'nao_informado'], true)) {
+        $origem = '';
     }
 
     if ($inicio !== '' && !isDataIsoValida($inicio)) {
@@ -249,6 +256,15 @@ try {
         $where[] = 'c.status = ?';
         $types .= 's';
         $params[] = $status;
+    }
+
+    // A origem é só mais uma condição: o isolamento por empresa (c.id_empresa = ?) continua obrigatório.
+    if ($origem === 'nao_informado') {
+        $where[] = 'c.origem_cadastro IS NULL';
+    } elseif ($origem !== '') {
+        $where[] = 'c.origem_cadastro = ?';
+        $types .= 's';
+        $params[] = $origem;
     }
 
     if ($inicio !== '') {
@@ -379,6 +395,7 @@ try {
             c.complemento,
             c.observacao,
             c.cadastro_completo,
+            c.origem_cadastro,
             c.status,
             c.primeiro_acesso_em,
             c.ultimo_login_em,
@@ -436,6 +453,7 @@ try {
             'complemento'            => $row['complemento'] !== null ? (string)$row['complemento'] : null,
             'observacao'             => $row['observacao'] !== null ? (string)$row['observacao'] : null,
             'cadastro_completo'      => (int)$row['cadastro_completo'],
+            'origem_cadastro'        => $row['origem_cadastro'] !== null ? (string)$row['origem_cadastro'] : null,
             'status'                 => (string)$row['status'],
             'primeiro_acesso_em'     => $row['primeiro_acesso_em'] !== null ? (string)$row['primeiro_acesso_em'] : null,
             'ultimo_login_em'        => $row['ultimo_login_em'] !== null ? (string)$row['ultimo_login_em'] : null,
@@ -466,6 +484,7 @@ try {
             'filtros' => [
                 'busca'  => $busca,
                 'status' => $status,
+                'origem' => $origem,
                 'inicio' => $inicio,
                 'fim'    => $fim,
                 'pagina' => $pagina,

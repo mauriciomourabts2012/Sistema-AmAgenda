@@ -51,6 +51,7 @@
     INICIO: "inicio_clientes",
     FIM: "fim_clientes",
     STATUS: "status_clientes",
+    ORIGEM: "origem_clientes",
     BTN_LIMPAR_FILTRO: "limparFiltro_clientes",
     BTN_FECHAR_FILTRO: "fecharPopover_clientes",
 
@@ -84,6 +85,7 @@
   const inpInicio = document.getElementById(CFG.INICIO);
   const inpFim = document.getElementById(CFG.FIM);
   const selStatus = document.getElementById(CFG.STATUS);
+  const selOrigem = document.getElementById(CFG.ORIGEM);
   const labelFiltro = document.getElementById(CFG.LABEL_FILTRO);
   const btnLimparFiltro = document.getElementById(CFG.BTN_LIMPAR_FILTRO);
   const btnFecharFiltro = document.getElementById(CFG.BTN_FECHAR_FILTRO);
@@ -380,6 +382,7 @@
             <span><strong>Telefone:</strong> ${C.escapeHtml(telefone || "Não informado")}</span>
             ${cidade ? `<span><strong>Localização:</strong> ${C.escapeHtml(cidade)}</span>` : ""}
             <span><strong>Status:</strong> ${C.escapeHtml(status)}</span>
+            <span><strong>Origem:</strong> ${C.escapeHtml(rotuloOrigem(cli.origem_cadastro))}</span>
             <span><strong>Data:</strong> ${C.escapeHtml(dataCadastro || "Não informada")}</span>
           </div>
 
@@ -425,14 +428,26 @@
   const FILTRO = {
     inicio: "",
     fim: "",
-    status: "ativo"
+    status: "ativo",
+    // "" = todas | painel | agenda_online | nao_informado (origem_cadastro nula)
+    origem: ""
   };
+
+  const ROTULO_ORIGEM = {
+    painel: "Painel Administrativo",
+    agenda_online: "Agenda Online",
+    nao_informado: "Não informada"
+  };
+
+  function rotuloOrigem(valor) {
+    return ROTULO_ORIGEM[String(valor || "")] || "Não informada";
+  }
 
   function brData(iso) {
     return String(iso || "").split("-").reverse().join("/");
   }
 
-  function setLabelFiltro(iniISO, fimISO, statusVal) {
+  function setLabelFiltro(iniISO, fimISO, statusVal, origemVal = FILTRO.origem) {
     if (!labelFiltro) return;
 
     const st = C.normalizar(statusVal || "");
@@ -451,6 +466,10 @@
       else if (st.includes("inativ")) partes.push("Inativo");
       else if (st.includes("bloque")) partes.push("Bloqueado");
       else partes.push("Ativo");
+    }
+
+    if (origemVal && ROTULO_ORIGEM[origemVal]) {
+      partes.push(origemVal === "nao_informado" ? "Origem não informada" : ROTULO_ORIGEM[origemVal]);
     }
 
     labelFiltro.textContent = partes.length ? partes.join(" • ") : "Filtro";
@@ -652,6 +671,7 @@
     inpInicio.value = FILTRO.inicio || "";
     inpFim.value = FILTRO.fim || "";
     selStatus.value = FILTRO.status || "ativo";
+    if (selOrigem) selOrigem.value = FILTRO.origem || "";
     setLabelFiltro(FILTRO.inicio, FILTRO.fim, FILTRO.status);
 
     btnFiltro.addEventListener("click", (ev) => {
@@ -675,10 +695,12 @@
         inpInicio.value = "";
         inpFim.value = "";
         selStatus.value = "ativo";
+        if (selOrigem) selOrigem.value = "";
 
         FILTRO.inicio = "";
         FILTRO.fim = "";
         FILTRO.status = "ativo";
+        FILTRO.origem = "";
 
         resetPagina();
         setLabelFiltro(FILTRO.inicio, FILTRO.fim, FILTRO.status);
@@ -703,6 +725,7 @@
       FILTRO.inicio = ini;
       FILTRO.fim = fim;
       FILTRO.status = status || "todos";
+      FILTRO.origem = selOrigem ? String(selOrigem.value || "").trim() : "";
 
       resetPagina();
       setLabelFiltro(FILTRO.inicio, FILTRO.fim, FILTRO.status);
@@ -1081,6 +1104,7 @@
       created_at: String(item?.criado_em || "").slice(0, 10),
       atualizado_em: item?.atualizado_em ?? null,
       cadastro_completo: Number(item?.cadastro_completo ?? 0),
+      origem_cadastro: item?.origem_cadastro ?? null,
       cpf: item?.cpf ?? "",
       cidade: item?.cidade ?? "",
       bairro: item?.bairro ?? "",
@@ -1123,6 +1147,10 @@
 
     const status = String(FILTRO.status || "todos").trim();
     url.searchParams.set("status", C.normalizar(status || "todos"));
+
+    if (FILTRO.origem) {
+      url.searchParams.set("origem", FILTRO.origem);
+    }
 
     if (FILTRO.inicio) {
       url.searchParams.set("inicio", FILTRO.inicio);

@@ -175,8 +175,8 @@ try {
         $stmt = $conexao->prepare(
             "INSERT INTO cliente
                 (id_empresa, nome_completo, whatsapp_celular, email, cpf, data_nascimento, cep, logradouro, numero, bairro, cidade, uf, complemento, cadastro_completo, status,
-                 telefone_verificado_em, email_verificado_em)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ativo', IF(? = 1, NOW(), NULL), IF(? = 1, NOW(), NULL))"
+                 telefone_verificado_em, email_verificado_em, origem_cadastro)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ativo', IF(? = 1, NOW(), NULL), IF(? = 1, NOW(), NULL), 'agenda_online')"
         );
         if (!$stmt) {
             throw new RuntimeException('Não foi possível preparar o cadastro.');

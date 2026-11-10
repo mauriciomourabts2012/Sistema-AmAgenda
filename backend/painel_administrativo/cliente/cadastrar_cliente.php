@@ -290,9 +290,9 @@ try {
     $conexao->begin_transaction();
     $stmt = $conexao->prepare("
         INSERT INTO cliente
-            (id_empresa, nome_completo, whatsapp_celular, email, observacao, cadastro_completo, status)
+            (id_empresa, nome_completo, whatsapp_celular, email, observacao, cadastro_completo, status, origem_cadastro)
         VALUES
-            (?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, 'painel')
     ");
 
     if (!$stmt) {
