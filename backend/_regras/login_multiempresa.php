@@ -370,6 +370,12 @@ function loginMultiempresaConsolidarSessao(mysqli $conexao, array $user, array $
 
     session_regenerate_id(true);
     loginMultiempresaLimparContexto();
+    // Sem sessão mista: o login interno encerra qualquer identidade de Cliente Final desta sessão
+    // (simétrico ao login do cliente, que encerra a identidade interna).
+    sessaoCredencialRevogarCliente();
+    if (is_array($_SESSION[SESSAO_INATIVIDADE_CHAVE] ?? null)) {
+        unset($_SESSION[SESSAO_INATIVIDADE_CHAVE]['cliente']);
+    }
 
     $_SESSION['empresa_id'] = $empresaId;
     $_SESSION['empresa_nome'] = $empresaNome;

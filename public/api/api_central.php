@@ -671,6 +671,44 @@ if (!isset($routes[$rota][$verbo])) {
 
 $handler = $routes[$rota][$verbo];
 
+/* Sessão mista (identidade interna e de cliente ao mesmo tempo): cada componente reconheceria uma
+   identidade diferente (aceite legal, primeira senha, permissões). Antes de qualquer outro controle,
+   as duas identidades são encerradas e o handler não executa. Ficam de fora somente os endpoints de
+   autenticação (que já trocam a identidade), o logout e as rotas públicas sem identidade. */
+$rotasSemVerificacaoSessaoMista = [
+    '_auth/login',
+    '_auth/selecionar-empresa',
+    '_auth/cliente-login',
+    '_auth/logout',
+    'cadastro-publico/empresa',
+    'webhooks/mercado-pago',
+    'webhooks/infobip',
+    'documentos-legais/publico',
+    'empresa/identidade-visual/publica',
+];
+if (!in_array($rota, $rotasSemVerificacaoSessaoMista, true)) {
+    if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+    $sessaoMista = (int)($_SESSION['auth']['id_usuario'] ?? 0) > 0
+        && is_array($_SESSION['cliente_auth'] ?? null)
+        && $_SESSION['cliente_auth'] !== [];
+    if ($sessaoMista) {
+        require_once __DIR__ . '/../../backend/_regras/login_multiempresa.php';
+        sessaoCredencialRevogarInterna();   // mantém só o contexto público da empresa
+        sessaoCredencialRevogarCliente();
+        unset($_SESSION[SESSAO_INATIVIDADE_CHAVE]);
+        session_regenerate_id(true);
+        error_log('[sessao] Sessão mista encerrada na rota ' . $rota);
+        // Rotas compartilhadas (sessão e documentos legais) não indicam destino: o sessao.js usa o
+        // login do contexto da página (cliente ou interno).
+        $rotaCompartilhadaSessaoMista = $rota === '_auth/session' || str_starts_with($rota, 'documentos-legais/');
+        sessaoCredencialResponderReautenticacao(
+            str_starts_with($rota, 'cliente/')
+                ? SESSAO_LOGIN_CLIENTE_URL
+                : ($rotaCompartilhadaSessaoMista ? '' : SESSAO_LOGIN_INTERNO_URL)
+        );
+    }
+}
+
 /* O bloqueio jurídico fica na fronteira central, antes inclusive dos handlers
    especiais, para não poder ser contornado por chamada direta à API. */
 $rotasPublicasSemBloqueioJuridico = [

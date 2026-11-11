@@ -952,6 +952,11 @@ if ($tipoUsuario === 'super_admin') {
     unset($_SESSION['perfil_id']);
     unset($_SESSION['perfil_nome']);
     unset($_SESSION['modo_suporte']);
+    // Sem sessão mista: o login do Super Admin encerra qualquer identidade de Cliente Final.
+    sessaoCredencialRevogarCliente();
+    if (is_array($_SESSION[SESSAO_INATIVIDADE_CHAVE] ?? null)) {
+        unset($_SESSION[SESSAO_INATIVIDADE_CHAVE]['cliente']);
+    }
 
     $redirect = '/views/super-admin/painel-super-admin.html';
 

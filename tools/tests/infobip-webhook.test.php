@@ -150,7 +150,7 @@ foreach ([infobipWebhookProcessar(new BancoFalso(), $carga, '{"results":[{"messa
 // Estrutura do arquivo: rota registrada e exceção de CSRF/sessão coerentes.
 $api = (string)file_get_contents(__DIR__ . '/../../public/api/api_central.php');
 falsoVerificar(str_contains($api, "'webhooks/infobip' => [") && str_contains($api, 'webhook_infobip.php'), 'rota webhooks/infobip registrada');
-falsoVerificar(substr_count($api, "'webhooks/infobip',") === 3, 'rota nas 3 listas públicas (jurídico, senha temporária, CSRF)');
+falsoVerificar(substr_count($api, "'webhooks/infobip',") === 4, 'rota nas 4 listas públicas (jurídico, sessão mista, senha temporária, CSRF)');
 $fonte = (string)file_get_contents(__DIR__ . '/../../backend/webhooks/webhook_infobip.php');
 falsoVerificar(!str_contains($fonte, 'X-Hub-Signature') && !str_contains($fonte, 'HTTP_X_SIGNATURE'), 'nenhum cabeçalho de assinatura presumido');
 falsoVerificar(str_contains($fonte, "'POST'") && str_contains($fonte, 'application/json'), 'somente POST JSON');

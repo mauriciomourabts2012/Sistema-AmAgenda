@@ -571,6 +571,25 @@ function clienteLoginCriarSessao(
     $cadastroCompleto = $clienteExistente
         && (int)($cliente['cadastro_completo'] ?? 0) === 1;
 
+    // Sem sessão mista: o login do cliente encerra qualquer identidade interna (funcionário/Super Admin,
+    // inclusive Modo Suporte) desta sessão, como o login interno já faz com a do cliente. Somente o
+    // contexto público da empresa deste login (Agenda Online) é mantido.
+    $contextoPublicoEmpresa = [
+        'empresa_nome' => $_SESSION['empresa_nome'] ?? null,
+        'empresa_slug' => $_SESSION['empresa_slug'] ?? null,
+    ];
+    loginMultiempresaLimparContexto();
+    unset($_SESSION['id_empresa'], $_SESSION['modo_suporte_iniciado_em']);
+    if (is_array($_SESSION[SESSAO_INATIVIDADE_CHAVE] ?? null)) {
+        unset($_SESSION[SESSAO_INATIVIDADE_CHAVE]['interno']);
+    }
+    $_SESSION['empresa_id'] = $idEmpresa;
+    foreach ($contextoPublicoEmpresa as $chave => $valor) {
+        if ($valor !== null) {
+            $_SESSION[$chave] = $valor;
+        }
+    }
+
     session_regenerate_id(true);
 
     $_SESSION['cliente_auth'] = [
