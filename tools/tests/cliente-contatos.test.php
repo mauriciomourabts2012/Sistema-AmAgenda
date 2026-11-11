@@ -17,6 +17,12 @@ require_once __DIR__ . '/../../backend/cliente/_sessao_cliente.php';
 
 $raiz = realpath(__DIR__ . '/../..');
 
+// Parâmetro de cache oficial: vem da versão central, sem fixar número nas asserções.
+$versaoCentral = (string)(json_decode((string)file_get_contents($raiz . '/backend/_config/app-version.json'), true)['version'] ?? '');
+$cacheOficial = static function (string $html, string $arquivo) use ($versaoCentral): bool {
+    return $versaoCentral !== '' && str_contains($html, $arquivo . '?v=' . $versaoCentral);
+};
+
 $configInfobip = [
     'habilitado' => true, 'ambiente' => 'teste', 'base_url' => 'https://abc123.api.infobip.com',
     'api_key' => 'chave-api-ficticia-0123456789abcdef', 'sender' => 'AmAgenda', 'timeout_conexao' => 5, 'timeout_total' => 15,
@@ -264,5 +270,178 @@ foreach (['alterar_senha_perfil', 'buscar_foto_perfil'] as $arquivo) {
 $rota = (string)file_get_contents($raiz . '/public/api/api_central.php');
 falsoVerificar(str_contains($rota, "'cliente/perfil/contatos' => ["), 'rota do perfil de contatos registrada (CSRF central vale: não está nas exceções)');
 falsoVerificar(!str_contains((string)preg_replace('/\s+/', ' ', substr($rota, (int)strpos($rota, '$rotasExcecaoCsrfCentral'), 400)), 'cliente/perfil/contatos'), 'rota de contatos não é exceção de CSRF');
+
+// ---- 9. Cadastro incompleto: notificação no lugar da abertura automática do modal -------------------
+$jsCad = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/cliente/salvar-dados-cadastrais.js'));
+$htmlPerfil = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/views/cliente-perfil.html'));
+$cssCliente = (string)file_get_contents($raiz . '/public/css/agenda/cliente-web.css');
+$iniciarJs = substr($jsCad, (int)strpos($jsCad, 'async function iniciar('), 900);
+falsoVerificar(!str_contains($jsCad, 'abrirCadastro(') && !str_contains($jsCad, 'definirBloqueio(') && !str_contains($iniciarJs, 'classList.add("ativo")'), 'cadastro: o modal não abre automaticamente (obrigatórios nem opcionais)');
+$jsSino = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/notificacoes/notificacoes-cliente.js'));
+falsoVerificar(str_contains($iniciarJs, 'publicarCadastroPendente(dados)') && str_contains($jsCad, 'definirCadastro?.({ pendente, obrigatorio: !obrigatoriosCompletos })'), 'cadastro: o estado pendente/obrigatório é informado ao sino');
+falsoVerificar(!str_contains($htmlPerfil, 'notificacaoCadastroIncompleto') && !str_contains($htmlPerfil, 'notificacao-cadastro') && !str_contains($cssCliente, '.notificacao-cadastro'), 'cadastro: a faixa do topo foi removida por completo');
+falsoVerificar(str_contains($jsCad, 'const pendente = !obrigatoriosCompletos || possuiCampoOpcionalVazio(dados);') && str_contains($jsCad, '"email", "whatsapp_celular", "cpf", "data_nascimento", "cep",'), 'cadastro: critérios de pendência inalterados');
+falsoVerificar(str_contains($jsSino, 'titulo: "Complete seu cadastro"') && str_contains($jsSino, 'mensagem: "Algumas informações do seu perfil ainda estão pendentes."') && str_contains($jsSino, '"Completar cadastro"'), 'sino: notificação "Complete seu cadastro" com a ação Completar cadastro');
+falsoVerificar(str_contains($jsSino, 'const cadastro = itemCadastro();') && str_contains($jsSino, 'return cadastro ? [cadastro, ...estado.itens] : estado.itens;') && str_contains($jsSino, 'const itens = itensExibidos();') && str_contains($jsSino, 'if (itens.length === 0) {'), 'sino: a notificação do cadastro entra na lista e "Nenhuma notificação" só aparece sem nenhuma');
+falsoVerificar(str_contains($jsSino, 'if (item.local === true) {') && str_contains($jsSino, 'window.AbrirCadastroCliente') && str_contains($jsCad, 'window.AbrirCadastroCliente = abrirFormularioCadastro;'), 'sino: o clique abre o formulário cadastral existente, sem marcar como lida');
+falsoVerificar(str_contains($jsSino, "if (!clienteCompleto()) {\n      estado.itens = [];\n      renderizar();\n      return;\n    }") && str_contains($jsSino, '!ehCliente()'), 'sino: cadastro obrigatório pendente mostra só a notificação local, sem chamar as rotas de notificações (sem 403)');
+falsoVerificar(str_contains($jsSino, 'id_notificacao: "cadastro-pendente"') && !str_contains($jsSino, 'cliente/notificacoes/criar'), 'sino: notificação local única, não gravada (sem duplicidade ao atualizar ou logar de novo)');
+falsoVerificar(str_contains($cssCliente, '.notificacao-item.notificacao-item--cadastro-obrigatorio'), 'sino: destaque quando faltam dados obrigatórios');
+falsoVerificar($cacheOficial($htmlPerfil, 'salvar-dados-cadastrais.js') && $cacheOficial($htmlPerfil, 'notificacoes-cliente.js') && $cacheOficial($htmlPerfil, 'cliente-web.css'), 'cadastro: parâmetros de cache dos arquivos alterados atualizados');
+$comumAg = (string)file_get_contents($raiz . '/backend/cliente_agendamento/_comum.php');
+$confirmarAg = (string)file_get_contents($raiz . '/backend/cliente_agendamento/confirmar-agendamento.php');
+falsoVerificar(str_contains($comumAg, "(int)(\$cliente['cadastro_completo'] ?? 0) !== 1") && str_contains($confirmarAg, 'clienteAgendamentoContexto($conexao, true)'), 'cadastro: agendar continua exigindo cadastro completo no backend (não depende do modal)');
+
+// ---- 10. Meu Perfil: informações pessoais e segurança da conta ---------------------------------------
+$phpPerfil = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/backend/cliente_perfil/buscar_foto_perfil.php'));
+$jsPerfil = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/cliente_perfil/buscar_foto_perfil.js'));
+foreach (['perfilCpfMascarado', 'perfilTelefoneExibicao'] as $funcao) {
+    if (preg_match('/^function ' . $funcao . '\(.*?^\}$/ms', $phpPerfil, $m) === 1 && !function_exists($funcao)) {
+        eval($m[0]);
+    }
+}
+falsoVerificar(function_exists('perfilCpfMascarado') && perfilCpfMascarado('123.456.789-09') === '***.***.***-09' && perfilCpfMascarado('') === '' && perfilCpfMascarado('123') === '', 'perfil: CPF só sai mascarado (dois últimos dígitos); vazio ou inválido não é exibido');
+falsoVerificar(function_exists('perfilTelefoneExibicao') && perfilTelefoneExibicao('+5538998969407') === '(38) 99896-9407' && perfilTelefoneExibicao('3833221100') === '(38) 3322-1100' && perfilTelefoneExibicao('') === '', 'perfil: telefone exibido no formato brasileiro');
+$selectPerfil = substr($phpPerfil, (int)strpos($phpPerfil, 'SELECT'), 520);
+falsoVerificar(str_contains($phpPerfil, '$sessao = exigirSessaoCliente();') && str_contains($phpPerfil, 'buscarClienteDaSessao($conexao, $sessao)')
+    && str_contains($selectPerfil, 'WHERE id_cliente = ?') && str_contains($selectPerfil, 'AND id_empresa = ?') && !str_contains($phpPerfil, '$_GET') && !str_contains($phpPerfil, '$_POST'), 'perfil: dados só do cliente da sessão e da empresa da sessão (nenhum identificador vindo do frontend)');
+$blocoInfo = substr($phpPerfil, (int)strpos($phpPerfil, "'informacoes' => ["), 900);
+falsoVerificar(!str_contains($blocoInfo, 'senha') && !str_contains($blocoInfo, 'hash') && !str_contains($blocoInfo, "'cpf' => trim") && str_contains($blocoInfo, "perfilCpfMascarado("), 'perfil: sem senha, hash ou CPF completo na resposta');
+falsoVerificar(str_contains($jsPerfil, 'preencherInformacoes(dados.informacoes);') && str_contains($jsPerfil, '"Não informado"') && str_contains($jsPerfil, 'querySelectorAll("[data-perfil-info]")'), 'perfil: campos vazios exibem "Não informado"; JS compartilhado segue seguro em páginas sem esses campos');
+falsoVerificar(str_contains($htmlPerfil, 'Informações pessoais') && str_contains($htmlPerfil, 'Segurança da conta')
+    && str_contains($htmlPerfil, 'data-perfil-info="nome"') && str_contains($htmlPerfil, 'data-perfil-info="email"') && str_contains($htmlPerfil, 'data-perfil-info="telefone"'), 'perfil: seções Informações pessoais e Segurança da conta com nome, e-mail e telefone');
+falsoVerificar(str_contains($htmlPerfil, 'id="perfilNomeUsuario"') && str_contains($htmlPerfil, 'for="perfil_foto"') && str_contains($htmlPerfil, 'id="perfil_foto"') && str_contains($htmlPerfil, 'accept="image/jpeg,image/png,image/webp"'), 'perfil: foto, nome do cabeçalho e Alterar foto preservados');
+falsoVerificar(substr_count($htmlPerfil, 'id="formAlterarSenha"') === 1 && str_contains($htmlPerfil, 'id="senha_atual"') && str_contains($htmlPerfil, 'id="nova_senha"') && str_contains($htmlPerfil, 'id="confirmar_senha"')
+    && str_contains($htmlPerfil, 'id="campoSenhaAtual"') && str_contains($htmlPerfil, '<button type="submit" class="botao-geral">'), 'perfil: formulário de senha, campos e botão Salvar preservados');
+falsoVerificar(substr_count($htmlPerfil, 'id="btnSair"') === 1 && strpos($htmlPerfil, 'id="btnSair"') > strpos($htmlPerfil, 'id="formAlterarSenha"'), 'perfil: botão Sair preservado (mesmo id usado por deslogar.js)');
+$cssAgenda = (string)file_get_contents($raiz . '/public/css/agenda/agenda-web.css');
+falsoVerificar(str_contains($cssAgenda, '.perfil-info-lista') && str_contains($cssAgenda, '@media (max-width: 560px)') && str_contains($cssAgenda, '.perfil-cartao-topo') && str_contains($cssAgenda, '.perfil-senha-olho') && str_contains($cssAgenda, '.perfil-acesso') && !str_contains($cssCliente, '.perfil-info-lista'), 'perfil: estilos responsivos das seções no CSS compartilhado por todas as páginas (sem duplicar)');
+falsoVerificar($cacheOficial($htmlPerfil, 'buscar_foto_perfil.js') && $cacheOficial($htmlPerfil, 'cliente-web.css'), 'perfil: parâmetros de cache atualizados');
+
+// ---- 11. Meu Perfil global: todas as páginas, cada tipo de sessão com o seu endpoint -------------------
+$paginasPerfil = [
+    'public/views/agenda.html' => 'interno',
+    'public/views/chat/chat-interno.html' => 'interno',
+    'public/views/painel-administrativo/painel-administrativo.html' => 'interno',
+    'public/views/super-admin/painel-super-admin.html' => 'interno',
+    'public/views/cliente-perfil.html' => 'cliente',
+    'public/views/cliente-agendamento.html' => 'cliente',
+];
+$phpInterno = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/backend/perfil_usuario/buscar_foto_perfil.php'));
+$jsInterno = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/perfil-usuario/buscar_foto_perfil.js'));
+$bloco = static function (string $php): string { return substr($php, (int)strpos($php, "'informacoes' => ["), 900); };
+foreach ($paginasPerfil as $arq => $tipo) {
+    $h = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/' . $arq));
+    $nome = basename($arq);
+    falsoVerificar(substr_count($h, 'id="modalPerfilUsuario"') === 1 && str_contains($h, 'Informações pessoais') && str_contains($h, 'Segurança da conta') && str_contains($h, 'data-perfil-info="perfil"'), "perfil global {$nome}: identificação com perfil de acesso e seções Informações pessoais e Segurança da conta");
+    falsoVerificar(substr_count($h, 'id="formAlterarSenha"') === 1 && str_contains($h, 'id="senha_atual"') && str_contains($h, 'id="nova_senha"') && str_contains($h, 'id="confirmar_senha"') && str_contains($h, 'id="perfil_foto"') && substr_count($h, 'id="btnSair"') === 1 && strpos($h, 'id="btnSair"') > strpos($h, 'id="formAlterarSenha"') && strpos($h, 'id="btnSair"') < strpos($h, '</form>', (int)strpos($h, 'id="formAlterarSenha"')), "perfil global {$nome}: senha, foto e Sair preservados (Sair na linha de ações do formulário, como no original)");
+    falsoVerificar(($cacheOficial($h, 'agenda-web.css') || ($nome === 'chat-interno.html' && str_contains($h, 'agenda-web.css?v=20261110_9'))), "perfil global {$nome}: CSS compartilhado com parâmetro de cache novo");
+    preg_match_all('/data-perfil-info="([a-z_]+)"/', $h, $chaves);
+    $fonte = $bloco($tipo === 'interno' ? $phpInterno : $phpPerfil);
+    $faltando = array_filter(array_unique($chaves[1]), static fn(string $k): bool => !str_contains($fonte, "'{$k}' =>"));
+    falsoVerificar($faltando === [], "perfil global {$nome}: todo campo da tela existe na resposta do endpoint da sessão (" . ($tipo === 'interno' ? 'interno' : 'cliente') . ')');
+    $jsPag = $tipo === 'interno' ? 'perfil-usuario/buscar_foto_perfil.js' : 'cliente_perfil/buscar_foto_perfil.js';
+    falsoVerificar($cacheOficial($h, $jsPag) || ($nome === 'chat-interno.html' && str_contains($h, $jsPag . '?v=20261110_2')), "perfil global {$nome}: JS compartilhado do tipo de sessão com parâmetro de cache novo");
+}
+falsoVerificar(str_contains($jsInterno, 'applyInformacoes(json?.data?.informacoes);') && str_contains($jsInterno, 'applyInformacoes(null, true);') && str_contains($jsInterno, 'data-perfil-info-opcional'), 'perfil interno: JS preenche as informações, trata falha e esconde itens opcionais');
+falsoVerificar(str_contains($phpInterno, "\$auth = \$_SESSION['auth'] ?? null;") && !str_contains($phpInterno, '$_GET') && !str_contains($phpInterno, '$_POST') && str_contains($phpInterno, 'WHERE id_usuario = ?'), 'perfil interno: usuário somente da sessão autenticada (nenhum identificador do frontend)');
+$infoInterno = $bloco($phpInterno);
+falsoVerificar(!str_contains($infoInterno, 'senha') && !str_contains($infoInterno, 'hash') && !str_contains($infoInterno, 'token'), 'perfil interno: sem senha, hash ou token nas informações');
+falsoVerificar(str_contains($phpInterno, "'Proprietário'") && str_contains($phpInterno, "'Profissional'") && str_contains($phpInterno, "'Recepção'") && str_contains($phpInterno, "=== 'super_admin'") && str_contains($phpInterno, "'Super Admin'") && str_contains($phpPerfil, "'perfil' => 'Cliente'"), 'perfil: Proprietário, Profissional, Recepção, Super Admin e Cliente identificados pela sessão (não pela especialidade)');
+falsoVerificar(!str_contains($infoInterno, 'especialidade') && !str_contains($phpInterno, 'empresa_usuario.especialidade'), 'perfil interno: perfil de acesso nunca confundido com especialidade ou cargo');
+
+// ---- 12. Refinamento visual do Meu Perfil (ações, requisitos recolhíveis, responsividade) -------------
+$indJs = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/componentes/indicador-senha.js'));
+$indCss = (string)file_get_contents($raiz . '/public/css/componentes/indicador-senha.css');
+$senhaIntJs = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/perfil-usuario/alterar_senha_perfil.js'));
+foreach ($paginasPerfil as $arq => $tipo) {
+    $h = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/' . $arq));
+    $nome = basename($arq);
+    $form = substr($h, (int)strpos($h, 'id="formAlterarSenha"'), 2600);
+    $form = substr($form, 0, (int)strpos($form, '</form>'));
+    falsoVerificar(str_contains($form, 'class="perfil-acoes"') && str_contains($form, 'type="submit" class="botao-geral"') && str_contains($form, 'class="botao-geral destaque" type="button" title="Sair do sistema" id="btnSair"') && !str_contains($h, 'perfil-rodape'), "perfil visual {$nome}: Salvar e Sair na mesma linha de ações, dentro do formulário (Sair não fica isolado)");
+}
+falsoVerificar(str_contains($indJs, 'recolhivel: o.recolhivel === true') && str_contains($indJs, 'aria-expanded') && str_contains($indJs, 'aria-controls') && str_contains($indJs, '"Requisitos da senha"'), 'indicador: modo recolhível opt-in (padrão desligado) com botão acessível');
+falsoVerificar(str_contains($indJs, 'if (this.alternar && !vazio && !this.manual && !this.aberto) this.definirAberto(true);') && str_contains($indJs, 'if (this.alternar) { this.manual = false; this.definirAberto(false); }'), 'indicador: abre ao começar a digitar, respeita o recolhimento manual e recolhe ao limpar');
+falsoVerificar(str_contains($indJs, 'var MIN_CARACTERES = 8;') && str_contains($indJs, 'var MAX_BYTES = 72;') && str_contains($indJs, '/[\p{P}\p{S}]/u'), 'indicador: regras de senha inalteradas');
+falsoVerificar(str_contains($senhaIntJs, 'recolhivel: true,') && !str_contains($senhaIntJs, 'opcional: true'), 'perfil interno: só o Meu Perfil liga o modo recolhível');
+$outros = 0;
+foreach (['public/js', 'public/views'] as $dir) {
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($raiz . '/' . $dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($it as $arqObj) {
+        if (!in_array($arqObj->getExtension(), ['js', 'html', 'php'], true) || str_contains($arqObj->getPathname(), 'indicador-senha.js') || str_contains($arqObj->getPathname(), 'perfil-usuario' . DIRECTORY_SEPARATOR . 'alterar_senha_perfil.js')) continue;
+        if (str_contains((string)file_get_contents($arqObj->getPathname()), 'recolhivel')) $outros++;
+    }
+}
+falsoVerificar($outros === 0, 'indicador: nenhum outro uso do componente foi alterado (cadastros e edições seguem iguais)');
+falsoVerificar(str_contains($indCss, '.ind-senha__alternar') && str_contains($indCss, '.ind-senha__conteudo[hidden]') && str_contains($indCss, 'aria-expanded="true"'), 'indicador: estilos do botão e do bloco recolhível');
+$cssAg = (string)file_get_contents($raiz . '/public/css/agenda/agenda-web.css');
+falsoVerificar(str_contains($cssAg, '#modalPerfilUsuario .perfil-nome-usuario') && str_contains($cssAg, '-webkit-line-clamp: 2') && str_contains($cssAg, 'overflow-wrap: anywhere') && str_contains($cssAg, 'grid-template-columns: repeat(2, minmax(0, 1fr))') && str_contains($cssAg, '.perfil-acoes {') && str_contains($cssAg, 'justify-content: flex-end') && str_contains($cssAg, '.perfil-avatar-camera') && str_contains($cssAg, '.perfil-info-icone'), 'perfil visual: nome longo em até 2 linhas, grade de 2 colunas e ações alinhadas (desktop)');
+falsoVerificar(str_contains($cssAg, '.perfil-info-lista { grid-template-columns: minmax(0, 1fr); }') && str_contains($cssAg, '.perfil-acoes { flex-direction: column; align-items: stretch; }') && str_contains($cssAg, 'min-height: 46px'), 'perfil visual: uma coluna e botões largos no mobile');
+falsoVerificar(str_contains($cssAg, '.modal-geral .modal-topo {') && str_contains($cssAg, 'overflow-y: auto;') && str_contains($cssAg, 'overflow-x: hidden;'), 'perfil visual: cabeçalho do modal fixo e rolagem só no corpo, sem barra horizontal');
+
+// ---- 13. Meu Perfil no padrão do modelo visual aprovado (todas as páginas) -----------------------------
+$senhaCliJs = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/cliente_perfil/alterar_senha_perfil.js'));
+foreach ($paginasPerfil as $arq => $tipo) {
+    $h = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/' . $arq));
+    $nome = basename($arq);
+    falsoVerificar(str_contains($h, '<h2 id="tituloPerfilUsuario"><i class="fa-solid fa-user"') && str_contains($h, 'class="perfil-cabecalho"') && str_contains($h, 'class="perfil-avatar-camera"') && str_contains($h, 'Conta vinculada à empresa:') && str_contains($h, 'data-perfil-grupo'), "perfil modelo {$nome}: título com ícone e identificação (foto com câmera, nome, perfil de acesso e empresa)");
+    falsoVerificar(substr_count($h, 'class="perfil-cartao perfil-cartao--') === 2 && str_contains($h, 'class="perfil-info-icone"') && str_contains($h, 'fa-shield-halved') && !str_contains($h, 'Salvar</button>x'), "perfil modelo {$nome}: cartões Informações pessoais e Segurança da conta com ícones");
+    falsoVerificar(str_contains($h, 'placeholder="Digite sua senha atual"') && str_contains($h, 'placeholder="Digite a nova senha"') && str_contains($h, 'placeholder="Confirme a nova senha"') && str_contains($h, 'name="senha_atual"') && str_contains($h, 'name="confirmar_senha"'), "perfil modelo {$nome}: campos de senha com rótulo acima e texto de ajuda (nomes e ids preservados)");
+    falsoVerificar(strpos($h, 'perfil-acoes') > strpos($h, 'id="nova_senha"') && strpos($h, 'type="submit" class="botao-geral"') < strpos($h, 'id="btnSair"'), "perfil modelo {$nome}: Salvar nova senha e Sair juntos, à direita");
+}
+foreach (['perfil interno' => $senhaIntJs, 'perfil cliente' => $senhaCliJs] as $rotulo => $codigo) {
+    falsoVerificar(str_contains($codigo, 'function instalarOlhoDeSenha()') && str_contains($codigo, 'aria-pressed') && str_contains($codigo, 'campo.type = mostrar ? "text" : "password"') && str_contains($codigo, 'addEventListener("reset"'), "{$rotulo}: botão de mostrar/ocultar senha acessível, só visual, que volta a ocultar no reset");
+}
+falsoVerificar(str_contains($phpPerfil, "'empresa' => \$empresaNome") && str_contains($phpPerfil, 'SELECT nome FROM empresa WHERE id_empresa = ?'), 'perfil cliente: empresa da sessão (somente o nome) para "Conta vinculada à empresa"');
+falsoVerificar(str_contains($indJs, 'ind-senha__chave') && str_contains($indJs, 'TEXTOS.requisitosSenha') && str_contains($indCss, '.ind-senha__chave'), 'indicador: cabeçalho "Requisitos da senha" com ícone e seta');
+falsoVerificar(str_contains($cssAg, '#modalPerfilUsuario .modal-corpo { padding: 22px 24px 24px; display: flex; flex-direction: column; gap: 18px; }') && str_contains($cssAg, '#modalPerfilUsuario .modal-corpo > * { flex: 0 0 auto; }'), 'perfil modelo: blocos do corpo não encolhem (o corpo rola até os botões, também no mobile)');
+falsoVerificar(str_contains($cssAg, 'zoom: .85;') && str_contains($cssAg, '@media (min-width: 861px)') && str_contains($cssAg, 'width: min(1180px, calc((100vw - 48px) / .85));') && str_contains($cssAg, 'max-height: calc((100dvh - 40px) / .85);') && str_contains($cssAg, '#modalPerfilUsuario .modal-conteudo { width: min(100%, 720px); max-height: calc(100dvh - 16px); }'), 'perfil modelo: desktop em escala de 85% (largura e altura compensadas) e, em telas pequenas, modal na largura útil');
+falsoVerificar(str_contains($cssAg, '#modalPerfilUsuario .modal-conteudo { width: min(1180px, calc(100vw - 48px)); }') && str_contains($cssAg, '#modalPerfilUsuario #formAlterarSenha:has(.ind-senha)') && str_contains($cssAg, '@media (max-width: 860px)'), 'perfil modelo: modal largo, campos e requisitos lado a lado e recolhimento para uma coluna em telas menores');
+
+// ---- 14. Modo de definição/redefinição obrigatória de senha (apresentação; regras e bloqueio inalterados) --------
+$menuJs = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/menu-lateral/menu-lateral.js'));
+$notifJs = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/public/js/notificacoes/notificacoes.js'));
+foreach ($paginasPerfil as $arq => $tipo) {
+    $h = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/' . $arq));
+    $nome = basename($arq);
+    falsoVerificar(str_contains($h, '<span class="perfil-titulo-texto">Meu Perfil</span>') && str_contains($h, 'class="perfil-modo-obrigatorio"') && str_contains($h, 'data-perfil-modo-motivo') && str_contains($h, 'perfil-cartao--informacoes') && str_contains($h, 'perfil-cartao--seguranca'), "senha obrigatória {$nome}: título contextual, motivo e ganchos para ocultar o que não é da operação");
+    falsoVerificar(strpos($h, 'menu-lateral/menu-lateral.js', (int)strpos($h, '</section>')) !== false || str_contains($h, 'menu-lateral/menu-lateral.js?v=20261110_1'), "senha obrigatória {$nome}: componente que aplica o modo carregado com parâmetro novo");
+}
+falsoVerificar(str_contains($menuJs, 'window.PerfilModoSenha = Object.freeze({') && str_contains($menuJs, 'modal.dataset.modoSenha = "obrigatorio";') && str_contains($menuJs, 'delete modal.dataset.modoSenha;') && str_contains($menuJs, 'amagenda:perfil-modo-senha'), 'senha obrigatória: PerfilModoSenha só alterna atributo, título e motivo (sem tocar em regras de senha)');
+falsoVerificar(!str_contains(substr($menuJs, (int)strpos($menuJs, 'window.PerfilModoSenha'), 1400), 'fetch(') && !str_contains(substr($menuJs, (int)strpos($menuJs, 'window.PerfilModoSenha'), 1400), 'localStorage'), 'senha obrigatória: o modo não depende de URL, armazenamento local nem requisição própria');
+falsoVerificar(str_contains($notifJs, 'window.PerfilModoSenha?.definir(true, {') && str_contains($notifJs, 'titulo: "Atualizar senha"') && str_contains($notifJs, 'window.PerfilModoSenha?.definir(false);') && str_contains($notifJs, 'document.body.classList.add("senha-temporaria-bloqueada");') && str_contains($notifJs, 'amagenda:senha-temporaria-expirada'), 'senha obrigatória (telas internas): modo ativado só pelo bloqueio já vindo do backend (senha temporária expirada) e removido ao liberar');
+falsoVerificar(str_contains($senhaCliJs, 'titulo: "Definir nova senha",') && substr_count($senhaCliJs, 'titulo: "Definir nova senha",') === 2 && str_contains($senhaCliJs, 'window.PerfilModoSenha.definir(') && str_contains($senhaCliJs, 'configuracao.bloquearModal') && str_contains($senhaCliJs, 'exigirSenhaAtual: false,') && str_contains($senhaCliJs, 'exigirSenhaAtual: true,'), 'senha obrigatória (cliente): primeira senha e recuperação em modo obrigatório; alteração voluntária continua normal; exigência da senha atual preservada');
+falsoVerificar(str_contains($senhaCliJs, 'dados.recuperacao_senha_autorizada === true') && str_contains($senhaCliJs, 'dados.tem_senha === false'), 'senha obrigatória (cliente): modo vem do estado seguro do perfil (backend), não de parâmetro de URL');
+falsoVerificar(str_contains($senhaIntJs, 'amagenda:perfil-modo-senha') && str_contains($senhaIntJs, 'indicadorSenha?.expandir?.()') && str_contains($indJs, 'expandir: function ()'), 'senha obrigatória (interno): requisitos abertos ao entrar no modo');
+foreach ([
+    '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cabecalho,',
+    '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cartao--informacoes,',
+    '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cartao--seguranca > .perfil-cartao-topo,',
+    '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .modal-fechar { display: none; }',
+    '.perfil-cartao--seguranca { border: 2px solid var(--am-marca, #1163dd); }',
+    '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes #btnSair {',
+    '.perfil-acoes button[type="submit"] {',
+] as $trecho) {
+    falsoVerificar(str_contains($cssAg, $trecho), 'senha obrigatória CSS: ' . substr($trecho, 0, 90));
+}
+falsoVerificar(str_contains($cssAg, '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .modal-conteudo { width: min(620px, calc(100vw - 48px)); }') && str_contains($cssAg, '#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes { flex-direction: column; align-items: stretch; }'), 'senha obrigatória CSS: modal compacto no desktop e uma coluna com botões largos no mobile');
+$backInterno = (string)file_get_contents($raiz . '/backend/perfil_usuario/alterar_senha_perfil.php');
+$backCliente = (string)file_get_contents($raiz . '/backend/cliente_perfil/alterar_senha_perfil.php');
+falsoVerificar(str_contains($backInterno, 'password_verify($senhaAtual, $senhaHashBanco)') && str_contains($backInterno, 'csrfValidarSessao();') && str_contains($backCliente, '$exigirSenhaAtual = $temSenha && !$recuperacaoAutorizada;') && str_contains($backCliente, 'csrfValidarSessao();'), 'senha obrigatória: regras do backend intactas (senha atual no interno; senha atual quando há senha e não há recuperação no cliente; CSRF)');
+
+// ---- 15. Campos do modo obrigatório: Senha atual oculta de verdade, rótulo "Senha temporária", autocomplete -----
+foreach ($paginasPerfil as $arq => $tipo) {
+    $h = str_replace("\r\n", "\n", (string)file_get_contents($raiz . '/' . $arq));
+    $nome = basename($arq);
+    falsoVerificar(str_contains($h, 'id="senha_atual" placeholder="Digite sua senha atual" autocomplete="current-password"') && str_contains($h, 'id="nova_senha" placeholder="Digite a nova senha" autocomplete="new-password"') && str_contains($h, 'id="confirmar_senha" placeholder="Confirme a nova senha" autocomplete="new-password"'), "campos de senha {$nome}: autocomplete correto (senha atual = current-password; nova e confirmação = new-password)");
+}
+falsoVerificar(str_contains($cssAg, '#modalPerfilUsuario .modal-campo[hidden] { display: none; }'), 'causa da Senha atual visível: .modal-campo { display: flex } vencia o atributo hidden; regra do Meu Perfil faz o hidden valer');
+falsoVerificar(str_contains($senhaCliJs, 'senhaAtual.disabled =') && str_contains($senhaCliJs, '!exigirSenhaAtual;') && str_contains($senhaCliJs, "senhaAtual.value = \"\";") && str_contains($senhaCliJs, 'blocoSenhaAtual.hidden =') && str_contains($senhaCliJs, 'senhaAtual.required =') , 'cliente: sem exigência, a Senha atual fica oculta, desabilitada, vazia e não obrigatória; com exigência volta a aparecer');
+falsoVerificar(str_contains($senhaCliJs, "senha_atual:\n        exigirSenhaAtual\n          ? atual\n          : \"\",") && str_contains($senhaCliJs, 'exigirSenhaAtual &&'), 'cliente: campo oculto não entra na validação nem é enviado (payload só leva a senha atual quando exigida)');
+falsoVerificar(str_contains($menuJs, 'rotuloSenhaAtual = ""') && str_contains($menuJs, 'label[for="senha_atual"]') && str_contains($menuJs, ': "Senha atual";') && str_contains($menuJs, ': "Digite sua senha atual";'), 'modo obrigatório: rótulo e texto de ajuda da senha atual trocam só dentro do modo e voltam ao padrão ao sair');
+falsoVerificar(str_contains($notifJs, 'rotuloSenhaAtual: "Senha temporária"') && str_contains($notifJs, 'placeholderSenhaAtual: "Digite a senha temporária recebida"') && str_contains($notifJs, 'informe no campo “Senha temporária” a senha temporária que você recebeu'), 'senha temporária expirada (interno): campo exigido pelo backend mantido, com rótulo "Senha temporária" e explicação');
+$bloqueioInterno = substr($notifJs, (int)strpos($notifJs, 'function ativarBloqueioSenha()'), 1300);
+falsoVerificar(!str_contains($bloqueioInterno, 'senha_atual') || !str_contains($bloqueioInterno, 'hidden'), 'senha temporária expirada (interno): nenhum código oculta ou dispensa a senha atual');
 
 falsoRelatorio();

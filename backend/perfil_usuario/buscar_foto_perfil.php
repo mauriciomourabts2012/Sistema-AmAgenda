@@ -5,6 +5,9 @@ declare(strict_types=1);
  * HANDLER: perfil/buscar-foto
  * - Busca a foto do usuário logado
  * - Lê da tabela usuario.foto_perfil
+ * - Devolve também as "Informações pessoais" do modal Meu Perfil e o perfil de acesso
+ *   (Proprietário, Profissional, Recepção ou Super Admin), sempre do usuário da sessão
+ *   autenticada: nenhum identificador do frontend é aceito; sem senha, hash ou token.
  * - Retorna JSON padrão
  */
 
@@ -30,6 +33,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
    AUTH
 ========================================================== */
 require_once __DIR__ . '/../_auth/require_auth.php';
+require_once __DIR__ . '/../_regras/permissoes_usuario.php';
 
 $auth = $_SESSION['auth'] ?? null;
 $idUsuario = (int)($auth['id_usuario'] ?? 0);
@@ -40,6 +44,25 @@ if ($idUsuario <= 0) {
         'code' => 'NOT_AUTHENTICATED',
         'user_msg' => 'Sessão expirada. Faça login novamente.',
     ], 401);
+}
+
+/** Telefone no formato brasileiro de exibição; formatos desconhecidos voltam como estão. */
+if (!function_exists('perfilTelefoneExibicao')) {
+    function perfilTelefoneExibicao(string $telefone): string
+    {
+        $digitos = preg_replace('/\D+/', '', $telefone) ?? '';
+        if (strlen($digitos) > 11 && str_starts_with($digitos, '55')) {
+            $digitos = substr($digitos, 2);
+        }
+        if (strlen($digitos) === 11) {
+            return sprintf('(%s) %s-%s', substr($digitos, 0, 2), substr($digitos, 2, 5), substr($digitos, 7));
+        }
+        if (strlen($digitos) === 10) {
+            return sprintf('(%s) %s-%s', substr($digitos, 0, 2), substr($digitos, 2, 4), substr($digitos, 6));
+        }
+
+        return trim($telefone);
+    }
 }
 
 /* ==========================================================
@@ -66,8 +89,8 @@ if ($conexao->connect_errno) {
 $conexao->set_charset('utf8mb4');
 
 try {
-    $sql = "SELECT id_usuario, nome, foto_perfil 
-            FROM usuario 
+    $sql = "SELECT id_usuario, nome, email, telefone, tipo_usuario, foto_perfil
+            FROM usuario
             WHERE id_usuario = ? 
             LIMIT 1";
 
@@ -115,6 +138,30 @@ try {
 
     $_SESSION['auth']['foto_perfil'] = $temFoto ? $fotoPerfil : null;
 
+    // Perfil de acesso (não confundir com especialidade/cargo): Super Admin pela identidade global; os
+    // demais pelo vínculo da empresa da sessão, resolvido pelo mesmo contexto de permissões do sistema.
+    $rotulosPerfil = ['proprietario' => 'Proprietário', 'profissional' => 'Profissional', 'recepcionista' => 'Recepção'];
+    $perfilAcesso = '';
+    $empresaNome = '';
+    if ((string)$usuario['tipo_usuario'] === 'super_admin') {
+        $perfilAcesso = 'Super Admin';
+    }
+    $contextoPerfil = permissoesContexto($conexao);
+    if (($contextoPerfil['valido'] ?? false) === true) {
+        if ($perfilAcesso === '') {
+            $perfilAcesso = $rotulosPerfil[(string)($contextoPerfil['perfil'] ?? '')] ?? '';
+        }
+        $stmtEmpresa = $conexao->prepare('SELECT nome FROM empresa WHERE id_empresa = ? LIMIT 1');
+        if ($stmtEmpresa) {
+            $idEmpresaPerfil = (int)$contextoPerfil['id_empresa'];
+            $stmtEmpresa->bind_param('i', $idEmpresaPerfil);
+            $stmtEmpresa->execute();
+            $stmtEmpresa->bind_result($nomeEmpresa);
+            $empresaNome = $stmtEmpresa->fetch() ? trim((string)$nomeEmpresa) : '';
+            $stmtEmpresa->close();
+        }
+    }
+
     out([
         'ok' => true,
         'code' => 'PHOTO_FOUND',
@@ -128,6 +175,14 @@ try {
             'foto_perfil'  => $temFoto ? $fotoPerfil : null,
             'foto_url'     => $fotoUrl,
             'foto_default' => $fotoDefault,
+            // Informações pessoais (somente leitura); vazio = a interface mostra "Não informado".
+            'informacoes' => [
+                'perfil' => $perfilAcesso,
+                'nome' => trim((string)$usuario['nome']),
+                'email' => trim((string)($usuario['email'] ?? '')),
+                'telefone' => perfilTelefoneExibicao((string)($usuario['telefone'] ?? '')),
+                'empresa' => $empresaNome,
+            ],
         ],
     ], 200);
 

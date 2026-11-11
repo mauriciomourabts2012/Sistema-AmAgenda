@@ -6,9 +6,11 @@
 
   /* ============================
      MODAL: Dados cadastrais do cliente
-     Único modal de cadastro da página. Abre manualmente pelo menu
-     lateral (botão "Dados cadastrais") e automaticamente quando
-     existir qualquer dado cadastral pendente (obrigatório ou opcional).
+     Único modal de cadastro da página. Abre SOMENTE por ação do cliente: menu
+     lateral ("Dados cadastrais") ou a notificação "Complete seu cadastro" do sino
+     (window.AbrirCadastroCliente). Nunca abre sozinho: enquanto houver dado pendente
+     (obrigatório ou opcional) a central de notificações mostra o aviso. As restrições
+     de dados obrigatórios são aplicadas pelo backend, não pelo modal.
      ============================ */
   const modalCadastro = document.getElementById("modalDadosCadastraisCliente");
   const formCadastro = document.getElementById("formPerfilCliente");
@@ -16,12 +18,12 @@
   const avisoObrigatorio = document.getElementById("cadastroAvisoObrigatorio");
   const botaoSalvarCadastro = document.getElementById("btnSalvarPerfil");
   const botaoVoltar = document.getElementById("btnVoltarInformacoes");
-  const botaoFecharCadastro = modalCadastro?.querySelector(".modal-fechar[data-fechar-modal]");
+
   const abasCadastro = Array.from(modalCadastro?.querySelectorAll("[data-tab]") || []);
   const paineisCadastro = Array.from(modalCadastro?.querySelectorAll(".tab-pane") || []);
 
-  // Campos cadastrais opcionais: se qualquer um estiver vazio, o modal
-  // abre automaticamente como lembrete (sem bloquear o uso do sistema).
+  // Campos cadastrais opcionais: se qualquer um estiver vazio, a notificação de
+  // cadastro permanece no sino como lembrete (sem bloquear o uso do sistema).
   const CAMPOS_OPCIONAIS = [
     "email", "whatsapp_celular", "cpf", "data_nascimento", "cep",
     "logradouro", "numero", "bairro", "cidade", "uf", "complemento"
@@ -56,34 +58,25 @@
   }
 
   /* ============================
-     BLOQUEIO (Nome/Telefone obrigatórios pendentes)
-     Enquanto bloqueado: sem X, sem ESC, sem clique fora
-     (garantido pela classe .cadastro-bloqueado, lida pelo script
-     genérico de modais em fecharModal).
+     CADASTRO INCOMPLETO (central de notificações do sino)
+     A notificação é exibida por notificacoes-cliente.js; aqui só se informa o que falta.
+     Obrigatórios pendentes = Nome e um contato; qualquer campo opcional vazio também
+     mantém o aviso. O formulário nunca abre sozinho nem bloqueia a navegação.
      ============================ */
-  function definirBloqueio(bloquear) {
-    modalCadastro.classList.toggle("cadastro-bloqueado", bloquear);
-    if (avisoObrigatorio) avisoObrigatorio.hidden = !bloquear;
-    if (botaoFecharCadastro) {
-      botaoFecharCadastro.hidden = bloquear;
-      botaoFecharCadastro.disabled = bloquear;
-    }
-    document.body.classList.toggle("cadastro-cliente-pendente", bloquear);
-  }
-
-  function abrirCadastro(bloquear) {
-    definirBloqueio(bloquear);
+  function abrirFormularioCadastro() {
     modalCadastro.classList.add("ativo");
     modalCadastro.setAttribute("aria-hidden", "false");
     window.setTimeout(() => campo("cli_nome")?.focus({ preventScroll: true }), 0);
   }
+  window.AbrirCadastroCliente = abrirFormularioCadastro;
 
-  function fecharCadastroAutomaticamente() {
-    definirBloqueio(false);
-    modalCadastro.classList.remove("ativo");
-    modalCadastro.setAttribute("aria-hidden", "true");
+  function publicarCadastroPendente(dados) {
+    const obrigatoriosCompletos = dados?.dados_obrigatorios_completos === true;
+    const pendente = !obrigatoriosCompletos || possuiCampoOpcionalVazio(dados);
+    window.CentroNotificacoesCliente?.definirCadastro?.({ pendente, obrigatorio: !obrigatoriosCompletos });
+    // Aviso informativo dentro do formulário (sem bloquear: o modal sempre pode ser fechado).
+    if (avisoObrigatorio) avisoObrigatorio.hidden = obrigatoriosCompletos;
   }
-
   /* ============================
      PREENCHIMENTO DOS DADOS
      ============================ */
@@ -527,14 +520,8 @@
       const dados = json.data || {};
       preencherCadastro(dados);
 
-      const obrigatoriosCompletos = dados.dados_obrigatorios_completos === true;
-      if (!obrigatoriosCompletos) {
-        // Falta Nome e/ou Telefone: abre e bloqueia até salvar.
-        abrirCadastro(true);
-      } else if (possuiCampoOpcionalVazio(dados)) {
-        // Obrigatórios ok, falta algum opcional: abre como lembrete, sem bloquear.
-        abrirCadastro(false);
-      }
+      // Sem abertura automática: só informa à central de notificações o que falta.
+      publicarCadastroPendente(dados);
     } catch (erro) {
       mensagemCadastro.textContent = erro.message;
       mensagemCadastro.className = "cadastro-mensagem erro";

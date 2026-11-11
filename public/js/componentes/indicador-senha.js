@@ -13,11 +13,13 @@
  *     campoAtual:       document.getElementById("senhaAtual"),     // opcional
  *     dadosPessoais:    { nome, email, telefone },                 // opcional (objeto ou função)
  *     opcional:         false,   // true = campo pode ficar vazio (ex.: edição sem trocar senha)
+ *     recolhivel:       false,   // true = requisitos recolhidos, com botão para expandir (abre ao digitar)
  *     container:        null     // elemento ou seletor onde o indicador será inserido
  *   });
  *   ind.limpar();      // reinicia o indicador (não altera os campos)
  *   ind.destruir();    // remove o indicador e os ouvintes
  *   ind.obterEstado(); // { valido, requisitos, recomendacoes } - sem dados da senha
+ *   ind.expandir();    // modo recolhível: abre a lista de requisitos
  *
  * Política refletida (backend): mínimo 8 caracteres, máximo 72 bytes (bcrypt),
  * pelo menos um caractere especial (pontuação ou símbolo Unicode, /[\p{P}\p{S}]/u,
@@ -52,6 +54,7 @@
     rec12: "12 caracteres ou mais.",
     recMix: "Combine palavras e números.",
     opcionalVazio: "Deixe em branco para manter a senha atual.",
+    requisitosSenha: "Requisitos da senha",
     resumoOk: "Senha válida. Todos os requisitos foram atendidos.",
     resumoOkSemConf: "Requisitos atendidos. Repita a senha para confirmar.",
     srOk: "Atendido: ",
@@ -219,9 +222,31 @@
     raiz.setAttribute("data-vazio", "1");
     this.raiz = raiz;
 
+    // Modo recolhível (opt-in): os requisitos ficam num bloco que abre pelo botão ou ao começar a digitar.
+    // Só muda a apresentação; as regras e os estados dos itens são exatamente os mesmos.
+    var corpo = raiz;
+    this.alternar = null;
+    if (cfg.recolhivel) {
+      this.idConteudo = this.id + "-conteudo";
+      this.alternar = criar("button", "ind-senha__alternar");
+      this.alternar.type = "button";
+      this.alternar.setAttribute("aria-controls", this.idConteudo);
+      var iconeChave = criar("i", "fa-solid fa-key ind-senha__chave");
+      iconeChave.setAttribute("aria-hidden", "true");
+      this.alternar.appendChild(iconeChave);
+      this.alternar.appendChild(criar("span", "ind-senha__alternar-texto", TEXTOS.requisitosSenha));
+      corpo = criar("div", "ind-senha__conteudo");
+      corpo.id = this.idConteudo;
+      raiz.classList.add("ind-senha--recolhivel");
+      raiz.appendChild(this.alternar);
+      raiz.appendChild(corpo);
+    }
+    this.corpo = corpo;
+    this.manual = false;
+
     this.dica = criar("p", "ind-senha__dica");
     this.dica.hidden = true;
-    raiz.appendChild(this.dica);
+    corpo.appendChild(this.dica);
 
     var blocoReq = criar("div", "ind-senha__bloco");
     blocoReq.appendChild(criar("p", "ind-senha__titulo", TEXTOS.tituloRequisitos));
@@ -234,14 +259,14 @@
     if (cfg.campoAtual) this.criarItem(listaReq, "diferente");
     this.criarItem(listaReq, "previsivel");
     blocoReq.appendChild(listaReq);
-    raiz.appendChild(blocoReq);
+    corpo.appendChild(blocoReq);
 
     if (cfg.campoConfirmacao) {
       var listaConf = criar("ul", "ind-senha__lista ind-senha__lista--conf");
       this.criarItem(listaConf, "confirmacao");
       this.idConfirmacao = this.id + "-conf";
       listaConf.id = this.idConfirmacao;
-      raiz.appendChild(listaConf);
+      corpo.appendChild(listaConf);
     }
 
     var blocoRec = criar("div", "ind-senha__bloco ind-senha__bloco--rec");
@@ -251,7 +276,7 @@
     this.criarItem(listaRec, "rec12", true);
     this.criarItem(listaRec, "recMix", true);
     blocoRec.appendChild(listaRec);
-    raiz.appendChild(blocoRec);
+    corpo.appendChild(blocoRec);
 
     // Região viva única: só recebe resumos curtos, com atraso, para evitar excesso de anúncios.
     this.status = criar("p", "ind-senha__status");
@@ -260,6 +285,8 @@
     this.status.setAttribute("aria-atomic", "true");
     raiz.appendChild(this.status);
 
+    if (this.alternar) this.definirAberto(false);
+
     var destino = resolverElemento(cfg.container);
     if (destino) {
       destino.appendChild(raiz);
@@ -267,6 +294,13 @@
       var ancora = cfg.campoNova.closest(".modal-campo, .campo, .form-group") || cfg.campoNova;
       ancora.insertAdjacentElement("afterend", raiz);
     }
+  };
+
+  Indicador.prototype.definirAberto = function (aberto) {
+    if (!this.alternar) return;
+    this.aberto = aberto === true;
+    this.corpo.hidden = !this.aberto;
+    this.alternar.setAttribute("aria-expanded", this.aberto ? "true" : "false");
   };
 
   Indicador.prototype.vincular = function () {
@@ -292,6 +326,10 @@
       escutar(campo, "input", aoDigitar);
       escutar(campo, "change", aoDigitar);
     });
+
+    if (this.alternar) {
+      escutar(this.alternar, "click", function () { self.manual = true; self.definirAberto(!self.aberto); });
+    }
 
     var form = cfg.campoNova.form;
     if (form) {
@@ -322,6 +360,8 @@
     var rec = {};
 
     this.raiz.setAttribute("data-vazio", vazioTotal ? "1" : "0");
+    // Recolhível: ao começar a digitar a nova senha os requisitos aparecem (se a pessoa não os recolheu).
+    if (this.alternar && !vazio && !this.manual && !this.aberto) this.definirAberto(true);
     if (cfg.opcional) {
       this.dica.textContent = TEXTOS.opcionalVazio;
       this.dica.hidden = !vazioTotal;
@@ -416,6 +456,7 @@
 
   Indicador.prototype.limpar = function () {
     window.clearTimeout(this.timerAnuncio);
+    if (this.alternar) { this.manual = false; this.definirAberto(false); }
     this.ultimoResumo = "";
     if (this.status) this.status.textContent = "";
     this.atualizar();
@@ -439,7 +480,7 @@
     this.descricoesOriginais = [];
     if (this.raiz && this.raiz.parentNode) this.raiz.parentNode.removeChild(this.raiz);
     if (instancias && this.cfg.campoNova) instancias.delete(this.cfg.campoNova);
-    this.raiz = this.status = this.dica = this.itens = null;
+    this.raiz = this.status = this.dica = this.itens = this.alternar = this.corpo = null;
     this.cfg = { campoNova: null };
   };
 
@@ -461,6 +502,7 @@
         campoAtual: resolverElemento(o.campoAtual),
         dadosPessoais: o.dadosPessoais || null,
         opcional: o.opcional === true,
+        recolhivel: o.recolhivel === true,
         container: o.container || null
       });
       if (instancias) instancias.set(campoNova, inst);
@@ -470,7 +512,8 @@
         limpar: function () { if (inst.raiz) inst.limpar(); },
         destruir: function () { if (inst.raiz) inst.destruir(); },
         obterEstado: function () { return inst.raiz ? inst.obterEstado() : null; },
-        valido: function () { return inst.raiz ? inst.estadoAtual.valido : false; }
+        valido: function () { return inst.raiz ? inst.estadoAtual.valido : false; },
+        expandir: function () { if (inst.raiz && inst.alternar) { inst.manual = true; inst.definirAberto(true); } }
       };
     }
   };

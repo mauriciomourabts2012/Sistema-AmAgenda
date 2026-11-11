@@ -7,6 +7,9 @@
    - a ação só direciona: o Chat do cliente revalida a autorização;
    - sem timer próprio: recarrega pelo ciclo único do chat-nao-lidas.js.
    Reutiliza apenas o visual (classes .notificacoes-* já existentes).
+   Cadastro incompleto: notificação LOCAL (não gravada no banco, logo nunca duplica nem
+   reaparece depois de completa). Estado informado por salvar-dados-cadastrais.js via
+   definirCadastro(); o clique abre o formulário cadastral existente.
    ========================================================== */
 (() => {
   "use strict";
@@ -17,9 +20,11 @@
   const ROTA_LISTAR = "cliente/notificacoes/listar";
   const ROTA_MARCAR_LIDA = "cliente/notificacoes/marcar-lida";
   const ACAO_CHAT = "cliente.chat.abrir_conversa";
+  const ACAO_CADASTRO = "cliente.cadastro.completar";
 
   const estado = {
     itens: [],
+    cadastro: { pendente: false, obrigatorio: false },
     carregando: false,
     recarregar: false,
     inicializada: false,
@@ -38,6 +43,30 @@
       && auth.cadastro_completo === true;
   }
 
+  function ehCliente() {
+    const auth = window.__AUTH__;
+    return !!auth && auth.tipo_usuario === "cliente";
+  }
+
+  /* Notificação local do cadastro: sempre a primeira enquanto houver dado pendente. */
+  function itemCadastro() {
+    if (!estado.cadastro.pendente) return null;
+    return {
+      id_notificacao: "cadastro-pendente",
+      local: true,
+      titulo: "Complete seu cadastro",
+      mensagem: "Algumas informações do seu perfil ainda estão pendentes.",
+      acao_codigo: ACAO_CADASTRO,
+      lida: false,
+      obrigatorio: estado.cadastro.obrigatorio === true,
+    };
+  }
+
+  function itensExibidos() {
+    const cadastro = itemCadastro();
+    return cadastro ? [cadastro, ...estado.itens] : estado.itens;
+  }
+
   function formatarData(valor) {
     if (!valor) return "";
     const data = new Date(String(valor).replace(" ", "T"));
@@ -53,7 +82,7 @@
   }
 
   function quantidadeNaoLidas() {
-    return estado.itens.filter(item => !item.lida).length;
+    return itensExibidos().filter(item => !item.lida).length;
   }
 
   /* Único contador da sineta: notificações não lidas da central. */
@@ -108,22 +137,29 @@
 
   function executarAcao(item) {
     if (item.acao_codigo === ACAO_CHAT) abrirChatDaNotificacao(item);
+    if (item.acao_codigo === ACAO_CADASTRO) {
+      if (typeof window.AbrirCadastroCliente === "function") window.AbrirCadastroCliente();
+      else window.location.assign("/public/views/cliente-perfil.html");
+    }
   }
 
   function renderizar() {
     ui.lista.replaceChildren();
     atualizarContador();
-    if (estado.itens.length === 0) {
+    const itens = itensExibidos();
+    // "Nenhuma notificação" só quando não há nenhuma (nem a do cadastro).
+    if (itens.length === 0) {
       mostrarEstado("Nenhuma notificação no momento.", "vazio");
       return;
     }
 
     ui.estado.hidden = true;
-    estado.itens.forEach(item => {
+    itens.forEach(item => {
       const botaoItem = document.createElement("button");
       botaoItem.type = "button";
       botaoItem.className = "notificacao-item";
       botaoItem.classList.toggle("nao-lida", !item.lida);
+      botaoItem.classList.toggle("notificacao-item--cadastro-obrigatorio", item.local === true && item.obrigatorio === true);
       botaoItem.setAttribute("aria-label", `${item.titulo}. ${item.lida ? "Lida" : "Não lida"}.`);
 
       const topo = document.createElement("span");
@@ -141,14 +177,23 @@
       const data = document.createElement("time");
       data.textContent = formatarData(item.categoria === "chat" && item.prazo_em ? item.prazo_em : item.criada_em);
       const situacao = document.createElement("span");
-      situacao.textContent = item.acao_codigo === ACAO_CHAT
-        ? (item.lida ? "Lida · Abrir conversa" : "Não lida · Abrir conversa")
-        : (item.lida ? "Lida" : "Não lida");
+      situacao.textContent = item.acao_codigo === ACAO_CADASTRO
+        ? "Completar cadastro"
+        : item.acao_codigo === ACAO_CHAT
+          ? (item.lida ? "Lida · Abrir conversa" : "Não lida · Abrir conversa")
+          : (item.lida ? "Lida" : "Não lida");
       rodape.append(data, situacao);
       botaoItem.append(topo, mensagem, rodape);
 
       botaoItem.addEventListener("click", async () => {
         if (botaoItem.disabled) return;
+        // Notificação local do cadastro: só abre o formulário (não há o que marcar como lida; ela
+        // permanece enquanto houver dado pendente).
+        if (item.local === true) {
+          fechar(false);
+          executarAcao(item);
+          return;
+        }
         botaoItem.disabled = true;
         try {
           await marcarLida(item);
@@ -170,6 +215,13 @@
 
   async function carregar({ silencioso = false } = {}) {
     if (estado.parado || !estado.inicializada) return;
+    // Cadastro obrigatório incompleto: o backend ainda não libera as notificações do cliente (agendamentos e
+    // Chat). Não há chamada nem erro: o painel mostra apenas a notificação local do cadastro.
+    if (!clienteCompleto()) {
+      estado.itens = [];
+      renderizar();
+      return;
+    }
     if (estado.carregando) {
       estado.recarregar = true;
       return;
@@ -216,7 +268,7 @@
 
   function inicializar() {
     if (estado.inicializada) return;
-    if (document.body?.dataset?.menuContexto !== "cliente" || !clienteCompleto()) return;
+    if (document.body?.dataset?.menuContexto !== "cliente" || !ehCliente()) return;
     const botao = document.querySelector(".cabecalho-notificacoes");
     if (!botao || botao.closest(".centro-notificacoes")) return;
 
@@ -295,7 +347,14 @@
   document.addEventListener("amagenda:sessao-carregada", inicializar);
   document.addEventListener("DOMContentLoaded", inicializar);
 
+  /* Chamado por salvar-dados-cadastrais.js depois de ler o perfil (e a cada novo carregamento da página). */
+  function definirCadastro({ pendente = false, obrigatorio = false } = {}) {
+    estado.cadastro = { pendente: pendente === true, obrigatorio: obrigatorio === true };
+    if (estado.inicializada) renderizar();
+  }
+
   window.CentroNotificacoesCliente = Object.freeze({
+    definirCadastro,
     inicializar,
     carregar: () => carregar({ silencioso: true }),
     abrir,

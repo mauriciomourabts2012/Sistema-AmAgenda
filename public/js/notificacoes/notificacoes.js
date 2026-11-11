@@ -134,8 +134,14 @@
     estadoNotificacoes.senhaVencida = true;
     estadoNotificacoes.bloqueioSenha = true;
     document.body.classList.add("senha-temporaria-bloqueada");
-    fecharDropdownNotificacoes(false);
-    abrirPerfilNaArea("senha", true);
+    // Modo de atualização obrigatória no Meu Perfil (apresentação; o bloqueio vem do backend e deste script).
+    window.PerfilModoSenha?.definir(true, {
+      titulo: "Atualizar senha",
+      motivo: "Sua senha temporária expirou. Por segurança, informe no campo “Senha temporária” a senha temporária que você recebeu e defina uma nova senha para continuar.",
+      rotuloSenhaAtual: "Senha temporária",
+      placeholderSenhaAtual: "Digite a senha temporária recebida",
+    });
+    fecharDropdownNotificacoes(false);    abrirPerfilNaArea("senha", true);
     if (primeiraAtivacao) exibirAvisoSenhaObrigatoria();
   }
 
@@ -186,6 +192,7 @@
     estadoNotificacoes.senhaVencida = false;
     estadoNotificacoes.bloqueioSenha = false;
     document.body.classList.remove("senha-temporaria-bloqueada");
+    window.PerfilModoSenha?.definir(false);
     if (alertaSenhaObrigatoria && alertaSenhaObrigatoria.isConnected) {
       alertaSenhaObrigatoria.remove();
       alertaSenhaObrigatoria = null;

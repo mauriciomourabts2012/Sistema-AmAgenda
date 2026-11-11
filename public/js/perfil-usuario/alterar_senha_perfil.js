@@ -54,7 +54,52 @@
     campoConfirmacao: inputConfirmarSenha,
     campoAtual: inputSenhaAtual,
     dadosPessoais: obterDadosPessoaisIndicador,
+    recolhivel: true,
   }) || null;
+
+  // Mostrar/ocultar senha: apenas visual (o valor não é lido, guardado nem enviado por este recurso).
+  function instalarOlhoDeSenha() {
+    form.querySelectorAll('input[type="password"]').forEach((campo) => {
+      const wrapper = campo.closest(".modal-campo");
+      if (!wrapper || wrapper.querySelector(".perfil-senha-olho")) return;
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "perfil-senha-olho";
+      botao.setAttribute("aria-label", "Mostrar senha");
+      botao.setAttribute("aria-pressed", "false");
+      const icone = document.createElement("i");
+      icone.className = "fa-regular fa-eye";
+      icone.setAttribute("aria-hidden", "true");
+      botao.appendChild(icone);
+      botao.addEventListener("click", () => {
+        const mostrar = campo.type === "password";
+        campo.type = mostrar ? "text" : "password";
+        botao.setAttribute("aria-pressed", String(mostrar));
+        botao.setAttribute("aria-label", mostrar ? "Ocultar senha" : "Mostrar senha");
+        icone.className = mostrar ? "fa-regular fa-eye-slash" : "fa-regular fa-eye";
+      });
+      wrapper.appendChild(botao);
+    });
+  }
+
+  function ocultarSenhasVisiveis() {
+    form.querySelectorAll(".perfil-senha-olho").forEach((botao) => {
+      const campo = botao.closest(".modal-campo")?.querySelector("input");
+      if (campo && campo.type !== "password") campo.type = "password";
+      botao.setAttribute("aria-pressed", "false");
+      botao.setAttribute("aria-label", "Mostrar senha");
+      const icone = botao.querySelector("i");
+      if (icone) icone.className = "fa-regular fa-eye";
+    });
+  }
+
+  instalarOlhoDeSenha();
+  form.addEventListener("reset", () => window.setTimeout(ocultarSenhasVisiveis, 0));
+
+  // Modo de atualização obrigatória: os requisitos da senha já aparecem abertos.
+  document.addEventListener("amagenda:perfil-modo-senha", (evento) => {
+    if (evento.detail?.ativo) indicadorSenha?.expandir?.();
+  });
 
   // ==========================================================
   // Toast Universal

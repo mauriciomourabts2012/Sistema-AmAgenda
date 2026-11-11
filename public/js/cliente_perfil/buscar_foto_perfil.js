@@ -81,6 +81,19 @@
       });
   }
 
+  /* "Informações pessoais" do modal Meu Perfil: dados do próprio cliente (vindos da sessão no backend). */
+  function preencherInformacoes(informacoes, indisponivel = false) {
+    document.querySelectorAll("[data-perfil-info]").forEach(elemento => {
+      const valor = String(informacoes?.[elemento.dataset.perfilInfo] ?? "").trim();
+      // Itens "opcionais" (ex.: perfil de acesso no cabeçalho) somem quando não há valor.
+      const opcional = elemento.hasAttribute("data-perfil-info-opcional");
+      const alvo = elemento.closest("[data-perfil-grupo]") || elemento.closest(".perfil-info-item") || elemento;
+      if (opcional) alvo.hidden = indisponivel || valor === "";
+      elemento.textContent = indisponivel ? "Indisponível no momento" : (valor !== "" ? valor : "Não informado");
+      elemento.classList.toggle("perfil-info-vazio", indisponivel || valor === "");
+    });
+  }
+
   async function requisitar(caminho) {
     const resposta = await fetch(
       `${API}?path=${encodeURIComponent(caminho)}`,
@@ -145,6 +158,7 @@
         nomePerfil.textContent = nome;
       }
 
+      preencherInformacoes(dados.informacoes);
       atualizarAvatares(foto);
 
       document.dispatchEvent(
@@ -166,6 +180,7 @@
         nomePerfil.textContent = "Cliente";
       }
 
+      preencherInformacoes(null, true);
       atualizarAvatares(AVATAR_PADRAO);
 
       console.error(

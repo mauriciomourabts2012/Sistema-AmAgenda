@@ -73,6 +73,19 @@
     });
   }
 
+  /* "Informações pessoais" e perfil de acesso do modal Meu Perfil (dados do usuário da sessão). */
+  function applyInformacoes(informacoes, indisponivel = false) {
+    document.querySelectorAll("[data-perfil-info]").forEach((elemento) => {
+      const valor = String(informacoes?.[elemento.dataset.perfilInfo] ?? "").trim();
+      // Itens "opcionais" (perfil de acesso no cabeçalho, empresa) somem quando não há valor.
+      const opcional = elemento.hasAttribute("data-perfil-info-opcional");
+      const alvo = elemento.closest("[data-perfil-grupo]") || elemento.closest(".perfil-info-item") || elemento;
+      if (opcional) alvo.hidden = indisponivel || valor === "";
+      elemento.textContent = indisponivel ? "Indisponível no momento" : (valor !== "" ? valor : "Não informado");
+      elemento.classList.toggle("perfil-info-vazio", indisponivel || valor === "");
+    });
+  }
+
   function applyNome(nome) {
     if (!nomeEl) return;
     nomeEl.textContent = String(nome || "").trim() || FALLBACK_NAME;
@@ -101,6 +114,7 @@
       if (!resp.ok || !json || json.ok !== true) {
         applyAvatar(FALLBACK);
         applyNome(FALLBACK_NAME);
+        applyInformacoes(null, true);
         return;
       }
 
@@ -109,6 +123,7 @@
 
       applyAvatar(fotoUrl, Boolean(json?.data?.tem_foto));
       applyNome(nome);
+      applyInformacoes(json?.data?.informacoes);
 
       window.dispatchEvent(new CustomEvent("perfil:foto-carregada", {
         detail: json.data || {}
@@ -118,6 +133,7 @@
       console.warn("[BuscarFotoPerfil] Falha ao buscar foto:", error);
       applyAvatar(FALLBACK);
       applyNome(FALLBACK_NAME);
+      applyInformacoes(null, true);
     }
   }
 

@@ -140,3 +140,43 @@
   .ind-senha__item,
   .ind-senha__icone { transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
 }
+
+/* Modo recolhível (opt-in): cabeçalho "Requisitos da senha" que expande/recolhe a lista. */
+.ind-senha--recolhivel { padding: 0; overflow: hidden; }
+
+.ind-senha__alternar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 16px;
+  border: 0;
+  background: #eef2f8;
+  color: var(--isn-titulo);
+  font: inherit;
+  font-size: .98rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ind-senha__chave { flex: 0 0 auto; color: var(--am-marca, #1d4ed8); font-size: 1rem; }
+.ind-senha__alternar-texto { min-width: 0; }
+
+.ind-senha__alternar::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform .15s ease;
+}
+
+.ind-senha__alternar[aria-expanded="true"]::after { transform: rotate(-135deg); }
+.ind-senha__alternar:focus-visible { outline: 2px solid var(--am-marca, #1d4ed8); outline-offset: -2px; }
+
+.ind-senha__conteudo { padding: 12px 16px 14px; }
+.ind-senha__conteudo[hidden] { display: none; }

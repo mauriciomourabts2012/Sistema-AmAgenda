@@ -1796,6 +1796,289 @@ body[data-menu-contexto="agenda"] .layout-controle{
   border-top: 1px solid rgba(0,0,0,.08);
 }
 
+/* Modal Meu Perfil (compartilhado por Agenda, Chat, Painel, Super Admin e Área do Cliente).
+   Cabeçalho do modal (marca da empresa + botão fechar) fixo; só o corpo rola (bloco compartilhado dos modais).
+   Estrutura: identificação (foto, nome, perfil de acesso, empresa), cartão "Informações pessoais" e
+   cartão "Segurança da conta" (campos + requisitos), com ações alinhadas à direita. */
+/* Largura do Meu Perfil: ampla no desktop (a regra do grupo de modais menores não se aplica a ele). */
+#modalPerfilUsuario .modal-conteudo { width: min(1180px, calc(100vw - 48px)); }
+
+/* Desktop: o Meu Perfil é apresentado na escala de 85% (um pouco acima dos 75% aprovados), sem exigir zoom
+   do usuário. Largura e altura máximas são compensadas para continuar respeitando a janela; no mobile e em telas
+   estreitas (<= 860px) a escala é 100%. */
+@media (min-width: 861px) {
+  #modalPerfilUsuario .modal-conteudo {
+    zoom: .85;
+    width: min(1180px, calc((100vw - 48px) / .85));
+    max-height: calc((100dvh - 40px) / .85);
+  }
+}
+#modalPerfilUsuario .modal-topo h2 { display: flex; align-items: center; gap: 12px; }
+/* Corpo em coluna: os blocos NÃO encolhem (os cartões têm overflow hidden e, encolhidos, cortavam o conteúdo em vez de
+   deixar o corpo rolar); quem rola é o corpo do modal. */
+#modalPerfilUsuario .modal-corpo { padding: 22px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
+#modalPerfilUsuario .modal-corpo > * { flex: 0 0 auto; }
+#modalPerfilUsuario .divisor { margin: 0; }
+/* Campo oculto por script (ex.: Senha atual dispensada na recuperação) some por completo: .modal-campo { display: flex } vencia o atributo hidden. */
+#modalPerfilUsuario .modal-campo[hidden] { display: none; }
+
+/* Identificação */
+.perfil-cabecalho {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+  min-width: 0;
+}
+
+.perfil-avatar-coluna {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-right: 28px;
+  border-right: 1px solid #e3e9f1;
+}
+
+.perfil-avatar-anel {
+  position: relative;
+  padding: 5px;
+  border: 2px solid #dbe3ee;
+  border-radius: 50%;
+}
+
+#modalPerfilUsuario .perfil-foto { width: 128px; height: 128px; border: 0; border-radius: 50%; display: block; }
+
+.perfil-avatar-camera {
+  position: absolute;
+  right: 2px;
+  bottom: 4px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--am-marca, #1163dd);
+  color: var(--am-marca-contraste, #fff);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.perfil-identidade { min-width: 0; display: grid; gap: 10px; justify-items: start; }
+
+#modalPerfilUsuario .perfil-nome-usuario {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.perfil-acesso {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border: 1px solid #bfd8f6;
+  border-radius: 999px;
+  background: #eaf3fe;
+  color: #1d4f91;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.perfil-acesso[hidden] { display: none; }
+
+.perfil-empresa-linha { margin: 0; color: var(--muted, #64748b); font-size: 15px; overflow-wrap: anywhere; }
+.perfil-empresa-linha strong { color: var(--text, #0f172a); }
+.perfil-empresa-linha[hidden] { display: none; }
+
+/* Cartões (Informações pessoais e Segurança da conta) */
+.perfil-cartao { min-width: 0; border: 1px solid #dde4ee; border-radius: 14px; background: #fff; overflow: hidden; }
+
+.perfil-cartao-topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: #eef2f8;
+  color: var(--text, #0f172a);
+}
+
+.perfil-cartao-topo i { font-size: 18px; }
+.perfil-secao-titulo { margin: 0; color: var(--text, #0f172a); font-size: 18px; font-weight: 800; }
+.perfil-cartao-corpo { padding: 14px 18px 18px; }
+
+/* Informações pessoais: duas colunas, ícone, rótulo e valor alinhados, divisória discreta. */
+.perfil-info-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 36px; }
+
+.perfil-info-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e6ebf2;
+}
+
+.perfil-info-item[hidden] { display: none; }
+
+.perfil-info-icone {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #e8f0fb;
+  color: #1d4f91;
+  font-size: 18px;
+}
+
+.perfil-info-dados { min-width: 0; display: grid; gap: 2px; }
+.perfil-info-rotulo { color: var(--muted, #64748b); font-size: 12.5px; font-weight: 700; }
+.perfil-info-valor { color: var(--text, #0f172a); font-size: 16px; font-weight: 800; overflow-wrap: anywhere; word-break: break-word; }
+.perfil-info-valor.perfil-info-vazio { color: var(--muted, #64748b); font-weight: 500; }
+
+/* Segurança da conta: campos à esquerda e requisitos à direita (quando existem); rótulo acima do campo. */
+#modalPerfilUsuario #formAlterarSenha { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+#modalPerfilUsuario #formAlterarSenha:has(.ind-senha) { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; }
+#modalPerfilUsuario #formAlterarSenha br { display: none; }
+#modalPerfilUsuario #formAlterarSenha > .modal-campo { grid-column: 1; margin: 0; gap: 6px; }
+#modalPerfilUsuario #formAlterarSenha > .ind-senha { grid-column: 2; grid-row: 1 / span 3; align-self: start; margin: 0; }
+#modalPerfilUsuario #formAlterarSenha > .perfil-acoes { grid-column: 1 / -1; }
+
+#modalPerfilUsuario #formAlterarSenha .modal-campo label {
+  position: static;
+  order: -1;
+  transform: none;
+  padding: 0;
+  background: none;
+  color: var(--text, #0f172a);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 20px;
+  pointer-events: auto;
+}
+
+#modalPerfilUsuario #formAlterarSenha .modal-campo input {
+  height: 48px;
+  padding: 0 48px 0 42px;
+  border-radius: 12px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='11' width='16' height='10' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") no-repeat 14px center / 18px;
+}
+
+.perfil-senha-olho {
+  position: absolute;
+  top: 32px;
+  right: 6px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.perfil-senha-olho:focus-visible { outline: 2px solid var(--am-marca, #1d4ed8); outline-offset: 1px; }
+
+/* Ações: Salvar nova senha e Sair juntos, alinhados à direita. */
+.perfil-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 4px; }
+.perfil-acoes .botao-geral { min-height: 48px; padding-inline: 22px; }
+
+@media (max-width: 860px) {
+  /* Telas pequenas: o modal ocupa a largura útil (como folha na base da tela), com cabeçalho mais compacto. */
+  #modalPerfilUsuario.modal-geral { padding: 8px; align-items: flex-end; }
+  #modalPerfilUsuario .modal-conteudo { width: min(100%, 720px); max-height: calc(100dvh - 16px); }
+  #modalPerfilUsuario .modal-topo { min-height: 60px; padding: 12px 16px; }
+  #modalPerfilUsuario .modal-topo h2 { font-size: 19px; }
+  #modalPerfilUsuario .modal-fechar { width: 38px; height: 38px; flex-basis: 38px; }
+  .perfil-cabecalho { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 14px; text-align: center; }
+  .perfil-avatar-coluna { padding-right: 0; border-right: 0; }
+  .perfil-identidade { justify-items: center; }
+  #modalPerfilUsuario .perfil-nome-usuario { font-size: 20px; text-align: center; }
+  #modalPerfilUsuario #formAlterarSenha:has(.ind-senha) { grid-template-columns: minmax(0, 1fr); }
+  #modalPerfilUsuario #formAlterarSenha > .ind-senha { grid-column: 1; grid-row: auto; }
+}
+
+@media (max-width: 560px) {
+  #modalPerfilUsuario .modal-corpo { padding: 14px 14px 16px; gap: 14px; }
+  #modalPerfilUsuario .perfil-foto { width: 96px; height: 96px; }
+  .perfil-cartao-corpo { padding: 8px 14px 14px; }
+  .perfil-cartao-topo { padding: 10px 14px; }
+  .perfil-secao-titulo { font-size: 16px; }
+  .perfil-info-lista { grid-template-columns: minmax(0, 1fr); }
+  .perfil-info-item { gap: 12px; padding: 9px 0; }
+  .perfil-info-icone { flex-basis: 40px; width: 40px; height: 40px; font-size: 16px; }
+  .perfil-info-valor { font-size: 15px; }
+  .perfil-acoes { flex-direction: column; align-items: stretch; }
+  .perfil-acoes .botao-geral { width: 100%; min-height: 46px; justify-content: center; }
+}
+
+/* Meu Perfil em MODO DE DEFINIÇÃO/REDEFINIÇÃO OBRIGATÓRIA de senha (atributo definido por PerfilModoSenha, a partir do
+   estado do backend/sessão): modal compacto só com o motivo, os campos de senha, os requisitos e a ação principal. */
+.perfil-modo-obrigatorio { display: none; }
+
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .modal-conteudo { width: min(620px, calc(100vw - 48px)); }
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cabecalho,
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cartao--informacoes,
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .divisor,
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cartao--seguranca > .perfil-cartao-topo,
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .modal-fechar { display: none; }
+
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-modo-obrigatorio {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #bfd8f6;
+  border-left: 4px solid var(--am-marca, #1163dd);
+  border-radius: 12px;
+  background: #eef5ff;
+  color: #1d3557;
+}
+
+.perfil-modo-obrigatorio i { flex: 0 0 auto; margin-top: 2px; color: var(--am-marca, #1163dd); font-size: 20px; }
+.perfil-modo-obrigatorio p { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.45; }
+
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-cartao--seguranca { border: 2px solid var(--am-marca, #1163dd); }
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] #formAlterarSenha:has(.ind-senha) { grid-template-columns: minmax(0, 1fr); }
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] #formAlterarSenha > .ind-senha { grid-column: 1; grid-row: auto; }
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] #formAlterarSenha .modal-campo input { border-width: 2px; border-color: var(--am-marca, #1163dd); }
+
+/* Ação principal em destaque; Sair discreto, porém acessível. */
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes { flex-direction: row-reverse; justify-content: space-between; }
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes button[type="submit"] {
+  border-color: transparent;
+  background: var(--am-marca, #1163dd);
+  color: var(--am-marca-contraste, #fff);
+}
+#modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes #btnSair {
+  min-height: 40px;
+  padding-inline: 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted, #64748b);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  #modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes { flex-direction: column; align-items: stretch; }
+  #modalPerfilUsuario[data-modo-senha="obrigatorio"] .perfil-acoes #btnSair { width: 100%; justify-content: center; }
+}
 
 /* ==========================================================
    FIM
@@ -2853,7 +3136,6 @@ body[data-menu-contexto="agenda"] .layout-controle{
 
 /* Dimensões coerentes com a quantidade de conteúdo de cada janela. */
 #modalNovoCliente .modal-conteudo,
-#modalPerfilUsuario .modal-conteudo,
 #modalNovoServicoAgendamento .modal-conteudo {
   width: min(740px, calc(100vw - 40px));
 }

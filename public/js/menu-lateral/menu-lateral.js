@@ -17,6 +17,36 @@
   // Badges por item (chave estável). Ficam fora do HTML porque renderizarMenu() reconstrói a navegação.
   const badgesMenu = new Map();
 
+  /* Meu Perfil: modo de definição/redefinição OBRIGATÓRIA de senha (somente apresentação).
+     Quem decide o modo é o estado vindo do backend/sessão (notificacoes.js nas telas internas e
+     alterar_senha_perfil.js do cliente); aqui só se aplica título contextual, motivo e o visual compacto
+     (CSS em agenda-web.css). O bloqueio de fechar e as regras de senha continuam nesses scripts e no backend. */
+  if (!window.PerfilModoSenha) {
+    window.PerfilModoSenha = Object.freeze({
+      definir(ativo, { titulo = "", motivo = "", rotuloSenhaAtual = "", placeholderSenhaAtual = "" } = {}) {
+        const modal = document.getElementById("modalPerfilUsuario");
+        if (!modal) return;
+        const textoTitulo = modal.querySelector(".perfil-titulo-texto");
+        const textoMotivo = modal.querySelector("[data-perfil-modo-motivo]");
+        // Campo "Senha atual": no modo obrigatório pode ter outro rótulo (ex.: "Senha temporária"); ao sair volta ao padrão.
+        const rotuloAtual = modal.querySelector('label[for="senha_atual"]');
+        const campoAtual = modal.querySelector("#senha_atual");
+        if (rotuloAtual) rotuloAtual.textContent = ativo && rotuloSenhaAtual ? rotuloSenhaAtual : "Senha atual";
+        if (campoAtual) campoAtual.placeholder = ativo && placeholderSenhaAtual ? placeholderSenhaAtual : "Digite sua senha atual";
+        if (ativo) {
+          modal.dataset.modoSenha = "obrigatorio";
+          if (textoTitulo) textoTitulo.textContent = titulo || "Atualizar senha";
+          if (textoMotivo) textoMotivo.textContent = motivo;
+        } else {
+          delete modal.dataset.modoSenha;
+          if (textoTitulo) textoTitulo.textContent = "Meu Perfil";
+          if (textoMotivo) textoMotivo.textContent = "";
+        }
+        document.dispatchEvent(new CustomEvent("amagenda:perfil-modo-senha", { detail: { ativo: Boolean(ativo) } }));
+      }
+    });
+  }
+
   // Menu operacional único, usado igualmente pela Agenda e pelo Chat (mesmos itens e ordem).
   // A única diferença entre as páginas é o item ativo, identificado pela URL atual.
   const MENU_OPERACIONAL = [

@@ -63,6 +63,45 @@
     'button[type="submit"]'
   );
 
+  // Mostrar/ocultar senha: apenas visual (o valor não é lido, guardado nem enviado por este recurso).
+  function instalarOlhoDeSenha() {
+    form.querySelectorAll('input[type="password"]').forEach((campo) => {
+      const wrapper = campo.closest(".modal-campo");
+      if (!wrapper || wrapper.querySelector(".perfil-senha-olho")) return;
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "perfil-senha-olho";
+      botao.setAttribute("aria-label", "Mostrar senha");
+      botao.setAttribute("aria-pressed", "false");
+      const icone = document.createElement("i");
+      icone.className = "fa-regular fa-eye";
+      icone.setAttribute("aria-hidden", "true");
+      botao.appendChild(icone);
+      botao.addEventListener("click", () => {
+        const mostrar = campo.type === "password";
+        campo.type = mostrar ? "text" : "password";
+        botao.setAttribute("aria-pressed", String(mostrar));
+        botao.setAttribute("aria-label", mostrar ? "Ocultar senha" : "Mostrar senha");
+        icone.className = mostrar ? "fa-regular fa-eye-slash" : "fa-regular fa-eye";
+      });
+      wrapper.appendChild(botao);
+    });
+  }
+
+  function ocultarSenhasVisiveis() {
+    form.querySelectorAll(".perfil-senha-olho").forEach((botao) => {
+      const campo = botao.closest(".modal-campo")?.querySelector("input");
+      if (campo && campo.type !== "password") campo.type = "password";
+      botao.setAttribute("aria-pressed", "false");
+      botao.setAttribute("aria-label", "Mostrar senha");
+      const icone = botao.querySelector("i");
+      if (icone) icone.className = "fa-regular fa-eye";
+    });
+  }
+
+  instalarOlhoDeSenha();
+  form.addEventListener("reset", () => window.setTimeout(ocultarSenhasVisiveis, 0));
+
 
   /*
   |--------------------------------------------------------------------------
@@ -86,7 +125,8 @@
   const CONFIGURACOES_MODO = Object.freeze({
 
     [MODOS_SENHA.PRIMEIRA_SENHA]: {
-      titulo: "Crie sua senha de acesso",
+      titulo: "Definir nova senha",
+      motivo: "Sua conta ainda não tem uma senha. Defina uma senha de acesso para continuar.",
       textoBotao: "Criar senha",
       exigirSenhaAtual: false,
       bloquearModal: true,
@@ -102,7 +142,8 @@
     },
 
     [MODOS_SENHA.RECUPERACAO]: {
-      titulo: "Criar nova senha",
+      titulo: "Definir nova senha",
+      motivo: "Você confirmou sua identidade por código. Defina uma nova senha para voltar a acessar sua conta.",
       textoBotao: "Criar nova senha",
       exigirSenhaAtual: false,
       bloquearModal: true,
@@ -255,7 +296,14 @@
     |--------------------------------------------------------------------------
     */
 
-    if (tituloModal) {
+    // Título e modo visual do modal (definição/redefinição obrigatória x Meu Perfil); só apresentação.
+    if (window.PerfilModoSenha) {
+
+      window.PerfilModoSenha.definir(
+        configuracao.bloquearModal,
+        { titulo: configuracao.titulo, motivo: configuracao.motivo || "" }
+      );
+    } else if (tituloModal) {
 
       tituloModal.textContent =
         configuracao.titulo;

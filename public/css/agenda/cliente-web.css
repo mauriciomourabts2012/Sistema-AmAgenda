@@ -698,3 +698,9 @@ body.cadastro-cliente-pendente .cliente-app-shell,
 body.cadastro-cliente-pendente .sidebar-agenda {
   pointer-events: none;
 }
+
+/* Central de notificações: "Complete seu cadastro" com dados obrigatórios pendentes fica em destaque. */
+.notificacao-item.notificacao-item--cadastro-obrigatorio {
+  border-left: 3px solid #c62828;
+  background: #fff3f2;
+}
