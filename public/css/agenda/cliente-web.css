@@ -539,6 +539,25 @@ body[data-menu-contexto="cliente"] {
   line-height: 1.4;
 }
 
+/* Orientação amigável (opcional) para cadastrar o segundo contato; nunca bloqueia. */
+.cadastro-dica {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid #cfe3f7;
+  border-radius: 12px;
+  color: #1f4e79;
+  background: #f1f7fd;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cadastro-dica[hidden] {
+  display: none;
+}
+
 .cadastro-modal-tabs {
   margin-bottom: 18px;
   padding: 8px;

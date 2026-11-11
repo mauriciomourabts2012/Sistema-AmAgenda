@@ -335,6 +335,15 @@ try {
 
     /* ---------------------------------------------------------------- unificar contas (C4.2) */
     if (in_array($acao, ['unificar_solicitar', 'unificar_previa', 'unificar_confirmar'], true)) {
+        // Primeiro acesso: a unificação só é liberada depois que a conta tem senha (OTP -> cadastro ->
+        // aceite -> primeira senha). A verificação é do servidor, sobre a linha atual do cliente.
+        if (trim((string)($cliente['senha_hash'] ?? '')) === '') {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_UNIFY_PASSWORD_REQUIRED',
+                'user_msg' => 'Crie sua senha de acesso antes de unificar suas contas.',
+            ], 403);
+        }
         if (!clienteUnifTabelaDisponivel($conexao)) {
             out(['ok' => false, 'code' => 'CLIENT_UNIFY_UNAVAILABLE', 'user_msg' => 'A unificação de contas ainda não está disponível.'], 503);
         }

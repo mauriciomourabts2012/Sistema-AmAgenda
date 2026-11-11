@@ -731,6 +731,79 @@ if (!in_array($rota, $rotasPublicasSemBloqueioJuridico, true)
     }
 }
 
+/* Primeiro acesso do Cliente Final: OTP -> cadastro (Nome) -> aceite legal (acima) -> primeira senha.
+   Enquanto a sessão de cliente não tiver cadastro (id_cliente) ou a conta não tiver senha, somente as
+   rotas desta lista fechada respondem; as demais recebem 403. O estado vem do banco, nunca da sessão.
+   Sessão interna (usuário/Super Admin) não passa por aqui. */
+$rotasRegularizacaoPrimeiroAcessoCliente = [
+    '_auth/session',
+    '_auth/logout',
+    'documentos-legais/pendencias',
+    'documentos-legais/conteudo',
+    'documentos-legais/manifestar',
+    'cliente/perfil',                 // leitura dos próprios dados cadastrais
+    'cliente/perfil/salvar',          // concluir o cadastro obrigatório
+    'cliente/perfil/contatos',        // validar contatos e unificação de contas (prova por código)
+    'cliente/perfil/buscar-foto',     // estado do perfil (tem_senha / recuperação)
+    'cliente/perfil/alterar-senha',   // criar a primeira senha
+];
+
+if (!in_array($rota, $rotasPublicasSemBloqueioJuridico, true)
+    && !in_array($rota, $rotasRegularizacaoPrimeiroAcessoCliente, true)) {
+    if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+    $clienteAuthFronteira = is_array($_SESSION['cliente_auth'] ?? null) ? $_SESSION['cliente_auth'] : [];
+    $sessaoSomenteCliente = (int)($_SESSION['auth']['id_usuario'] ?? 0) <= 0
+        && $clienteAuthFronteira !== []
+        && (string)($clienteAuthFronteira['tipo_usuario'] ?? $clienteAuthFronteira['tipo'] ?? '') === 'cliente';
+
+    if ($sessaoSomenteCliente) {
+        $idClienteFronteira = (int)($clienteAuthFronteira['id_cliente'] ?? 0);
+        if ($idClienteFronteira <= 0) {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_PROFILE_REQUIRED',
+                'user_msg' => 'Conclua seu cadastro para continuar.',
+                'data' => ['redirect_url' => '/public/views/cliente-perfil.html'],
+            ], 403);
+        }
+
+        try {
+            require_once __DIR__ . '/../../backend/_config/conexao.php';
+            $idEmpresaFronteira = (int)($clienteAuthFronteira['id_empresa'] ?? 0);
+            $stmtSenhaFronteira = $conexao->prepare(
+                "SELECT senha_hash FROM cliente WHERE id_cliente = ? AND id_empresa = ? AND status = 'ativo' LIMIT 1"
+            );
+            if (!$stmtSenhaFronteira) {
+                throw new RuntimeException('Falha ao preparar a verificação da senha do cliente.');
+            }
+            $stmtSenhaFronteira->bind_param('ii', $idClienteFronteira, $idEmpresaFronteira);
+            if (!$stmtSenhaFronteira->execute()) {
+                $stmtSenhaFronteira->close();
+                throw new RuntimeException('Falha ao verificar a senha do cliente.');
+            }
+            $linhaSenhaFronteira = $stmtSenhaFronteira->get_result()?->fetch_assoc() ?: null;
+            $stmtSenhaFronteira->close();
+        } catch (Throwable $e) {
+            error_log('[cliente_primeira_senha] Falha ao verificar a senha: ' . $e->getMessage());
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_PASSWORD_CHECK_ERROR',
+                'user_msg' => 'Não foi possível validar seu acesso agora.',
+            ], 500);
+        }
+
+        // Conta ausente, inativa ou unificada: o handler revoga a sessão (exigirSessaoCliente).
+        if ($linhaSenhaFronteira !== null && trim((string)($linhaSenhaFronteira['senha_hash'] ?? '')) === '') {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_PASSWORD_REQUIRED',
+                'user_msg' => 'Crie sua senha de acesso para continuar.',
+                'data' => ['redirect_url' => '/public/views/cliente-perfil.html'],
+            ], 403);
+        }
+    }
+}
+
 if (is_string($handler) && str_starts_with($handler, '@notificacoes_')) {
     require_once __DIR__ . '/../../backend/_auth/require_auth.php';
     require_once __DIR__ . '/../../backend/_regras/permissoes_usuario.php';

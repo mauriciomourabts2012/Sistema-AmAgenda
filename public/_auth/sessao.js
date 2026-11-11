@@ -62,6 +62,21 @@
     "_auth/logout",
     "cadastro-publico/empresa",
   ]);
+  // Aceite legal pendente (HTTP 428 da fronteira central): encaminha ao aceite obrigatório.
+  // As rotas que resolvem a pendência nunca recebem 428 no backend; ficam fora por segurança
+  // (sem loop de redirecionamento).
+  const CODIGO_ACEITE_OBRIGATORIO = "LEGAL_MANIFESTATION_REQUIRED";
+  const ROTAS_RESOLUCAO_JURIDICA = new Set([
+    "_auth/session",
+    "_auth/logout",
+    "superadmin/suporte/sair",
+    "documentos-legais/pendencias",
+    "documentos-legais/conteudo",
+    "documentos-legais/manifestar",
+  ]);
+  const PAGINA_CADASTRO_CLIENTE = "/public/views/cliente-perfil.html";
+  // 403 da fronteira central enquanto o cliente não concluiu cadastro e primeira senha.
+  const CODIGOS_PRIMEIRO_ACESSO_CLIENTE = new Set(["CLIENT_PROFILE_REQUIRED", "CLIENT_PASSWORD_REQUIRED"]);
   const PAGINAS_CLIENTE = [
     "/views/cliente-agendamento.html",
     "/views/cliente-perfil.html",
@@ -504,6 +519,28 @@
         return resposta;
       }
 
+      // Identidade criada ou vinculada durante a página (ex.: cadastro do primeiro acesso)
+      // com aceite pendente: a API responde 428 e a página segue para o aceite obrigatório.
+      if (resposta.status === 428 && !ROTAS_RESOLUCAO_JURIDICA.has(rota)) {
+        const dadosAceite = await resposta.clone().json().catch(() => null);
+        if (dadosAceite?.code === CODIGO_ACEITE_OBRIGATORIO && encaminharAoAceite()) {
+          return esperaPendente();
+        }
+        return resposta;
+      }
+
+      // Primeiro acesso do cliente sem cadastro ou sem senha (403 da fronteira central):
+      // fora do perfil, segue para ele; no perfil, a resposta fica retida (os modais
+      // bloqueantes de cadastro/senha estão ali) e nenhum consumidor a trata como sessão encerrada.
+      if (resposta.status === 403) {
+        const dadosPrimeiroAcesso = await resposta.clone().json().catch(() => null);
+        if (CODIGOS_PRIMEIRO_ACESSO_CLIENTE.has(String(dadosPrimeiroAcesso?.code || ""))) {
+          encaminharAoPerfilDoCliente();
+          return esperaPendente();
+        }
+        return resposta;
+      }
+
       if (resposta.status !== 401
         || ROTAS_SEM_INTERCEPTACAO.has(rota)
         || window.__AMAGENDA_LOGOUT_CONFIRMADO__) {
@@ -556,6 +593,59 @@
 
   function estaNaPaginaDeAceite() {
     return caminhoAtual() === ACEITE_URL.toLowerCase();
+  }
+
+  /**
+   * Primeiro acesso do Cliente Final: o cadastro obrigatório (bloqueante) existe somente no
+   * perfil (salvar-dados-cadastrais.js). Fora dele, um cliente sem cadastro concluído é
+   * levado ao perfil, para que o fluxo seja sempre cadastro -> aceite legal -> acesso.
+   * Retorna true quando o redirecionamento foi disparado.
+   */
+  function exigirCadastroClienteConcluido(auth) {
+    if (String(auth?.tipo_usuario || "").toLowerCase() !== "cliente") return false;
+    const caminho = caminhoAtual();
+    if (caminho === PAGINA_CADASTRO_CLIENTE || caminho === PAGINA_CADASTRO_CLIENTE.replace(/^\/public/, "")) return false;
+    if (!PAGINAS_CLIENTE.some((pagina) => caminho === pagina || caminho === `/public${pagina}`)) return false;
+    const idCliente = Number(auth?.id_cliente);
+    if (Number.isInteger(idCliente) && idCliente > 0 && auth?.cadastro_completo === true) return false;
+    window.location.replace(PAGINA_CADASTRO_CLIENTE);
+    return true;
+  }
+
+  function estaNoPerfilDoCliente() {
+    const caminho = caminhoAtual();
+    return caminho === PAGINA_CADASTRO_CLIENTE || caminho === PAGINA_CADASTRO_CLIENTE.replace(/^\/public/, "");
+  }
+
+  /**
+   * Cadastro ou primeira senha pendente: leva ao perfil uma única vez. No próprio perfil não
+   * redireciona (sem loop); só registra que houve respostas retidas, para recarregar a página
+   * quando a primeira senha for criada e as consultas voltarem a responder.
+   */
+  function encaminharAoPerfilDoCliente() {
+    if (estaNoPerfilDoCliente()) {
+      window.__AMAGENDA_PRIMEIRO_ACESSO_RETIDO__ = true;
+      return;
+    }
+    if (window.__AMAGENDA_PERFIL_ENCAMINHADO__) return;
+    window.__AMAGENDA_PERFIL_ENCAMINHADO__ = true;
+    window.location.replace(PAGINA_CADASTRO_CLIENTE);
+  }
+
+  // Primeira senha criada no perfil: as consultas retidas durante a pendência são refeitas.
+  document.addEventListener("amagenda:cliente-senha-atualizada", (evento) => {
+    if (evento?.detail?.primeiro_acesso_concluido === true && window.__AMAGENDA_PRIMEIRO_ACESSO_RETIDO__) {
+      window.setTimeout(() => window.location.reload(), 900);
+    }
+  });
+
+  /** Redireciona uma única vez ao aceite obrigatório; false quando já está nele (sem loop). */
+  function encaminharAoAceite() {
+    if (estaNaPaginaDeAceite() || estaEmPaginaPublicaSemGuard()) return false;
+    if (window.__AMAGENDA_ACEITE_ENCAMINHADO__) return true;
+    window.__AMAGENDA_ACEITE_ENCAMINHADO__ = true;
+    window.location.replace(ACEITE_URL);
+    return true;
   }
 
   // Defesa extra: o site público (AmAgenda.html) nunca deve ser bloqueado por
@@ -713,6 +803,7 @@
         const auth = json.data?.user || json.data || null;
         const redirecionou = await verificarPendenciasLegais(auth);
         if (redirecionou) return;
+        if (exigirCadastroClienteConcluido(auth)) return;
 
         registrarContextoCliente(auth);
         estadoSessao.identidade = identidadeSessao(auth);

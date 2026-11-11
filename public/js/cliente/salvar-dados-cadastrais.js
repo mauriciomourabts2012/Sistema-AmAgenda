@@ -6,11 +6,13 @@
 
   /* ============================
      MODAL: Dados cadastrais do cliente
-     Único modal de cadastro da página. Abre SOMENTE por ação do cliente: menu
-     lateral ("Dados cadastrais") ou a notificação "Complete seu cadastro" do sino
-     (window.AbrirCadastroCliente). Nunca abre sozinho: enquanto houver dado pendente
-     (obrigatório ou opcional) a central de notificações mostra o aviso. As restrições
-     de dados obrigatórios são aplicadas pelo backend, não pelo modal.
+     Único modal de cadastro da página.
+     - Dados OBRIGATÓRIOS pendentes (Nome e um contato; primeiro acesso): abre sozinho e
+       BLOQUEADO até salvar. Só então existe identidade (id_cliente) apta a registrar o aceite
+       dos documentos legais; o salvamento recarrega a página e o guard (sessao.js) encaminha
+       ao aceite obrigatório.
+     - Somente dados OPCIONAIS pendentes: nunca abre sozinho; o sino mostra o lembrete
+       e o modal abre pelo menu ou pela notificação (window.AbrirCadastroCliente).
      ============================ */
   const modalCadastro = document.getElementById("modalDadosCadastraisCliente");
   const formCadastro = document.getElementById("formPerfilCliente");
@@ -18,6 +20,7 @@
   const avisoObrigatorio = document.getElementById("cadastroAvisoObrigatorio");
   const botaoSalvarCadastro = document.getElementById("btnSalvarPerfil");
   const botaoVoltar = document.getElementById("btnVoltarInformacoes");
+  const botaoFecharCadastro = modalCadastro?.querySelector(".modal-fechar[data-fechar-modal]");
 
   const abasCadastro = Array.from(modalCadastro?.querySelectorAll("[data-tab]") || []);
   const paineisCadastro = Array.from(modalCadastro?.querySelectorAll(".tab-pane") || []);
@@ -58,11 +61,21 @@
   }
 
   /* ============================
-     CADASTRO INCOMPLETO (central de notificações do sino)
-     A notificação é exibida por notificacoes-cliente.js; aqui só se informa o que falta.
-     Obrigatórios pendentes = Nome e um contato; qualquer campo opcional vazio também
-     mantém o aviso. O formulário nunca abre sozinho nem bloqueia a navegação.
+     BLOQUEIO (dados obrigatórios pendentes — primeiro acesso)
+     Enquanto bloqueado: sem X, sem ESC, sem clique fora (classe .cadastro-bloqueado,
+     respeitada pelo fecharModal genérico da página) e a aplicação fica inacessível
+     (body.cadastro-cliente-pendente, em cliente-web.css).
      ============================ */
+  function definirBloqueio(bloquear) {
+    modalCadastro.classList.toggle("cadastro-bloqueado", bloquear);
+    if (avisoObrigatorio) avisoObrigatorio.hidden = !bloquear;
+    if (botaoFecharCadastro) {
+      botaoFecharCadastro.hidden = bloquear;
+      botaoFecharCadastro.disabled = bloquear;
+    }
+    document.body.classList.toggle("cadastro-cliente-pendente", bloquear);
+  }
+
   function abrirFormularioCadastro() {
     modalCadastro.classList.add("ativo");
     modalCadastro.setAttribute("aria-hidden", "false");
@@ -70,12 +83,17 @@
   }
   window.AbrirCadastroCliente = abrirFormularioCadastro;
 
-  function publicarCadastroPendente(dados) {
+  /* ============================
+     CADASTRO INCOMPLETO
+     Obrigatórios pendentes: cadastro bloqueante (não vai para o sino).
+     Somente opcionais pendentes: lembrete no sino (notificacoes-cliente.js), sem bloquear.
+     ============================ */
+  function aplicarCadastroPendente(dados) {
     const obrigatoriosCompletos = dados?.dados_obrigatorios_completos === true;
-    const pendente = !obrigatoriosCompletos || possuiCampoOpcionalVazio(dados);
-    window.CentroNotificacoesCliente?.definirCadastro?.({ pendente, obrigatorio: !obrigatoriosCompletos });
-    // Aviso informativo dentro do formulário (sem bloquear: o modal sempre pode ser fechado).
-    if (avisoObrigatorio) avisoObrigatorio.hidden = obrigatoriosCompletos;
+    const opcionalPendente = obrigatoriosCompletos && possuiCampoOpcionalVazio(dados);
+    window.CentroNotificacoesCliente?.definirCadastro?.({ pendente: opcionalPendente, obrigatorio: false });
+    definirBloqueio(!obrigatoriosCompletos);
+    if (!obrigatoriosCompletos) abrirFormularioCadastro();
   }
   /* ============================
      PREENCHIMENTO DOS DADOS
@@ -169,6 +187,27 @@
     }
 
     if (!cadastrado) mensagemContato("Salve seus dados para poder validar os contatos.");
+    atualizarDicaContato();
+  }
+
+  /* Orientação opcional do segundo contato: sugere o que falta (e-mail para quem entrou por celular,
+     celular para quem entrou por e-mail) e some quando os dois existem. Nunca é exigido. */
+  function atualizarDicaContato() {
+    const dica = campo("cadastroDicaContato");
+    const texto = campo("cadastroDicaContatoTexto");
+    if (!dica || !texto) return;
+    const temTelefone = String(dadosContatos?.whatsapp_celular ?? "").trim() !== "";
+    const temEmail = String(dadosContatos?.email ?? "").trim() !== "" || String(campo("cli_email")?.value || "").trim() !== "";
+    let mensagem = "";
+    if (temTelefone && !temEmail) {
+      mensagem = "Dica (opcional): cadastre também um e-mail. Ele ajuda a recuperar sua conta e oferece outra forma de entrar.";
+    } else if (!temTelefone && temEmail) {
+      mensagem = dadosContatos?.cadastrado === true
+        ? "Dica (opcional): adicione também um celular em “Validação dos contatos” para ter outra forma de entrar."
+        : "Dica (opcional): depois de salvar, adicione também um celular em “Validação dos contatos” para ter outra forma de entrar.";
+    }
+    texto.textContent = mensagem;
+    dica.hidden = mensagem === "";
   }
 
   function mostrarCodigo(contato) {
@@ -520,8 +559,8 @@
       const dados = json.data || {};
       preencherCadastro(dados);
 
-      // Sem abertura automática: só informa à central de notificações o que falta.
-      publicarCadastroPendente(dados);
+      // Obrigatórios pendentes: abre bloqueado até salvar. Só opcionais: lembrete no sino.
+      aplicarCadastroPendente(dados);
     } catch (erro) {
       mensagemCadastro.textContent = erro.message;
       mensagemCadastro.className = "cadastro-mensagem erro";
@@ -544,6 +583,7 @@
     });
   }
 
+  campo("cli_email")?.addEventListener("input", atualizarDicaContato);
   if (campo("cli_cpf")) campo("cli_cpf").addEventListener("input", evento => { evento.target.value = formatarCpf(evento.target.value); });
   if (campo("end_cep")) campo("end_cep").addEventListener("input", evento => { evento.target.value = formatarCep(evento.target.value); });
   if (campo("end_uf")) {
