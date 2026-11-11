@@ -25,6 +25,14 @@ try {
     csrfValidarSessao();
     $cliente = buscarClienteDaSessao($conexao, $sessao);
 
+    // Sessão com id_cliente nunca cria cadastro novo: se a conta não está mais disponível (inativa ou
+    // unificada em outra), não há INSERT; só o primeiro acesso (sem id_cliente) cria a conta.
+    if ($cliente === null && $sessao['id_cliente'] !== null) {
+        require_once __DIR__ . '/../_regras/login_multiempresa.php';
+        sessaoCredencialRevogarCliente();
+        sessaoCredencialResponderReautenticacao(SESSAO_LOGIN_CLIENTE_URL);
+    }
+
     $nome = textoCliente($_POST['nome'] ?? '');
     $email = mb_strtolower(textoCliente($_POST['email'] ?? ''), 'UTF-8');
 
@@ -149,8 +157,11 @@ try {
             out([
                 'ok' => false,
                 'code' => 'CLIENT_EMAIL_ALREADY_EXISTS',
-                'user_msg' => 'Este e-mail já está cadastrado nesta empresa.',
-                'fields' => ['cli_email' => 'E-mail já cadastrado.'],
+                // Identidade nunca é presumida: o e-mail pertence a outra conta e só ela pode usá-lo depois de validado.
+                'user_msg' => 'Este e-mail já está vinculado a outra conta desta empresa. Se for sua, entre pelo contato que já usa nela e valide o e-mail no perfil.',
+                'fields' => ['cli_email' => 'E-mail já vinculado a outra conta.'],
+                // O perfil pode oferecer a unificação (exige prova de posse do contato e confirmação).
+                'data' => ['oferecer_unificacao' => true, 'contato' => 'email'],
             ], 409);
         }
     }

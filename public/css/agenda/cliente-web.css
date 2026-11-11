@@ -645,6 +645,47 @@ body[data-menu-contexto="cliente"] {
   gap: 8px;
 }
 
+/* Unificação de contas duplicadas (C4.2). */
+.contato-unificacao {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+}
+
+.unificacao-passo { display: grid; gap: 10px; }
+
+.unificacao-resumo {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.unificacao-conta {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.unificacao-conta strong { display: block; margin-bottom: 4px; }
+.unificacao-conta span { display: block; color: var(--muted); }
+
+.unificacao-escolha {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.unificacao-escolha legend { padding: 0 4px; font-weight: 700; }
+.unificacao-escolha label,
+.unificacao-aceite { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; }
+
 .cadastro-modal-acoes {
   flex: 0 0 auto;
   justify-content: flex-end;

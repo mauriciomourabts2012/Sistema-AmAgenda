@@ -323,11 +323,13 @@ function chatBuscarConversaAutorizada(mysqli $conexao, array $ctx, int $idConver
         $conexao,
         "SELECT c.id_conversa, c.id_profissional, c.id_agendamento, c.agendamento_data, c.agendamento_hora_inicio,
                 c.status, c.criado_por_tipo, c.criado_em, c.id_ultima_mensagem, c.ultima_mensagem_em, c.encerrada_em,
-                cl.nome_completo AS cliente_nome, up.nome AS profissional_nome, ue.nome AS encerrada_por_nome,
-                cl.foto_perfil AS cliente_foto, up.foto_perfil AS profissional_foto,
-                l.id_ultima_mensagem_lida, {$quantidade} AS quantidade_nao_lidas
+                COALESCE(clp.nome_completo, cl.nome_completo) AS cliente_nome, up.nome AS profissional_nome, ue.nome AS encerrada_por_nome,
+                COALESCE(clp.foto_perfil, cl.foto_perfil) AS cliente_foto, up.foto_perfil AS profissional_foto,
+                l.id_ultima_mensagem_lida, {$quantidade} AS quantidade_nao_lidas,
+                " . chatSqlConversaHistorica('c') . " AS historica
            FROM chat_conversa c
            LEFT JOIN cliente cl ON cl.id_cliente = c.id_cliente AND cl.id_empresa = c.id_empresa
+           LEFT JOIN cliente clp ON clp.id_cliente = cl.id_cliente_unificado AND clp.id_empresa = c.id_empresa
            LEFT JOIN profissional p ON p.id_profissional = c.id_profissional
            LEFT JOIN usuario up ON up.id_usuario = p.id_usuario
            LEFT JOIN usuario ue ON ue.id_usuario = c.encerrada_por_usuario
@@ -355,21 +357,166 @@ function chatSqlQuantidadeNaoLidasUsuario(): string
                 AND mn.remetente_tipo <> 'sistema' AND (mn.remetente_tipo <> 'usuario' OR mn.id_usuario_remetente <> ?))";
 }
 
-/** Mesma regra para o leitor cliente. Consome um parâmetro: id_cliente do leitor. */
+/**
+ * Mesma regra para o leitor cliente. Não consome parâmetros: a mensagem "própria" é a do dono da
+ * conversa (c.id_cliente), o par (conversa, cliente) exigido pelas FKs, também em contas unificadas.
+ */
 function chatSqlQuantidadeNaoLidasCliente(): string
 {
     return "(SELECT COUNT(*) FROM chat_mensagem mn
               WHERE mn.id_conversa = c.id_conversa
                 AND mn.id_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
-                AND (mn.remetente_tipo <> 'cliente' OR mn.id_cliente_remetente <> ?))";
+                AND (mn.remetente_tipo <> 'cliente' OR mn.id_cliente_remetente <> c.id_cliente))";
 }
 
+/*
+ * GRUPO DE CONTAS (unificação de clientes).
+ * Quando duas contas do mesmo cliente são unificadas, a secundária fica inativa com
+ * cliente.id_cliente_unificado = principal. As conversas, mensagens e leituras NUNCA são movidas
+ * (as FKs compostas exigem o par conversa+cliente): a Área do Cliente passa a reconhecer o grupo
+ * (principal + secundárias da mesma empresa), e cada conversa continua com o seu dono original.
+ */
+
+/** Ids do grupo: a conta e as secundárias unificadas nela, sempre dentro da mesma empresa. */
+function chatClienteIdsGrupo(mysqli $conexao, int $idEmpresa, int $idCliente): array
+{
+    $linhas = chatConsultar(
+        $conexao,
+        'SELECT id_cliente FROM cliente WHERE id_empresa = ? AND (id_cliente = ? OR id_cliente_unificado = ?)',
+        'iii',
+        [$idEmpresa, $idCliente, $idCliente]
+    );
+    $ids = array_map(static fn(array $l): int => (int)$l['id_cliente'], $linhas);
+    $ids[] = $idCliente;
+
+    return array_values(array_unique(array_filter($ids, static fn(int $id): bool => $id > 0)));
+}
+
+/** Ids do grupo vindos do contexto do cliente; sem a lista, somente a própria conta (comportamento anterior). */
+function chatClienteIdsDoContexto(array $ctx): array
+{
+    $ids = [];
+    foreach ((array)($ctx['ids_cliente'] ?? []) as $id) {
+        if (is_int($id) && $id > 0) $ids[$id] = $id;
+    }
+    $proprio = (int)($ctx['id_cliente'] ?? 0);
+    if ($proprio > 0) $ids[$proprio] = $proprio;
+
+    return array_values($ids);
+}
+
+/** Fragmento "IN (?,?)" com tipos e valores para uma lista de ids já inteiros. */
+function chatClienteSqlIn(array $ids): array
+{
+    $ids = array_values(array_map('intval', $ids));
+    if ($ids === []) $ids = [0];
+
+    return [implode(',', array_fill(0, count($ids), '?')), str_repeat('i', count($ids)), $ids];
+}
+
+/** A conta é a própria principal ou uma secundária unificada diretamente nela (mesma empresa)? */
+function chatClienteContaDoGrupo(mysqli $conexao, int $idEmpresa, int $idConta, int $idPrincipal): bool
+{
+    if ($idConta <= 0 || $idPrincipal <= 0) return false;
+    if ($idConta === $idPrincipal) return true;
+
+    return chatConsultar(
+        $conexao,
+        'SELECT 1 FROM cliente WHERE id_empresa = ? AND id_cliente = ? AND id_cliente_unificado = ? LIMIT 1',
+        'iii',
+        [$idEmpresa, $idConta, $idPrincipal]
+    ) !== [];
+}
+
+/*
+ * CONVERSA HISTÓRICA DE CONTA UNIFICADA.
+ * Conversa cujo dono original (chat_conversa.id_cliente) foi unificado em outra conta
+ * (cliente.id_cliente_unificado preenchido). Fica disponível só para consulta: mensagens preservadas,
+ * sem novas mensagens do cliente, da empresa ou do sistema e sem novas notificações.
+ */
+
+/** Condição SQL (EXISTS) de conversa histórica para o alias da tabela chat_conversa. */
+function chatSqlConversaHistorica(string $alias = 'c'): string
+{
+    return "EXISTS (SELECT 1 FROM cliente ch WHERE ch.id_cliente = {$alias}.id_cliente
+                      AND ch.id_empresa = {$alias}.id_empresa AND ch.id_cliente_unificado IS NOT NULL)";
+}
+
+/** A conversa (linha com id_empresa e id_cliente) é histórica de conta unificada? */
+function chatConversaEhHistorica(mysqli $conexao, array $conversa): bool
+{
+    $idEmpresa = (int)($conversa['id_empresa'] ?? 0);
+    $idCliente = (int)($conversa['id_cliente'] ?? 0);
+    if ($idEmpresa <= 0 || $idCliente <= 0) return false;
+
+    return chatConsultar(
+        $conexao,
+        'SELECT 1 FROM cliente WHERE id_cliente = ? AND id_empresa = ? AND id_cliente_unificado IS NOT NULL LIMIT 1',
+        'ii',
+        [$idCliente, $idEmpresa]
+    ) !== [];
+}
+
+/**
+ * Agendamento ao qual a conversa HISTÓRICA (dono unificado em outra conta) está vinculada, ou null
+ * quando a conversa não existe na empresa, não é histórica ou não tem agendamento. O chamador já
+ * autorizou o acesso à conversa. "Abrir conversa ativa" usa este agendamento para localizar (ou criar,
+ * quando as regras atuais permitem) a conversa ATIVA da conta atual; nada da histórica é alterado.
+ */
+function chatAgendamentoDaConversaHistorica(mysqli $conexao, int $idEmpresa, int $idConversa): ?int
+{
+    $linha = chatConsultar(
+        $conexao,
+        'SELECT c.id_agendamento FROM chat_conversa c
+          WHERE c.id_conversa = ? AND c.id_empresa = ? AND c.id_agendamento IS NOT NULL AND ' . chatSqlConversaHistorica('c') . '
+          LIMIT 1',
+        'ii',
+        [$idConversa, $idEmpresa]
+    )[0] ?? null;
+
+    return $linha === null ? null : (int)$linha['id_agendamento'];
+}
+
+/** Ids das conversas históricas (contas unificadas) do mesmo agendamento, exceto a informada. */
+function chatIdsHistoricosDoAgendamento(mysqli $conexao, int $idEmpresa, ?int $idAgendamento, int $idConversaAtual): array
+{
+    if ($idAgendamento === null || $idAgendamento <= 0) return [];
+    $linhas = chatConsultar(
+        $conexao,
+        'SELECT c.id_conversa FROM chat_conversa c
+          WHERE c.id_agendamento = ? AND c.id_empresa = ? AND c.id_conversa <> ? AND ' . chatSqlConversaHistorica('c') . '
+          ORDER BY c.id_conversa',
+        'iii',
+        [$idAgendamento, $idEmpresa, $idConversaAtual]
+    );
+
+    return array_map(static fn(array $l): int => (int)$l['id_conversa'], $linhas);
+}
+
+/** "Ver histórico anterior" (cliente): históricos do agendamento que o cliente pode acessar. */
+function chatClienteHistoricosDaConversa(mysqli $conexao, array $ctx, array $conversa): array
+{
+    if (($conversa['historica'] ?? false) === true) return [];
+    $ids = chatIdsHistoricosDoAgendamento($conexao, (int)$ctx['id_empresa'], $conversa['id_agendamento'] ?? null, (int)$conversa['id_conversa']);
+
+    return array_values(array_filter($ids, static fn(int $id): bool => chatClienteBuscarConversaAutorizada($conexao, $ctx, $id) !== null));
+}
+
+/** "Ver histórico anterior" (equipe): históricos do agendamento dentro do escopo do usuário. */
+function chatHistoricosDaConversa(mysqli $conexao, array $ctx, array $conversa): array
+{
+    if (($conversa['historica'] ?? false) === true) return [];
+    $ids = chatIdsHistoricosDoAgendamento($conexao, (int)$ctx['id_empresa'], $conversa['id_agendamento'] ?? null, (int)$conversa['id_conversa']);
+
+    return array_values(array_filter($ids, static fn(int $id): bool => chatBuscarConversaAutorizada($conexao, $ctx, $id) !== null));
+}
 /** Formato público de uma conversa (sem ids internos de cliente/usuário). */
 function chatFormatarConversa(array $c, array $ctx): array
 {
     $ultima = $c['id_ultima_mensagem'] === null ? null : (int)$c['id_ultima_mensagem'];
     $lida = $c['id_ultima_mensagem_lida'] === null ? 0 : (int)$c['id_ultima_mensagem_lida'];
     $aberta = (string)$c['status'] === 'aberta';
+    $historica = (int)($c['historica'] ?? 0) === 1;
     $item = [
         'id_conversa' => (int)$c['id_conversa'],
         'status' => (string)$c['status'],
@@ -384,6 +531,8 @@ function chatFormatarConversa(array $c, array $ctx): array
         'id_ultima_mensagem_lida' => $lida > 0 ? $lida : null,
         'nao_lida' => $ultima !== null && $ultima > $lida,
         'encerrada_em' => $c['encerrada_em'] === null ? null : (string)$c['encerrada_em'],
+        // Histórico de conta unificada: somente leitura (o backend recusa envio).
+        'historica' => $historica,
     ];
     if (array_key_exists('quantidade_nao_lidas', $c)) {
         $item['quantidade_nao_lidas'] = max(0, (int)$c['quantidade_nao_lidas']);
@@ -405,7 +554,7 @@ function chatFormatarConversa(array $c, array $ctx): array
         $item['encerrada_por_nome'] = $c['encerrada_por_nome'] === null ? null : (string)$c['encerrada_por_nome'];
         $item['criado_em'] = (string)$c['criado_em'];
         // Apenas orientação para a interface; o backend sempre revalida.
-        $item['pode_responder'] = $aberta && $ctx['pode_responder'];
+        $item['pode_responder'] = $aberta && !$historica && $ctx['pode_responder'];
         $item['pode_encerrar'] = $aberta && $ctx['pode_encerrar'];
     }
     if (array_key_exists('ultima_mensagem_previa', $c)) {
@@ -441,15 +590,17 @@ function chatListarConversas(mysqli $conexao, array $ctx, string $status, ?int $
         $conexao,
         "SELECT c.id_conversa, c.id_profissional, c.id_agendamento, c.agendamento_data, c.agendamento_hora_inicio,
                 c.status, c.id_ultima_mensagem, c.ultima_mensagem_em, c.encerrada_em,
-                cl.nome_completo AS cliente_nome, up.nome AS profissional_nome,
-                cl.foto_perfil AS cliente_foto, up.foto_perfil AS profissional_foto,
+                COALESCE(clp.nome_completo, cl.nome_completo) AS cliente_nome, up.nome AS profissional_nome,
+                COALESCE(clp.foto_perfil, cl.foto_perfil) AS cliente_foto, up.foto_perfil AS profissional_foto,
                 l.id_ultima_mensagem_lida, LEFT(um.conteudo, 140) AS ultima_mensagem_previa,
                 um.remetente_tipo AS ultima_remetente_tipo, um.remetente_nome AS ultima_remetente_nome,
                 um.id_usuario_remetente AS ultima_id_usuario_remetente,
-                {$quantidade} AS quantidade_nao_lidas
+                {$quantidade} AS quantidade_nao_lidas,
+                " . chatSqlConversaHistorica('c') . " AS historica
            FROM chat_conversa c
            LEFT JOIN chat_leitura l ON l.id_conversa = c.id_conversa AND l.leitor_tipo = 'usuario' AND l.id_usuario = ?
            LEFT JOIN cliente cl ON cl.id_cliente = c.id_cliente AND cl.id_empresa = c.id_empresa
+           LEFT JOIN cliente clp ON clp.id_cliente = cl.id_cliente_unificado AND clp.id_empresa = c.id_empresa
            LEFT JOIN profissional p ON p.id_profissional = c.id_profissional
            LEFT JOIN usuario up ON up.id_usuario = p.id_usuario
            LEFT JOIN chat_mensagem um ON um.id_mensagem = c.id_ultima_mensagem AND um.id_conversa = c.id_conversa
@@ -487,6 +638,7 @@ function chatContarNaoLidas(mysqli $conexao, array $ctx): array
         "SELECT
              COUNT(CASE WHEN c.id_ultima_mensagem IS NOT NULL
                          AND c.id_ultima_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
+                         AND NOT " . chatSqlConversaHistorica('c') . "
                          AND EXISTS (SELECT 1 FROM chat_mensagem mx
                                       WHERE mx.id_conversa = c.id_conversa
                                         AND mx.id_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
@@ -510,6 +662,7 @@ function chatContarNaoLidas(mysqli $conexao, array $ctx): array
                   AND m.id_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
                   AND m.remetente_tipo <> 'sistema' AND (m.remetente_tipo <> 'usuario' OR m.id_usuario_remetente <> ?)
           WHERE {$escopo} AND {$status}
+            AND NOT " . chatSqlConversaHistorica('c') . "
             AND c.id_ultima_mensagem IS NOT NULL
             AND c.id_ultima_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
           GROUP BY c.id_conversa, c.id_agendamento
@@ -546,7 +699,7 @@ function chatConversasNaoLidasParaNotificacao(mysqli $conexao, array $ctx, int $
     return chatConsultar(
         $conexao,
         "SELECT c.id_conversa, c.id_agendamento, c.agendamento_data, c.agendamento_hora_inicio,
-                c.id_ultima_mensagem, c.ultima_mensagem_em, cl.nome_completo AS cliente_nome,
+                c.id_ultima_mensagem, c.ultima_mensagem_em, COALESCE(clp.nome_completo, cl.nome_completo) AS cliente_nome,
                 COUNT(m.id_mensagem) AS quantidade_nao_lidas,
                 MAX(m.id_mensagem) AS id_ultima_nao_lida
            FROM chat_conversa c
@@ -556,11 +709,13 @@ function chatConversasNaoLidasParaNotificacao(mysqli $conexao, array $ctx, int $
                   AND m.id_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
                   AND m.remetente_tipo <> 'sistema' AND (m.remetente_tipo <> 'usuario' OR m.id_usuario_remetente <> ?)
            LEFT JOIN cliente cl ON cl.id_cliente = c.id_cliente AND cl.id_empresa = c.id_empresa
+           LEFT JOIN cliente clp ON clp.id_cliente = cl.id_cliente_unificado AND clp.id_empresa = c.id_empresa
           WHERE {$escopo} AND c.status = 'aberta'
+            AND NOT " . chatSqlConversaHistorica('c') . "
             AND c.id_ultima_mensagem IS NOT NULL
             AND c.id_ultima_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
           GROUP BY c.id_conversa, c.id_agendamento, c.agendamento_data, c.agendamento_hora_inicio,
-                   c.id_ultima_mensagem, c.ultima_mensagem_em, cl.nome_completo
+                   c.id_ultima_mensagem, c.ultima_mensagem_em, COALESCE(clp.nome_completo, cl.nome_completo)
           ORDER BY c.ultima_mensagem_em DESC, c.id_conversa DESC
           LIMIT {$limite}",
         'ii' . $tipos,
@@ -716,6 +871,11 @@ function chatEnviarMensagemInterna(mysqli $conexao, array $ctx, int $idConversa,
             $conexao->rollback();
             return ['resultado' => 'nao_encontrada', 'mensagem' => null];
         }
+        // Histórico de conta unificada nunca recebe novas mensagens (a regra vale no backend).
+        if (chatConversaEhHistorica($conexao, $conversa)) {
+            $conexao->rollback();
+            return ['resultado' => 'historica', 'mensagem' => null];
+        }
 
         if ($chave !== null) {
             $existente = chatBuscarPorChave($conexao, $idConversa, $chave);
@@ -789,16 +949,16 @@ function chatResultadoIdempotente(array $existente, array $ctx): array
 function chatClienteBuscarConversaAutorizada(mysqli $conexao, array $ctx, int $idConversa, bool $paraAtualizar = false): ?array
 {
     $idEmpresa = (int)$ctx['id_empresa'];
-    $idCliente = (int)$ctx['id_cliente'];
+    [$in, $tiposIn, $idsIn] = chatClienteSqlIn(chatClienteIdsDoContexto($ctx));
 
     if ($paraAtualizar) {
         $linhas = chatConsultar(
             $conexao,
-            'SELECT c.* FROM chat_conversa c
-              WHERE c.id_conversa = ? AND c.id_empresa = ? AND c.id_cliente = ?
-              LIMIT 1 FOR UPDATE',
-            'iii',
-            [$idConversa, $idEmpresa, $idCliente]
+            "SELECT c.* FROM chat_conversa c
+              WHERE c.id_conversa = ? AND c.id_empresa = ? AND c.id_cliente IN ({$in})
+              LIMIT 1 FOR UPDATE",
+            'ii' . $tiposIn,
+            array_merge([$idConversa, $idEmpresa], $idsIn)
         );
         return $linhas[0] ?? null;
     }
@@ -809,18 +969,19 @@ function chatClienteBuscarConversaAutorizada(mysqli $conexao, array $ctx, int $i
         "SELECT c.id_conversa, c.id_profissional, c.id_agendamento, c.agendamento_data, c.agendamento_hora_inicio,
                 c.status, c.criado_em, c.id_ultima_mensagem, c.ultima_mensagem_em, c.encerrada_em,
                 up.nome AS profissional_nome, up.foto_perfil AS profissional_foto, l.id_ultima_mensagem_lida,
-                {$quantidade} AS quantidade_nao_lidas
+                {$quantidade} AS quantidade_nao_lidas,
+                " . chatSqlConversaHistorica('c') . " AS historica
            FROM chat_conversa c
            LEFT JOIN profissional p ON p.id_profissional = c.id_profissional
            LEFT JOIN usuario up ON up.id_usuario = p.id_usuario
            LEFT JOIN chat_leitura l
              ON l.id_conversa = c.id_conversa
             AND l.leitor_tipo = 'cliente'
-            AND l.id_cliente = ?
-          WHERE c.id_conversa = ? AND c.id_empresa = ? AND c.id_cliente = ?
+            AND l.id_cliente = c.id_cliente
+          WHERE c.id_conversa = ? AND c.id_empresa = ? AND c.id_cliente IN ({$in})
           LIMIT 1",
-        'iiiii',
-        [$idCliente, $idCliente, $idConversa, $idEmpresa, $idCliente]
+        'ii' . $tiposIn,
+        array_merge([$idConversa, $idEmpresa], $idsIn)
     );
 
     return $linhas[0] ?? null;
@@ -832,9 +993,11 @@ function chatClienteFormatarConversa(array $conversa): array
     $ultima = $conversa['id_ultima_mensagem'] === null ? null : (int)$conversa['id_ultima_mensagem'];
     $lida = $conversa['id_ultima_mensagem_lida'] === null ? 0 : (int)$conversa['id_ultima_mensagem_lida'];
     $aberta = (string)$conversa['status'] === 'aberta';
+    $historica = (int)($conversa['historica'] ?? 0) === 1;
 
     return [
         'id_conversa' => (int)$conversa['id_conversa'],
+        'historica' => $historica,
         'id_agendamento' => $conversa['id_agendamento'] === null ? null : (int)$conversa['id_agendamento'],
         'status' => (string)$conversa['status'],
         'profissional_nome' => (string)($conversa['profissional_nome'] ?? ''),
@@ -844,7 +1007,7 @@ function chatClienteFormatarConversa(array $conversa): array
         'id_ultima_mensagem_lida' => $lida > 0 ? $lida : null,
         'nao_lida' => $ultima !== null && $ultima > $lida,
         'encerrada_em' => $conversa['encerrada_em'] === null ? null : (string)$conversa['encerrada_em'],
-        'pode_responder' => $aberta,
+        'pode_responder' => $aberta && !$historica,
         'quantidade_nao_lidas' => max(0, (int)($conversa['quantidade_nao_lidas'] ?? 0)),
         'profissional_foto_url' => chatFotoUrl($conversa['profissional_foto'] ?? null, 'usuarios'),
     ];
@@ -858,25 +1021,26 @@ function chatClienteFormatarConversa(array $conversa): array
 function chatClienteContarNaoLidas(mysqli $conexao, array $ctx): array
 {
     $idEmpresa = (int)$ctx['id_empresa'];
-    $idCliente = (int)$ctx['id_cliente'];
+    [$in, $tiposIn, $idsIn] = chatClienteSqlIn(chatClienteIdsDoContexto($ctx));
     $linhas = chatConsultar(
         $conexao,
         "SELECT c.id_conversa, c.id_agendamento, COUNT(m.id_mensagem) AS quantidade_nao_lidas
            FROM chat_conversa c
-           LEFT JOIN chat_leitura l ON l.id_conversa = c.id_conversa AND l.leitor_tipo = 'cliente' AND l.id_cliente = ?
+           LEFT JOIN chat_leitura l ON l.id_conversa = c.id_conversa AND l.leitor_tipo = 'cliente' AND l.id_cliente = c.id_cliente
            INNER JOIN chat_mensagem m
                    ON m.id_conversa = c.id_conversa
                   AND m.id_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
-                  AND (m.remetente_tipo <> 'cliente' OR m.id_cliente_remetente <> ?)
-          WHERE c.id_empresa = ? AND c.id_cliente = ?
+                  AND (m.remetente_tipo <> 'cliente' OR m.id_cliente_remetente <> c.id_cliente)
+          WHERE c.id_empresa = ? AND c.id_cliente IN ({$in})
+            AND NOT " . chatSqlConversaHistorica('c') . "
             AND c.id_agendamento IS NOT NULL
             AND c.id_ultima_mensagem IS NOT NULL
             AND c.id_ultima_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
           GROUP BY c.id_conversa, c.id_agendamento
           ORDER BY MAX(m.id_mensagem) DESC
           LIMIT " . CHAT_NAO_LIDAS_DETALHE_MAX,
-        'iiii',
-        [$idCliente, $idCliente, $idEmpresa, $idCliente]
+        'i' . $tiposIn,
+        array_merge([$idEmpresa], $idsIn)
     );
 
     $conversas = array_map(static fn(array $linha): array => [
@@ -902,7 +1066,7 @@ function chatClienteFormatarMensagem(array $mensagem, array $ctx): array
         'conteudo' => (string)$mensagem['conteudo'],
         'criado_em' => (string)$mensagem['criado_em'],
         'propria' => (string)$mensagem['remetente_tipo'] === 'cliente'
-            && (int)($mensagem['id_cliente_remetente'] ?? 0) === (int)$ctx['id_cliente'],
+            && in_array((int)($mensagem['id_cliente_remetente'] ?? 0), chatClienteIdsDoContexto($ctx), true),
         'remetente_foto_url' => $mensagem['remetente_foto_url'] ?? null,
     ];
 }
@@ -974,7 +1138,16 @@ function chatClienteMarcarLeitura(mysqli $conexao, array $ctx, int $idConversa, 
     );
     if ($existe === []) return ['ok' => false];
 
-    $idCliente = (int)$ctx['id_cliente'];
+    // A leitura pertence ao dono da conversa (par exigido pela FK), desde que ele esteja no grupo da sessão.
+    [$in, $tiposIn, $idsIn] = chatClienteSqlIn(chatClienteIdsDoContexto($ctx));
+    $dono = chatConsultar(
+        $conexao,
+        "SELECT id_cliente FROM chat_conversa WHERE id_conversa = ? AND id_empresa = ? AND id_cliente IN ({$in}) LIMIT 1",
+        'ii' . $tiposIn,
+        array_merge([$idConversa, (int)$ctx['id_empresa']], $idsIn)
+    );
+    if ($dono === []) return ['ok' => false];
+    $idCliente = (int)$dono[0]['id_cliente'];
     chatClienteGravarLeitura($conexao, $idConversa, $idCliente, $idMensagem);
     $atual = chatConsultar(
         $conexao,
@@ -1002,7 +1175,7 @@ function chatClienteBuscarPorChave(mysqli $conexao, int $idConversa, string $cha
 function chatClienteResultadoIdempotente(array $existente, array $ctx): array
 {
     $mesmoRemetente = (string)$existente['remetente_tipo'] === 'cliente'
-        && (int)($existente['id_cliente_remetente'] ?? 0) === (int)$ctx['id_cliente'];
+        && in_array((int)($existente['id_cliente_remetente'] ?? 0), chatClienteIdsDoContexto($ctx), true);
 
     return $mesmoRemetente
         ? ['resultado' => 'idempotente', 'mensagem' => chatClienteFormatarMensagem($existente, $ctx)]
@@ -1015,7 +1188,6 @@ function chatClienteEnviarMensagem(mysqli $conexao, array $ctx, int $idConversa,
     $nome = trim((string)($ctx['nome_cliente'] ?? ''));
     if ($nome === '') throw new RuntimeException('Remetente do chat sem nome válido.');
     $nome = mb_substr($nome, 0, 150, 'UTF-8');
-    $idCliente = (int)$ctx['id_cliente'];
 
     $conexao->begin_transaction();
     try {
@@ -1024,6 +1196,14 @@ function chatClienteEnviarMensagem(mysqli $conexao, array $ctx, int $idConversa,
             $conexao->rollback();
             return ['resultado' => 'nao_encontrada', 'mensagem' => null];
         }
+        // Histórico de conta unificada nunca recebe novas mensagens (a regra vale no backend).
+        if (chatConversaEhHistorica($conexao, $conversa)) {
+            $conexao->rollback();
+            return ['resultado' => 'historica', 'mensagem' => null];
+        }
+        // Remetente e leitura usam o dono da conversa (par conversa+cliente das FKs); em conversa
+        // herdada de uma conta unificada ele é a conta secundária, e a mensagem continua do mesmo cliente.
+        $idCliente = (int)$conversa['id_cliente'];
 
         if ($chave !== null) {
             $existente = chatClienteBuscarPorChave($conexao, $idConversa, $chave);
@@ -1091,28 +1271,46 @@ function chatClienteIniciarConversaPorAgendamento(mysqli $conexao, array $ctx, i
 {
     $idEmpresa = (int)$ctx['id_empresa'];
     $idCliente = (int)$ctx['id_cliente'];
+    [$in, $tiposIn, $idsIn] = chatClienteSqlIn(chatClienteIdsDoContexto($ctx));
     $agendamento = chatConsultar(
         $conexao,
-        'SELECT id_agendamento, id_cliente, id_profissional, data_agendamento, hora_inicio, status
+        "SELECT id_agendamento, id_cliente, id_profissional, data_agendamento, hora_inicio, status
            FROM agendamento
-          WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente = ?
-          LIMIT 1 FOR UPDATE',
-        'iii',
-        [$idAgendamento, $idEmpresa, $idCliente]
+          WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente IN ({$in})
+          LIMIT 1 FOR UPDATE",
+        'ii' . $tiposIn,
+        array_merge([$idAgendamento, $idEmpresa], $idsIn)
     )[0] ?? null;
     if ($agendamento === null) return ['resultado' => 'nao_encontrado', 'id_conversa' => null];
+    // Depois da unificação o agendamento pertence à conta atual (definitiva) da sessão.
+    if ((int)$agendamento['id_cliente'] !== $idCliente) return ['resultado' => 'nao_encontrado', 'id_conversa' => null];
 
-    $existente = chatConsultar(
-        $conexao,
-        'SELECT id_conversa FROM chat_conversa
-          WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente = ? LIMIT 1',
-        'iii',
-        [$idAgendamento, $idEmpresa, $idCliente]
-    )[0] ?? null;
+    // A conversa ATIVA é a da conta atual neste agendamento (índice único agendamento + cliente). A das
+    // contas unificadas é só histórico e nunca é reutilizada para novas mensagens.
+    $buscarAtiva = static function () use ($conexao, $idAgendamento, $idEmpresa, $idCliente): ?array {
+        return chatConsultar(
+            $conexao,
+            'SELECT id_conversa FROM chat_conversa WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente = ? LIMIT 1',
+            'iii',
+            [$idAgendamento, $idEmpresa, $idCliente]
+        )[0] ?? null;
+    };
+    $existente = $buscarAtiva();
     if ($existente !== null) return ['resultado' => 'existente', 'id_conversa' => (int)$existente['id_conversa']];
 
     if (!in_array((string)$agendamento['status'], CHAT_STATUS_AGENDAMENTO_INICIO, true)) {
-        return ['resultado' => 'status_invalido', 'id_conversa' => null];
+        // Sem conversa ativa e sem poder criá-la: mantém acessível o histórico (consulta) do agendamento.
+        $anterior = chatConsultar(
+            $conexao,
+            "SELECT id_conversa FROM chat_conversa
+              WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente IN ({$in}) AND id_cliente <> ?
+              ORDER BY id_conversa DESC LIMIT 1",
+            'ii' . $tiposIn . 'i',
+            array_merge([$idAgendamento, $idEmpresa], $idsIn, [$idCliente])
+        )[0] ?? null;
+        return $anterior !== null
+            ? ['resultado' => 'existente', 'id_conversa' => (int)$anterior['id_conversa']]
+            : ['resultado' => 'status_invalido', 'id_conversa' => null];
     }
 
     $stmt = chatPreparar(
@@ -1142,13 +1340,8 @@ function chatClienteIniciarConversaPorAgendamento(mysqli $conexao, array $ctx, i
     }
 
     if ($erro === 1062) {
-        $existente = chatConsultar(
-            $conexao,
-            'SELECT id_conversa FROM chat_conversa
-              WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente = ? LIMIT 1',
-            'iii',
-            [$idAgendamento, $idEmpresa, $idCliente]
-        )[0] ?? null;
+        // Criação concorrente da mesma conversa ativa (índice único agendamento + cliente).
+        $existente = $buscarAtiva();
         if ($existente !== null) return ['resultado' => 'existente', 'id_conversa' => (int)$existente['id_conversa']];
         return ['resultado' => 'nao_encontrado', 'id_conversa' => null];
     }
@@ -1210,7 +1403,7 @@ function chatIniciarConversaPorAgendamento(mysqli $conexao, array $ctx, int $idA
     $agendamento = chatConsultar($conexao, $sql . ' LIMIT 1 FOR UPDATE', $tipos, $params)[0] ?? null;
     if ($agendamento === null) return ['resultado' => 'nao_encontrado', 'id_conversa' => null];
 
-    $existente = chatConversaDoAgendamento($conexao, $ctx, $idAgendamento);
+    $existente = chatConversaDoAgendamento($conexao, $ctx, $idAgendamento, (int)$agendamento['id_cliente']);
     if ($existente !== false) {
         return $existente === null
             ? ['resultado' => 'nao_encontrado', 'id_conversa' => null]
@@ -1218,6 +1411,13 @@ function chatIniciarConversaPorAgendamento(mysqli $conexao, array $ctx, int $idA
     }
 
     if (!in_array((string)$agendamento['status'], CHAT_STATUS_AGENDAMENTO_INICIO, true)) {
+        // Sem conversa ativa e sem poder criá-la: mantém acessível o histórico (consulta) do agendamento.
+        $anterior = chatConsultar($conexao,
+            'SELECT id_conversa FROM chat_conversa WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente <> ? ORDER BY id_conversa DESC LIMIT 1',
+            'iii', [$idAgendamento, (int)$ctx['id_empresa'], (int)$agendamento['id_cliente']])[0] ?? null;
+        if ($anterior !== null && chatBuscarConversaAutorizada($conexao, $ctx, (int)$anterior['id_conversa']) !== null) {
+            return ['resultado' => 'existente', 'id_conversa' => (int)$anterior['id_conversa']];
+        }
         return ['resultado' => 'status_invalido', 'id_conversa' => null];
     }
 
@@ -1244,7 +1444,7 @@ function chatIniciarConversaPorAgendamento(mysqli $conexao, array $ctx, int $idA
 
     // 1062: outra requisição criou a conversa deste agendamento ao mesmo tempo (UNIQUE id_agendamento).
     if ($erro === 1062) {
-        $existente = chatConversaDoAgendamento($conexao, $ctx, $idAgendamento);
+        $existente = chatConversaDoAgendamento($conexao, $ctx, $idAgendamento, (int)$agendamento['id_cliente']);
         if (is_int($existente)) return ['resultado' => 'existente', 'id_conversa' => $existente];
         return ['resultado' => 'nao_encontrado', 'id_conversa' => null];
     }
@@ -1255,36 +1455,44 @@ function chatIniciarConversaPorAgendamento(mysqli $conexao, array $ctx, int $idA
  * Conversa já existente para o agendamento: false = não existe; null = existe fora do escopo;
  * int = id da conversa autorizada.
  */
-function chatConversaDoAgendamento(mysqli $conexao, array $ctx, int $idAgendamento): int|false|null
+function chatConversaDoAgendamento(mysqli $conexao, array $ctx, int $idAgendamento, ?int $idClienteAtivo = null): int|false|null
 {
-    $linha = chatConsultar($conexao,
-        'SELECT id_conversa FROM chat_conversa WHERE id_agendamento = ? AND id_empresa = ? LIMIT 1',
-        'ii', [$idAgendamento, (int)$ctx['id_empresa']])[0] ?? null;
+    // A conversa ativa é a do cliente atual do agendamento; as de contas unificadas são só histórico.
+    $sql = 'SELECT id_conversa FROM chat_conversa WHERE id_agendamento = ? AND id_empresa = ?';
+    $tipos = 'ii';
+    $params = [$idAgendamento, (int)$ctx['id_empresa']];
+    if ($idClienteAtivo !== null) {
+        $sql .= ' AND id_cliente = ?';
+        $tipos .= 'i';
+        $params[] = $idClienteAtivo;
+    }
+    $linha = chatConsultar($conexao, $sql . ' ORDER BY id_conversa LIMIT 1', $tipos, $params)[0] ?? null;
     if ($linha === null) return false;
     $idConversa = (int)$linha['id_conversa'];
     return chatBuscarConversaAutorizada($conexao, $ctx, $idConversa) !== null ? $idConversa : null;
 }
 
 /**
- * Busca e trava a conversa técnica vinculada ao agendamento dentro da empresa.
+ * Busca e trava TODAS as conversas técnicas vinculadas ao agendamento dentro da empresa (a ativa da
+ * conta atual e as históricas de contas unificadas), em ordem estável.
  * O chamador deve já estar em transação e ser responsável por commit/rollback.
  * Não aplica autorização de leitura do Chat nem retorna mensagens.
  */
-function chatBuscarConversaVinculadaAgendamentoParaAtualizar(mysqli $conexao, int $idEmpresa, int $idAgendamento): ?array
+function chatBuscarConversasVinculadasAgendamentoParaAtualizar(mysqli $conexao, int $idEmpresa, int $idAgendamento): array
 {
     $stmt = chatPreparar($conexao,
         'SELECT id_conversa, id_cliente, id_profissional, agendamento_data, agendamento_hora_inicio, status
            FROM chat_conversa
           WHERE id_empresa = ? AND id_agendamento = ?
-          LIMIT 1 FOR UPDATE');
+          ORDER BY id_conversa
+          FOR UPDATE');
     $stmt->bind_param('ii', $idEmpresa, $idAgendamento);
     $stmt->execute();
     $resultado = $stmt->get_result();
-    $conversa = $resultado ? $resultado->fetch_assoc() : null;
+    $conversas = $resultado ? $resultado->fetch_all(MYSQLI_ASSOC) : [];
     $stmt->close();
-    return $conversa ?: null;
+    return $conversas;
 }
-
 /**
  * Mantém o histórico da conversa consistente com uma edição de agendamento.
  * Cliente/profissional divergente encerra e desvincula a conversa antiga; se
@@ -1301,52 +1509,53 @@ function chatPrepararConversaParaEdicaoAgendamento(
     string $horaInicioNova,
     int $idUsuarioEncerramento
 ): void {
-    $conversa = chatBuscarConversaVinculadaAgendamentoParaAtualizar($conexao, $idEmpresa, $idAgendamento);
-    if ($conversa === null) return;
+    // Todas as conversas do agendamento (ativa e históricas), sem seleção arbitrária.
+    foreach (chatBuscarConversasVinculadasAgendamentoParaAtualizar($conexao, $idEmpresa, $idAgendamento) as $conversa) {
+        $idConversa = (int)$conversa['id_conversa'];
+        // Conversa herdada de conta unificada (dono = secundária do mesmo grupo) continua vinculada.
+        $vinculoAlterado = !chatClienteContaDoGrupo($conexao, $idEmpresa, (int)$conversa['id_cliente'], $idClienteNovo)
+            || (int)$conversa['id_profissional'] !== $idProfissionalNovo;
 
-    $idConversa = (int)$conversa['id_conversa'];
-    $vinculoAlterado = (int)$conversa['id_cliente'] !== $idClienteNovo
-        || (int)$conversa['id_profissional'] !== $idProfissionalNovo;
+        if ($vinculoAlterado) {
+            // A ordem preserva os dados de encerramento já históricos antes de fixar o status.
+            $stmt = chatPreparar($conexao,
+                "UPDATE chat_conversa
+                    SET encerrada_em = IF(status = 'aberta', NOW(), encerrada_em),
+                        encerrada_por_usuario = IF(status = 'aberta', ?, encerrada_por_usuario),
+                        status = 'encerrada',
+                        id_agendamento = NULL
+                  WHERE id_conversa = ? AND id_empresa = ? AND id_agendamento = ?
+                  LIMIT 1");
+            $stmt->bind_param('iiii', $idUsuarioEncerramento, $idConversa, $idEmpresa, $idAgendamento);
+            $ok = $stmt->execute();
+            $afetadas = $stmt->affected_rows;
+            $stmt->close();
+            if (!$ok || $afetadas !== 1) throw new RuntimeException('Falha ao encerrar e desvincular a conversa do chat.');
+            chatAuditarConversaDesvinculada(
+                $conexao,
+                $idConversa,
+                $idAgendamento,
+                (string)$conversa['status'],
+                'vinculo_agendamento_alterado'
+            );
+            continue;
+        }
 
-    if ($vinculoAlterado) {
-        // A ordem preserva os dados de encerramento já históricos antes de fixar o status.
+        if ((string)$conversa['agendamento_data'] === $dataAgendamentoNova
+            && (string)$conversa['agendamento_hora_inicio'] === $horaInicioNova) {
+            continue;
+        }
+
         $stmt = chatPreparar($conexao,
-            "UPDATE chat_conversa
-                SET encerrada_em = IF(status = 'aberta', NOW(), encerrada_em),
-                    encerrada_por_usuario = IF(status = 'aberta', ?, encerrada_por_usuario),
-                    status = 'encerrada',
-                    id_agendamento = NULL
+            'UPDATE chat_conversa
+                SET agendamento_data = ?, agendamento_hora_inicio = ?
               WHERE id_conversa = ? AND id_empresa = ? AND id_agendamento = ?
-              LIMIT 1");
-        $stmt->bind_param('iiii', $idUsuarioEncerramento, $idConversa, $idEmpresa, $idAgendamento);
+              LIMIT 1');
+        $stmt->bind_param('ssiii', $dataAgendamentoNova, $horaInicioNova, $idConversa, $idEmpresa, $idAgendamento);
         $ok = $stmt->execute();
-        $afetadas = $stmt->affected_rows;
         $stmt->close();
-        if (!$ok || $afetadas !== 1) throw new RuntimeException('Falha ao encerrar e desvincular a conversa do chat.');
-        chatAuditarConversaDesvinculada(
-            $conexao,
-            $idConversa,
-            $idAgendamento,
-            (string)$conversa['status'],
-            'vinculo_agendamento_alterado'
-        );
-        return;
+        if (!$ok) throw new RuntimeException('Falha ao sincronizar o snapshot do agendamento no chat.');
     }
-
-    if ((string)$conversa['agendamento_data'] === $dataAgendamentoNova
-        && (string)$conversa['agendamento_hora_inicio'] === $horaInicioNova) {
-        return;
-    }
-
-    $stmt = chatPreparar($conexao,
-        'UPDATE chat_conversa
-            SET agendamento_data = ?, agendamento_hora_inicio = ?
-          WHERE id_conversa = ? AND id_empresa = ? AND id_agendamento = ?
-          LIMIT 1');
-    $stmt->bind_param('ssiii', $dataAgendamentoNova, $horaInicioNova, $idConversa, $idEmpresa, $idAgendamento);
-    $ok = $stmt->execute();
-    $stmt->close();
-    if (!$ok) throw new RuntimeException('Falha ao sincronizar o snapshot do agendamento no chat.');
 }
 
 /**
@@ -1360,31 +1569,31 @@ function chatPrepararConversaParaExclusaoAgendamento(
     int $idAgendamento,
     int $idUsuarioEncerramento
 ): void {
-    $conversa = chatBuscarConversaVinculadaAgendamentoParaAtualizar($conexao, $idEmpresa, $idAgendamento);
-    if ($conversa === null) return;
+    // Todas as conversas do agendamento (ativa e históricas), sem seleção arbitrária.
+    foreach (chatBuscarConversasVinculadasAgendamentoParaAtualizar($conexao, $idEmpresa, $idAgendamento) as $conversa) {
+        $idConversa = (int)$conversa['id_conversa'];
+        $statusAnterior = (string)$conversa['status'];
+        if ($statusAnterior === 'aberta') {
+            $stmt = chatPreparar($conexao,
+                "UPDATE chat_conversa
+                    SET status = 'encerrada', encerrada_em = NOW(), encerrada_por_usuario = ?
+                  WHERE id_conversa = ? AND id_empresa = ? AND id_agendamento = ? AND status = 'aberta'
+                  LIMIT 1");
+            $stmt->bind_param('iiii', $idUsuarioEncerramento, $idConversa, $idEmpresa, $idAgendamento);
+            $ok = $stmt->execute();
+            $afetadas = $stmt->affected_rows;
+            $stmt->close();
+            if (!$ok || $afetadas !== 1) throw new RuntimeException('Falha ao encerrar a conversa antes da exclusão do agendamento.');
+        }
 
-    $idConversa = (int)$conversa['id_conversa'];
-    $statusAnterior = (string)$conversa['status'];
-    if ($statusAnterior === 'aberta') {
-        $stmt = chatPreparar($conexao,
-            "UPDATE chat_conversa
-                SET status = 'encerrada', encerrada_em = NOW(), encerrada_por_usuario = ?
-              WHERE id_conversa = ? AND id_empresa = ? AND id_agendamento = ? AND status = 'aberta'
-              LIMIT 1");
-        $stmt->bind_param('iiii', $idUsuarioEncerramento, $idConversa, $idEmpresa, $idAgendamento);
-        $ok = $stmt->execute();
-        $afetadas = $stmt->affected_rows;
-        $stmt->close();
-        if (!$ok || $afetadas !== 1) throw new RuntimeException('Falha ao encerrar a conversa antes da exclusão do agendamento.');
+        chatAuditarConversaDesvinculada(
+            $conexao,
+            $idConversa,
+            $idAgendamento,
+            $statusAnterior,
+            'agendamento_excluido'
+        );
     }
-
-    chatAuditarConversaDesvinculada(
-        $conexao,
-        $idConversa,
-        $idAgendamento,
-        $statusAnterior,
-        'agendamento_excluido'
-    );
 }
 
 /* ==========================================================
@@ -1469,7 +1678,7 @@ function chatBuscarAgendamentoParaAtualizar(mysqli $conexao, int $idEmpresa, int
 
 /**
  * Obtém ou cria a conversa de um agendamento JÁ TRAVADO pelo chamador (FOR UPDATE, em transação).
- * Uma conversa por agendamento (uk_chat_conversa_agendamento); concorrência tratada pelo 1062.
+ * Uma conversa ativa por agendamento e cliente (uk_chat_conversa_agendamento_cliente); concorrência tratada pelo 1062.
  * $criador registra quem originou a conversa — nunca 'sistema' (chat_conversa aceita só
  * cliente/usuario): ['tipo' => 'cliente'] ou ['tipo' => 'usuario', 'id_usuario' => int].
  * Não aplica autorização de leitura do Chat; não inicia nem finaliza transação.
@@ -1493,20 +1702,23 @@ function chatObterOuCriarConversaAgendamento(mysqli $conexao, int $idEmpresa, ar
         throw new InvalidArgumentException('Agendamento inválido para a conversa.');
     }
 
-    $buscarExistente = static function () use ($conexao, $idEmpresa, $idAgendamento): ?array {
+    // A conversa vinculada é a do cliente atual do agendamento; históricos de contas unificadas não contam.
+    $buscarExistente = static function () use ($conexao, $idEmpresa, $idAgendamento, $idCliente): ?array {
         return chatConsultar(
             $conexao,
             'SELECT id_conversa, id_cliente, id_profissional, status
                FROM chat_conversa
-              WHERE id_agendamento = ? AND id_empresa = ?
+              WHERE id_agendamento = ? AND id_empresa = ? AND id_cliente = ?
               LIMIT 1 FOR UPDATE',
-            'ii',
-            [$idAgendamento, $idEmpresa]
+            'iii',
+            [$idAgendamento, $idEmpresa, $idCliente]
         )[0] ?? null;
     };
-    $resultadoExistente = static function (array $conversa) use ($idCliente, $idProfissional): array {
-        // Defesa extra: a edição de agendamento desvincula a conversa ao trocar cliente/profissional.
-        $mesmoVinculo = (int)$conversa['id_cliente'] === $idCliente && (int)$conversa['id_profissional'] === $idProfissional;
+    $resultadoExistente = static function (array $conversa) use ($conexao, $idEmpresa, $idCliente, $idProfissional): array {
+        // Defesa extra: a edição de agendamento desvincula a conversa ao trocar cliente/profissional
+        // (conta secundária unificada no cliente do agendamento conta como o mesmo cliente).
+        $mesmoVinculo = chatClienteContaDoGrupo($conexao, $idEmpresa, (int)$conversa['id_cliente'], $idCliente)
+            && (int)$conversa['id_profissional'] === $idProfissional;
         return [
             'resultado' => $mesmoVinculo ? 'existente' : 'divergente',
             'id_conversa' => $mesmoVinculo ? (int)$conversa['id_conversa'] : null,
@@ -1577,6 +1789,10 @@ function chatRegistrarMensagemSistema(
         [$idConversa, $idEmpresa]
     )[0] ?? null;
     if ($conversa === null) return ['resultado' => 'conversa_invalida', 'id_mensagem' => null];
+    // Eventos automáticos nunca entram no histórico de conta unificada.
+    if (chatConversaEhHistorica($conexao, ['id_empresa' => $idEmpresa, 'id_cliente' => $conversa['id_cliente']])) {
+        return ['resultado' => 'conversa_invalida', 'id_mensagem' => null];
+    }
 
     $resultadoExistente = static function (array $existente): array {
         if ((string)$existente['remetente_tipo'] !== 'sistema') {

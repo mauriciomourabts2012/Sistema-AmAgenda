@@ -382,7 +382,7 @@
             <span><strong>Telefone:</strong> ${C.escapeHtml(telefone || "Não informado")}</span>
             ${cidade ? `<span><strong>Localização:</strong> ${C.escapeHtml(cidade)}</span>` : ""}
             <span><strong>Status:</strong> ${C.escapeHtml(status)}</span>
-            <span><strong>Origem:</strong> ${C.escapeHtml(rotuloOrigem(cli.origem_cadastro))}</span>
+            <span><strong>Origem:</strong> <span class="cliente-origem-badge origem-${classeOrigem(cli.origem_cadastro)}">${C.escapeHtml(rotuloOrigem(cli.origem_cadastro))}</span></span>
             <span><strong>Data:</strong> ${C.escapeHtml(dataCadastro || "Não informada")}</span>
           </div>
 
@@ -441,6 +441,12 @@
 
   function rotuloOrigem(valor) {
     return ROTULO_ORIGEM[String(valor || "")] || "Não informada";
+  }
+
+  // Classe do badge somente a partir de valores conhecidos (nunca do texto bruto).
+  function classeOrigem(valor) {
+    const v = String(valor || "");
+    return v === "painel" || v === "agenda_online" ? v : "nao_informado";
   }
 
   function brData(iso) {

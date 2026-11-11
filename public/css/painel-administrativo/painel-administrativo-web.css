@@ -718,6 +718,23 @@
 #usuarios .usuario-card-dados strong,
 #clientes .cliente-card-dados strong { color: #0f172a; }
 
+/* Origem do cadastro: badge discreto (azul = painel, verde = agenda online, cinza = não informada). */
+#clientes .cliente-origem-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 9px;
+  border: 1px solid #d5dbe3;
+  border-radius: 999px;
+  background: #f1f4f8;
+  color: #4a5b70;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+#clientes .cliente-origem-badge.origem-painel { border-color: #bfd8f6; background: #eaf3fe; color: #1d4f91; }
+#clientes .cliente-origem-badge.origem-agenda_online { border-color: #bfe6cf; background: #e8f7ee; color: #17663a; }
+
 #usuarios .usuario-card-chips,
 #clientes .cliente-card-chips { gap: 8px; }
 #usuarios .usuario-chip,

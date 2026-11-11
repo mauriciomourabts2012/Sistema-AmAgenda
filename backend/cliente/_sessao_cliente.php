@@ -65,6 +65,31 @@ function exigirSessaoCliente(): array
     }
     sessaoCredencialExigirCliente($conexaoSessaoCliente, $idEmpresa, $idCliente);
 
+    // Conta inativa, bloqueada ou unificada em outra (secundária) não mantém sessão, mesmo sem senha
+    // (o marcador da credencial só muda quando há senha). A sessão é revogada, nunca reaproveitada para
+    // criar um novo cadastro. Sessão sem id_cliente (primeiro acesso, ainda sem cadastro) não passa por aqui.
+    if ($idCliente !== null) {
+        $linhaStatus = null;
+        $stmtStatus = $conexaoSessaoCliente instanceof mysqli
+            ? $conexaoSessaoCliente->prepare('SELECT status, id_cliente_unificado FROM cliente WHERE id_cliente = ? AND id_empresa = ? LIMIT 1')
+            : false;
+        if (!$stmtStatus) {
+            out(['ok' => false, 'code' => 'CLIENT_SESSION_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $stmtStatus->bind_param('ii', $idCliente, $idEmpresa);
+        if (!$stmtStatus->execute()) {
+            $stmtStatus->close();
+            out(['ok' => false, 'code' => 'CLIENT_SESSION_CHECK_ERROR', 'user_msg' => 'Não foi possível validar sua sessão.'], 500);
+        }
+        $resultadoStatus = $stmtStatus->get_result();
+        $linhaStatus = $resultadoStatus ? ($resultadoStatus->fetch_assoc() ?: null) : null;
+        $stmtStatus->close();
+        if ($linhaStatus === null || (string)$linhaStatus['status'] !== 'ativo' || $linhaStatus['id_cliente_unificado'] !== null) {
+            sessaoCredencialRevogarCliente();
+            sessaoCredencialResponderReautenticacao(SESSAO_LOGIN_CLIENTE_URL);
+        }
+    }
+
     // Identificador do login (telefone ou "email:<endereço>"): usado na recuperação de senha e no
     // limite de tentativas. Sessões anteriores à C3.1 só têm o telefone.
     $identificador = trim((string)($auth['identificador'] ?? ''));

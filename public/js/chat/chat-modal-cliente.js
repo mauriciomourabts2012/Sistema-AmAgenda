@@ -175,8 +175,9 @@
     ui.dataHora.textContent = conversa
       ? formatarDataHora(conversa.agendamento_data, conversa.agendamento_hora_inicio)
       : "—";
-    const encerrada = conversa?.status === "encerrada";
-    ui.status.textContent = conversa ? (encerrada ? "Encerrada" : "Aberta") : "";
+    const historica = conversa?.historica === true;
+    const encerrada = conversa?.status === "encerrada" || historica;
+    ui.status.textContent = conversa ? (historica ? "Histórico de conta unificada" : (encerrada ? "Encerrada" : "Aberta")) : "";
     ui.status.className = `chat-cliente-status ${encerrada ? "encerrada" : "aberta"}`;
     if (ui.avatar) {
       if (conversa) preencherAvatar(ui.avatar, texto(conversa.profissional_nome) || "Profissional", conversa.profissional_foto_url);
@@ -236,17 +237,101 @@
     });
   }
 
+  /* Histórico de conta unificada: somente leitura (o backend também recusa envio) + ação para a conversa ativa. */
+  function definirAvisoHistorico(extra = "", opcoes = []) {
+    definirAviso(`Histórico de conta unificada, disponível apenas para consulta.${extra ? ` ${extra}` : ""}`);
+    if (opcoes.length) {
+      opcoes.forEach(opcao => {
+        const botao = criarElemento(
+          "button",
+          "chat-cliente-acao-historica",
+          `${formatarDataHora(opcao.agendamento_data, opcao.agendamento_hora_inicio)} · ${texto(opcao.profissional_nome) || "Profissional"}`
+        );
+        botao.type = "button";
+        botao.addEventListener("click", () => abrirConversaAtivaPorId(Number(opcao.id_conversa)));
+        ui.aviso.append(" ", botao);
+      });
+      return;
+    }
+    const acao = criarElemento("button", "chat-cliente-acao-historica", "Abrir conversa ativa");
+    acao.type = "button";
+    acao.addEventListener("click", () => abrirConversaAtiva(acao));
+    ui.aviso.append(" ", acao);
+  }
+
+  async function abrirConversaAtivaPorId(idConversa) {
+    if (!Number.isInteger(idConversa) || idConversa <= 0 || estado.abrindo) return;
+    limparEstado();
+    const ciclo = ++estado.ciclo;
+    estado.abrindo = true;
+    try {
+      await carregarConversa(idConversa, ciclo);
+    } catch (erro) {
+      if (ciclo === estado.ciclo) {
+        definirAviso(erroAmigavel(erro, "Não foi possível abrir a conversa."), true);
+        ui.historico.replaceChildren();
+      }
+    } finally {
+      if (ciclo === estado.ciclo) estado.abrindo = false;
+    }
+  }
+
+  async function abrirConversaAtiva(botao) {
+    const historica = estado.conversa;
+    if (historica?.historica !== true || estado.abrindo) return;
+    const ciclo = estado.ciclo;
+    botao.disabled = true;
+    try {
+      const resposta = await apiChat("cliente/chat/conversa/iniciar", {
+        metodo: "POST",
+        dados: { id_conversa_historica: historica.id_conversa },
+      });
+      if (ciclo !== estado.ciclo) return;
+      const opcoes = Array.isArray(resposta.data?.opcoes) ? resposta.data.opcoes : [];
+      if (opcoes.length > 1) {
+        definirAvisoHistorico("Escolha a conversa:", opcoes);
+        return;
+      }
+      const id = Number(resposta.data?.conversa?.id_conversa);
+      if (!Number.isInteger(id) || id <= 0) throw new Error("Não há conversa ativa disponível para este agendamento.");
+      await abrirConversaAtivaPorId(id);
+    } catch (erro) {
+      if (ciclo === estado.ciclo) definirAvisoHistorico(erroAmigavel(erro, "Não há conversa ativa disponível para este agendamento."));
+    }
+  }
+
+  /* Conversa ativa com histórico de conta unificada no mesmo agendamento: acesso somente leitura. */
+  function renderizarAcaoHistoricoAnterior() {
+    ui.aviso.querySelectorAll("[data-historico-anterior]").forEach(botao => botao.remove());
+    const ids = Array.isArray(estado.conversa?.historicos) ? estado.conversa.historicos : [];
+    if (estado.conversa?.historica === true || !ids.length) return;
+    ids.forEach((id, indice) => {
+      const botao = criarElemento(
+        "button",
+        "chat-cliente-acao-historica",
+        `Ver histórico anterior${ids.length > 1 ? ` (${indice + 1})` : ""}`
+      );
+      botao.type = "button";
+      botao.dataset.historicoAnterior = "1";
+      botao.addEventListener("click", () => abrirConversaAtivaPorId(Number(id)));
+      ui.aviso.append(" ", botao);
+    });
+  }
+
   function sincronizarCompositor() {
     const responder = podeResponder();
     ui.formulario.hidden = !responder;
     ui.textarea.disabled = !responder || estado.enviando;
     ui.enviar.disabled = !responder || estado.enviando;
     ui.enviar.querySelector("span").textContent = estado.enviando ? "Enviando..." : "Enviar";
-    if (!responder && estado.conversa?.status === "encerrada") {
+    if (estado.conversa?.historica === true) {
+      definirAvisoHistorico("");
+    } else if (!responder && estado.conversa?.status === "encerrada") {
       definirAviso("Esta conversa foi encerrada e está disponível apenas para consulta.");
     } else if (!responder && estado.conversa && estado.somenteConsulta) {
       definirAviso("Este agendamento foi finalizado. A conversa está disponível apenas para consulta.");
     }
+    renderizarAcaoHistoricoAnterior();
   }
 
   function renderizarConversa({ rolar = false } = {}) {

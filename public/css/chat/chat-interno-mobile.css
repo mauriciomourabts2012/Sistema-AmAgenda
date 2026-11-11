@@ -32,7 +32,8 @@
 }
 
 @media (max-width: 450px) {
-  .chat-cabecalho .cabecalho-data { display: none; }
+  /* Subtítulo "Conversas internas da empresa" permanece visível (com reticências se faltar espaço). */
+  .chat-cabecalho .cabecalho-data { display: block; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chat-filtros-linha { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
   .chat-filtro-nao-lidas { padding: 0 8px; font-size: 11px; }
   .chat-conversa-acoes .chat-status { display: none; }
@@ -72,4 +73,195 @@
   .chat-conversa-acoes:not(:has(> button:not([hidden]))) { display: none; }
   .chat-abrir-agendamento { width: 44px; min-height: 44px; }
   .chat-conversa-acoes .chat-botao-perigo { min-height: 44px; padding: 0 14px; font-size: 12.5px; }
+}
+
+/* ============================================================
+   CHAT CENTRAL — CABEÇALHO DA CONVERSA NO MOBILE (somente <= 760px; o desktop não muda)
+   Linha 1: voltar + avatar + nome (até 2 linhas) · 2: data/hora · 3: profissional · 4: selo de status · 5: ações.
+   O título e o bloco de meta usam display: contents para que cada informação ocupe a própria linha da
+   grade; itens ausentes ou ocultos não geram linha vazia (posicionamento automático).
+   ============================================================ */
+@media (max-width: 760px) {
+  .chat-conversa-cabecalho { grid-template-areas: none; grid-auto-rows: auto; align-items: center; gap: 8px 10px; padding: 12px; }
+  .chat-conversa-cabecalho .chat-voltar { grid-area: auto; grid-column: 1; grid-row: 1; }
+  .chat-conversa-cabecalho .chat-avatar-cabecalho { grid-area: auto; grid-column: 2; grid-row: 1; margin-top: 0; }
+  .chat-conversa-titulo { grid-area: auto; display: contents; }
+  .chat-conversa-titulo h2 { grid-column: 3; grid-row: 1; min-width: 0; font-size: 15px; line-height: 1.25; }
+  .chat-conversa-titulo p#chatConversaMeta { display: contents; }
+  .chat-conversa-titulo p#chatConversaMeta .chat-agendamento-cabecalho { grid-column: 1 / -1; justify-self: start; }
+  .chat-conversa-titulo p#chatConversaMeta .chat-agendamento-profissional { grid-column: 1 / -1; justify-self: start; max-width: 100%; font-size: 12px; font-weight: 600; color: #475569; }
+  .chat-conversa-titulo .chat-status { grid-column: 1 / -1; justify-self: start; margin-top: 0; }
+  .chat-conversa-acoes { grid-area: auto; grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
+}
+
+/* ============================================================
+   CHAT CENTRAL — REFINAMENTO MOBILE (conversa aberta). O desktop não muda.
+   ============================================================ */
+/* Área útil: a conversa ocupa a altura visível (dvh acompanha a barra do navegador/teclado); só o
+   histórico rola e o compositor fica ancorado embaixo, sem espaço vazio. */
+@media (max-width: 960px) {
+  .chat-app.chat-detalhe-aberta { height: calc(100dvh - 66px); min-height: 0; }
+  .chat-app.chat-detalhe-aberta .chat-detalhe { height: 100%; min-height: 0; }
+  .chat-app.chat-detalhe-aberta .chat-conversa-conteudo { height: 100%; }
+}
+
+@media (max-width: 760px) {
+  /* Cabeçalho mais compacto; botões de calendário e encerramento lado a lado, do mesmo tamanho. */
+  .chat-conversa-cabecalho { padding: 8px 12px; gap: 6px 10px; }
+  .chat-abrir-agendamento { width: 36px; min-height: 36px; }
+  .chat-conversa-acoes { gap: 8px; }
+  .chat-conversa-acoes .chat-botao-perigo { min-height: 36px; padding: 0 12px; }
+
+  /* Mensagens: menos respiro, balões mais equilibrados (recebidas à esquerda, enviadas à direita). */
+  .chat-historico { padding: 10px; gap: 6px; }
+  .chat-mensagem-linha { max-width: 90%; gap: 6px; }
+  .chat-mensagem-linha.propria { max-width: 84%; }
+  .chat-mensagem { padding: 7px 10px; border-radius: 3px 12px 12px; }
+  .chat-mensagem.propria { border-radius: 12px 3px 12px 12px; }
+  .chat-mensagem-remetente { margin-bottom: 2px; font-size: 10.5px; }
+  .chat-mensagem-conteudo { font-size: 13.5px; line-height: 1.35; }
+  .chat-mensagem-horario { margin-top: 3px; font-size: 9.5px; }
+  .chat-sistema-linha { margin: 4px 0; }
+  .chat-carregar-anteriores { margin: 6px 10px; }
+
+  /* Faixa do histórico de conta unificada: baixa, em uma linha quando couber. */
+  .chat-aviso-historico { padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 11.5px; line-height: 1.3; }
+  .chat-aviso-historico .chat-acao-historica { min-height: 26px; margin: 0; padding: 2px 10px; font-size: 11.5px; }
+
+  /* Compositor: campo e botão Enviar na mesma linha; aviso só ocupa espaço quando existir. */
+  .chat-formulario-mensagem { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 4px 8px; }
+  .chat-formulario-mensagem textarea { grid-column: 1; grid-row: 1; height: 44px; min-height: 44px; max-height: 120px; padding: 10px 12px; resize: none; field-sizing: content; }
+  .chat-formulario-acoes { display: contents; }
+  .chat-formulario-mensagem .chat-botao-primario { grid-column: 2; grid-row: 1; min-height: 44px; }
+  .chat-formulario-mensagem .chat-aviso { grid-column: 1 / -1; grid-row: 2; }
+  .chat-formulario-mensagem .chat-aviso:empty { display: none; }
+}
+
+/* ============================================================
+   CHAT CENTRAL — MOBILE, AJUSTE FINO conforme referência visual aprovada
+   Cabeçalho: status à esquerda e ações (calendário/encerrar) à direita na mesma linha;
+   faixa do histórico em formato de pílula com ícone; compositor com campo arredondado e botão quadrado.
+   ============================================================ */
+@media (max-width: 760px) {
+  .chat-conversa-cabecalho { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .chat-conversa-titulo h2 { grid-column: 3 / span 2; font-size: 16px; }
+  .chat-conversa-titulo .chat-status { grid-column: 1 / 4; }
+  .chat-conversa-acoes { grid-column: 4; justify-self: end; flex-wrap: nowrap; }
+  .chat-conversa-acoes .chat-botao-perigo,
+  .chat-abrir-agendamento { min-height: 40px; border-radius: 12px; }
+  .chat-abrir-agendamento { width: 44px; }
+
+  .chat-aviso-historico { margin: 6px 10px; padding: 7px 14px; border: 1px solid #f0e3bd; border-radius: 999px; }
+  .chat-aviso-historico .chat-acao-historica { padding: 0; border: 0; background: transparent; font-weight: 800; text-decoration: underline; }
+  .chat-aviso-historico .chat-acao-historica i { margin-right: 4px; }
+
+  .chat-formulario-mensagem { gap: 4px 10px; border-top: 0; }
+  .chat-formulario-mensagem textarea { height: 48px; min-height: 48px; padding: 12px 14px; border-radius: 16px; }
+  .chat-formulario-mensagem .chat-botao-primario { min-width: 48px; min-height: 48px; padding: 0; border-radius: 14px; }
+}
+
+/* ============================================================
+   CHAT CENTRAL — LISTAGEM DE CONVERSAS NO MOBILE (somente <= 760px; o desktop não muda)
+   Filtros e cards mais compactos, nome em até 2 linhas, selo do histórico discreto na linha da prévia.
+   Alvos de toque dos filtros permanecem com 40px.
+   ============================================================ */
+@media (max-width: 760px) {
+  /* Cabeçalho e filtros */
+  .chat-lista-cabecalho { padding: 12px 14px 6px; }
+  .chat-lista-cabecalho h2 { font-size: 18px; }
+  .chat-lista-cabecalho p { margin-top: 2px; font-size: 11.5px; }
+  .chat-filtros { padding: 0 12px 8px; }
+  .chat-filtros .chat-campo { gap: 3px; margin-bottom: 6px; font-size: 11px; }
+  .chat-filtros .chat-campo input,
+  .chat-filtros .chat-campo select,
+  .chat-filtro-nao-lidas { height: 40px; }
+  /* O campo de busca já tem placeholder; o rótulo fica só para leitores de tela. */
+  .chat-filtros label[for="chatBusca"] > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .chat-filtros-linha { gap: 8px; }
+  .chat-filtros-linha .chat-campo { margin-bottom: 0; }
+  .chat-lista-mensagem { margin: 4px 12px 0; min-height: 0; }
+  .chat-lista-mensagem:empty { display: none; }
+  .chat-lista-conversas { padding: 4px 6px 8px; }
+  .chat-carregar-mais { margin-bottom: 8px; }
+
+  /* Cards */
+  .chat-item-conversa { margin-bottom: 3px; padding: 9px 10px; gap: 9px; align-items: start; }
+  .chat-item-conversa .chat-avatar-lista { width: 36px; height: 36px; flex-basis: 36px; font-size: 12px; }
+  .chat-item-corpo { gap: 2px; }
+  .chat-item-topo { align-items: flex-start; gap: 8px; }
+  .chat-item-cliente { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; white-space: normal; overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.25; }
+  .chat-item-horario { padding-top: 1px; font-size: 10.5px; white-space: nowrap; }
+  .chat-item-agendamento, .chat-item-profissional { font-size: 11.5px; line-height: 1.25; }
+  .chat-item-rodape { gap: 6px; }
+  .chat-item-previa { font-size: 12px; line-height: 1.3; }
+  /* Selo "Histórico de conta unificada": pequeno, na mesma linha da prévia (sem aumentar o card). */
+  .chat-item-rodape .chat-status { flex: 0 1 auto; max-width: 50%; min-height: 0; padding: 1px 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9.5px; font-weight: 700; line-height: 1.4; text-transform: none; }
+  .chat-badge-nao-lidas { flex: 0 0 auto; }
+}
+
+/* ============================================================
+   CHAT CENTRAL — LISTAGEM MOBILE, AJUSTE FINO conforme referência visual aprovada
+   Filtros: busca em linha própria; Status e Profissional lado a lado; "Não lidas" acima, à direita.
+   Cards: avatar centralizado, badge de não lidas sob o horário, acento azul nas não lidas,
+   card do histórico em tom âmbar com selo em pílula.
+   ============================================================ */
+@media (max-width: 760px) {
+  .chat-filtros { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; align-items: end; }
+  .chat-filtros .chat-campo { margin-bottom: 0; }
+  .chat-filtros label[for="chatBusca"] { grid-column: 1 / -1; grid-row: 1; }
+  .chat-filtros-linha { display: contents; }
+  .chat-filtros-linha .chat-campo { grid-column: 1; grid-row: 3; }
+  .chat-filtro-nao-lidas { grid-column: 2; grid-row: 2; justify-self: end; height: 36px; }
+  #chatFiltroProfissionalGrupo { grid-column: 2; grid-row: 3; }
+  /* Sem filtro de profissional (perfil restrito): Status e "Não lidas" dividem a mesma linha. */
+  .chat-filtros:has(#chatFiltroProfissionalGrupo[hidden]) .chat-filtros-linha .chat-campo { grid-column: 1; grid-row: 2; }
+
+  .chat-item-conversa { position: relative; margin-bottom: 6px; padding: 10px 12px; align-items: center; border-color: #e3ebf6; border-radius: 14px; background: #fff; }
+  .chat-item-conversa.nao-lida { box-shadow: inset 3px 0 0 var(--am-marca, #1163DD); }
+  .chat-item-conversa.historica { border-color: #f0e3bd; background: #fff9e8; }
+  /* Badge de não lidas sob o horário (canto direito); o texto não passa por baixo dele. */
+  .chat-item-conversa .chat-badge-nao-lidas { position: absolute; right: 12px; top: 30px; }
+  .chat-item-conversa.nao-lida .chat-item-agendamento,
+  .chat-item-conversa.nao-lida .chat-item-profissional { padding-right: 28px; }
+  .chat-item-rodape .chat-status { max-width: 62%; padding: 2px 9px; border-radius: 999px; background: #fdf0c6; color: #6b4b11; font-size: 10.5px; }
+  .chat-item-rodape .chat-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: currentColor; opacity: .8; vertical-align: middle; }
+}
+
+/* Mobile: o bloco "Chat / Converse sobre os agendamentos." é removido da lista (o topo da página já identifica a tela). */
+@media (max-width: 760px) {
+  .chat-lista-cabecalho { display: none; }
+}
+
+/* ============================================================
+   CHAT CENTRAL — LISTAGEM MOBILE, ACABAMENTO IDÊNTICO À REFERÊNCIA APROVADA (<= 760px)
+   ============================================================ */
+@media (max-width: 760px) {
+  /* Filtros em cartão, busca com ícone de lupa. */
+  .chat-filtros { margin: 10px 10px 0; padding: 12px; border: 1px solid #e3e9f2; border-radius: 16px; background: #fff; box-shadow: 0 6px 18px rgba(15, 23, 42, .05); }
+  .chat-filtros .chat-campo { color: #334155; font-size: 13px; font-weight: 700; }
+  .chat-filtros .chat-campo input,
+  .chat-filtros .chat-campo select,
+  .chat-filtro-nao-lidas { height: 44px; border-radius: 12px; font-size: 14px; }
+  .chat-filtros label[for="chatBusca"] input {
+    padding-left: 44px;
+    border-radius: 14px;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") no-repeat 14px center / 20px;
+  }
+  .chat-filtro-nao-lidas { height: 40px; box-shadow: 0 2px 6px rgba(15, 23, 42, .06); font-size: 13px; font-weight: 700; }
+
+  /* Cards. */
+  .chat-lista-conversas { padding: 12px 10px 10px; }
+  .chat-item-conversa { margin-bottom: 10px; padding: 12px 14px; gap: 12px; border-radius: 16px; box-shadow: 0 2px 6px rgba(15, 23, 42, .04); }
+  .chat-item-conversa .chat-avatar-lista { width: 46px; height: 46px; flex-basis: 46px; font-size: 14px; }
+  .chat-item-conversa.nao-lida { box-shadow: 0 2px 6px rgba(15, 23, 42, .04); }
+  .chat-item-conversa.nao-lida::before { content: ""; position: absolute; left: 3px; top: 12px; bottom: 12px; width: 4px; border-radius: 4px; background: var(--am-marca, #1163DD); }
+  .chat-item-corpo { gap: 3px; }
+  .chat-item-cliente { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; line-height: 1.3; }
+  .chat-item-horario { font-size: 12.5px; color: #4f6b8f; }
+  .chat-item-agendamento { color: #0f172a; font-size: 13px; font-weight: 800; }
+  .chat-item-profissional { display: flex; align-items: center; gap: 6px; color: #4f6b8f; font-size: 13px; font-weight: 500; }
+  .chat-item-profissional i { display: inline-block; flex: 0 0 auto; font-size: 12px; }
+  .chat-item-previa { font-size: 13.5px; }
+  .chat-item-conversa .chat-badge-nao-lidas { top: 36px; right: 14px; }
+  .chat-item-rodape .chat-status { max-width: 66%; padding: 4px 12px; font-size: 12px; font-weight: 800; }
 }

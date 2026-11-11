@@ -162,6 +162,9 @@
     if (el.btnValidarEmail) el.btnValidarEmail.hidden = !(cadastrado && temEmail && dados?.email_validado !== true);
     // Conta sem celular pode adicionar um; o número só é gravado depois de confirmado por SMS.
     if (el.boxAdicionar) el.boxAdicionar.hidden = !(cadastrado && !temTelefone);
+    // A unificação só é oferecida a quem já tem cadastro salvo.
+    const boxUnificacao = document.getElementById("unificacaoBox");
+    if (boxUnificacao) boxUnificacao.hidden = !cadastrado;
 
     // O último contato validado não pode ser alterado/removido (o servidor também recusa).
     const emailBloqueado = (!cadastrado && dados?.email_validado === true) || dados?.email_editavel === false;
@@ -209,6 +212,7 @@
       if (erro.campos && erro.campos.cli_whats_novo && campo("cli_whats_novo")) {
         campo("cli_whats_novo").setAttribute("aria-invalid", "true");
       }
+      if (erro.dados?.oferecer_unificacao) oferecerUnificacao(erro.dados.contato);
     } finally {
       if (botao) botao.disabled = false;
     }
@@ -268,11 +272,185 @@
       try {
         const json = await requisitarContato({ acao: "validar", codigo: somenteDigitos(el.inCodigo?.value) });
         mensagemContato(json.user_msg || "Contato validado.", "sucesso");
+        const eraUnificacao = contatoPendente.tipo === "unificar";
         contatoPendente = null;
+        if (eraUnificacao && json.code === "CLIENT_UNIFY_PROOF_OK") {
+          // Contato da outra conta comprovado: segue para a revisão (não recarrega a página).
+          if (el.boxCodigo) el.boxCodigo.hidden = true;
+          mostrarPreviaUnificacao(json.data);
+          return;
+        }
         window.setTimeout(() => window.location.reload(), 650);
       } catch (erro) {
         mensagemContato(erro.message || "Código inválido ou expirado.", "erro");
         el.btnConfirmar.disabled = (el.inCodigo?.value || "").length !== 6;
+      }
+    });
+  }
+
+  /* ============================
+     UNIFICAÇÃO DE CONTAS (C4.2)
+     Só com prova de posse do contato da outra conta (código) e confirmação expressa; o
+     servidor revalida tudo (login recente, mesma empresa, elegibilidade, escolhas).
+     ============================ */
+  const un = {
+    box: campo("unificacaoBox"),
+    abrir: campo("btnUnificarAbrir"),
+    passo1: campo("unificacaoPasso1"),
+    passo2: campo("unificacaoPasso2"),
+    tipo: campo("unif_tipo"),
+    valor: campo("unif_valor"),
+    enviar: campo("btnUnificarEnviar"),
+    resumo: campo("unificacaoResumo"),
+    escolhas: campo("unificacaoEscolhas"),
+    aceite: campo("unif_aceite"),
+    confirmar: campo("btnUnificarConfirmar"),
+    mensagem: campo("unificacaoMensagem")
+  };
+  let unifNonce = "";
+  let unifPrevia = null;
+
+  function mensagemUnificacao(texto, tipo = "") {
+    if (!un.mensagem) return;
+    un.mensagem.textContent = texto || "";
+    un.mensagem.className = `cadastro-mensagem${tipo ? ` ${tipo}` : ""}`;
+  }
+
+  // Chamada quando o cadastro recusa um contato que já é de outra conta da empresa.
+  function oferecerUnificacao(contato) {
+    if (!un.box || !un.passo1) return;
+    un.box.hidden = false;
+    un.passo1.hidden = false;
+    if (un.tipo) un.tipo.value = contato === "email" ? "email" : "telefone";
+    if (un.valor) {
+      un.valor.value = contato === "email"
+        ? String(campo("cli_email")?.value || "").trim()
+        : String(campo("cli_whats_novo")?.value || "").trim();
+    }
+    mensagemUnificacao("Se este contato é de outra conta sua, você pode unificá-las confirmando o contato por código.");
+  }
+
+  function criarTexto(tag, texto, classe) {
+    const no = document.createElement(tag);
+    no.textContent = texto;
+    if (classe) no.className = classe;
+    return no;
+  }
+
+  function cartaoConta(titulo, c) {
+    const div = document.createElement("div");
+    div.className = "unificacao-conta";
+    div.appendChild(criarTexto("strong", titulo));
+    div.appendChild(criarTexto("span", `Nome: ${c.nome || "não informado"}`));
+    div.appendChild(criarTexto("span", `Celular: ${c.telefone ? `${c.telefone} (${c.telefone_validado ? "validado" : "não validado"})` : "não informado"}`));
+    div.appendChild(criarTexto("span", `E-mail: ${c.email ? `${c.email} (${c.email_validado ? "validado" : "não validado"})` : "não informado"}`));
+    div.appendChild(criarTexto("span", `Agendamentos: ${c.agendamentos} · Conversas: ${c.conversas}`));
+    return div;
+  }
+
+  function grupoEscolhaContato(nome, titulo, atual, outra) {
+    const set = document.createElement("fieldset");
+    set.className = "unificacao-escolha";
+    set.appendChild(criarTexto("legend", titulo));
+    [["atual", `Manter ${atual} (conta atual)`], ["outra", `Manter ${outra} (outra conta)`]].forEach(([valor, texto]) => {
+      const rotulo = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = nome;
+      radio.value = valor;
+      radio.addEventListener("change", atualizarConfirmacaoUnificacao);
+      rotulo.appendChild(radio);
+      rotulo.appendChild(document.createTextNode(` ${texto}`));
+      set.appendChild(rotulo);
+    });
+    set.appendChild(criarTexto("small", "O contato não escolhido deixa de ser usado para entrar, mas fica registrado para recuperação."));
+    return set;
+  }
+
+  function mostrarPreviaUnificacao(dados) {
+    unifNonce = String(dados?.nonce || "");
+    unifPrevia = dados?.previa || null;
+    if (!unifPrevia || !un.passo2 || !un.resumo || !un.escolhas) return;
+
+    un.resumo.replaceChildren(
+      cartaoConta("Esta conta (atual)", unifPrevia.atual),
+      cartaoConta("Outra conta", unifPrevia.outra)
+    );
+    if (unifPrevia.sinais?.cpf_igual || unifPrevia.sinais?.nome_igual) {
+      un.resumo.appendChild(criarTexto(
+        "small",
+        "O CPF ou o nome coincidem, mas isso é só um indício: a unificação vale porque você confirmou o contato por código."
+      ));
+    }
+
+    un.escolhas.replaceChildren();
+    if (unifPrevia.divergencias?.telefone) {
+      un.escolhas.appendChild(grupoEscolhaContato("unif_escolha_telefone", "Os celulares são diferentes. Qual manter?", unifPrevia.atual.telefone, unifPrevia.outra.telefone));
+    }
+    if (unifPrevia.divergencias?.email) {
+      un.escolhas.appendChild(grupoEscolhaContato("unif_escolha_email", "Os e-mails são diferentes. Qual manter?", unifPrevia.atual.email, unifPrevia.outra.email));
+    }
+
+    if (un.passo1) un.passo1.hidden = true;
+    un.passo2.hidden = false;
+    if (un.aceite) un.aceite.checked = false;
+    atualizarConfirmacaoUnificacao();
+    mensagemUnificacao("Contato confirmado. Revise e escolha a conta que será mantida.", "sucesso");
+  }
+
+  function escolhido(nome) {
+    return document.querySelector(`input[name="${nome}"]:checked`)?.value || "";
+  }
+
+  function atualizarConfirmacaoUnificacao() {
+    if (!un.confirmar) return;
+    const faltaTel = Boolean(unifPrevia?.divergencias?.telefone) && !escolhido("unif_escolha_telefone");
+    const faltaEmail = Boolean(unifPrevia?.divergencias?.email) && !escolhido("unif_escolha_email");
+    un.confirmar.disabled = !(escolhido("unif_principal") && un.aceite?.checked && !faltaTel && !faltaEmail && unifNonce);
+  }
+
+  if (un.abrir && un.passo1) un.abrir.addEventListener("click", () => { un.passo1.hidden = !un.passo1.hidden; });
+
+  document.querySelectorAll('input[name="unif_principal"]').forEach(r => r.addEventListener("change", atualizarConfirmacaoUnificacao));
+  if (un.aceite) un.aceite.addEventListener("change", atualizarConfirmacaoUnificacao);
+
+  if (un.enviar) {
+    un.enviar.addEventListener("click", () => {
+      const tipo = un.tipo?.value === "email" ? "email" : "telefone";
+      const bruto = String(un.valor?.value || "").trim();
+      const valor = tipo === "telefone" ? somenteDigitos(bruto) : bruto.toLowerCase();
+      if (tipo === "telefone" && valor.length !== 11) {
+        mensagemUnificacao("Informe o celular com DDD (11 dígitos).", "erro");
+        return;
+      }
+      if (tipo === "email" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(valor)) {
+        mensagemUnificacao("Informe um e-mail válido.", "erro");
+        return;
+      }
+      mensagemUnificacao("");
+      // O código aparece na caixa de confirmação de contatos (mesmo fluxo e mesmas mensagens).
+      solicitarContato({ acao: "unificar_solicitar", contato: tipo, valor }, { tipo: "unificar", contato: tipo }, un.enviar);
+    });
+  }
+
+  if (un.confirmar) {
+    un.confirmar.addEventListener("click", async () => {
+      un.confirmar.disabled = true;
+      mensagemUnificacao("Unificando as contas...");
+      try {
+        const json = await requisitarContato({
+          acao: "unificar_confirmar",
+          nonce: unifNonce,
+          aceite: "1",
+          principal: escolhido("unif_principal"),
+          escolha_telefone: escolhido("unif_escolha_telefone"),
+          escolha_email: escolhido("unif_escolha_email")
+        });
+        mensagemUnificacao(json.user_msg || "Contas unificadas.", "sucesso");
+        window.setTimeout(() => window.location.reload(), 900);
+      } catch (erro) {
+        mensagemUnificacao(erro.message || "Não foi possível unificar as contas.", "erro");
+        atualizarConfirmacaoUnificacao();
       }
     });
   }
@@ -327,6 +505,7 @@
     if (!resposta.ok || !json || json.ok !== true) {
       const erro = new Error(json?.user_msg || "Não foi possível concluir a solicitação.");
       erro.campos = json?.fields || {};
+      erro.dados = json?.data || {};
       throw erro;
     }
     return json;
@@ -419,6 +598,7 @@
       mensagemCadastro.textContent = erro.message || "Não foi possível salvar os dados cadastrais.";
       mensagemCadastro.className = "cadastro-mensagem erro";
       mostrarErros(erro.campos);
+      if (erro.dados?.oferecer_unificacao) oferecerUnificacao(erro.dados.contato);
     } finally {
       botaoSalvarCadastro.disabled = false;
       botaoSalvarCadastro.classList.remove("carregando");

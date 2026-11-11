@@ -390,3 +390,8 @@
   #modalChatCliente .chat-sistema-mensagem { max-width: 96%; padding: 7px 10px; }
   #modalChatCliente .chat-sistema-conteudo { font-size: 12px; }
 }
+
+/* Histórico de conta unificada: ação para a conversa ativa. */
+#modalChatCliente .chat-cliente-acao-historica { min-height: 30px; margin: 4px 4px 0 0; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px; background: #fff; color: #1d4ed8; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+#modalChatCliente .chat-cliente-acao-historica:disabled { opacity: .6; cursor: default; }
+#modalChatCliente .chat-cliente-acao-historica:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }

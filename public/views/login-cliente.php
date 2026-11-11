@@ -80,27 +80,27 @@ if (
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.8" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.9" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.14.8"
+    href="../css/login/login-web.css?v=1.14.9"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.14.8"
+    href="../css/login/login-mobile.css?v=1.14.9"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.14.8"
+    href="../css/login/login-cliente.css?v=1.14.9"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.14.8"
+    href="../css/identidade-visual/identidade-visual.css?v=1.14.9"
   />
 
   <link
@@ -114,7 +114,7 @@ if (
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.8"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.9"></script>
 
 </head>
 
@@ -2275,10 +2275,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.8" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.9" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.8"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.9"
 ></script>
 
 </body>

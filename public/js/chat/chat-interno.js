@@ -341,6 +341,7 @@
 
         const naoLidas = quantidadeNaoLidas(conversa);
         botao.classList.toggle("nao-lida", naoLidas > 0);
+        botao.classList.toggle("historica", conversa.historica === true);
         const nomeCliente = texto(conversa.cliente_nome) || "Cliente";
 
         const corpo = criarElemento("div", "chat-item-corpo");
@@ -354,11 +355,18 @@
         const profissional = texto(conversa.profissional_nome);
         const linhaAgenda = criarLinhaAgendamento("chat-item-agendamento", conversa, true);
         const linhaProfissional = profissional ? criarElemento("div", "chat-item-profissional", profissional) : null;
-        if (linhaProfissional) linhaProfissional.title = profissional;
+        if (linhaProfissional) {
+          linhaProfissional.title = profissional;
+          const iconeProfissional = criarElemento("i", "fa-regular fa-user");
+          iconeProfissional.setAttribute("aria-hidden", "true");
+          linhaProfissional.prepend(iconeProfissional);
+        }
 
         const rodape = criarElemento("div", "chat-item-rodape");
         rodape.append(criarElemento("span", "chat-item-previa", textoPrevia(conversa)));
-        if (conversa.status === "encerrada") {
+        if (conversa.historica === true) {
+          rodape.append(criarElemento("span", "chat-status encerrada", "Histórico de conta unificada"));
+        } else if (conversa.status === "encerrada") {
           rodape.append(criarElemento("span", "chat-status encerrada", rotuloStatus(conversa.status)));
         }
         if (naoLidas > 0) {
@@ -417,12 +425,54 @@
     });
   }
 
+  /* Histórico de conta unificada: somente leitura (o backend também recusa envio) + ação para a conversa ativa. */
+  // O #chatAviso fica DENTRO do formulário, que é ocultado quando não se pode responder; por isso o
+  // aviso e a ação do histórico usam um bloco próprio (#chatAvisoHistorico), fora do formulário.
+  function definirAvisoHistorico(extra = "") {
+    if (!ui.avisoHistorico) return;
+    ui.avisoHistorico.replaceChildren(
+      criarElemento("span", "chat-aviso-historico-texto", `Histórico de conta unificada, disponível apenas para consulta.${extra ? ` ${extra}` : ""}`)
+    );
+    ui.avisoHistorico.hidden = false;
+    if (!temPermissao("chat.responder")) return;
+    const acao = criarElemento("button", "chat-acao-historica", "Abrir conversa ativa");
+    acao.type = "button";
+    acao.addEventListener("click", () => abrirConversaAtiva(acao));
+    ui.avisoHistorico.append(" ", acao);
+  }
+
+  async function abrirConversaAtiva(botao) {
+    const historica = estado.conversa;
+    if (historica?.historica !== true) return;
+    botao.disabled = true;
+    try {
+      const resposta = await apiChat("chat/conversa/iniciar", {
+        metodo: "POST",
+        dados: { id_conversa_historica: historica.id_conversa },
+      });
+      if (estado.conversa !== historica) return;
+      const opcoes = Array.isArray(resposta.data?.opcoes) ? resposta.data.opcoes : [];
+      if (opcoes.length > 1) {
+        definirAvisoHistorico("Escolha a conversa:", opcoes);
+        return;
+      }
+      const id = Number(resposta.data?.conversa?.id_conversa);
+      if (!Number.isInteger(id) || id <= 0) throw new Error("Não há conversa ativa disponível para este agendamento.");
+      await abrirConversa(id);
+    } catch (erro) {
+      if (estado.conversa === historica) definirAvisoHistorico(erroAmigavel(erro, "Não há conversa ativa disponível para este agendamento."));
+    }
+  }
+
   function sincronizarCompositor() {
     const responder = podeResponder(estado.conversa);
     ui.formulario.hidden = !responder;
     ui.textarea.disabled = !responder || estado.enviando;
     ui.enviar.disabled = !responder || estado.enviando;
-    if (!responder && estado.conversa?.status === "encerrada") {
+    if (estado.conversa?.historica === true) {
+      definirAvisoHistorico("");
+      ui.formulario.classList.add("encerrada");
+    } else if (!responder && estado.conversa?.status === "encerrada") {
       definirAviso("Esta conversa está encerrada.");
       ui.formulario.classList.add("encerrada");
     } else if (!responder && estado.conversa) {
@@ -433,6 +483,29 @@
       ui.formulario.classList.remove("encerrada");
     }
     ui.enviar.querySelector("span").textContent = estado.enviando ? "Enviando..." : "Enviar";
+    renderizarAcaoHistoricoAnterior();
+  }
+
+  /* Conversa ativa com histórico de conta unificada no mesmo agendamento: acesso somente leitura. */
+  function renderizarAcaoHistoricoAnterior() {
+    if (!ui.avisoHistorico || estado.conversa?.historica === true) return; // histórica: ver definirAvisoHistorico
+    ui.avisoHistorico.replaceChildren();
+    const ids = Array.isArray(estado.conversa?.historicos) ? estado.conversa.historicos : [];
+    ui.avisoHistorico.hidden = ids.length === 0;
+    ids.forEach((id, indice) => {
+      const botao = criarElemento(
+        "button",
+        "chat-acao-historica",
+        `Ver histórico anterior${ids.length > 1 ? ` (${indice + 1})` : ""}`
+      );
+      botao.type = "button";
+      botao.dataset.historicoAnterior = "1";
+      const icone = criarElemento("i", "fa-solid fa-clock-rotate-left");
+      icone.setAttribute("aria-hidden", "true");
+      botao.prepend(icone, " ");
+      botao.addEventListener("click", () => abrirConversa(Number(id)));
+      ui.avisoHistorico.append(" ", botao);
+    });
   }
 
   function renderizarConversa({ rolarAoFim = false } = {}) {
@@ -457,8 +530,9 @@
       ui.meta.append(criarElemento("span", "chat-agendamento-profissional", profissionalCabecalho));
     }
     ui.meta.title = [linhaAgenda?.title, profissionalCabecalho].filter(Boolean).join(" • ");
-    ui.status.textContent = rotuloStatus(conversa.status);
-    ui.status.className = `chat-status ${conversa.status === "encerrada" ? "encerrada" : "aberta"}`;
+    const historica = conversa.historica === true;
+    ui.status.textContent = historica ? "Histórico de conta unificada" : rotuloStatus(conversa.status);
+    ui.status.className = `chat-status ${conversa.status === "encerrada" || historica ? "encerrada" : "aberta"}`;
     ui.encerrar.hidden = !podeEncerrar(conversa);
     // Conversa sem agendamento (excluído: id_agendamento NULL) não oferece o atalho.
     if (ui.abrirAgendamento) ui.abrirAgendamento.hidden = !idAgendamentoDaConversa(conversa);
@@ -936,6 +1010,7 @@
     ui.textarea = document.getElementById("chatConteudoMensagem");
     ui.enviar = document.getElementById("chatEnviar");
     ui.aviso = document.getElementById("chatAviso");
+    ui.avisoHistorico = document.getElementById("chatAvisoHistorico");
     ui.voltar = document.getElementById("chatVoltar");
     ui.avatarConversa = document.getElementById("chatConversaAvatar");
   }

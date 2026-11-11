@@ -67,6 +67,13 @@ $chatConversaVisivel = static function (int $idConversa) use ($conexao, $chatCtx
     return $conversa;
 };
 
+// Formato público + ids dos históricos do mesmo agendamento ("Ver histórico anterior").
+$chatConversaComHistoricos = static function (array $conversa) use ($conexao, $chatCtx): array {
+    $formatada = chatFormatarConversa($conversa, $chatCtx);
+    $formatada['historicos'] = chatHistoricosDaConversa($conexao, $chatCtx, $formatada);
+    return $formatada;
+};
+
 switch ($chatRota) {
     case 'chat/conversas/listar': {
         $status = (string)($_GET['status'] ?? 'aberta');
@@ -101,7 +108,7 @@ switch ($chatRota) {
         $conversa = $chatConversaVisivel($idConversa);
         $mensagens = chatListarMensagens($conexao, $chatCtx, $idConversa, null, null, chatLimite($_GET['limite'] ?? null));
         out(['ok' => true, 'code' => 'CHAT_CONVERSATION_OPENED', 'data' => [
-            'conversa' => chatFormatarConversa($conversa, $chatCtx),
+            'conversa' => $chatConversaComHistoricos($conversa),
             'mensagens' => $mensagens['itens'],
             'tem_mais_anteriores' => $mensagens['tem_mais'],
         ]]);
@@ -136,6 +143,21 @@ switch ($chatRota) {
 
     case 'chat/conversa/iniciar': {
         if (!$chatCtx['pode_responder']) $chatSemPermissao('chat.responder');
+        // "Abrir conversa ativa" a partir de uma conversa histórica (conta unificada): usa o agendamento
+        // da histórica e segue o fluxo normal (reaproveita a ativa ou cria quando as regras permitem).
+        $idHistoricaOrigem = null;
+        if (array_key_exists('id_conversa_historica', $_POST)) {
+            $idHistoricaOrigem = chatInteiroPositivo($_POST['id_conversa_historica']);
+            if ($idHistoricaOrigem === null) {
+                out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Conversa inválida.'], 422);
+            }
+            $chatConversaVisivel($idHistoricaOrigem);
+            $idAgendamentoHist = chatAgendamentoDaConversaHistorica($conexao, (int)$chatCtx['id_empresa'], $idHistoricaOrigem);
+            if ($idAgendamentoHist === null) {
+                out(['ok' => false, 'code' => 'CHAT_ACTIVE_UNAVAILABLE', 'user_msg' => 'Não há conversa ativa disponível para este agendamento. O histórico continua disponível para consulta.'], 409);
+            }
+            $_POST['id_agendamento'] = (string)$idAgendamentoHist;
+        }
         $idAgendamento = chatInteiroPositivo($_POST['id_agendamento'] ?? null);
         if ($idAgendamento === null) {
             out(['ok' => false, 'code' => 'VALIDATION_ERROR', 'user_msg' => 'Agendamento inválido.', 'field_errors' => ['id_agendamento' => 'Informe um agendamento válido.']], 422);
@@ -150,6 +172,11 @@ switch ($chatRota) {
             if ($resultado['resultado'] === 'status_invalido') {
                 $conexao->rollback();
                 out(['ok' => false, 'code' => 'CHAT_APPOINTMENT_STATUS_INVALID', 'user_msg' => 'Só é possível iniciar conversa em agendamento pendente ou confirmado.'], 409);
+            }
+            // Pediu a conversa ativa, mas só existe a histórica (ex.: agendamento já finalizado).
+            if ($idHistoricaOrigem !== null && (int)$resultado['id_conversa'] === $idHistoricaOrigem) {
+                $conexao->rollback();
+                out(['ok' => false, 'code' => 'CHAT_ACTIVE_UNAVAILABLE', 'user_msg' => 'Não há conversa ativa disponível para este agendamento. O histórico continua disponível para consulta.'], 409);
             }
             $conversa = chatBuscarConversaAutorizada($conexao, $chatCtx, (int)$resultado['id_conversa']);
             if ($conversa === null) throw new RuntimeException('Conversa criada sem escopo autorizado.');
@@ -166,7 +193,7 @@ switch ($chatRota) {
         $criada = $resultado['resultado'] === 'criada';
         out(['ok' => true, 'code' => $criada ? 'CHAT_CONVERSATION_CREATED' : 'CHAT_CONVERSATION_EXISTS', 'data' => [
             'criada' => $criada,
-            'conversa' => chatFormatarConversa($conversa, $chatCtx),
+            'conversa' => $chatConversaComHistoricos($conversa),
         ]], $criada ? 201 : 200);
     }
 
@@ -190,6 +217,8 @@ switch ($chatRota) {
         switch ($resultado['resultado']) {
             case 'nao_encontrada':
                 $chatNaoEncontrada();
+            case 'historica':
+                out(['ok' => false, 'code' => 'CHAT_HISTORICAL_CONVERSATION', 'user_msg' => 'Esta conversa é o histórico de uma conta unificada e não aceita novas mensagens.'], 409);
             case 'encerrada':
                 out(['ok' => false, 'code' => 'CHAT_CLOSED', 'user_msg' => 'Esta conversa foi encerrada e não aceita novas mensagens.'], 409);
             case 'chave_em_uso':

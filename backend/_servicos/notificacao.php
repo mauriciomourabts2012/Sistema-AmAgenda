@@ -1614,19 +1614,23 @@ function notificacaoConversasNaoLidasCliente(mysqli $conexao, int $idEmpresa, in
                 SUM(CASE WHEN m.remetente_tipo <> 'sistema' THEN 1 ELSE 0 END) AS quantidade_humanas,
                 MAX(m.id_mensagem) AS id_ultima_nao_lida
            FROM chat_conversa c
-           LEFT JOIN chat_leitura l ON l.id_conversa = c.id_conversa AND l.leitor_tipo = 'cliente' AND l.id_cliente = ?
+           LEFT JOIN chat_leitura l ON l.id_conversa = c.id_conversa AND l.leitor_tipo = 'cliente' AND l.id_cliente = c.id_cliente
            INNER JOIN chat_mensagem m
                    ON m.id_conversa = c.id_conversa
                   AND m.id_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
-                  AND (m.remetente_tipo <> 'cliente' OR m.id_cliente_remetente <> ?)
-          WHERE c.id_empresa = ? AND c.id_cliente = ?
+                  AND (m.remetente_tipo <> 'cliente' OR m.id_cliente_remetente <> c.id_cliente)
+          WHERE c.id_empresa = ?
+            AND c.id_cliente IN (SELECT g.id_cliente FROM cliente g WHERE g.id_empresa = ? AND (g.id_cliente = ? OR g.id_cliente_unificado = ?))
+            AND NOT EXISTS (SELECT 1 FROM cliente ch WHERE ch.id_cliente = c.id_cliente AND ch.id_empresa = c.id_empresa AND ch.id_cliente_unificado IS NOT NULL)
             AND c.id_agendamento IS NOT NULL
             AND c.id_ultima_mensagem IS NOT NULL
             AND c.id_ultima_mensagem > COALESCE(l.id_ultima_mensagem_lida, 0)
           GROUP BY c.id_conversa, c.id_agendamento, c.agendamento_data, c.agendamento_hora_inicio, c.ultima_mensagem_em
           ORDER BY MAX(m.id_mensagem) DESC
           LIMIT ?");
-    $stmt->bind_param('iiiii', $idCliente, $idCliente, $idEmpresa, $idCliente, $limite);
+    // Conversas da conta principal e das secundárias unificadas nela (mesma empresa); cada conversa
+    // mantém o dono original, e a leitura/remetente "próprio" são comparados com ele.
+    $stmt->bind_param('iiiii', $idEmpresa, $idEmpresa, $idCliente, $idCliente, $limite);
     try {
         if (!$stmt->execute()) throw new RuntimeException('Não foi possível consultar as conversas não lidas do cliente.');
         $resultado = $stmt->get_result();
@@ -1650,9 +1654,10 @@ function notificacaoRemetenteMensagemChat(mysqli $conexao, int $idEmpresa, int $
     $stmt = notificacaoPreparar($conexao, "SELECT m.remetente_tipo, m.remetente_nome, m.conteudo
           FROM chat_mensagem m
          INNER JOIN chat_conversa c ON c.id_conversa = m.id_conversa
-         WHERE m.id_mensagem = ? AND m.id_conversa = ? AND c.id_empresa = ? AND c.id_cliente = ?
+         WHERE m.id_mensagem = ? AND m.id_conversa = ? AND c.id_empresa = ?
+           AND c.id_cliente IN (SELECT g.id_cliente FROM cliente g WHERE g.id_empresa = ? AND (g.id_cliente = ? OR g.id_cliente_unificado = ?))
          LIMIT 1");
-    $stmt->bind_param('iiii', $idMensagem, $idConversa, $idEmpresa, $idCliente);
+    $stmt->bind_param('iiiiii', $idMensagem, $idConversa, $idEmpresa, $idEmpresa, $idCliente, $idCliente);
     try {
         if (!$stmt->execute()) throw new RuntimeException('Não foi possível consultar o remetente da mensagem.');
         $resultado = $stmt->get_result();

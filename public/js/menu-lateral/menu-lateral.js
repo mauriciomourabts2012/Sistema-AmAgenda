@@ -38,7 +38,9 @@
       { tipo: "aba", aba: "clientes", texto: "Clientes", icone: "fa-solid fa-users", permissao: "clientes.visualizar" },
       { tipo: "aba", aba: "usuarios", texto: "Usuários", icone: "fa-solid fa-user-gear", permissao: "usuarios.visualizar" },
       { tipo: "aba", aba: "auditoria", texto: "Auditoria", icone: "fa-solid fa-clock-rotate-left", permissao: "auditoria.visualizar" },
-      { tipo: "button", texto: "Configurações da Empresa", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", permissao: "empresa.visualizar_configuracoes" }
+      // Configurações Agenda (empresa): oculta para Proprietário, Profissional e Recepção; só o Super Admin em
+      // Modo Suporte na empresa vê o item. A funcionalidade e o modal continuam existindo (reativação: remover somenteSuporte).
+      { tipo: "button", texto: "Configurações da Empresa", icone: "fa-solid fa-gear", modal: "modalConfiguracoesAgenda", permissao: "empresa.visualizar_configuracoes", somenteSuporte: true }
     ],
     "super-admin": [
       { tipo: "grupo", texto: "Gestão" },
@@ -227,6 +229,14 @@
               href: ACAO_POR_MODAL_AGENDA[item.modal] ? `${PAGINA_AGENDA}?acao=${ACAO_POR_MODAL_AGENDA[item.modal]}` : PAGINA_AGENDA }
           : item);
       }
+    }
+    if (contexto === "painel-administrativo") {
+      // Itens "somenteSuporte": exigem Super Admin autenticado em Modo Suporte numa empresa (mesmo critério da Agenda).
+      const authPainel = window.__AUTH__ || {};
+      const superAdminSuportePainel = String(authPainel.tipo_usuario || "").toLowerCase() === "super_admin"
+        && authPainel.modo_suporte === true
+        && Number(authPainel.empresa_id || authPainel.id_empresa || 0) > 0;
+      itens = itens.filter(item => !item.somenteSuporte || superAdminSuportePainel);
     }
     if (contexto === "painel-administrativo" && window.__AUTH__?.permissoes) {
       itens = itens.filter(item => !item.permissao || window.usuarioPode?.(item.permissao));

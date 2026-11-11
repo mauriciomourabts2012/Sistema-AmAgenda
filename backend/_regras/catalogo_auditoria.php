@@ -36,6 +36,7 @@ function auditoriaCatalogo(): array
         'cliente.criado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'media', 'Cadastrou um cliente.', ['nome', 'telefone', 'email', 'status', 'observacao', 'depois']),
         'cliente.editado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'media', 'Alterou um cliente.', ['nome', 'telefone', 'email', 'status', 'observacao']),
         'cliente.status_alterado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'alta', 'Alterou o status de um cliente.', ['status']),
+        'cliente.unificado' => auditoriaDefinicaoEvento('clientes', 'cliente', 'alta', 'Unificou duas contas de cliente.', ['id_cliente_unificado', 'status', 'agendamentos_transferidos', 'contatos_descartados']),
 
         'usuario.criado' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'alta', 'Cadastrou um usuário.', ['nome', 'email', 'telefone', 'perfil', 'status', 'status_vinculo', 'especialidade', 'depois']),
         'usuario.vinculado_empresa' => auditoriaDefinicaoEvento('usuarios', 'usuario', 'alta', 'Vinculou um usuário a uma empresa.', ['perfil', 'status_vinculo']),

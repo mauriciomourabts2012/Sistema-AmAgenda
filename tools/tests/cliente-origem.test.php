@@ -107,7 +107,7 @@ falsoVerificar(str_contains($js, 'origem: ""') && str_contains($js, 'FILTRO.orig
 falsoVerificar(str_contains($js, "if (selOrigem) selOrigem.value = \"\";") && str_contains($js, 'FILTRO.origem = "";'), 'js: limpar zera a origem');
 falsoVerificar(str_contains($js, 'url.searchParams.set("origem", FILTRO.origem);') && str_contains($js, 'if (FILTRO.origem) {'), 'js: a origem vai na requisição só quando escolhida');
 falsoVerificar(str_contains($js, 'origem_cadastro: item?.origem_cadastro ?? null,'), 'js: a origem do servidor chega ao item da lista');
-falsoVerificar(str_contains($js, '<span><strong>Origem:</strong> ${C.escapeHtml(rotuloOrigem(cli.origem_cadastro))}</span>'), 'js: o card exibe a origem (com escape de HTML)');
+falsoVerificar(str_contains($js, '<span class="cliente-origem-badge origem-${classeOrigem(cli.origem_cadastro)}">${C.escapeHtml(rotuloOrigem(cli.origem_cadastro))}</span>'), 'js: o card exibe a origem (com escape de HTML)');
 falsoVerificar(str_contains($js, 'agenda_online: "Agenda Online"') && str_contains($js, 'nao_informado: "Não informada"') && str_contains($js, 'painel: "Painel Administrativo"'), 'js: rótulos das origens');
 falsoVerificar(str_contains($js, 'return ROTULO_ORIGEM[String(valor || "")] || "Não informada";'), 'js: origem nula exibe "Não informada"');
 falsoVerificar(str_contains($js, 'function setLabelFiltro(iniISO, fimISO, statusVal, origemVal = FILTRO.origem) {'), 'js: rótulo do filtro mostra a origem sem alterar as chamadas existentes');

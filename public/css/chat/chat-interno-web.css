@@ -273,3 +273,23 @@
 .chat-conversa-titulo .chat-status:empty { display: none; }
 .chat-conversa-titulo .chat-status::before { content: ""; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: currentColor; opacity: .75; }
 .chat-conversa-acoes .chat-botao-perigo { min-height: 34px; font-size: 12px; }
+
+/* Histórico de conta unificada: ação para a conversa ativa. */
+.chat-acao-historica { min-height: 30px; margin: 4px 4px 0 0; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px; background: #fff; color: #1d4ed8; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.chat-acao-historica:disabled { opacity: .6; cursor: default; }
+.chat-acao-historica:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+
+/* Aviso e ação do histórico de conta unificada (fora do formulário, que fica oculto). */
+.chat-aviso-historico { padding: 10px 20px; border-top: 1px solid #e6eaf2; background: #fff8e6; color: #6b4b11; font-size: 12px; font-weight: 600; }
+
+/* Ícone do profissional na lista: só aparece no mobile (o desktop permanece como estava). */
+.chat-item-profissional i { display: none; }
+
+/* O bloco "Chat / Converse sobre os agendamentos." foi removido da lista (o topo da página já identifica a tela). */
+.chat-lista-cabecalho { display: none; }
+
+/* Filtros (desktop): o campo Status e a opção "Não lidas" na mesma base e com a mesma altura.
+   A margem inferior do campo desalinhava a opção (alinhada pelo fundo do rótulo). */
+.chat-filtros-linha { margin-bottom: 10px; }
+.chat-filtros-linha .chat-campo { margin-bottom: 0; }
+.chat-filtros-linha .chat-filtro-nao-lidas { box-sizing: border-box; height: 39px; }

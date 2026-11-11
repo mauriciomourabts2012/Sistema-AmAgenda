@@ -28,6 +28,7 @@ require_once __DIR__ . '/_sessao_cliente.php';
 require_once __DIR__ . '/../_config/conexao.php';
 require_once __DIR__ . '/../_servicos/sms_otp.php';
 require_once __DIR__ . '/../_regras/cliente_login_email.php';
+require_once __DIR__ . '/../_regras/cliente_unificacao.php';
 
 const CLIENTE_CONTATO_SESSAO = 'cliente_contato_desafio';
 
@@ -179,6 +180,64 @@ function clienteContatoEnviarCodigo(
     ]);
 }
 
+/**
+ * Pedido de código para um contato da OUTRA conta (unificação). Sem enumeração: quando não existe outra
+ * conta, o serviço OTP cria um desafio fictício (sem envio) que passa pelos MESMOS limites (celular, e-mail,
+ * IP), prazo de reenvio e expiração do desafio real. Limites e indisponibilidade respondem igual nos dois
+ * casos; qualquer outra falha do envio real (só ocorre com conta existente) vira a mesma resposta de sucesso.
+ */
+function clienteUnifSolicitarCodigo(mysqli $conexao, int $idEmpresa, int $idCliente, string $contato, string $valor, ?array $outra): void
+{
+    $ehEmail = $contato === 'email';
+    $real = $outra !== null;
+
+    $resultado = smsOtpSolicitar($conexao, [
+        'principal_tipo' => $real ? 'cliente' : 'ficticio',
+        // Fictício usa a finalidade de recuperação, que nunca envia. O telefone só entra no canal SMS (nos dois casos).
+        'finalidade' => $real ? 'acesso_cliente' : 'recuperacao_cliente',
+        'id_empresa' => $idEmpresa,
+        'id_cliente' => $real ? (int)$outra['id_cliente'] : 0,
+        'id_usuario' => 0,
+        'telefone' => $ehEmail ? '' : $valor,
+        'ip' => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
+        'enviar' => true,
+        'canal' => $ehEmail ? 'email' : 'sms',
+        'email' => $ehEmail ? $valor : null,
+        'verificar_contato' => true,
+    ]);
+
+    $codigo = (string)($resultado['codigo'] ?? '');
+    $comunsAosDoisCasos = [
+        'SMS_OTP_REENVIO_AGUARDAR', 'SMS_OTP_CONCORRENCIA', 'SMS_OTP_LIMITE', 'EMAIL_INDISPONIVEL',
+        'SMS_CONFIG_INVALIDA', 'EMAIL_INVALIDO', 'TELEFONE_INVALIDO', 'SMS_OTP_INDISPONIVEL',
+    ];
+    if (($resultado['sucesso'] ?? false) !== true && in_array($codigo, $comunsAosDoisCasos, true)) {
+        clienteContatoRecusarSolicitacao($resultado);
+    }
+
+    $idDesafio = (int)($resultado['dados']['id_otp_desafio'] ?? 0);
+    $_SESSION[CLIENTE_CONTATO_SESSAO] = [
+        'tipo' => 'unificar',
+        'contato' => $contato,
+        'valor' => $valor,
+        'id_empresa' => $idEmpresa,
+        'id_cliente' => $idCliente,
+        'id_otp_desafio' => $idDesafio > 0 ? $idDesafio : 2147483647,
+        'id_cliente_otp' => $real ? (int)$outra['id_cliente'] : $idCliente,
+        'enviado_em' => time(),
+        'expira_em' => time() + SMS_OTP_VALIDADE_SEGUNDOS,
+    ];
+
+    out([
+        'ok' => true,
+        'code' => 'CLIENT_CONTACT_CODE_SENT',
+        'user_msg' => $ehEmail
+            ? 'Se houver uma conta com este e-mail, enviamos um código para ele.'
+            : 'Se houver uma conta com este celular, enviamos um código por SMS.',
+        'data' => ['contato' => $contato, 'tipo' => 'unificar', 'expires_in' => SMS_OTP_VALIDADE_SEGUNDOS, 'retry_after' => SMS_OTP_REENVIO_SEGUNDOS],
+    ]);
+}
+
 try {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         out(['ok' => false, 'code' => 'METHOD_NOT_ALLOWED', 'user_msg' => 'Método não permitido.'], 405);
@@ -263,14 +322,143 @@ try {
             out([
                 'ok' => false,
                 'code' => 'CLIENT_PHONE_ALREADY_EXISTS',
-                'user_msg' => 'Este celular já está cadastrado nesta empresa.',
-                'fields' => ['cli_whats_novo' => 'Celular já cadastrado.'],
+                'user_msg' => 'Este celular já está vinculado a outra conta desta empresa. Se for sua, entre com este celular na tela de acesso.',
+                'fields' => ['cli_whats_novo' => 'Celular já vinculado a outra conta.'],
+                'data' => ['oferecer_unificacao' => true, 'contato' => 'telefone'],
             ], 409);
         }
 
         clienteContatoEnviarCodigo(
             $conexao, $idEmpresa, $idCliente, 'adicionar_telefone', 'telefone', $novoTelefone, ''
         );
+    }
+
+    /* ---------------------------------------------------------------- unificar contas (C4.2) */
+    if (in_array($acao, ['unificar_solicitar', 'unificar_previa', 'unificar_confirmar'], true)) {
+        if (!clienteUnifTabelaDisponivel($conexao)) {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_UNAVAILABLE', 'user_msg' => 'A unificação de contas ainda não está disponível.'], 503);
+        }
+        // Operação sensível: exige login recente (ou nova autenticação).
+        if (!clienteUnifLoginRecente((array)($_SESSION['cliente_auth'] ?? []))) {
+            out([
+                'ok' => false,
+                'code' => 'CLIENT_UNIFY_REAUTH_REQUIRED',
+                'user_msg' => 'Por segurança, entre novamente para unificar suas contas.',
+            ], 403);
+        }
+        if ($cliente['id_cliente_unificado'] !== null) {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_ALREADY', 'user_msg' => 'Esta conta já foi unificada.'], 409);
+        }
+    }
+
+    if ($acao === 'unificar_solicitar') {
+        $contato = trim((string)($_POST['contato'] ?? ''));
+        $bruto = trim((string)($_POST['valor'] ?? ''));
+        $valorNorm = $contato === 'telefone' ? smsOtpNormalizarTelefone($bruto) : ($contato === 'email' ? emailOtpNormalizar($bruto) : null);
+        if ($valorNorm === null) {
+            out(['ok' => false, 'code' => 'CLIENT_CONTACT_INVALID', 'user_msg' => 'Informe um contato válido.'], 422);
+        }
+        $chaveNorm = clienteUnifChaveContato($contato, $valorNorm);
+        if ($chaveNorm === clienteUnifChaveContato($contato, $contato === 'telefone' ? $telefoneCadastrado : $emailCadastrado)) {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_OWN_CONTACT', 'user_msg' => 'Informe um contato da OUTRA conta.'], 422);
+        }
+
+        $outra = clienteUnifLocalizarConta($conexao, $idEmpresa, $idCliente, $contato, $valorNorm);
+        if ($outra !== null && clienteUnifValidarPar($cliente, $outra, $idEmpresa) !== null) {
+            $outra = null;
+        }
+        // Existindo ou não outra conta, o fluxo, os limites e as respostas são os mesmos (sem enumeração).
+        clienteUnifSolicitarCodigo($conexao, $idEmpresa, $idCliente, $contato, $valorNorm, $outra);
+    }
+
+    if ($acao === 'unificar_previa' || $acao === 'unificar_confirmar') {
+        $prova = clienteUnifLerProva($idEmpresa, $idCliente);
+        if ($prova === null) {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_PROOF_REQUIRED', 'user_msg' => 'Confirme o contato da outra conta para continuar.'], 422);
+        }
+        $idOutra = (int)$prova['id_outra'];
+        $outraLinhas = smsConsultar($conexao, 'SELECT * FROM cliente WHERE id_cliente = ? AND id_empresa = ? LIMIT 1', 'ii', $idOutra, $idEmpresa);
+        $outra = $outraLinhas[0] ?? null;
+        if ($outra === null || clienteUnifValidarPar($cliente, $outra, $idEmpresa) !== null) {
+            unset($_SESSION[CLIENTE_UNIF_SESSAO_PROVA]);
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_NOT_ELIGIBLE', 'user_msg' => 'Não foi possível unificar estas contas.'], 409);
+        }
+        $comprovados = clienteUnifContatosComprovados((array)($_SESSION['cliente_auth'] ?? []), $prova);
+
+        if ($acao === 'unificar_previa') {
+            out([
+                'ok' => true,
+                'code' => 'CLIENT_UNIFY_PREVIEW',
+                'user_msg' => 'Revise as informações antes de unificar.',
+                'data' => ['nonce' => (string)$prova['nonce'], 'previa' => clienteUnifPrevia($conexao, $cliente, $outra, $comprovados)],
+            ]);
+        }
+
+        // Confirmação expressa: nonce da prova + aceite + conta definitiva escolhida pelo cliente.
+        $nonceEnviado = (string)($_POST['nonce'] ?? '');
+        if ($nonceEnviado === '' || !hash_equals((string)$prova['nonce'], $nonceEnviado)) {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_PROOF_REQUIRED', 'user_msg' => 'Confirme o contato da outra conta para continuar.'], 422);
+        }
+        if ((string)($_POST['aceite'] ?? '') !== '1') {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_CONSENT_REQUIRED', 'user_msg' => 'Confirme que deseja unificar as contas.'], 422);
+        }
+        $principal = trim((string)($_POST['principal'] ?? ''));
+        if (!in_array($principal, ['atual', 'outra'], true)) {
+            out(['ok' => false, 'code' => 'CLIENT_UNIFY_CHOICE_REQUIRED', 'user_msg' => 'Escolha a conta que será mantida.'], 422);
+        }
+
+        // As escolhas do formulário (atual/outra) viram principal/secundaria conforme a conta mantida.
+        $traduz = static function (string $v) use ($principal): string {
+            if (!in_array($v, ['atual', 'outra'], true)) {
+                return '';
+            }
+
+            return $v === $principal ? 'principal' : 'secundaria';
+        };
+        $resultado = clienteUnifExecutar(
+            $conexao, $idEmpresa, $idCliente, $idOutra, $principal,
+            [
+                'telefone' => $traduz(trim((string)($_POST['escolha_telefone'] ?? ''))),
+                'email' => $traduz(trim((string)($_POST['escolha_email'] ?? ''))),
+            ],
+            $comprovados,
+            ['contato_prova' => (string)$prova['contato'], 'ip' => (string)($_SERVER['REMOTE_ADDR'] ?? '')]
+        );
+
+        if (($resultado['ok'] ?? false) !== true) {
+            $mapa = [
+                'ESCOLHA_CONTATO_OBRIGATORIA' => ['CLIENT_UNIFY_CHOICE_REQUIRED', 'Escolha qual celular e e-mail manter.', 422],
+                'SEM_CONTATO_COMPROVADO' => ['CLIENT_UNIFY_CONTACT_UNPROVEN', 'Mantenha ao menos um contato que você acabou de confirmar.', 422],
+                'PROVA_INVALIDA' => ['CLIENT_UNIFY_PROOF_REQUIRED', 'Confirme o contato da outra conta para continuar.', 422],
+                'RECURSO_INDISPONIVEL' => ['CLIENT_UNIFY_UNAVAILABLE', 'A unificação de contas ainda não está disponível.', 503],
+            ];
+            $m = $mapa[(string)($resultado['codigo'] ?? '')]
+                ?? ['CLIENT_UNIFY_NOT_ELIGIBLE', 'Não foi possível unificar estas contas.', 409];
+            out(['ok' => false, 'code' => $m[0], 'user_msg' => $m[1]], $m[2]);
+        }
+
+        $linhaPrincipal = smsConsultar(
+            $conexao,
+            "SELECT * FROM cliente WHERE id_cliente = ? AND id_empresa = ? AND status = 'ativo' LIMIT 1",
+            'ii',
+            (int)$resultado['id_principal'],
+            $idEmpresa
+        )[0] ?? null;
+        if ($linhaPrincipal === null) {
+            throw new RuntimeException('Conta definitiva não encontrada após a unificação.');
+        }
+        clienteUnifAtualizarSessao($linhaPrincipal, $comprovados);
+
+        out([
+            'ok' => true,
+            'code' => 'CLIENT_UNIFY_DONE',
+            'user_msg' => 'Contas unificadas com sucesso.',
+            'data' => [
+                'agendamentos' => (int)$resultado['agendamentos'],
+                'telefone' => clienteUnifMascararTelefone($resultado['telefone']),
+                'email' => clienteUnifMascararEmail($resultado['email']),
+            ],
+        ]);
     }
 
     /* ---------------------------------------------------------------- validar o código */
@@ -284,7 +472,7 @@ try {
             || (int)($desafio['id_cliente'] ?? 0) !== $idCliente
             || (int)($desafio['id_otp_desafio'] ?? 0) <= 0
             || !in_array((string)($desafio['contato'] ?? ''), ['telefone', 'email'], true)
-            || !in_array((string)($desafio['tipo'] ?? ''), ['verificar', 'adicionar_telefone'], true)
+            || !in_array((string)($desafio['tipo'] ?? ''), ['verificar', 'adicionar_telefone', 'unificar'], true)
         ) {
             unset($_SESSION[CLIENTE_CONTATO_SESSAO]);
             out(['ok' => false, 'code' => 'CLIENT_OTP_CHALLENGE_NOT_FOUND', 'user_msg' => 'Solicite um novo código para continuar.'], 422);
@@ -301,7 +489,7 @@ try {
             'principal_tipo' => 'cliente',
             'finalidade' => 'acesso_cliente',
             'id_empresa' => $idEmpresa,
-            'id_cliente' => $idCliente,
+            'id_cliente' => $tipo === 'unificar' ? (int)($desafio['id_cliente_otp'] ?? $idCliente) : $idCliente,
             'id_usuario' => 0,
             'telefone' => $contato === 'telefone' ? $valor : '',
             'id_otp_desafio' => (int)$desafio['id_otp_desafio'],
@@ -319,6 +507,10 @@ try {
             if (in_array($codigoValidacao, ['SMS_OTP_INDISPONIVEL', 'SMS_CONFIG_INVALIDA'], true)) {
                 out(['ok' => false, 'code' => 'CLIENT_OTP_UNAVAILABLE', 'user_msg' => 'Não foi possível validar o código agora.'], 503);
             }
+            // Unificação: mesma resposta para código errado, expirado, esgotado ou desafio fictício.
+            if ($tipo === 'unificar') {
+                out(['ok' => false, 'code' => 'CLIENT_OTP_NOT_APPROVED', 'user_msg' => 'Código inválido ou expirado.'], 422);
+            }
             if ($codigoValidacao === 'SMS_OTP_EXPIRADO') {
                 unset($_SESSION[CLIENTE_CONTATO_SESSAO]);
                 out(['ok' => false, 'code' => 'CLIENT_OTP_EXPIRED', 'user_msg' => 'O código expirou. Solicite um novo.'], 422);
@@ -333,6 +525,31 @@ try {
         // Código aprovado (consumido): agora, e só agora, o contato é marcado ou gravado.
         unset($_SESSION[CLIENTE_CONTATO_SESSAO]);
 
+        // Unificação: o código aprovado prova a posse do contato da OUTRA conta. Nada é unificado
+        // aqui; só guarda a prova e devolve a prévia para a escolha e a confirmação expressa.
+        if ($tipo === 'unificar') {
+            $idOutraOtp = (int)($desafio['id_cliente_otp'] ?? 0);
+            $outra = $idOutraOtp > 0 && $idOutraOtp !== $idCliente
+                ? clienteUnifLocalizarConta($conexao, $idEmpresa, $idCliente, $contato, $valor)
+                : null;
+            if (
+                $outra === null
+                || (int)$outra['id_cliente'] !== $idOutraOtp
+                || clienteUnifValidarPar($cliente, $outra, $idEmpresa) !== null
+            ) {
+                out(['ok' => false, 'code' => 'CLIENT_OTP_NOT_APPROVED', 'user_msg' => 'Código inválido ou expirado.'], 422);
+            }
+            $nonce = clienteUnifGuardarProva($idEmpresa, $idCliente, $idOutraOtp, $contato, $valor);
+            $prova = clienteUnifLerProva($idEmpresa, $idCliente);
+            $comprovados = clienteUnifContatosComprovados((array)($_SESSION['cliente_auth'] ?? []), (array)$prova);
+            out([
+                'ok' => true,
+                'code' => 'CLIENT_UNIFY_PROOF_OK',
+                'user_msg' => 'Contato confirmado. Revise as informações antes de unificar.',
+                'data' => ['nonce' => $nonce, 'previa' => clienteUnifPrevia($conexao, $cliente, $outra, $comprovados)],
+            ]);
+        }
+
         if ($tipo === 'adicionar_telefone') {
             $conexao->begin_transaction();
             try {
@@ -342,7 +559,7 @@ try {
                     out([
                         'ok' => false,
                         'code' => 'CLIENT_PHONE_ALREADY_EXISTS',
-                        'user_msg' => 'Este celular já está cadastrado nesta empresa.',
+                        'user_msg' => 'Este celular já está vinculado a outra conta desta empresa. Se for sua, entre com este celular na tela de acesso.',
                     ], 409);
                 }
                 $gravado = smsExecutar(
@@ -381,7 +598,7 @@ try {
                     out([
                         'ok' => false,
                         'code' => 'CLIENT_PHONE_ALREADY_EXISTS',
-                        'user_msg' => 'Este celular já está cadastrado nesta empresa.',
+                        'user_msg' => 'Este celular já está vinculado a outra conta desta empresa. Se for sua, entre com este celular na tela de acesso.',
                     ], 409);
                 }
                 throw $e;
