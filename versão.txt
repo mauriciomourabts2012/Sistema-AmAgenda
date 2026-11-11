@@ -10,4 +10,4 @@ php tools/release-version.php check
 cd /var/www/html/Sistema-AmAgenda
 git status
 git pull --ff-only origin main
-php tools/release-version.php check
+php tools/release-version.php check 
