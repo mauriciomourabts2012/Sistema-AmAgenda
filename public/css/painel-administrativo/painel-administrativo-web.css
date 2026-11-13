@@ -137,6 +137,12 @@
 .cartao-consentimento { display:flex; align-items:flex-start; gap:11px; margin-bottom:16px; padding:13px 14px; border:1px solid #cfe0f5; border-radius:13px; background:#f5f9ff; }
 .cartao-consentimento i { margin-top:2px; color:#1163dd; }
 .cartao-consentimento p { margin:0; color:#405873; font-size:12px; line-height:1.5; }
+/* Padrão visual dos modais do painel (base: Editar Cliente): aviso (reutiliza .cartao-consentimento), título com ícone, campos protegidos */
+.cartao-aviso-modal[hidden] { display:none; }
+.cartao-aviso-modal { align-items:center; gap:14px; margin-bottom:4px; padding:14px 16px; border-color:rgba(var(--am-marca-rgb,17,99,221),.28); background:linear-gradient(135deg,#eef5ff 0%,#f7faff 100%); }
+.cartao-aviso-modal > i { flex:0 0 40px; display:grid; place-items:center; width:40px; height:40px; margin-top:0; border-radius:50%; background:rgba(var(--am-marca-rgb,17,99,221),.12); font-size:18px; }
+.cartao-aviso-modal strong { display:block; margin-bottom:2px; color:#12305c; font-size:15px; font-weight:800; }
+.cartao-aviso-modal p { font-size:13px; }
 .cartao-brick { width:100%; min-width:0; overflow:hidden; }
 .cartao-brick iframe { max-width:100% !important; }
 .faturamento-cartao-modal .cartao-brick form :is(button:not([type]), button[type="submit"], input[type="submit"]) {

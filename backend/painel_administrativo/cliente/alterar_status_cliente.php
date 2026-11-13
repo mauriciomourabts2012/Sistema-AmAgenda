@@ -90,7 +90,7 @@ try {
        BUSCAR STATUS ATUAL
     ========================================================== */
     // Correção IDOR: o alvo é lido e bloqueado somente dentro da empresa autenticada no backend.
-    $sql = "SELECT nome_completo, status FROM cliente WHERE id_cliente = ? AND id_empresa = ? LIMIT 1 FOR UPDATE";
+    $sql = "SELECT nome_completo, status, id_cliente_unificado FROM cliente WHERE id_cliente = ? AND id_empresa = ? LIMIT 1 FOR UPDATE";
     $stmt = $conexao->prepare($sql);
 
     if (!$stmt) {
@@ -110,6 +110,16 @@ try {
             'code' => 'NOT_FOUND',
             'user_msg' => 'Cliente não encontrado.'
         ], 404);
+    }
+
+    // Conta secundária unificada (C4.2) permanece inativa e preservada: não é reativada pelo painel.
+    if (($cliente['id_cliente_unificado'] ?? null) !== null) {
+        $conexao->rollback();
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_UNIFIED_READ_ONLY',
+            'user_msg' => 'Esta conta foi unificada a outra conta do cliente e não pode ter o status alterado.'
+        ], 409);
     }
 
     $statusAtual = (string)($cliente['status'] ?? '');

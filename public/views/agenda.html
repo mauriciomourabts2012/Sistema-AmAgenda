@@ -6,25 +6,25 @@
     <title>AmAgenda • Studio</title>
     <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
     <link rel="manifest" href="/manifest.json">
-    <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.15">
+    <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.16">
   
-    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/filtro-paginacao-web.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css?v=1.14.15"/>
-    <link rel="stylesheet" href="../css/chat/chat-modal-agenda.css?v=1.14.15"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-web.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/agenda/agenda-mobile.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-web.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/menu-lateral/menu-lateral-mobile.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/identidade-visual/identidade-visual.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/filtro-paginacao-web.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/filtro-paginacao-mobile.css?v=1.14.16"/>
+    <link rel="stylesheet" href="../css/chat/chat-modal-agenda.css?v=1.14.16"/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
-    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=1.14.15">
-    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.14.15"/>
+    <link rel="stylesheet" href="../css/mensagem-erro-universal.css?v=1.14.16">
+    <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.14.16"/>
 
     <!--Verifica se usuario esta logado se não redireciona para tela de login-->
-    <script src="/public/_auth/sessao.js?v=1.14.15"></script>
-    <script src="/public/_auth/permissoes.js?v=1.14.15"></script>
-    <script src="/public/js/mensagem-universal.js?v=1.14.15"></script>
-    <script src="/public/js/PWA/InstalarPWA.js?v=1.14.15"></script>
+    <script src="/public/_auth/sessao.js?v=1.14.16"></script>
+    <script src="/public/_auth/permissoes.js?v=1.14.16"></script>
+    <script src="/public/js/mensagem-universal.js?v=1.14.16"></script>
+    <script src="/public/js/PWA/InstalarPWA.js?v=1.14.16"></script>
 
   </head>
 
@@ -480,7 +480,7 @@
       <div id="modalSelecionarProfissionalConfig" class="modal-geral" aria-hidden="true">
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloSelecionarProfissionalConfig">
           <div class="modal-topo">
-            <h2 id="tituloSelecionarProfissionalConfig">Selecionar profissional</h2>
+            <h2 id="tituloSelecionarProfissionalConfig" class="modal-titulo-icone"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Selecionar profissional</h2>
             <button class="modal-fechar" data-fechar-selecao-profissional type="button" aria-label="Fechar">×</button>
           </div>
           <div class="modal-corpo">
@@ -505,7 +505,7 @@
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloConfigAgenda">
 
           <div class="modal-topo">
-            <h2 id="tituloConfigAgenda">Configurações Agenda Profissional <span id="cfg_profissional_nome_titulo"></span></h2>
+            <h2 id="tituloConfigAgenda" class="modal-titulo-icone"><i class="fa-solid fa-gear" aria-hidden="true"></i> <span>Configurações Agenda Profissional <span id="cfg_profissional_nome_titulo"></span></span></h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
 
@@ -799,7 +799,7 @@
       <div id="modalCalendario" class="modal-geral" aria-hidden="true">
         <div class="modal-conteudo modal-calendario">
           <div class="modal-topo">
-            <h2>Calendário</h2>
+            <h2 class="modal-titulo-icone"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i> Calendário</h2>
             <button class="modal-fechar" data-fechar-modal type="button">×</button>
           </div>
 
@@ -879,7 +879,7 @@
         <div class="modal-conteudo modal-md">
 
           <div class="modal-topo">
-            <h2>Visualizar Agendamento</h2>
+            <h2 class="modal-titulo-icone"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Visualizar Agendamento</h2>
             <button class="modal-fechar" type="button" data-fechar-modal>×</button>
           </div>
 
@@ -952,7 +952,7 @@
       <div id="modalInformarAtraso" class="modal-geral" aria-hidden="true">
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloInformarAtraso">
           <div class="modal-topo">
-            <h2 id="tituloInformarAtraso">Informar atraso</h2>
+            <h2 id="tituloInformarAtraso" class="modal-titulo-icone"><i class="fa-solid fa-clock" aria-hidden="true"></i> Informar atraso</h2>
             <button class="modal-fechar" type="button" data-fechar-modal aria-label="Fechar">×</button>
           </div>
 
@@ -1020,7 +1020,7 @@
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoAgendamento">
 
           <div class="modal-topo">
-            <h2 id="tituloNovoAgendamento">Novo Agendamento</h2>
+            <h2 id="tituloNovoAgendamento" class="modal-titulo-icone"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Novo Agendamento</h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
 
@@ -1207,6 +1207,7 @@
               <div id="ag_form_feedback" class="ag-form-feedback" role="alert" aria-live="assertive" hidden></div>
 
               <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
                 <button id="btnSalvarAgendamento" class="botao-geral destaque" type="submit">
                   Salvar
                 </button>
@@ -1222,7 +1223,7 @@
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarAgendamento">
 
           <div class="modal-topo">
-            <h2 id="tituloEditarAgendamento">Editar Agendamento</h2>
+            <h2 id="tituloEditarAgendamento" class="modal-titulo-icone"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Editar Agendamento</h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
 
@@ -1429,12 +1430,12 @@
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoCliente">
 
           <div class="modal-topo">
-            <h2 id="tituloNovoCliente">Novo Cliente</h2>
+            <h2 id="tituloNovoCliente" class="modal-titulo-icone"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Novo Cliente</h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
 
           <div class="modal-corpo">
-            <form id="formNovoCliente" novalidate>
+            <form id="formNovoCliente" class="modal-form-padrao" novalidate>
 
               <div class="modal-grid">
 
@@ -1479,6 +1480,7 @@
               </div> <br>
 
               <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
                 <button id="btnSalvarCliente" class="botao-geral destaque" type="submit">
                 <i class="fa-solid fa-floppy-disk"></i>
                 Salvar
@@ -1495,12 +1497,12 @@
         <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoServicoAgendamento">
 
           <div class="modal-topo">
-            <h2 id="tituloNovoServicoAgendamento">Novo Serviço</h2>
+            <h2 id="tituloNovoServicoAgendamento" class="modal-titulo-icone"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Novo Serviço</h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
           </div>
 
           <div class="modal-corpo">
-            <form id="formNovoServicoAgendamento" novalidate>
+            <form id="formNovoServicoAgendamento" class="modal-form-padrao" novalidate>
 
               <input
                 id="serv_ag_id_profissional"
@@ -1599,6 +1601,7 @@
               </div> <br>
 
               <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
                 <button id="btnSalvarServicoAgendamento" class="botao-geral destaque" type="submit">
                   <i class="fa-solid fa-floppy-disk"></i>
                   Salvar
@@ -1616,49 +1619,49 @@
     </div><!-- /.agenda-app-shell -->
 
 
-    <script src="../js/core/lista-core.js?v=1.14.15" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
-    <script src="../js/menu-lateral/menu-lateral.js?v=1.14.15"></script> <!--Componente universal do menu lateral responsivo-->
-    <script src="../js/notificacoes/notificacoes.js?v=1.14.15"></script> <!--Centro de notificações e experiência de senha temporária-->
-    <script src="../js/identidade-visual/identidade-visual.js?v=1.14.15"></script>
+    <script src="../js/core/lista-core.js?v=1.14.16" ></script> <!--SEMPRE TE QUE FICAR EM PRIMEIRO NA LISTA JS UNIVERSAL PARA DIMINUIR I VOLUME DAS LISTAS-->
+    <script src="../js/menu-lateral/menu-lateral.js?v=1.14.16"></script> <!--Componente universal do menu lateral responsivo-->
+    <script src="../js/notificacoes/notificacoes.js?v=1.14.16"></script> <!--Centro de notificações e experiência de senha temporária-->
+    <script src="../js/identidade-visual/identidade-visual.js?v=1.14.16"></script>
 
-    <script src="../js/chat/chat-modal-agenda.js?v=1.14.15"></script> <!--Chat rápido contextual da Agenda-->
-    <script src="../js/chat/chat-nao-lidas.js?v=1.14.15"></script> <!--Contador global de conversas não lidas (badge do menu)-->
-    <script src="../js/agenda/lista-agenda.js?v=1.14.15" ></script> <!--Lista Agendamentos-->
-    <script src="../js/agenda/pesquisar-agendamento.js?v=1.14.15" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
-    <script src="../js/agenda/excluir-agendamento.js?v=1.14.15" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
+    <script src="../js/chat/chat-modal-agenda.js?v=1.14.16"></script> <!--Chat rápido contextual da Agenda-->
+    <script src="../js/chat/chat-nao-lidas.js?v=1.14.16"></script> <!--Contador global de conversas não lidas (badge do menu)-->
+    <script src="../js/agenda/lista-agenda.js?v=1.14.16" ></script> <!--Lista Agendamentos-->
+    <script src="../js/agenda/pesquisar-agendamento.js?v=1.14.16" ></script> <!--Busca geral e localiza o agendamento na semana exata-->
+    <script src="../js/agenda/excluir-agendamento.js?v=1.14.16" ></script> <!--Exclui uma ocorrência ou parte da recorrência-->
 
     <!--Modal Perfil-->
-    <script src="/public/_auth/deslogar.js?v=1.14.15" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-    <script src="../../js/componentes/processador-imagem.js?v=1.14.15" ></script> <!--Processador compartilhado de imagens (carregar antes de alterar_perfil_foto.js)-->
-    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.14.15" ></script> <!--Alterar Foto de perfil do modal perfil-->
-    <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.14.15" ></script> <!--Buscar Foto de perfil do usuario logado-->
-    <script src="/public/js/componentes/indicador-senha.js?v=1.14.15"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
-    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.14.15" ></script> <!--Alterar senha perfil-->
+    <script src="/public/_auth/deslogar.js?v=1.14.16" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+    <script src="../../js/componentes/processador-imagem.js?v=1.14.16" ></script> <!--Processador compartilhado de imagens (carregar antes de alterar_perfil_foto.js)-->
+    <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.14.16" ></script> <!--Alterar Foto de perfil do modal perfil-->
+    <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.14.16" ></script> <!--Buscar Foto de perfil do usuario logado-->
+    <script src="/public/js/componentes/indicador-senha.js?v=1.14.16"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
+    <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.14.16" ></script> <!--Alterar senha perfil-->
 
     <!--Modal Configuração Geral-->
-    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=1.14.15" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=1.14.15" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
-    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js?v=1.14.15" ></script> <!--Script para resetar as configurações padrão da empresa-->
-    <script src="../js/agenda/servico-profissional/cadastrar-servico.js?v=1.14.15" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
-    <script src="../js/agenda/servico-profissional/lista-servico.js?v=1.14.15" ></script> <!--Lista Serviço do Modal Configurações-->
-    <script src="../js/agenda/servico-profissional/excluir-servico.js?v=1.14.15" ></script> <!--Excluir servico no modal configurações-->
+    <script src="../js/agenda/configuracao-profissional/buscar-dados-modal-profissional-conf.js?v=1.14.16" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/salvar-dados-modal-profissional-conf.js?v=1.14.16" ></script> <!--Salvar Configuração Personalizada do Profissional ABA: (GERAL, HORARIOS e Whatssap)-->
+    <script src="../js/agenda/configuracao-profissional/ResetarConfigAgendaEmpresa.js?v=1.14.16" ></script> <!--Script para resetar as configurações padrão da empresa-->
+    <script src="../js/agenda/servico-profissional/cadastrar-servico.js?v=1.14.16" ></script> <!--Cadastrar Serviço do profissional no modal configurações geral-->
+    <script src="../js/agenda/servico-profissional/lista-servico.js?v=1.14.16" ></script> <!--Lista Serviço do Modal Configurações-->
+    <script src="../js/agenda/servico-profissional/excluir-servico.js?v=1.14.16" ></script> <!--Excluir servico no modal configurações-->
   
     
     <!--Modal Novo Agendamento-->
-    <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js?v=1.14.15" ></script> <!--Lista de clientes no modal novo agendamento-->
-    <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js?v=1.14.15" ></script> <!--Busca de clientes no modal editar agendamento-->
-    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js?v=1.14.15" ></script>
-    <script src="../js/agenda/cadastrar-agendamento.js?v=1.14.15"></script> <!--Valida e salva o Novo Agendamento-->
-    <script src="../js/agenda/editar-agendamento.js?v=1.14.15" ></script> <!--Carrega e atualiza o agendamento-->
+    <script src="../js/agenda/lista-cliente-modal-novo-agendamento.js?v=1.14.16" ></script> <!--Lista de clientes no modal novo agendamento-->
+    <script src="../js/agenda/lista-cliente-modal-editar-agendamento.js?v=1.14.16" ></script> <!--Busca de clientes no modal editar agendamento-->
+    <script src="../js/agenda/lista-profissional-modal-novo-agendamento.js?v=1.14.16" ></script>
+    <script src="../js/agenda/cadastrar-agendamento.js?v=1.14.16"></script> <!--Valida e salva o Novo Agendamento-->
+    <script src="../js/agenda/editar-agendamento.js?v=1.14.16" ></script> <!--Carrega e atualiza o agendamento-->
 
     <!--Modal Novo CLiente-->
-    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js?v=1.14.15" ></script> <!--Cadastrar Clientes-->
-    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=1.14.15" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
+    <script src="../js/agenda/cadastrar-cliente-modal-novo-agendamento.js?v=1.14.16" ></script> <!--Cadastrar Clientes-->
+    <script src="../js/agenda/cadastrar-servico-modal-novo-agendamento.js?v=1.14.16" ></script> <!--Cadastrar serviços dos profissional selecionado no modal novo agendamento-->
 
 
     <!--Universal-->
-    <script src="../../js/select-lista-universal.js?v=1.14.15" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
-    <script src="../../js/altear_status_universal.js?v=1.14.15" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+    <script src="../../js/select-lista-universal.js?v=1.14.16" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+    <script src="../../js/altear_status_universal.js?v=1.14.16" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
 
     <script> //Abrir e ferchar todos os modal
     (() => {
@@ -2307,7 +2310,7 @@
   })();
   </script>
 
-  <script src="../js/PWA/RegistrarServiceWorker.js?v=1.14.15"></script>
-  <script src="../js/PWA/AtualizarPWA.js?v=1.14.15"></script>
+  <script src="../js/PWA/RegistrarServiceWorker.js?v=1.14.16"></script>
+  <script src="../js/PWA/AtualizarPWA.js?v=1.14.16"></script>
   </body>
 </html>

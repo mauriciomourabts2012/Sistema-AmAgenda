@@ -3751,3 +3751,22 @@ body[data-menu-contexto="agenda"] .layout-controle{
     font-size: 20px;
   }
 }
+
+/* ==========================================================
+   PADRÃO VISUAL COMPARTILHADO DOS MODAIS (opt-in por classe)
+   Base: Editar Cliente (Painel). Usado por Painel e Agenda; só atua
+   em elementos com .modal-titulo-icone / .modal-form-padrao.
+   O cartão de aviso (.cartao-aviso-modal) permanece no CSS do Painel.
+   ========================================================== */
+.modal-titulo-icone { display:flex; align-items:center; gap:12px; }
+/* Campos protegidos: cadeado à esquerda e selo discreto à direita */
+.modal-form-padrao .campo-cadeado,
+.modal-form-padrao .campo-selo { display:none; position:absolute; z-index:1; pointer-events:none; }
+.modal-form-padrao .campo-protegido .campo-cadeado { display:block; left:14px; top:15px; color:#64748b; font-size:14px; }
+.modal-form-padrao .campo-protegido .campo-selo { display:inline-flex; align-items:center; gap:5px; right:10px; top:11px; padding:3px 10px; border-radius:999px; background:rgba(var(--am-marca-rgb,17,99,221),.12); color:var(--am-marca-texto,#1163dd); font-size:12px; font-weight:700; line-height:1.4; }
+.modal-form-padrao .campo-protegido input { padding-left:38px; padding-right:110px; text-overflow:ellipsis; }
+.modal-form-padrao .campo-protegido input:placeholder-shown + label { left:34px; }
+.modal-form-padrao input[readonly],
+.modal-form-padrao textarea[readonly],
+.modal-form-padrao select:disabled { background:#f1f5f9; color:#64748b; border-color:#d9e2ec; cursor:not-allowed; box-shadow:none; }
+.modal-form-padrao .modal-campo.modal-campo-full textarea { width:100%; box-sizing:border-box; resize:vertical; }

@@ -75,6 +75,8 @@ try {
 
     require __DIR__ . '/../../_config/conexao.php';
     require_once __DIR__ . '/../../_servicos/auditoria.php';
+    // Normalização de contatos compartilhada com os fluxos de contatos/unificação do cliente.
+    require_once __DIR__ . '/../../_regras/cliente_unificacao.php';
 
     if (!isset($conexao) || !($conexao instanceof mysqli) || $conexao->connect_errno) {
         out([
@@ -113,7 +115,8 @@ try {
 
     $idCliente   = (int)$idClienteRaw;
     $nome        = preg_replace('/\s+/', ' ', $nomeRaw) ?: '';
-    $telefone    = soDigitos($telefoneRaw);
+    // Chave nacional comparável (sem máscara e sem +55), a mesma usada em contatos/unificação.
+    $telefone    = clienteUnifChaveTelefone($telefoneRaw);
     $email       = $emailRaw !== '' ? lower($emailRaw) : null;
     $observacao  = $observacaoRaw !== '' ? $observacaoRaw : null;
     $status      = $statusRaw !== '' ? $statusRaw : 'ativo';
@@ -135,9 +138,11 @@ try {
         $fields['e_cli_nome'] = 'O nome deve ter no máximo 140 caracteres.';
     }
 
-    if ($telefoneRaw === '') {
-        $fields['e_cli_telefone'] = 'Informe o telefone (WhatsApp).';
-    } elseif (strlen($telefone) < 10 || strlen($telefone) > 13) {
+    // Regra do banco (ck_cliente_contato_obrigatorio): ao menos um contato, telefone OU e-mail.
+    if ($telefone === null && $email === null) {
+        $fields['e_cli_telefone'] = 'Informe o telefone (WhatsApp) ou o e-mail.';
+        $fields['e_cli_email'] = 'Informe o e-mail ou o telefone (WhatsApp).';
+    } elseif ($telefone !== null && (strlen($telefone) < 10 || strlen($telefone) > 11)) {
         $fields['e_cli_telefone'] = 'Telefone inválido. Informe DDD + número.';
     }
 
@@ -209,12 +214,19 @@ try {
     /* ==========================================================
        VALIDAR CLIENTE DA EMPRESA
     ========================================================== */
+    // Transação desde a leitura: a linha fica bloqueada (a unificação também a bloqueia),
+    // então o estado conferido abaixo é o mesmo que será gravado.
+    $conexao->begin_transaction();
+
     $stmt = $conexao->prepare("
-        SELECT id_cliente, id_empresa, nome_completo, whatsapp_celular, email, observacao, status
+        SELECT id_cliente, id_empresa, nome_completo, whatsapp_celular, email, observacao, status,
+               id_cliente_unificado, telefone_verificado_em, email_verificado_em,
+               (senha_hash IS NOT NULL AND senha_hash <> '') AS tem_senha
         FROM cliente
         WHERE id_cliente = ?
           AND id_empresa = ?
         LIMIT 1
+        FOR UPDATE
     ");
 
     if (!$stmt) {
@@ -234,13 +246,18 @@ try {
         $clienteTelefoneDb,
         $clienteEmailDb,
         $clienteObservacaoDb,
-        $clienteStatusDb
+        $clienteStatusDb,
+        $clienteUnificadoDb,
+        $clienteTelVerificadoDb,
+        $clienteEmailVerificadoDb,
+        $clienteTemSenhaDb
     );
 
     $clienteEncontrado = $stmt->fetch();
     $stmt->close();
 
     if (!$clienteEncontrado) {
+        $conexao->rollback();
         out([
             'ok' => false,
             'code' => 'CLIENT_NOT_FOUND',
@@ -249,31 +266,89 @@ try {
     }
 
     /* ==========================================================
+       CONTA SECUNDÁRIA UNIFICADA (C4.2): SOMENTE LEITURA
+       A conta definitiva concentra o cadastro; a secundária é preservada inativa
+       e não pode ser editada nem reativada pelo painel.
+    ========================================================== */
+    if ($clienteUnificadoDb !== null) {
+        $conexao->rollback();
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_UNIFIED_READ_ONLY',
+            'user_msg' => 'Esta conta foi unificada a outra conta do cliente e não pode ser editada. Edite a conta principal.'
+        ], 409);
+    }
+
+    /* ==========================================================
+       ALTERAÇÃO DE CONTATO x CONTA JÁ REIVINDICADA PELO CLIENTE
+       Telefone e e-mail são credenciais (código OTP e recuperação de senha). Se a equipe
+       trocasse o contato de uma conta que o cliente já usa (senha ou contato verificado),
+       receberia o código OTP e assumiria a conta. Nesse caso a alteração de contato fica
+       restrita ao próprio cliente (perfil, com prova por código).
+    ========================================================== */
+    $telefoneDbChave = clienteUnifChaveTelefone((string)$clienteTelefoneDb);
+    $emailDbChave    = clienteUnifChaveEmail((string)$clienteEmailDb);
+    $telefoneMudou   = $telefone !== $telefoneDbChave;
+    $emailMudou      = $email !== $emailDbChave;
+    $contaReivindicada = (int)$clienteTemSenhaDb === 1
+        || $clienteTelVerificadoDb !== null
+        || $clienteEmailVerificadoDb !== null;
+
+    if ($contaReivindicada && ($telefoneMudou || $emailMudou)) {
+        $conexao->rollback();
+        $fieldsContato = [];
+        if ($telefoneMudou) {
+            $fieldsContato['e_cli_telefone'] = 'Contato protegido: somente o cliente pode alterá-lo.';
+        }
+        if ($emailMudou) {
+            $fieldsContato['e_cli_email'] = 'Contato protegido: somente o cliente pode alterá-lo.';
+        }
+        out([
+            'ok' => false,
+            'code' => 'CLIENT_CONTACT_PROTECTED',
+            'user_msg' => 'Este cliente já acessa a própria conta. Telefone e e-mail só podem ser alterados por ele, no perfil.',
+            'fields' => $fieldsContato
+        ], 409);
+    }
+
+    // Contato inalterado preserva exatamente o valor armazenado (inclusive formato legado, ex.: +55).
+    $telefoneGravar = $telefoneMudou ? $telefone : ($clienteTelefoneDb !== null && $clienteTelefoneDb !== '' ? (string)$clienteTelefoneDb : null);
+    $emailGravar    = $emailMudou ? $email : ($clienteEmailDb !== null && $clienteEmailDb !== '' ? (string)$clienteEmailDb : null);
+
+    /* ==========================================================
        VALIDAR TELEFONE EM OUTRO CLIENTE DA MESMA EMPRESA
     ========================================================== */
-    $stmt = $conexao->prepare("
-        SELECT id_cliente
-        FROM cliente
-        WHERE id_empresa = ?
-          AND whatsapp_celular = ?
-          AND id_cliente <> ?
-        LIMIT 1
-    ");
+    // Formatos equivalentes (máscara, +55) são o mesmo telefone: compara a chave nacional.
+    // Só verifica quando o telefone foi efetivamente alterado (dados legados não são reprocessados).
+    $telefoneDuplicado = false;
+    if ($telefoneMudou && $telefone !== null) {
+        $telefoneComPais = '55' . $telefone;
+        $stmt = $conexao->prepare("
+            SELECT id_cliente
+            FROM cliente
+            WHERE id_empresa = ?
+              AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(whatsapp_celular, '+', ''), '(', ''), ')', ''), '-', ''), ' ', '') IN (?, ?)
+              AND id_cliente <> ?
+            LIMIT 1
+        ");
 
-    if (!$stmt) {
-        throw new RuntimeException('Erro ao preparar validação de telefone: ' . $conexao->error);
-    }
+        if (!$stmt) {
+            throw new RuntimeException('Erro ao preparar validação de telefone: ' . $conexao->error);
+        }
 
-    $stmt->bind_param("isi", $idEmpresaSessao, $telefone, $idCliente);
+        $stmt->bind_param("issi", $idEmpresaSessao, $telefone, $telefoneComPais, $idCliente);
 
-    if (!$stmt->execute()) {
-        throw new RuntimeException('Erro ao executar validação de telefone: ' . $stmt->error);
-    }
+        if (!$stmt->execute()) {
+            throw new RuntimeException('Erro ao executar validação de telefone: ' . $stmt->error);
+        }
 
-    $stmt->store_result();
-
-    if ($stmt->num_rows > 0) {
+        $stmt->store_result();
+        $telefoneDuplicado = $stmt->num_rows > 0;
         $stmt->close();
+    }
+
+    if ($telefoneDuplicado) {
+        $conexao->rollback();
 
         out([
             'ok' => false,
@@ -285,12 +360,10 @@ try {
         ], 409);
     }
 
-    $stmt->close();
-
     /* ==========================================================
        VALIDAR E-MAIL EM OUTRO CLIENTE DA MESMA EMPRESA
     ========================================================== */
-    if ($email !== null) {
+    if ($emailMudou && $email !== null) {
         $stmt = $conexao->prepare("
             SELECT id_cliente
             FROM cliente
@@ -314,6 +387,7 @@ try {
 
         if ($stmt->num_rows > 0) {
             $stmt->close();
+            $conexao->rollback();
 
             out([
                 'ok' => false,
@@ -331,18 +405,25 @@ try {
     /* ==========================================================
        UPDATE CLIENTE
     ========================================================== */
-    // O snapshot anterior acima já foi limitado pelo id da empresa da sessão.
-    $conexao->begin_transaction();
+    // A transação e o bloqueio da linha foram abertos na leitura (limitada à empresa da sessão).
+    // Apenas a verificação do contato alterado é invalidada; a do contato inalterado é preservada.
+    // Não toca origem_cadastro, senha_hash nem cadastro_completo. Sem id_cliente_unificado
+    // (conta unificada já rejeitada acima), reforçado também no WHERE.
+    $telefoneMudouInt = $telefoneMudou ? 1 : 0;
+    $emailMudouInt = $emailMudou ? 1 : 0;
     $stmt = $conexao->prepare("
         UPDATE cliente
         SET
             nome_completo = ?,
             whatsapp_celular = ?,
             email = ?,
+            telefone_verificado_em = IF(? = 1, NULL, telefone_verificado_em),
+            email_verificado_em = IF(? = 1, NULL, email_verificado_em),
             observacao = ?,
             status = ?
         WHERE id_cliente = ?
           AND id_empresa = ?
+          AND id_cliente_unificado IS NULL
         LIMIT 1
     ");
 
@@ -351,10 +432,12 @@ try {
     }
 
     $stmt->bind_param(
-        "sssssii",
+        "sssiissii",
         $nome,
-        $telefone,
-        $email,
+        $telefoneGravar,
+        $emailGravar,
+        $telefoneMudouInt,
+        $emailMudouInt,
         $observacao,
         $status,
         $idCliente,
@@ -367,6 +450,7 @@ try {
         $stmt->close();
 
         if ($errno === 1062) {
+            $conexao->rollback();
             out([
                 'ok' => false,
                 'code' => 'DUPLICATE_CLIENT',
@@ -379,7 +463,7 @@ try {
 
     $stmt->close();
 
-    $campos=['nome'=>[$clienteNomeDb,$nome],'telefone'=>[$clienteTelefoneDb,$telefone],'email'=>[$clienteEmailDb,$email],'observacao'=>[$clienteObservacaoDb,$observacao],'status'=>[$clienteStatusDb,$status]];
+    $campos=['nome'=>[$clienteNomeDb,$nome],'telefone'=>[$clienteTelefoneDb,$telefoneGravar],'email'=>[$clienteEmailDb,$emailGravar],'observacao'=>[$clienteObservacaoDb,$observacao],'status'=>[$clienteStatusDb,$status]];
     $diferencas=[];foreach($campos as $campo=>[$antes,$depois])if(!auditoriaValoresIguais($antes,$depois))$diferencas[$campo]=['antes'=>$antes,'depois'=>$depois];
     if($diferencas!==[])auditoriaRegistrar($conexao,'cliente.editado',['entidade_id'=>$idCliente,'entidade_rotulo'=>$nome,'descricao'=>'Alterou o cliente '.$nome.'.','alteracoes'=>$diferencas,'contexto'=>['origem'=>'painel_administrativo']]);
     $conexao->commit();
@@ -393,8 +477,8 @@ try {
             'id_empresa'       => $idEmpresaSessao,
             'empresa_nome'     => (string)$empresaNomeDb,
             'nome_completo'    => $nome,
-            'whatsapp_celular' => $telefone,
-            'email'            => $email,
+            'whatsapp_celular' => $telefoneGravar,
+            'email'            => $emailGravar,
             'observacao'       => $observacao,
             'status'           => $status
         ]
@@ -407,9 +491,6 @@ try {
     out([
         'ok' => false,
         'code' => 'INTERNAL_ERROR',
-        'user_msg' => 'Erro interno ao editar cliente.',
-        'debug' => [
-            'message' => $e->getMessage()
-        ]
+        'user_msg' => 'Erro interno ao editar cliente.'
     ], 500);
 }

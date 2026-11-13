@@ -396,6 +396,10 @@ try {
             c.observacao,
             c.cadastro_completo,
             c.origem_cadastro,
+            c.id_cliente_unificado,
+            (c.telefone_verificado_em IS NOT NULL) AS telefone_verificado,
+            (c.email_verificado_em IS NOT NULL) AS email_verificado,
+            (c.senha_hash IS NOT NULL AND c.senha_hash <> '') AS tem_senha,
             c.status,
             c.primeiro_acesso_em,
             c.ultimo_login_em,
@@ -454,6 +458,12 @@ try {
             'observacao'             => $row['observacao'] !== null ? (string)$row['observacao'] : null,
             'cadastro_completo'      => (int)$row['cadastro_completo'],
             'origem_cadastro'        => $row['origem_cadastro'] !== null ? (string)$row['origem_cadastro'] : null,
+            'id_cliente_unificado'   => $row['id_cliente_unificado'] !== null ? (int)$row['id_cliente_unificado'] : null,
+            'unificado'              => $row['id_cliente_unificado'] !== null,
+            // Contatos protegidos: o cliente já usa a conta (senha ou contato verificado).
+            'contato_protegido'      => (int)$row['tem_senha'] === 1
+                || (int)$row['telefone_verificado'] === 1
+                || (int)$row['email_verificado'] === 1,
             'status'                 => (string)$row['status'],
             'primeiro_acesso_em'     => $row['primeiro_acesso_em'] !== null ? (string)$row['primeiro_acesso_em'] : null,
             'ultimo_login_em'        => $row['ultimo_login_em'] !== null ? (string)$row['ultimo_login_em'] : null,

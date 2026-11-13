@@ -977,6 +977,43 @@
     setValue("#e_cli_email", cli.email ?? "");
     setValue("#e_cli_status", C.normalizar(cli.status || "ativo"));
     setValue("#e_cli_obs", cli.observacao ?? "");
+
+    // Proteções de interface (o backend continua sendo a fonte de verdade e responde 409).
+    const unificado = Boolean(cli.unificado);
+    const contatoProtegido = unificado || Boolean(cli.contato_protegido);
+    const bloquear = (selector, bloqueado) => {
+      const el = modal.querySelector(selector);
+      if (!el) return;
+      if (el.tagName === "SELECT") el.disabled = bloqueado;
+      else el.readOnly = bloqueado;
+    };
+    ["#e_cli_nome", "#e_cli_obs", "#e_cli_status"].forEach((s) => bloquear(s, unificado));
+    ["#e_cli_telefone", "#e_cli_email"].forEach((s) => {
+      bloquear(s, contatoProtegido);
+      // Identificação visual do bloqueio (cadeado + selo), somente apresentação.
+      const campo = modal.querySelector(s)?.closest(".modal-campo");
+      if (campo) campo.classList.toggle("campo-protegido", contatoProtegido);
+    });
+    const btnSalvar = modal.querySelector("#btnAtualizarCliente");
+    if (btnSalvar) btnSalvar.disabled = unificado;
+
+    const aviso = modal.querySelector("#e_cli_aviso");
+    if (aviso) {
+      let titulo = "";
+      let texto = "";
+      if (unificado) {
+        titulo = "Conta unificada";
+        texto = "Conta secundária unificada: somente leitura. Edite a conta principal do cliente.";
+      } else if (contatoProtegido) {
+        titulo = "Contato protegido";
+        texto = "Este cliente já acessa a própria conta: telefone e e-mail só podem ser alterados por ele, no perfil.";
+      }
+      const elTitulo = aviso.querySelector("#e_cli_aviso_titulo");
+      const elTexto = aviso.querySelector("#e_cli_aviso_texto");
+      if (elTitulo) elTitulo.textContent = titulo;
+      if (elTexto) elTexto.textContent = texto;
+      aviso.hidden = texto === "";
+    }
   }
 
   function abrirModalVisualizarCliente(id) {
@@ -1111,6 +1148,8 @@
       atualizado_em: item?.atualizado_em ?? null,
       cadastro_completo: Number(item?.cadastro_completo ?? 0),
       origem_cadastro: item?.origem_cadastro ?? null,
+      unificado: Boolean(item?.unificado),
+      contato_protegido: Boolean(item?.contato_protegido),
       cpf: item?.cpf ?? "",
       cidade: item?.cidade ?? "",
       bairro: item?.bairro ?? "",

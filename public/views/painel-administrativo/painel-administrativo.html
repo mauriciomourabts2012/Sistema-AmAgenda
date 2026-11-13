@@ -6,32 +6,32 @@
   <title>AmAgenda • Painel Administrativo</title>
   <link rel="icon" href="/public/imagens/logo-menu.png" type="image/png">
   <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.15">
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.16">
   
   <!--CSS WEB-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.14.15">
-  <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.14.15"/>
+  <link rel="stylesheet" href="../../css/agenda/agenda-web.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/filtro-paginacao-web.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/super-admin/super-admin-web.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-web.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-web.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/identidade-visual/identidade-visual.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/mensagem-erro-universal.css?v=1.14.16">
+  <link rel="stylesheet" href="/public/css/componentes/indicador-senha.css?v=1.14.16"/>
   <!--CSS MOBILE-->
-  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.14.15"/>
-  <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css?v=1.14.15"/>
+  <link rel="stylesheet" href="../../css/agenda/agenda-mobile.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/super-admin/super-admin-mobile.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/painel-administrativo/painel-administrativo-mobile.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/menu-lateral/menu-lateral-mobile.css?v=1.14.16"/>
+  <link rel="stylesheet" href="../../css/filtro-paginacao-mobile.css?v=1.14.16"/>
 
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">    <!--icon do whatzap + outros -->
   
   <!--Verifica se usuario esta logado se não redireciona para tela de login e tabem informa no cabeçalho a data atual e nome da emresa loada-->
-  <script src="/public/_auth/sessao.js?v=1.14.15"></script>
-  <script src="/public/_auth/permissoes.js?v=1.14.15"></script>
-  <script src="/public/js/mensagem-universal.js?v=1.14.15"></script>
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.15"></script>
+  <script src="/public/_auth/sessao.js?v=1.14.16"></script>
+  <script src="/public/_auth/permissoes.js?v=1.14.16"></script>
+  <script src="/public/js/mensagem-universal.js?v=1.14.16"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.16"></script>
 </head>
 
 <body data-menu-contexto="painel-administrativo">
@@ -900,7 +900,7 @@
       <div class="modal-conteudo modal-md">
 
         <div class="modal-topo">
-          <h2>Visualizar Cliente</h2>
+          <h2 class="modal-titulo-icone"><i class="fa-solid fa-user" aria-hidden="true"></i> Visualizar Cliente</h2>
           <button class="modal-fechar" type="button" data-fechar-modal>×</button>
         </div>
 
@@ -961,12 +961,12 @@
       <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloNovoCliente">
 
         <div class="modal-topo">
-          <h2 id="tituloNovoCliente">Novo Cliente</h2>
+          <h2 id="tituloNovoCliente" class="modal-titulo-icone"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Novo Cliente</h2>
           <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
         </div>
 
         <div class="modal-corpo">
-          <form id="formNovoCliente" novalidate>
+          <form id="formNovoCliente" class="modal-form-padrao" novalidate>
 
             <div class="modal-grid">
 
@@ -1011,6 +1011,7 @@
             </div> <br>
 
             <div class="modal-acoes">
+              <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
               <button id="btnSalvarCliente" class="botao-geral destaque" type="submit">
               <i class="fa-solid fa-floppy-disk"></i>
               Salvar
@@ -1027,15 +1028,23 @@
       <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarCliente">
 
         <div class="modal-topo">
-          <h2 id="tituloEditarCliente">Editar Cliente</h2>
+          <h2 id="tituloEditarCliente" class="modal-titulo-icone"><i class="fa-solid fa-user-pen" aria-hidden="true"></i> Editar Cliente</h2>
           <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
         </div>
 
         <div class="modal-corpo">
-          <form id="formEditarCliente" novalidate>
+          <form id="formEditarCliente" class="modal-form-padrao" novalidate>
 
             <!-- ID oculto -->
             <input type="hidden" id="e_cli_id" name="id_cliente">
+
+            <div id="e_cli_aviso" class="cartao-consentimento cartao-aviso-modal" role="status" hidden>
+              <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+              <div>
+                <strong id="e_cli_aviso_titulo"></strong>
+                <p id="e_cli_aviso_texto"></p>
+              </div>
+            </div>
 
             <div class="modal-grid">
 
@@ -1048,15 +1057,19 @@
 
               <!-- Telefone -->
               <div class="modal-campo">
-                <input id="e_cli_telefone" name="telefone" type="tel" placeholder="" required maxlength="20" autocomplete="tel">
+                <input id="e_cli_telefone" name="telefone" type="tel" placeholder="" maxlength="20" autocomplete="tel">
                 <label for="e_cli_telefone">Telefone (WhatsApp)</label>
+                <i class="fa-solid fa-lock campo-cadeado" aria-hidden="true"></i>
+                <span class="campo-selo"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Protegido</span>
                 <small class="msg-erro" data-erro-for="e_cli_telefone"></small>
               </div>
 
               <!-- Email -->
               <div class="modal-campo">
                 <input id="e_cli_email" name="email" type="email" placeholder="" maxlength="160" autocomplete="email">
-                <label for="e_cli_email">E-mail (opcional)</label>
+                <label for="e_cli_email">E-mail (obrigatório sem telefone)</label>
+                <i class="fa-solid fa-lock campo-cadeado" aria-hidden="true"></i>
+                <span class="campo-selo"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Protegido</span>
                 <small class="msg-erro" data-erro-for="e_cli_email"></small>
               </div>
 
@@ -1085,6 +1098,7 @@
             <br>
 
             <div class="modal-acoes">
+              <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
               <button id="btnAtualizarCliente" class="botao-geral destaque" type="submit">
                 <i class="fa-solid fa-pen-to-square"></i>
                 Salvar
@@ -1103,7 +1117,7 @@
       <div class="modal-conteudo modal-md">
 
         <div class="modal-topo">
-          <h2>Visualizar Usuário</h2>
+          <h2 class="modal-titulo-icone"><i class="fa-solid fa-user" aria-hidden="true"></i> Visualizar Usuário</h2>
           <button class="modal-fechar" type="button" data-fechar-modal>×</button>
         </div>
 
@@ -1181,12 +1195,12 @@
       <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloCadastrarUsuario">
 
         <div class="modal-topo">
-            <h2 id="tituloCadastrarUsuario">Cadastrar Usuário</h2>
+            <h2 id="tituloCadastrarUsuario" class="modal-titulo-icone"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Cadastrar Usuário</h2>
             <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
         </div>
 
         <div class="modal-corpo">
-          <form id="formCadastrarUsuario" novalidate>
+          <form id="formCadastrarUsuario" class="modal-form-padrao" novalidate>
 
             <div class="modal-grid">
 
@@ -1264,6 +1278,7 @@
             </div><br>
 
             <div class="modal-acoes">
+                <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
                 <button id="btnSalvarUsuario" class="botao-geral destaque" type="submit">
                 <i class="fa-solid fa-floppy-disk"></i>
                 Salvar
@@ -1281,12 +1296,12 @@
       <div class="modal-conteudo" role="dialog" aria-modal="true" aria-labelledby="tituloEditarUsuario">
 
         <div class="modal-topo">
-          <h2 id="tituloEditarUsuario">Editar Usuário</h2>
+          <h2 id="tituloEditarUsuario" class="modal-titulo-icone"><i class="fa-solid fa-user-pen" aria-hidden="true"></i> Editar Usuário</h2>
           <button class="modal-fechar" data-fechar-modal type="button" aria-label="Fechar">×</button>
         </div>
 
         <div class="modal-corpo">
-          <form id="formEditarUsuario" novalidate>
+          <form id="formEditarUsuario" class="modal-form-padrao" novalidate>
 
             <!-- ID oculto -->
             <input type="hidden" id="u_e_id" name="id_usuario">
@@ -1294,9 +1309,11 @@
             <div class="modal-grid">
 
               <!-- Nome -->
-              <div class="modal-campo">
+              <div class="modal-campo campo-protegido">
                 <input id="u_e_nome" name="nome" type="text" placeholder="" readonly maxlength="120">
                 <label for="u_e_nome">Nome (identidade global)</label>
+                <i class="fa-solid fa-lock campo-cadeado" aria-hidden="true"></i>
+                <span class="campo-selo"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Global</span>
                 <small class="msg-erro" data-erro-for="u_e_nome"></small>
               </div>
 
@@ -1327,16 +1344,20 @@
               </div>
 
               <!-- E-mail (login) -->
-              <div class="modal-campo">
+              <div class="modal-campo campo-protegido">
                 <input id="u_e_email" name="email" type="email" placeholder="" readonly maxlength="160" autocomplete="username">
                 <label for="u_e_email">E-mail global (somente leitura)</label>
+                <i class="fa-solid fa-lock campo-cadeado" aria-hidden="true"></i>
+                <span class="campo-selo"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Global</span>
                 <small class="msg-erro" data-erro-for="u_e_email"></small>
               </div>
 
               <!-- WhatsApp -->
-              <div class="modal-campo">
+              <div class="modal-campo campo-protegido">
                 <input id="u_e_tel" name="telefone" type="tel" placeholder="" readonly maxlength="20" autocomplete="tel">
                 <label for="u_e_tel">Telefone global (somente leitura)</label>
+                <i class="fa-solid fa-lock campo-cadeado" aria-hidden="true"></i>
+                <span class="campo-selo"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Global</span>
                 <small class="msg-erro" data-erro-for="u_e_tel"></small>
               </div>
 
@@ -1357,7 +1378,8 @@
             <br>
 
             <div class="modal-acoes">
-              <button id="btnAtualizarUsuario" class="botao-geral destaque" type="submit">                
+              <button class="botao-geral" data-fechar-modal type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancelar</button>
+              <button id="btnAtualizarUsuario" class="botao-geral destaque" type="submit">
                 <i class="fa-solid fa-pen-to-square"></i>
                 Salvar</button>
             </div>
@@ -1633,50 +1655,50 @@
   </main>
   </div><!-- /.agenda-app-shell -->
   
-  <script src="../../js/core/lista-core.js?v=1.14.15" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
-  <script src="../../js/menu-lateral/menu-lateral.js?v=1.14.15"></script>
-  <script src="../../js/identidade-visual/identidade-visual.js?v=1.14.15"></script>
+  <script src="../../js/core/lista-core.js?v=1.14.16" ></script> <!--Univeral para deixar a listas menores não ficar repetindo o mesmo codigo-->
+  <script src="../../js/menu-lateral/menu-lateral.js?v=1.14.16"></script>
+  <script src="../../js/identidade-visual/identidade-visual.js?v=1.14.16"></script>
 
   <!--Cabeçallho-->
-  <script src="../../js/notificacoes/notificacoes.js?v=1.14.15"></script> <!--Notificações do cabeçalho-->
+  <script src="../../js/notificacoes/notificacoes.js?v=1.14.16"></script> <!--Notificações do cabeçalho-->
 
 
   <!--Modal Perfil-->
-  <script src="/public/_auth/deslogar.js?v=1.14.15" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
-  <script src="../../js/componentes/processador-imagem.js?v=1.14.15" ></script> <!--Processador compartilhado de imagens (carregar antes de alterar_perfil_foto.js)-->
-  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.14.15" ></script> <!--Alterar Foto de perfil do modal perfil-->
-  <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.14.15" ></script> <!--Buscar Foto de perfil do usuario logado-->
-  <script src="/public/js/componentes/indicador-senha.js?v=1.14.15"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
-  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.14.15" ></script> <!--Alterar senha perfil-->
+  <script src="/public/_auth/deslogar.js?v=1.14.16" ></script> <!--Deslogar do sistema botão sair do modal perfil-->
+  <script src="../../js/componentes/processador-imagem.js?v=1.14.16" ></script> <!--Processador compartilhado de imagens (carregar antes de alterar_perfil_foto.js)-->
+  <script src="../../js/perfil-usuario/alterar_perfil_foto.js?v=1.14.16" ></script> <!--Alterar Foto de perfil do modal perfil-->
+  <script src="../../js/perfil-usuario/buscar_foto_perfil.js?v=1.14.16" ></script> <!--Buscar Foto de perfil do usuario logado-->
+  <script src="/public/js/componentes/indicador-senha.js?v=1.14.16"></script> <!--Indicador de segurança da senha (antes do alterar_senha_perfil.js)-->
+  <script src="../../js/perfil-usuario/alterar_senha_perfil.js?v=1.14.16" ></script> <!--Alterar senha perfil-->
 
   <!--Modal Configuração Geral-->
-  <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js?v=1.14.15" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
-  <script src="../../js/painel-administrativo/configuracao-empresa/salvar-dados-modal-empresa-conf.js?v=1.14.15" ></script> <!--Salvar dados da configuração geral empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+  <script src="../../js/painel-administrativo/configuracao-empresa/buscar-dados-modal-empresa-conf.js?v=1.14.16" ></script> <!--Busca Configuração Geral Empresa ABA: (GERAL, HORARIOS e Whatssap)-->
+  <script src="../../js/painel-administrativo/configuracao-empresa/salvar-dados-modal-empresa-conf.js?v=1.14.16" ></script> <!--Salvar dados da configuração geral empresa ABA: (GERAL, HORARIOS e Whatssap)-->
  
 
   <!--ABA RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=1.14.15"></script> <!--DADOS RESUMO DO DIA -->
-  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=1.14.15"></script>
+  <script src="../../js/painel-administrativo/resumo-dia/lista-resumo-dia.js?v=1.14.16"></script> <!--DADOS RESUMO DO DIA -->
+  <script src="../../js/painel-administrativo/faturamento/gerenciar-faturamento.js?v=1.14.16"></script>
   <script src="https://sdk.mercadopago.com/js/v2"></script>
-  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=1.14.15"></script>
+  <script src="../../js/painel-administrativo/faturamento/pagamento-online.js?v=1.14.16"></script>
 
   <!--ABA CLIENTES -->
-  <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=1.14.15" ></script> <!-- LISTA DE CLIENTES -->
-  <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js?v=1.14.15" ></script> <!--Cadastrar Clientes-->
-  <script src="../../js/painel-administrativo/cliente/editar-cliente.js?v=1.14.15" ></script> <!--Editar cliente-->
+  <script src="../../js/painel-administrativo/cliente/lista-cliente.js?v=1.14.16" ></script> <!-- LISTA DE CLIENTES -->
+  <script src="../../js/painel-administrativo/cliente/cadastrar-cliente.js?v=1.14.16" ></script> <!--Cadastrar Clientes-->
+  <script src="../../js/painel-administrativo/cliente/editar-cliente.js?v=1.14.16" ></script> <!--Editar cliente-->
   
   <!--ABA USUARIOS - (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=1.14.15" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/permissoes-usuario.js?v=1.14.15"></script>
-  <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js?v=1.14.15" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
-  <script src="../../js/painel-administrativo/usuario/editar-usuario.js?v=1.14.15" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/lista-usuario.js?v=1.14.16" ></script> <!--LISTA DE USUARIOS (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/permissoes-usuario.js?v=1.14.16"></script>
+  <script src="../../js/painel-administrativo/usuario/cadastrar-usuario.js?v=1.14.16" ></script> <!--Cadastrar dados do usuario (FUNCIONARIO)-->
+  <script src="../../js/painel-administrativo/usuario/editar-usuario.js?v=1.14.16" ></script> <!--Editar dados do usuario (FUNCIONARIO)-->
 
   <!--ABA AUDITORIA-->
-  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=1.14.15"></script>
+  <script src="../../js/painel-administrativo/auditoria/lista-auditoria.js?v=1.14.16"></script>
 
   <!--Universal-->
-  <script src="../../js/select-lista-universal.js?v=1.14.15" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
-  <script src="../../js/altear_status_universal.js?v=1.14.15" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
+  <script src="../../js/select-lista-universal.js?v=1.14.16" ></script> <!--Slect Universal para lista dados nos modaals exem lista os Perfis no modal cadastrar usuario-->
+  <script src="../../js/altear_status_universal.js?v=1.14.16" ></script><!--Alterar Status universal ATIVVO / INATIVO -->
   
 
 
@@ -2175,7 +2197,7 @@
   })();
   </script>
 
-  <script src="../../js/PWA/RegistrarServiceWorker.js?v=1.14.15"></script>
-  <script src="../../js/PWA/AtualizarPWA.js?v=1.14.15"></script>
+  <script src="../../js/PWA/RegistrarServiceWorker.js?v=1.14.16"></script>
+  <script src="../../js/PWA/AtualizarPWA.js?v=1.14.16"></script>
 </body>
 </html>
