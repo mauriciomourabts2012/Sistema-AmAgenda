@@ -80,27 +80,27 @@ if (
   <title>AmAgenda • Login Cliente</title>
 
   <link rel="manifest" href="/public/manifest-agenda-online.php<?php if ($empresaSlugContexto !== '') { echo '?slug=' . rawurlencode($empresaSlugContexto); } ?>" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.18" />
+  <link rel="stylesheet" href="/public/css/PWA/instalar-pwa.css?v=1.14.19" />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-web.css?v=1.14.18"
+    href="../css/login/login-web.css?v=1.14.19"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-mobile.css?v=1.14.18"
+    href="../css/login/login-mobile.css?v=1.14.19"
   />
 
   <link
     rel="stylesheet"
-    href="../css/login/login-cliente.css?v=1.14.18"
+    href="../css/login/login-cliente.css?v=1.14.19"
   />
 
   <!-- Regra única de enquadramento da imagem de login (mesma da prévia do modal). -->
   <link
     rel="stylesheet"
-    href="../css/identidade-visual/identidade-visual.css?v=1.14.18"
+    href="../css/identidade-visual/identidade-visual.css?v=1.14.19"
   />
 
   <link
@@ -114,7 +114,7 @@ if (
     rel="stylesheet"
   />
 
-  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.18"></script>
+  <script src="/public/js/PWA/InstalarPWA.js?v=1.14.19"></script>
 
 </head>
 
@@ -225,7 +225,29 @@ if (
               id="btnContinuarEmail"
               type="button"
             >
-              Prefere usar o e-mail? Continuar com e-mail
+              <svg
+                class="login-icone"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <path
+                  d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="m22 7-10 6L2 7"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+
+              Continuar com e-mail
             </button>
 
             <p class="cliente-termos">
@@ -2275,10 +2297,10 @@ window.AMAGENDA_EMPRESA_ID = <?php echo (int)$empresaId; ?>;
 })();
 </script>
 
-<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.18" data-pwa-contexto="agenda-online"></script>
+<script src="/public/js/PWA/RegistrarServiceWorker.js?v=1.14.19" data-pwa-contexto="agenda-online"></script>
 
 <script
-  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.18"
+  src="/public/js/identidade-visual/identidade-visual-login.js?v=1.14.19"
 ></script>
 
 </body>
